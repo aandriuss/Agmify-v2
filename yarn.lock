@@ -16353,7 +16353,7 @@ __metadata:
     stylelint-config-recommended-vue: "npm:^1.4.0"
     stylelint-config-standard: "npm:^26.0.0"
     subscriptions-transport-ws: "npm:^0.11.0"
-    tailwindcss: "npm:^3.4.1"
+    tailwindcss: "npm:^3.3.2"
     tweetnacl-sealedbox-js: "npm:^1.2.0"
     tweetnacl-util: "npm:^0.15.1"
     type-fest: "npm:^4.24.0"
@@ -16364,6 +16364,7 @@ __metadata:
     vue-tippy: "npm:^6.0.0"
     vue-tsc: "npm:2.0.10"
     wait-on: "npm:^6.0.1"
+    whatwg-url: "npm:^14.0.0"
     ws: "npm:^8.17.1"
     znv: "npm:^0.4.0"
     zod: "npm:^3.22.4"
@@ -20173,8 +20174,8 @@ __metadata:
 
 "@types/react@file:./packages/frontend-2/type-augmentations/stubs/types__react::locator=root%40workspace%3A.":
   version: 0.0.0
-  resolution: "@types/react@file:./packages/frontend-2/type-augmentations/stubs/types__react#./packages/frontend-2/type-augmentations/stubs/types__react::hash=2ea486&locator=root%40workspace%3A."
-  checksum: 10/500d185a1e5fc9e977520f4704194ad2e4391cfb8ef7747ca9f2a59bc7a52b555726e6d59e212f4a6b11ee08f06737615224031f80b7da3e216a8905642280fe
+  resolution: "@types/react@file:./packages/frontend-2/type-augmentations/stubs/types__react#./packages/frontend-2/type-augmentations/stubs/types__react::hash=3341b8&locator=root%40workspace%3A."
+  checksum: 10/e8bc37abe6beea68fddb76a579cc3fac358b3603c587c1b740589544a2338a0acd98193b9b83c6cac90de61bb97435e673d4255e7698c33385d3f28dc6fc5aed
   languageName: node
   linkType: hard
 
@@ -48955,39 +48956,6 @@ __metadata:
     tailwind: lib/cli.js
     tailwindcss: lib/cli.js
   checksum: 10/8c64edde7709e95163472d8c8a89d5737930393725bf4c3dac9019e82f7d5219e6d3fa0c1b1249e5770deb5e0269e7c5cc67f16be1bc7e6160814d2a8e65d5ed
-  languageName: node
-  linkType: hard
-
-"tailwindcss@npm:^3.4.1":
-  version: 3.4.1
-  resolution: "tailwindcss@npm:3.4.1"
-  dependencies:
-    "@alloc/quick-lru": "npm:^5.2.0"
-    arg: "npm:^5.0.2"
-    chokidar: "npm:^3.5.3"
-    didyoumean: "npm:^1.2.2"
-    dlv: "npm:^1.1.3"
-    fast-glob: "npm:^3.3.0"
-    glob-parent: "npm:^6.0.2"
-    is-glob: "npm:^4.0.3"
-    jiti: "npm:^1.19.1"
-    lilconfig: "npm:^2.1.0"
-    micromatch: "npm:^4.0.5"
-    normalize-path: "npm:^3.0.0"
-    object-hash: "npm:^3.0.0"
-    picocolors: "npm:^1.0.0"
-    postcss: "npm:^8.4.23"
-    postcss-import: "npm:^15.1.0"
-    postcss-js: "npm:^4.0.1"
-    postcss-load-config: "npm:^4.0.1"
-    postcss-nested: "npm:^6.0.1"
-    postcss-selector-parser: "npm:^6.0.11"
-    resolve: "npm:^1.22.2"
-    sucrase: "npm:^3.32.0"
-  bin:
-    tailwind: lib/cli.js
-    tailwindcss: lib/cli.js
-  checksum: 10/bf460657c674b1fb22ad7017ab5a9771c2884a3089d7767cee2395e8d9a54d74846170934ee00e285f39622c8e9e54d6f0e54bf38344efdc61544291c4d325c2
   languageName: node
   linkType: hard
 

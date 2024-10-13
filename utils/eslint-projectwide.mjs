@@ -58,7 +58,8 @@ const resolvePackageContexts = async (absoluteFileNames) => {
     const pkg = fittingPkgs[0]
 
     if (!pkg) {
-      throw new Error(`File ${absoluteFileName} does not belong to any package`)
+      // throw new Error(`File ${absoluteFileName} does not belong to any package`)
+      continue
     }
 
     const contextsKey = pkg.absolutePath
