@@ -204,6 +204,12 @@
         </KeepAlive>
       </div>
 
+      <div v-show="resourceItems.length !== 0 && activeControl === 'datasets'">
+        <KeepAlive>
+          <ViewerDatasets class="pointer-events-auto" @close="activeControl = 'none'" />
+        </KeepAlive>
+      </div>
+
       <div v-show="resourceItems.length !== 0 && activeControl === 'explorer'">
         <KeepAlive>
           <ViewerExplorer class="pointer-events-auto" @close="activeControl = 'none'" />
@@ -400,7 +406,8 @@ const {
 
 const map: Record<ViewerKeyboardActions, [ModifierKeys[], string]> = {
   [ViewerKeyboardActions.ToggleModels]: [[ModifierKeys.Shift], 'm'],
-  [ViewerKeyboardActions.ToggleDatasets]: [[ModifierKeys.Shift], 'e'],
+  [ViewerKeyboardActions.ToggleDatasets]: [[ModifierKeys.Shift], 'd'],
+  [ViewerKeyboardActions.ToggleExplorer]: [[ModifierKeys.Shift], 'e'],
   [ViewerKeyboardActions.ToggleDiscussions]: [[ModifierKeys.Shift], 't'],
   [ViewerKeyboardActions.ToggleMeasurements]: [[ModifierKeys.Shift], 'r'],
   [ViewerKeyboardActions.ToggleProjection]: [[ModifierKeys.Shift], 'p'],
@@ -451,7 +458,7 @@ const handleKeyboardAction = (action: ViewerKeyboardActions) => {
       toggleActiveControl('models')
       break
     case ViewerKeyboardActions.ToggleDatasets:
-      toggleActiveControl('explorer')
+      toggleActiveControl('datasets')
       break
     case ViewerKeyboardActions.ToggleExplorer:
       toggleActiveControl('explorer')
