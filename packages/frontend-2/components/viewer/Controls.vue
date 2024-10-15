@@ -20,6 +20,15 @@
         <CubeIcon class="h-4 w-4 md:h-5 md:w-5" />
       </ViewerControlsButtonToggle>
 
+      <!-- Datasets -->
+      <ViewerControlsButtonToggle
+        v-tippy="isSmallerOrEqualSm ? undefined : datasetsShortcut"
+        :active="activeControl === 'datasets'"
+        @click="toggleActiveControl('datasets')"
+      >
+        <IconFileExplorer class="h-4 w-4 md:h-5 md:w-5" />
+      </ViewerControlsButtonToggle>
+
       <!-- Explorer -->
       <ViewerControlsButtonToggle
         v-tippy="isSmallerOrEqualSm ? undefined : explorerShortcut"
@@ -285,6 +294,7 @@ const isGendoEnabled = useIsGendoModuleEnabled()
 
 enum ViewerKeyboardActions {
   ToggleModels = 'ToggleModels',
+  ToggleDatasets = 'ToggleDatasets',
   ToggleExplorer = 'ToggleExplorer',
   ToggleDiscussions = 'ToggleDiscussions',
   ToggleMeasurements = 'ToggleMeasurements',
@@ -337,6 +347,7 @@ if (import.meta.client) {
 type ActiveControl =
   | 'none'
   | 'models'
+  | 'datasets'
   | 'explorer'
   | 'filters'
   | 'discussions'
@@ -389,7 +400,7 @@ const {
 
 const map: Record<ViewerKeyboardActions, [ModifierKeys[], string]> = {
   [ViewerKeyboardActions.ToggleModels]: [[ModifierKeys.Shift], 'm'],
-  [ViewerKeyboardActions.ToggleExplorer]: [[ModifierKeys.Shift], 'e'],
+  [ViewerKeyboardActions.ToggleDatasets]: [[ModifierKeys.Shift], 'e'],
   [ViewerKeyboardActions.ToggleDiscussions]: [[ModifierKeys.Shift], 't'],
   [ViewerKeyboardActions.ToggleMeasurements]: [[ModifierKeys.Shift], 'r'],
   [ViewerKeyboardActions.ToggleProjection]: [[ModifierKeys.Shift], 'p'],
@@ -402,6 +413,9 @@ const getShortcutTitle = (action: ViewerKeyboardActions) =>
 
 const modelsShortcut = ref(
   `Models ${getShortcutTitle(ViewerKeyboardActions.ToggleModels)}`
+)
+const datasetsShortcut = ref(
+  `Datasets ${getShortcutTitle(ViewerKeyboardActions.ToggleDatasets)}`
 )
 const explorerShortcut = ref(
   `Scene explorer ${getShortcutTitle(ViewerKeyboardActions.ToggleExplorer)}`
@@ -435,6 +449,9 @@ const handleKeyboardAction = (action: ViewerKeyboardActions) => {
   switch (action) {
     case ViewerKeyboardActions.ToggleModels:
       toggleActiveControl('models')
+      break
+    case ViewerKeyboardActions.ToggleDatasets:
+      toggleActiveControl('explorer')
       break
     case ViewerKeyboardActions.ToggleExplorer:
       toggleActiveControl('explorer')
