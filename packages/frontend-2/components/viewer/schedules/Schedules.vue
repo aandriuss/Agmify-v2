@@ -20,6 +20,7 @@
               <tr>
                 <th>ID</th>
                 <th>Type</th>
+                <th>Speckle Type</th>
                 <th>Name</th>
                 <th>Category</th>
                 <th>Dimensions</th>
@@ -31,6 +32,7 @@
               <tr v-for="(item, index) in filteredElementsData" :key="index">
                 <td>{{ item.id }}</td>
                 <td>{{ item.type }}</td>
+                <td>{{ item.speckle_type }}</td>
                 <td>{{ item.name }}</td>
                 <td>{{ item.category }}</td>
                 <td>{{ item.dimensions }}</td>
@@ -126,7 +128,7 @@ function isBuildingElement(node: any): boolean {
     'IFCRAILING',
     'IFCMEMBER',
     'IFCSITE',
-    'IFCPROJECT' // Added these to capture more elements
+    'IFCPROJECT'
   ]
   return (
     node &&
@@ -139,6 +141,7 @@ function processNode(node: any): any {
   const {
     id,
     type,
+    speckle_type,
     Name,
     ObjectType,
     GlobalId,
@@ -150,7 +153,8 @@ function processNode(node: any): any {
 
   return {
     id: id || GlobalId || 'N/A',
-    type: type || node.speckle_type || 'Unknown',
+    type: type || 'Unknown',
+    speckle_type: speckle_type || 'N/A',
     name: Name || node.name || 'Unnamed',
     category: ObjectType || Pset_ProductRequirements?.Category || 'N/A',
     dimensions: Dimensions
@@ -179,6 +183,7 @@ const filteredElementsData = computed(() => {
     (element) =>
       element.name.toLowerCase().includes(term) ||
       element.type.toLowerCase().includes(term) ||
+      element.speckle_type.toLowerCase().includes(term) ||
       element.id.toLowerCase().includes(term) ||
       element.category.toLowerCase().includes(term)
   )
