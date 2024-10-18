@@ -15,10 +15,10 @@
         <!-- Elements Table -->
         <div v-if="filteredElementsData.length > 0">
           <h2>Model Elements</h2>
-          <table class="schedules-table" border="1" cellpadding="5" cellspacing="0">
-            <thead>
+          <table class="table-auto w-full border-collapse border border-gray-400">
+            <thead class="bg-gray-200">
               <tr>
-                <th>ID</th>
+                <th class="p-2 border border-gray-400">ID</th>
                 <th>Type</th>
                 <th>Speckle Type</th>
                 <th>Name</th>
@@ -26,11 +26,17 @@
                 <th>Dimensions</th>
                 <th>Is External</th>
                 <th>Additional Properties</th>
+                <th>View 3D Model</th>
+                <!-- New column -->
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(item, index) in filteredElementsData" :key="index">
-                <td>{{ item.id }}</td>
+              <tr
+                v-for="(item, index) in filteredElementsData"
+                :key="index"
+                class="hover:bg-gray-100"
+              >
+                <td class="p-2 border border-gray-400">{{ item.id }}</td>
                 <td>{{ item.type }}</td>
                 <td>{{ item.speckle_type }}</td>
                 <td>{{ item.name }}</td>
@@ -38,12 +44,19 @@
                 <td>{{ item.dimensions }}</td>
                 <td>{{ item.isExternal }}</td>
                 <td>{{ item.additionalProperties }}</td>
+                <td>
+                  <button @click="openViewer(item.id)">View</button>
+                  <!-- New button -->
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
         <p v-else>No data available to display.</p>
       </div>
+
+      <!-- Speckle Viewer -->
+      <SpeckleViewer v-if="selectedModelId" :model-id="selectedModelId" />
     </ViewerLayoutPanel>
 
     <ViewerExplorerFilters :filters="allFilters || []" />
@@ -79,6 +92,7 @@ const manualExpandLevel = ref(-1)
 const showRaw = ref(false)
 const refhack = ref(1)
 const searchTerm = ref('')
+const selectedModelId = ref(null) // New state to track selected model
 
 // Viewer event listener
 useViewerEventListener(ViewerEvent.Busy, (isBusy: boolean) => {
@@ -95,16 +109,10 @@ const collapse = () => {
 }
 
 function flattenNodeTree(node: any, depth = 0): any[] {
-  console.log(`Depth ${depth}:`, node)
-
   if (depth > 15 || !node) return []
 
   if (typeof node === 'object' && node !== null) {
     if (isBuildingElement(node)) {
-      console.log(
-        `Found building element at depth ${depth}:`,
-        node.type || node.speckle_type
-      )
       return [processNode(node)]
     }
 
@@ -137,7 +145,6 @@ function isBuildingElement(node: any): boolean {
 }
 
 function processNode(node: any): any {
-  console.log('Processing node:', node)
   const {
     id,
     type,
@@ -167,19 +174,20 @@ function processNode(node: any): any {
   }
 }
 
+// Open the Speckle Viewer with the selected model ID
+function openViewer(modelId: string) {
+  selectedModelId.value = modelId
+}
+
 // Computed property for table data
 const elementsData = computed(() => {
-  console.log('Computing elementsData')
-  console.log('Root Nodes:', JSON.stringify(rootNodes.value, null, 2))
   const data = rootNodes.value.flatMap((node) => flattenNodeTree(node))
-  console.log('Processed Elements Data:', JSON.stringify(data, null, 2))
   return data
 })
 
 const filteredElementsData = computed(() => {
-  console.log('Computing filteredElementsData')
   const term = searchTerm.value.toLowerCase()
-  const filtered = elementsData.value.filter(
+  return elementsData.value.filter(
     (element) =>
       element.name.toLowerCase().includes(term) ||
       element.type.toLowerCase().includes(term) ||
@@ -187,8 +195,6 @@ const filteredElementsData = computed(() => {
       element.id.toLowerCase().includes(term) ||
       element.category.toLowerCase().includes(term)
   )
-  console.log('Filtered Elements Data:', filtered)
-  return filtered
 })
 
 // Watch for changes in rootNodes
@@ -196,7 +202,7 @@ watch(rootNodes, (newValue) => {
   console.log('rootNodes updated:', JSON.stringify(newValue, null, 2))
 })
 
-// New watch on elementsData
+// Watch on elementsData
 watch(elementsData, (newValue) => {
   console.log('elementsData updated:', JSON.stringify(newValue, null, 2))
 })
@@ -216,9 +222,9 @@ watch(elementsData, (newValue) => {
   white-space: nowrap;
 }
 
-/* Target the ViewerLayoutPanel - you might need to adjust the class name */
+/* Viewer styles */
 :deep(.viewer-layout-panel) {
-  max-height: 80vh; /* Adjust as needed */
+  max-height: 80vh;
   overflow-y: auto;
 }
 </style>
