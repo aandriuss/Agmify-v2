@@ -95,5 +95,8 @@
     "commitizen": {
       "path": "cz-conventional-changelog"
     }
+  },
+  "dependencies": {
+    "vite-plugin-vuetify": "^2.0.4"
   }
 }

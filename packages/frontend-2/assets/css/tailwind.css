@@ -1,8 +1,32 @@
 /* stylelint-disable selector-id-pattern */
-@import '@speckle/ui-components/style.css';
+/* @import '@speckle/ui-components/style.css'; */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  .workspace-item h6 {
+    font-weight: normal;
+    font-size: 0.75rem;
+    color: var(--foreground);
+  }
+}
+
+@layer components {
+  .terms-of-service a {
+    @apply border-b border-current;
+  }
+
+  .custom-input {
+    @apply appearance-none;
+  }
+}
+
+@layer utilities {
+  .ring-offset-foundation {
+    @apply ring-offset-2 ring-white;
+  }
+}
 
 /**
  * Don't pollute this - it's going to be bundled in all pages! If it's a global style change to what can be
@@ -23,12 +47,4 @@ html,
 body,
 div#__nuxt {
   height: 100%;
-}
-
-@layer components {
-  .terms-of-service {
-    a {
-      @apply underline;
-    }
-  }
 }

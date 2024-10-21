@@ -1,34 +1,38 @@
 const speckleTheme = require('@speckle/tailwind-theme')
-const {
-  tailwindContentEntry: themeEntry
-} = require('@speckle/tailwind-theme/tailwind-configure')
-const {
-  tailwindContentEntry: uiLibEntry
-} = require('@speckle/ui-components/tailwind-configure')
 const formsPlugin = require('@tailwindcss/forms')
 const typographyPlugin = require('@tailwindcss/typography')
-const { createRequire } = require('module')
 
-// i know, this is bizarre - import.meta.url in a CJS file
-// but this happens because apparently this file is transpiled to different formats (ESM/CJS) multiple times
-// if this were an mjs file it wouldn't work
-const req = createRequire(import.meta.url)
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  // prefix: 'tw-', // Adding prefix to avoid conflicts
+  darkMode: 'class', // Enable dark mode support if needed
 
-const config = {
-  darkMode: 'class',
+  // Content paths for purging unused styles
   content: [
-    `./components/**/*.{vue,js,ts}`,
-    `./layouts/**/*.vue`,
-    `./pages/**/*.vue`,
-    `./composables/**/*.{js,ts}`,
-    `./plugins/**/*.{js,ts}`,
+    './components/**/*.{vue,js,ts}',
+    './layouts/**/*.vue',
+    './pages/**/*.vue',
+    './composables/**/*.{js,ts}',
+    './plugins/**/*.{js,ts}',
     './stories/**/*.{js,ts,vue,mdx}',
     './app.vue',
     './lib/**/composables/*.{js,ts}',
-    themeEntry(req),
-    uiLibEntry(req)
+    './assets/**/*.css',
+    './node_modules/@speckle/ui-components/src/**/*.{vue,js,ts}'
   ],
-  plugins: [speckleTheme, formsPlugin, typographyPlugin]
-}
 
-module.exports = config
+  theme: {
+    extend: {
+      appearance: ['none']
+    } // Extend theme if necessary
+  },
+
+  plugins: [formsPlugin, typographyPlugin, speckleTheme.default],
+
+  corePlugins: {
+    preflight: false, // Disable Tailwind’s reset if unnecessary
+    appearance: true, // Enable appearance plugin explicitly
+    borderWidth: true, // Ensure borderWidth is enabled
+    borderColor: true // Ensure borderColor is enabled
+  }
+}

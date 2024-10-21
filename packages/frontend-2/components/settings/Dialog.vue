@@ -231,8 +231,3 @@ watch(
   { immediate: true }
 )
 </script>
-<style>
-.workspace-item h6 {
-  @apply !font-normal text-body-xs !text-foreground;
-}
-</style>

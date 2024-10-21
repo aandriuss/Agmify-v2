@@ -3,6 +3,8 @@ import { withoutLeadingSlash } from 'ufo'
 import { sanitizeFilePath } from 'mlly'
 import { filename } from 'pathe/utils'
 import * as Environment from '@speckle/shared/dist/esm/environment/index'
+import vuetify from 'vite-plugin-vuetify'
+import { defineNuxtConfig } from '@nuxt/bridge'
 
 // Copied out from nuxt vite-builder source to correctly build output chunk/entry/asset/etc file names
 const buildOutputFileName = (chunkName: string) =>
@@ -30,10 +32,59 @@ export default defineNuxtConfig({
     shim: false,
     strict: true
   },
+  css: [
+    '~/assets/css/tailwind.css',
+    // '~/assets/vuetify-variables.scss',
+    'vuetify/lib/styles/main.css',
+    '@mdi/font/css/materialdesignicons.css'
+  ],
+  build: {
+    transpile: ['vuetify']
+  },
+  vite: {
+    define: {
+      'process.env.DEBUG': false
+    },
+    // css: {
+    //   preprocessorOptions: {
+    //     scss: {
+    //       additionalData: '@use "~/assets/vuetify-variables.scss" as *;'
+    //     }
+    //   }
+    // },
+    ssr: false,
+    // // },
+    // ssr: {
+    //   noExternal: ['vuetify']
+    // },
+    plugins: [
+      vuetify({
+        // autoImport: true, // Automatically imports Vuetify components
+        // styles: { configFile: 'assets/vuetify-variables.scss' }
+        styles: 'expose'
+      })
+    ],
+    optimizeDeps: {
+      exclude: ['vuetify'],
+      include: ['@speckle/ui-components']
+    },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          additionalData: '@use "vuetify/styles" as *;'
+        }
+      }
+    }
+  },
   modules: [
     '@nuxt/eslint',
     '@nuxt/devtools',
     '@nuxtjs/tailwindcss',
+    (options, nuxt) => {
+      nuxt.hooks.hook('vite:extendConfig', (config) => {
+        config.plugins?.push(vuetify())
+      })
+    },
     [
       '~/lib/core/nuxt-modules/apollo/module.ts',
       {
@@ -45,6 +96,13 @@ export default defineNuxtConfig({
     '@speckle/ui-components-nuxt',
     '@artmizu/nuxt-prometheus'
   ],
+  tailwindcss: {
+    cssPath: '~/assets/css/tailwind.css',
+    configPath: 'tailwind.config.js',
+    exposeConfig: false,
+    injectPosition: 0,
+    viewer: true
+  },
   runtimeConfig: {
     redisUrl: '',
     public: {

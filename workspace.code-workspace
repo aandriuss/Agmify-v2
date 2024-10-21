@@ -81,6 +81,7 @@
     "editor.snippetSuggestions": "top",
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
+    
       "source.fixAll.eslint": "explicit"
     },
     "editor.defaultFormatter": "esbenp.prettier-vscode",
@@ -115,7 +116,7 @@
       "**/.output": true
     },
     "[vue]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
+      "editor.defaultFormatter": "rvest.vs-code-prettier-eslint"
     },
     "[dockercompose]": {
       "editor.defaultFormatter": "esbenp.prettier-vscode"
@@ -126,7 +127,10 @@
     "vue.complete.casing.props": "kebab",
     "vue.inlayHints.missingProps": true,
     "circleci.persistedProjectSelection": ["gh/specklesystems/speckle-server"],
-    "eslint.experimental.useFlatConfig": true
+    "eslint.experimental.useFlatConfig": true,
+    "[css]": {
+      "editor.defaultFormatter": "rvest.vs-code-prettier-eslint"
+    }
   },
   "extensions": {
     // See https://go.microsoft.com/fwlink/?LinkId=827846 to learn about workspace recommendations.
