@@ -45,6 +45,7 @@ export default defineNuxtConfig({
     '@speckle/ui-components-nuxt',
     '@artmizu/nuxt-prometheus'
   ],
+  // plugins: ['~/plugins/primevue-plugin.ts'],
   runtimeConfig: {
     redisUrl: '',
     public: {

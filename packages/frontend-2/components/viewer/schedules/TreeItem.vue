@@ -194,7 +194,7 @@ const { hideObjects, showObjects, isolateObjects, unIsolateObjects } =
 const { highlightObjects, unhighlightObjects } = useHighlightedObjectsUtilities()
 
 const isAtomic = computed(() => props.treeItem.rawNode.atomic === true)
-const rawSpeckleData = computed(() => props.treeItem?.rawNode.raw as SpeckleObject)
+const rawSpeckleData = computed(() => props.treeItem?.rawNode?.raw as SpeckleObject)
 const speckleData = rawSpeckleData
 
 function getNestedModelHeader(name: string): string {

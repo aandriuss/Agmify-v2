@@ -1,0 +1,12 @@
+.prime-local {
+  /* Base PrimeVue variable overrides */
+  --primary-color: your-primary-color;
+  --font-family: your-font-family;
+  /* Add other variables as needed */
+}
+
+/* Reset any global styles that PrimeVue might affect */
+.prime-local .p-component {
+  font-size: inherit;
+  font-family: inherit;
+}
