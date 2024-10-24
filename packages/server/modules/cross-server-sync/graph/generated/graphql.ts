@@ -1346,6 +1346,7 @@ export type Mutation = {
   userDelete: Scalars['Boolean']['output'];
   userNotificationPreferencesUpdate?: Maybe<Scalars['Boolean']['output']>;
   userRoleChange: Scalars['Boolean']['output'];
+  userSettingsUpdate?: Maybe<Scalars['Boolean']['output']>;
   /**
    * Edits a user's profile.
    * @deprecated Use activeUserMutations version
@@ -1622,6 +1623,11 @@ export type MutationUserNotificationPreferencesUpdateArgs = {
 
 export type MutationUserRoleChangeArgs = {
   userRoleInput: UserRoleInput;
+};
+
+
+export type MutationUserSettingsUpdateArgs = {
+  settings: Scalars['JSONObject']['input'];
 };
 
 
@@ -3465,6 +3471,7 @@ export type User = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   totalOwnedStreamsFavorites: Scalars['Int']['output'];
+  userSettings: Scalars['JSONObject']['output'];
   verified?: Maybe<Scalars['Boolean']['output']>;
   /**
    * Get (count of) user's versions. By default gets all versions of all projects the user has access to.

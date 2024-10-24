@@ -1,30 +1,96 @@
 <template>
   <div class="prime-local">
-    <FormButton color="outline" class="mb-3" @click="dialogOpen = true">
+    <FormButton color="outline" class="mb-3" @click="openDialog">
       Manage Columns
     </FormButton>
 
     <LayoutDialog
       v-model:open="dialogOpen"
-      :max-width="'sm'"
+      :max-width="'md'"
       :hide-closer="false"
       :prevent-close-on-click-outside="false"
-      title="Column Visibility"
+      title="Column Manager"
       :buttons="{
         0: {
-          text: 'Close',
-          props: { color: 'outline', link: false }
+          text: 'Apply',
+          props: { color: 'default', link: false },
+          onClick: applyChanges
+        },
+        1: {
+          text: 'Cancel',
+          props: { color: 'outline', link: false },
+          onClick: cancelChanges
         }
       }"
     >
-      <div class="flex flex-col space-y-4">
+      <div class="flex gap-4 h-[400px]">
+        <!-- Left Panel: Available Parameters -->
         <div
-          v-for="col in columns"
-          :key="col.field"
-          class="flex items-center space-x-2"
+          class="flex-1 border rounded"
+          @dragover.prevent
+          @drop="handleDropToAvailable"
         >
-          <Checkbox v-model="col.visible" :input-id="col.field" :binary="true" />
-          <label :for="col.field">{{ col.header }}</label>
+          <div class="p-1 border-b bg-gray-50">
+            <h3 class="font-medium text-sm">Available Parameters</h3>
+          </div>
+          <div class="p-1 space-y-1 overflow-y-auto max-h-[calc(400px-3rem)]">
+            <div
+              v-for="param in availableParameters"
+              :key="param.field"
+              class="flex items-center justify-between p-0.5 hover:bg-gray-50 rounded cursor-move text-sm"
+              draggable="true"
+              @dragstart="dragStart($event, param, 'available')"
+            >
+              <span>{{ param.header }}</span>
+              <FormButton
+                color="outline"
+                size="xs"
+                class="!h-4 !w-4 !p-0 !min-w-0 text-xs flex items-center justify-center"
+                @click="addColumn(param)"
+              >
+                →
+              </FormButton>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Panel: Active Columns -->
+        <div
+          class="flex-1 border rounded"
+          @dragover.prevent="handleDragOver($event)"
+          @drop="handleDropToActive($event)"
+        >
+          <div class="p-1 border-b bg-gray-50">
+            <h3 class="font-medium text-sm">Active Columns</h3>
+          </div>
+          <div class="p-1 space-y-1 overflow-y-auto max-h-[calc(400px-3rem)]">
+            <div
+              v-for="(col, index) in tempColumns"
+              :key="col.field"
+              class="flex items-center justify-between p-0.5 hover:bg-gray-50 rounded text-sm"
+              draggable="true"
+              :class="{ 'border-t-2 border-blue-500': dragOverIndex === index }"
+              @dragstart="dragStart($event, col, 'active', index)"
+              @dragenter.prevent="handleDragEnter($event, index)"
+            >
+              <div class="flex items-center gap-1">
+                <i class="pi pi-bars cursor-move text-gray-400 text-xs"></i>
+                <span>{{ col.header }}</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <FormButton
+                  v-if="col.removable"
+                  color="danger"
+                  size="xs"
+                  class="!h-4 !w-4 !p-0 !min-w-0 text-xs flex items-center justify-center"
+                  @click="removeColumn(col)"
+                >
+                  ←
+                </FormButton>
+                <Checkbox v-model="col.visible" :input-id="col.field" :binary="true" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </LayoutDialog>
@@ -73,23 +139,174 @@
 </template>
 
 <script setup lang="ts">
-// import type { Column as ColumnType, DetailColumn } from '~/composables/useDataTable'
-import { useDataTable } from '../composables/useDataTables'
+import { ref, computed } from 'vue'
 import { LayoutDialog, FormButton } from '@speckle/ui-components'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Checkbox from 'primevue/checkbox'
 
-interface Props {
-  data: any[]
-  columns: ColumnType[]
-  detailColumns: DetailColumn[]
+interface ColumnDef {
+  field: string
+  header: string
+  visible: boolean
+  removable?: boolean
 }
 
-const props = defineProps<Props>()
+interface Props {
+  data: any[]
+  columns: ColumnDef[]
+  detailColumns: ColumnDef[]
+}
 
-const { dialogOpen, expandedRows, columns, detailColumns, visibleColumns } =
-  useDataTable(props.columns, props.detailColumns)
+const props = defineProps<{
+  tableId: string
+  data: any[]
+  columns: ColumnDef[]
+  detailColumns: ColumnDef[]
+}>()
+const emit = defineEmits(['update:columns'])
+
+const dialogOpen = ref(false)
+const expandedRows = ref([])
+const tempColumns = ref<ColumnDef[]>([]) // Temporary state for columns
+const localColumns = ref<ColumnDef[]>([]) // Actual state that affects the table
+
+// Sample available parameters (replace with actual data later)
+const availableParameters = ref([
+  { field: 'area', header: 'Area (m²)' },
+  { field: 'volume', header: 'Volume (m³)' },
+  { field: 'cost', header: 'Cost ($)' },
+  { field: 'weight', header: 'Weight (kg)' }
+])
+
+// Open dialog and initialize temp state
+const openDialog = () => {
+  tempColumns.value = JSON.parse(JSON.stringify(localColumns.value))
+  dialogOpen.value = true
+}
+
+// Apply changes
+const applyChanges = () => {
+  localColumns.value = JSON.parse(JSON.stringify(tempColumns.value))
+  emit('update:columns', localColumns.value)
+  dialogOpen.value = false
+}
+
+// Add this cleanup method
+const resetDragState = () => {
+  draggedItem.value = null
+  dragOverIndex.value = -1
+}
+
+// Modify your existing cancelChanges to include cleanup
+const cancelChanges = () => {
+  tempColumns.value = JSON.parse(JSON.stringify(localColumns.value))
+  resetDragState()
+  dialogOpen.value = false
+}
+
+// Initialize localColumns when component mounts
+if (props.columns) {
+  localColumns.value = JSON.parse(JSON.stringify(props.columns))
+  tempColumns.value = JSON.parse(JSON.stringify(props.columns))
+}
+// Drag and drop handlers
+const dragOverIndex = ref(-1)
+const draggedItem = ref<{ item: ColumnDef; source: string; index?: number } | null>(
+  null
+)
+
+const dragStart = (
+  event: DragEvent,
+  item: ColumnDef,
+  source: string,
+  index?: number
+) => {
+  if (event.dataTransfer) {
+    event.dataTransfer.setData('text/plain', JSON.stringify(item))
+    draggedItem.value = { item, source, index }
+  }
+}
+
+const handleDragOver = (event: DragEvent) => {
+  event.preventDefault()
+}
+
+const handleDragEnter = (event: DragEvent, index: number) => {
+  if (draggedItem.value?.source === 'active') {
+    dragOverIndex.value = index
+  }
+}
+
+const handleDropToAvailable = (event: DragEvent) => {
+  if (draggedItem.value?.source === 'active') {
+    const item = draggedItem.value.item
+    if (item.removable) {
+      removeColumn(item)
+    }
+  }
+  draggedItem.value = null
+  dragOverIndex.value = -1
+}
+
+const handleDropToActive = (event: DragEvent) => {
+  const dropIndex = dragOverIndex.value
+
+  if (draggedItem.value) {
+    const { item, source, index: dragIndex } = draggedItem.value
+
+    if (source === 'available') {
+      if (dropIndex >= 0) {
+        tempColumns.value.splice(dropIndex, 0, {
+          field: item.field,
+          header: item.header,
+          visible: true,
+          removable: true
+        })
+      } else {
+        addColumn(item)
+      }
+    } else if (source === 'active' && typeof dragIndex === 'number' && dropIndex >= 0) {
+      const [movedColumn] = tempColumns.value.splice(dragIndex, 1)
+      tempColumns.value.splice(dropIndex, 0, movedColumn)
+    }
+  }
+
+  draggedItem.value = null
+  dragOverIndex.value = -1
+}
+
+// const handleDrop = (event: DragEvent) => {
+//   const data = event.dataTransfer?.getData('text/plain')
+//   if (data) {
+//     const item = JSON.parse(data)
+//     addColumn(item)
+//   }
+// }
+
+const visibleColumns = computed(() => {
+  return localColumns.value.filter((col) => col.visible)
+})
+
+const addColumn = (param: ColumnDef) => {
+  if (!tempColumns.value.find((col) => col.field === param.field)) {
+    tempColumns.value.push({
+      field: param.field,
+      header: param.header,
+      visible: true,
+      removable: true
+    })
+  }
+}
+
+const removeColumn = (column: ColumnDef) => {
+  if (column.removable) {
+    const index = tempColumns.value.findIndex((col) => col.field === column.field)
+    if (index !== -1) {
+      tempColumns.value.splice(index, 1)
+    }
+  }
+}
 </script>
 
 <style>
@@ -260,7 +477,17 @@ const { dialogOpen, expandedRows, columns, detailColumns, visibleColumns } =
 }
 
 :deep(.p-checkbox) {
-  margin-right: 0.75rem;
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+:deep(.p-checkbox .p-checkbox-box) {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+:deep(.p-checkbox-box .p-checkbox-icon) {
+  font-size: 0.4rem;
 }
 
 /* Optional: Add transition for smooth open/close */

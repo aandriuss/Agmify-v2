@@ -6,7 +6,10 @@ export enum CookieKeys {
   Theme = 'theme',
   PostAuthRedirect = 'postAuthRedirect',
   DismissedDiscoverableWorkspaces = 'dismissedDiscoverableWorkspaces',
-  DismissedWorkspaceBanner = 'dismissedWorkspaceBanner'
+  DismissedWorkspaceBanner = 'dismissedWorkspaceBanner',
+  TablePreferences = 'table-preferences',
+  // PanelWidths = 'panel-widths',
+  ViewerPanelWidth = 'viewer-panel-width'
 }
 
 /**

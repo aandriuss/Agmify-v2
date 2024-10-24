@@ -1,0 +1,7 @@
+extend type User {
+  userSettings: JSONObject! @isOwner
+}
+
+extend type Mutation {
+  userSettingsUpdate(settings: JSONObject!): Boolean @hasServerRole(role: SERVER_GUEST)
+}
