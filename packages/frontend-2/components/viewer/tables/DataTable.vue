@@ -4,6 +4,8 @@
       Manage Columns
     </FormButton>
 
+    <span v-if="isSaving" class="text-sm text-gray-500">Saving changes...</span>
+
     <LayoutDialog
       v-model:open="dialogOpen"
       :max-width="'lg'"
@@ -137,6 +139,7 @@
       :rows="10"
       expand-mode="row"
       @column-resize="onColumnResize"
+      @column-reorder="handleColumnReorder"
     >
       <template #expansion="slotProps">
         <div class="p-1">
@@ -146,12 +149,16 @@
             reorderable-columns
             striped-rows
             class="nested-table"
+            @column-resize="onColumnResize"
+            @column-reorder="handleColumnReorder"
           >
+            <Column :expander="true" style="width: 3rem" />
             <Column
               v-for="col in visibleChildColumns"
               :key="col.field"
               :field="col.field"
               :header="col.header"
+              :data-field="col.field"
               :style="{ width: col.width ? `${col.width}px` : 'auto' }"
               sortable
             />
@@ -165,6 +172,7 @@
         :key="col.field"
         :field="col.field"
         :header="col.header"
+        :data-field="col.field"
         sortable
       />
     </DataTable>
@@ -205,6 +213,14 @@ const tempParentColumns = ref<ColumnDef[]>([])
 const tempChildColumns = ref<ColumnDef[]>([])
 const localParentColumns = ref<ColumnDef[]>([])
 const localChildColumns = ref<ColumnDef[]>([])
+
+if (props.columns) {
+  localParentColumns.value = JSON.parse(JSON.stringify(props.columns))
+}
+
+if (props.detailColumns) {
+  localChildColumns.value = JSON.parse(JSON.stringify(props.detailColumns))
+}
 
 // Available parameters for both levels
 const availableParentParameters = ref([
@@ -398,6 +414,135 @@ const onColumnResize = (event: any) => {
     emit('update:columns', columns.value)
   }
 }
+
+const isSaving = ref(false)
+
+const onColumnReorder = (event: any) => {
+  try {
+    isSaving.value = true
+    // Get all visible columns from the DataTable
+    const headers = event.target.getElementsByTagName('th')
+    const columns = Array.from(headers)
+      .filter((header) => header.dataset.field) // Filter out expander column
+      .map((header, index) => {
+        const field = header.dataset.field
+        // Find the original column config to preserve properties
+        const originalColumn =
+          localParentColumns.value.find((col) => col.field === field) ||
+          localChildColumns.value.find((col) => col.field === field)
+
+        return {
+          ...originalColumn,
+          field,
+          order: index,
+          visible: true
+        }
+      })
+
+    // Determine if this is parent or child table
+    const isChildTable = event.target.closest('.nested-table')
+
+    console.log('Reordered columns:', {
+      isChildTable,
+      columns
+    })
+
+    if (isChildTable) {
+      emit('update:detailColumns', columns)
+    } else {
+      emit('update:columns', columns)
+    }
+  } catch (error) {
+    console.error('Error handling column reorder:', error)
+  } finally {
+    isSaving.value = false
+  }
+}
+
+const handleDragStart = (event) => {
+  console.log('Column drag started:', event)
+}
+
+const handleDragEnd = (event) => {
+  console.log('Column drag ended:', event)
+}
+
+const handleColumnDrop = (event) => {
+  const dragIndex = draggedItem.value.index
+  const dropIndex = dragOverIndex.value
+  if (dragIndex === undefined || dropIndex === undefined) return
+
+  const columns =
+    activeTab.value === 'parent' ? tempParentColumns.value : tempChildColumns.value
+
+  // Move the dragged column
+  const [movedColumn] = columns.splice(dragIndex, 1)
+  columns.splice(dropIndex, 0, movedColumn)
+
+  // Update each column’s order
+  columns.forEach((col, index) => (col.order = index))
+
+  // Emit the update event to `Schedules.vue`
+  const eventToEmit =
+    activeTab.value === 'parent' ? 'reorder-columns' : 'reorder-detail-columns'
+  emit(eventToEmit, columns)
+}
+
+const handleColumnReorder = (event) => {
+  const dataTable = event?.target?.closest('.p-datatable')
+  if (!dataTable) return
+
+  const isNestedTable = dataTable.classList.contains('nested-table')
+  const headers = Array.from(dataTable.querySelectorAll('th[data-field]'))
+
+  // Get the source columns (same as in manage columns)
+  const sourceColumns = isNestedTable ? tempChildColumns : tempParentColumns
+
+  // Map headers to columns in their new order
+  const reorderedColumns = headers
+    .map((header, index) => {
+      const field = header.getAttribute('data-field')
+      const existingColumn = sourceColumns.value.find((col) => col.field === field)
+      if (!existingColumn) return null
+
+      return {
+        ...existingColumn,
+        order: index,
+        visible: existingColumn.visible ?? true,
+        header: existingColumn.header,
+        field: existingColumn.field
+      }
+    })
+    .filter(Boolean)
+
+  // Update local state
+  if (isNestedTable) {
+    tempChildColumns.value = reorderedColumns
+    localChildColumns.value = reorderedColumns
+    emit('update:detailColumns', reorderedColumns)
+  } else {
+    tempParentColumns.value = reorderedColumns
+    localParentColumns.value = reorderedColumns
+    emit('update:columns', reorderedColumns)
+  }
+}
+
+// Add debug logging
+watch(
+  () => props.columns,
+  (newCols) => {
+    console.log('Parent columns updated:', newCols)
+  },
+  { deep: true }
+)
+
+watch(
+  () => props.detailColumns,
+  (newCols) => {
+    console.log('Detail columns updated:', newCols)
+  },
+  { deep: true }
+)
 </script>
 
 <style>

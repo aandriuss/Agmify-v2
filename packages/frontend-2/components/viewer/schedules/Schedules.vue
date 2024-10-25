@@ -16,6 +16,7 @@
           @update:columns="handleParentColumnsUpdate"
           @update:detail-columns="handleChildColumnsUpdate"
           @update:both-columns="handleBothColumnsUpdate"
+          @column-reorder="handleColumnReorder"
         ></DataTable>
       </div>
     </ViewerLayoutPanel>
@@ -159,19 +160,21 @@ watch(
 
 const handleParentColumnsUpdate = async (newColumns) => {
   try {
-    if (!newColumns) {
+    if (!newColumns?.length) {
       console.error('No columns provided to update')
       return
     }
 
     const columnsToSave = newColumns.map((col, index) => ({
       ...col,
-      order: index
+      order: index,
+      visible: col.visible ?? true,
+      header:
+        col.header || defaultParentColumns.find((c) => c.field === col.field)?.header,
+      field: col.field
     }))
 
-    // Log the update attempt
-    console.log('Attempting to save parent columns:', columnsToSave)
-
+    console.log('Saving reordered parent columns:', columnsToSave)
     await saveSettings({
       parentColumns: columnsToSave
     })
@@ -182,19 +185,22 @@ const handleParentColumnsUpdate = async (newColumns) => {
 
 const handleChildColumnsUpdate = async (newColumns) => {
   try {
-    if (!newColumns) {
+    if (!newColumns?.length) {
       console.error('No columns provided to update')
       return
     }
 
     const columnsToSave = newColumns.map((col, index) => ({
       ...col,
-      order: index
+      order: index,
+      visible: col.visible ?? true,
+      // Preserve other properties that might be lost in reordering
+      header:
+        col.header || defaultChildColumns.find((c) => c.field === col.field)?.header,
+      field: col.field
     }))
 
-    // Log the update attempt
-    console.log('Attempting to save child columns:', columnsToSave)
-
+    console.log('Saving reordered child columns:', columnsToSave)
     await saveSettings({
       childColumns: columnsToSave
     })
@@ -228,6 +234,46 @@ const handleBothColumnsUpdate = async (updates: {
     })
   } catch (error) {
     console.error('Failed to save column updates:', error)
+  }
+}
+
+const handleColumnReorder = async (event) => {
+  console.log('Column reorder started')
+  const dataTable = event.target.closest('.p-datatable')
+  const isChildTable = dataTable.classList.contains('nested-table')
+
+  // Get headers and build reordered columns list
+  const headers = Array.from(dataTable.querySelectorAll('th[data-field]'))
+  const reorderedColumns = headers
+    .map((header, index) => {
+      const field = header.getAttribute('data-field')
+      const sourceColumns = isChildTable ? detailColumns.value : tableColumns.value
+      const existingColumn = sourceColumns.find((col) => col.field === field)
+
+      return {
+        ...existingColumn,
+        order: index,
+        visible: true,
+        header: existingColumn.header,
+        field: existingColumn.field
+      }
+    })
+    .filter(Boolean)
+
+  console.log('Reordered columns before save:', reorderedColumns)
+
+  try {
+    // Save directly to db using saveSettings
+    await saveSettings({
+      [isChildTable ? 'childColumns' : 'parentColumns']: reorderedColumns
+    })
+
+    console.log('Columns saved successfully')
+
+    // Force a table refresh by updating the key
+    tableKey.value = Date.now().toString()
+  } catch (error) {
+    console.error('Failed to save reordered columns:', error)
   }
 }
 
