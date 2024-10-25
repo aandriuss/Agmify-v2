@@ -261,17 +261,20 @@ const openDialog = () => {
 }
 
 const applyChanges = () => {
-  localParentColumns.value = JSON.parse(JSON.stringify(tempParentColumns.value))
-  localChildColumns.value = JSON.parse(JSON.stringify(tempChildColumns.value))
+  try {
+    localParentColumns.value = JSON.parse(JSON.stringify(tempParentColumns.value))
+    localChildColumns.value = JSON.parse(JSON.stringify(tempChildColumns.value))
 
-  console.log('Emitting column updates:', {
-    parent: localParentColumns.value,
-    child: localChildColumns.value
-  })
+    // Emit both updates together as a single batch
+    emit('update:both-columns', {
+      parentColumns: localParentColumns.value,
+      childColumns: localChildColumns.value
+    })
 
-  emit('update:columns', localParentColumns.value)
-  emit('update:detailColumns', localChildColumns.value)
-  dialogOpen.value = false
+    dialogOpen.value = false
+  } catch (error) {
+    console.error('Error applying changes:', error)
+  }
 }
 
 const cancelChanges = () => {

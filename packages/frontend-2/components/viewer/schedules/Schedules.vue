@@ -15,6 +15,7 @@
           data-key="id"
           @update:columns="handleParentColumnsUpdate"
           @update:detail-columns="handleChildColumnsUpdate"
+          @update:both-columns="handleBothColumnsUpdate"
         ></DataTable>
       </div>
     </ViewerLayoutPanel>
@@ -22,23 +23,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useUserSettings } from '~/composables/useUserSettings'
 import DataTable from '~/components/viewer/tables/DataTable.vue'
+import type { ColumnDef } from '~/composables/useUserSettings'
 
-// Define emits
-defineEmits(['close'])
+// Emit events
+const emit = defineEmits([
+  'close',
+  'update:columns',
+  'update:detailColumns',
+  'update:both-columns'
+])
 
 const TABLE_ID = 'schedules-table'
 // Use single instance of useUserSettings
-const {
-  parentTableConfig,
-  childTableConfig,
-  settings,
-  loading,
-  saveSettings,
-  updateSettings
-} = useUserSettings(TABLE_ID)
+const { settings, loading, saveSettings } = useUserSettings(TABLE_ID)
 
 const defaultParentColumns = [
   { field: 'name', header: 'Name', visible: true, order: 0 },
@@ -203,6 +203,34 @@ const handleChildColumnsUpdate = async (newColumns) => {
   }
 }
 
+const handleBothColumnsUpdate = async (updates: {
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+}) => {
+  try {
+    const { parentColumns, childColumns } = updates
+
+    const parentColumnsToSave = parentColumns?.map((col, index) => ({
+      ...col,
+      order: index,
+      visible: col.visible ?? true
+    }))
+
+    const childColumnsToSave = childColumns?.map((col, index) => ({
+      ...col,
+      order: index,
+      visible: col.visible ?? true
+    }))
+
+    await saveSettings({
+      parentColumns: parentColumnsToSave,
+      childColumns: childColumnsToSave
+    })
+  } catch (error) {
+    console.error('Failed to save column updates:', error)
+  }
+}
+
 onMounted(async () => {
   // Load initial settings
   await loadSettings()
@@ -216,6 +244,16 @@ onMounted(async () => {
     })
   }
 
+  const currentSettings = {
+    isLoading: loading.value,
+    settings: settings.value,
+    parentColumns: settings.value?.tables?.[TABLE_ID]?.parentColumns,
+    childColumns: settings.value?.tables?.[TABLE_ID]?.childColumns,
+    tableColumns: tableColumns.value,
+    detailColumns: detailColumns.value
+  }
+  console.log('Component mounted with:', currentSettings)
+
   // Debug logging
   watch(
     () => settings.value?.tables?.[TABLE_ID],
@@ -227,33 +265,6 @@ onMounted(async () => {
     },
     { deep: true }
   )
-})
-
-// Debug mount
-onMounted(() => {
-  loadSettings()
-  const currentSettings = {
-    isLoading: loading.value,
-    settings: settings.value,
-    parentColumns: settings.value?.tables?.[TABLE_ID]?.parentColumns,
-    childColumns: settings.value?.tables?.[TABLE_ID]?.childColumns,
-    tableColumns: tableColumns.value,
-    detailColumns: detailColumns.value
-  }
-  console.log('Component mounted with:', currentSettings)
-
-  // Initialize settings if they don't exist
-  if (!settings.value?.tables?.[TABLE_ID]) {
-    const initialSettings = {
-      tables: {
-        [TABLE_ID]: {
-          parentColumns: defaultParentColumns,
-          childColumns: defaultChildColumns
-        }
-      }
-    }
-    saveSettings(initialSettings)
-  }
 })
 </script>
 

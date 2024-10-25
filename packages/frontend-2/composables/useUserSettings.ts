@@ -79,9 +79,9 @@ export function useUserSettings(tableId?: string) {
     try {
       const currentSettings = settings.value || {}
 
-      // Prepare the new settings object with proper nesting
-      const tableSettings = {
-        ...currentSettings.tables?.[tableId],
+      // Create a complete table config that includes both column types
+      const updatedTableConfig = {
+        ...(currentSettings.tables?.[tableId] || {}),
         ...(newTableConfig.parentColumns
           ? { parentColumns: newTableConfig.parentColumns }
           : {}),
@@ -94,16 +94,22 @@ export function useUserSettings(tableId?: string) {
         ...currentSettings,
         tables: {
           ...currentSettings.tables,
-          [tableId]: tableSettings
+          [tableId]: updatedTableConfig
         }
       }
 
-      // Important: Pass settings as a plain object, not within variables
       const result = await updateSettingsMutation({
-        settings: newSettings // Remove the variables wrapper
+        settings: newSettings
       })
 
-      console.log('Save result:', result)
+      // Update both local refs after successful save
+      if (newTableConfig.parentColumns) {
+        parentTableConfig.value = [...newTableConfig.parentColumns]
+      }
+      if (newTableConfig.childColumns) {
+        childTableConfig.value = [...newTableConfig.childColumns]
+      }
+
       return result
     } catch (error) {
       console.error('Error saving settings:', error)
