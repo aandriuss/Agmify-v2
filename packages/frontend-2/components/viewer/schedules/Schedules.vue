@@ -158,47 +158,80 @@ watch(
 )
 
 const handleParentColumnsUpdate = async (newColumns) => {
-  const columnsToSave = newColumns.map((col, index) => ({
-    ...col,
-    order: index
-  }))
-
-  // Update the settings structure correctly
-  const updatedSettings = {
-    ...settings.value,
-    tables: {
-      ...settings.value?.tables,
-      [TABLE_ID]: {
-        ...settings.value?.tables?.[TABLE_ID],
-        parentColumns: columnsToSave
-      }
+  try {
+    if (!newColumns) {
+      console.error('No columns provided to update')
+      return
     }
+
+    const columnsToSave = newColumns.map((col, index) => ({
+      ...col,
+      order: index
+    }))
+
+    // Log the update attempt
+    console.log('Attempting to save parent columns:', columnsToSave)
+
+    await saveSettings({
+      parentColumns: columnsToSave
+    })
+  } catch (error) {
+    console.error('Failed to save parent columns:', error)
   }
-  await saveSettings(updatedSettings)
 }
 
 const handleChildColumnsUpdate = async (newColumns) => {
-  const columnsToSave = newColumns.map((col, index) => ({
-    ...col,
-    order: index
-  }))
-
-  // Update the settings structure correctly
-  const updatedSettings = {
-    ...settings.value,
-    tables: {
-      ...settings.value?.tables,
-      [TABLE_ID]: {
-        ...settings.value?.tables?.[TABLE_ID],
-        childColumns: columnsToSave
-      }
+  try {
+    if (!newColumns) {
+      console.error('No columns provided to update')
+      return
     }
+
+    const columnsToSave = newColumns.map((col, index) => ({
+      ...col,
+      order: index
+    }))
+
+    // Log the update attempt
+    console.log('Attempting to save child columns:', columnsToSave)
+
+    await saveSettings({
+      childColumns: columnsToSave
+    })
+  } catch (error) {
+    console.error('Failed to save child columns:', error)
   }
-  await saveSettings(updatedSettings)
 }
+
+onMounted(async () => {
+  // Load initial settings
+  await loadSettings()
+
+  // If no settings exist, initialize with defaults
+  if (!settings.value?.tables?.[TABLE_ID]) {
+    console.log('Initializing default settings')
+    await saveSettings({
+      parentColumns: defaultParentColumns,
+      childColumns: defaultChildColumns
+    })
+  }
+
+  // Debug logging
+  watch(
+    () => settings.value?.tables?.[TABLE_ID],
+    (newSettings) => {
+      console.log('Table settings changed:', {
+        parentColumns: newSettings?.parentColumns,
+        childColumns: newSettings?.childColumns
+      })
+    },
+    { deep: true }
+  )
+})
 
 // Debug mount
 onMounted(() => {
+  loadSettings()
   const currentSettings = {
     isLoading: loading.value,
     settings: settings.value,

@@ -74,40 +74,57 @@ export function useUserSettings(tableId?: string) {
     }
   }
 
-  // Save settings
-  const saveSettings = async (newSettings: Partial<UserSettings>) => {
-    const currentSettings = settings.value || {}
-
-    // Merge the new settings with current settings
-    const mergedSettings = {
-      ...currentSettings,
-      tables: {
-        ...currentSettings.tables,
-        ...(newSettings.tables || {})
-      }
-    }
-
+  // Save settings with GraphQL mutation
+  const saveSettings = async (newTableConfig: Partial<TableConfig>) => {
     try {
-      await updateSettingsMutation({
-        settings: mergedSettings
+      const currentSettings = settings.value || {}
+
+      // Prepare the new settings object with proper nesting
+      const tableSettings = {
+        ...currentSettings.tables?.[tableId],
+        ...(newTableConfig.parentColumns
+          ? { parentColumns: newTableConfig.parentColumns }
+          : {}),
+        ...(newTableConfig.childColumns
+          ? { childColumns: newTableConfig.childColumns }
+          : {})
+      }
+
+      const newSettings = {
+        ...currentSettings,
+        tables: {
+          ...currentSettings.tables,
+          [tableId]: tableSettings
+        }
+      }
+
+      // Important: Pass settings as a plain object, not within variables
+      const result = await updateSettingsMutation({
+        settings: newSettings // Remove the variables wrapper
       })
+
+      console.log('Save result:', result)
+      return result
     } catch (error) {
       console.error('Error saving settings:', error)
+      throw error
     }
   }
 
-  // Update any settings
+  // Update settings with GraphQL mutation
   const updateSettings = async (newSettings: Partial<UserSettings>) => {
-    const currentSettings = settings.value
     try {
+      const currentSettings = settings.value || {}
       await updateSettingsMutation({
         settings: {
+          // Remove the variables wrapper
           ...currentSettings,
           ...newSettings
         }
       })
     } catch (error) {
       console.error('Error updating settings:', error)
+      throw error
     }
   }
 
@@ -141,6 +158,7 @@ export function useUserSettings(tableId?: string) {
     settings,
     loading,
     saveSettings,
-    updateSettings
+    updateSettings,
+    loadSettings
   }
 }

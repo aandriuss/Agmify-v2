@@ -263,20 +263,14 @@ const openDialog = () => {
 const applyChanges = () => {
   localParentColumns.value = JSON.parse(JSON.stringify(tempParentColumns.value))
   localChildColumns.value = JSON.parse(JSON.stringify(tempChildColumns.value))
-  emit(
-    'update:columns',
-    localParentColumns.value.map((col, index) => ({
-      ...col,
-      order: index
-    }))
-  )
-  emit(
-    'update:detailColumns',
-    localChildColumns.value.map((col, index) => ({
-      ...col,
-      order: index
-    }))
-  )
+
+  console.log('Emitting column updates:', {
+    parent: localParentColumns.value,
+    child: localChildColumns.value
+  })
+
+  emit('update:columns', localParentColumns.value)
+  emit('update:detailColumns', localChildColumns.value)
   dialogOpen.value = false
 }
 
