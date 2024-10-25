@@ -82,8 +82,6 @@ import { useEventListener } from '@vueuse/core'
 import { XMarkIcon, ArrowsRightLeftIcon } from '@heroicons/vue/24/outline'
 import { useIsSmallerOrEqualThanBreakpoint } from '~~/composables/browser'
 import { useEmbed } from '~/lib/viewer/composables/setup/embed'
-import { useSynchronizedCookie } from '~/lib/common/composables/reactiveCookie'
-import { CookieKeys } from '~/lib/common/helpers/constants'
 
 defineProps<{
   open: boolean
@@ -96,8 +94,7 @@ const emit = defineEmits<{
 const resizableElement = ref(null)
 const resizeHandle = ref(null)
 const isResizing = ref(false)
-const widthCookie = useSynchronizedCookie<number>(CookieKeys.ViewerPanelWidth)
-const width = ref(widthCookie.value || 300)
+const width = ref(300)
 let startWidth = 0
 let startX = 0
 
@@ -117,12 +114,10 @@ if (import.meta.client) {
   useEventListener(document, 'mousemove', (event) => {
     if (isResizing.value) {
       const diffX = startX - event.clientX
-      const newWidth = Math.max(
+      width.value = Math.max(
         300,
         Math.min(startWidth + diffX, (parseInt('75vw') * window.innerWidth) / 100)
       )
-      width.value = newWidth
-      widthCookie.value = newWidth
     }
   })
 
@@ -135,7 +130,6 @@ if (import.meta.client) {
 
 const minimize = () => {
   width.value = 300
-  widthCookie.value = 300
 }
 
 const onClose = () => {

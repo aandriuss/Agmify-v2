@@ -1,8 +1,6 @@
 <template>
   <div
-    class="bg-foundation rounded-xl overflow-hidden border border-outline-2 flex flex-col shadow w-full"
-    :style="{ width: panelWidth + 'px' }"
-    @mousedown="startResize"
+    class="bg-foundation rounded-xl overflow-hidden border border-outline-2 flex flex-col shadow"
   >
     <div class="sticky top-0 z-50 flex flex-col bg-foundation">
       <div v-if="!hideClose" class="absolute top-2 right-0.5 z-10">
@@ -37,9 +35,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { XMarkIcon } from '@heroicons/vue/24/solid'
-import { useUserSettings } from '~/composables/useUserSettings'
 
 defineEmits(['close'])
 defineProps({
@@ -50,25 +47,6 @@ defineProps({
   moveActionsToBottom: {
     type: Boolean,
     default: false
-  }
-})
-
-const panelWidth = ref(400) // Default width
-
-// Resizing logic
-const startResize = (e: MouseEvent) => {
-  // Implement resize logic here
-  // When done resizing:
-  updateSettings({
-    panelWidth: panelWidth.value
-  })
-}
-
-onMounted(async () => {
-  // Get settings from API
-  const settings = await getCurrentUserSettings()
-  if (settings?.panelWidth) {
-    panelWidth.value = settings.panelWidth
   }
 })
 </script>

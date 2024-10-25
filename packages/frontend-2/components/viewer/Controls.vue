@@ -314,6 +314,120 @@ import {
 import { useFunctionRunsStatusSummary } from '~/lib/automate/composables/runStatus'
 import { TailwindBreakpoints } from '~~/lib/common/helpers/tailwind'
 
+import { useMutation, useQuery } from '@vue/apollo-composable'
+import gql from 'graphql-tag'
+
+// GraphQL Mutation and Query for user settings
+const UPDATE_USER_SETTINGS = gql`
+  mutation UpdateUserSettings($settings: JSONObject!) {
+    userSettingsUpdate(settings: $settings)
+  }
+`
+
+const GET_USER_SETTINGS = gql`
+  query GetUserSettings {
+    activeUser {
+      userSettings
+    }
+  }
+`
+console.log('GET_USER_SETTINGS', GET_USER_SETTINGS)
+
+onMounted(() => {
+  const settings = result.value?.activeUser?.userSettings
+  console.log('settings controlsWidth', settings?.controlsWidth)
+  if (settings?.controlsWidth) {
+    width.value = settings.controlsWidth // Load saved width
+  }
+})
+
+// Start resizing logic for width
+const width = ref(400) // default starting width
+const scrollableControlsContainer = ref(null as Nullable<HTMLDivElement>)
+const isResizing = ref(false)
+const resizeHandle = ref(null)
+let startWidth = 0
+let startX = 0
+
+// Add mutation and query for GraphQL settings
+const { mutate: updateSettings } = useMutation(UPDATE_USER_SETTINGS)
+// const { result } = useQuery(GET_USER_SETTINGS)
+const { result, loading, error, onResult } = useQuery(GET_USER_SETTINGS)
+
+console.log('Loading state:', loading.value)
+console.log('Error state:', error.value)
+console.log('Raw result:', result.value)
+
+onResult((queryResult) => {
+  console.log('Query completed, full response:', queryResult)
+})
+
+watch(loading, (isLoading) => {
+  console.log('Query loading:', isLoading)
+})
+
+watch(error, (newError) => {
+  if (newError) {
+    console.error('Query error:', newError)
+  }
+})
+
+watch(
+  result,
+  (newResult) => {
+    console.log('Result changed:', newResult)
+    if (newResult?.activeUser?.userSettings) {
+      width.value = newResult.activeUser.userSettings.controlsWidth || width.value
+      console.log('Width updated to:', width.value)
+    } else {
+      console.log('No user settings found, using default width:', width.value)
+    }
+  },
+  { immediate: true }
+)
+
+// Start resizing functionality
+const startResizing = (event: MouseEvent) => {
+  event.preventDefault()
+  isResizing.value = true
+  startX = event.clientX
+  startWidth = width.value
+}
+
+if (import.meta.client) {
+  useResizeObserver(scrollableControlsContainer, (entries) => {
+    const { height: newHeight } = entries[0].contentRect
+    // Update the height if needed
+  })
+  useEventListener(resizeHandle, 'mousedown', startResizing)
+
+  useEventListener(document, 'mousemove', (event) => {
+    if (isResizing.value) {
+      const diffX = event.clientX - startX
+      width.value = Math.max(
+        300,
+        Math.min(startWidth + diffX, (parseInt('75vw') * window.innerWidth) / 100)
+      )
+    }
+  })
+
+  // On mouse up, stop resizing and save the width using GraphQL mutation
+  useEventListener(document, 'mouseup', async () => {
+    if (isResizing.value) {
+      isResizing.value = false
+      try {
+        await updateSettings({
+          settings: {
+            controlsWidth: width.value // Save the new width to user settings
+          }
+        })
+      } catch (error) {
+        console.error('Failed to save width:', error)
+      }
+    }
+  })
+}
+
 const isGendoEnabled = useIsGendoModuleEnabled()
 
 enum ViewerKeyboardActions {
@@ -328,21 +442,7 @@ enum ViewerKeyboardActions {
   ZoomExtentsOrSelection = 'ZoomExtentsOrSelection'
 }
 
-const width = ref(360)
-const scrollableControlsContainer = ref(null as Nullable<HTMLDivElement>)
-
 const height = ref(scrollableControlsContainer.value?.clientHeight) //computed(() => scrollableControlsContainer.value?.clientHeight)
-const isResizing = ref(false)
-const resizeHandle = ref(null)
-let startWidth = 0
-let startX = 0
-
-const startResizing = (event: MouseEvent) => {
-  event.preventDefault()
-  isResizing.value = true
-  startX = event.clientX
-  startWidth = width.value
-}
 
 if (import.meta.client) {
   useResizeObserver(scrollableControlsContainer, (entries) => {

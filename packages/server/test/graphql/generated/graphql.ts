@@ -28,11 +28,17 @@ export type ActiveUserMutations = {
   finishOnboarding: Scalars['Boolean']['output'];
   /** Edit a user's profile */
   update: User;
+  userSettingsUpdate?: Maybe<Scalars['Boolean']['output']>;
 };
 
 
 export type ActiveUserMutationsUpdateArgs = {
   user: UserUpdateInput;
+};
+
+
+export type ActiveUserMutationsUserSettingsUpdateArgs = {
+  settings: Scalars['JSONObject']['input'];
 };
 
 export type Activity = {
@@ -3472,7 +3478,7 @@ export type User = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   totalOwnedStreamsFavorites: Scalars['Int']['output'];
-  userSettings: Scalars['JSONObject']['output'];
+  userSettings?: Maybe<Scalars['JSONObject']['output']>;
   verified?: Maybe<Scalars['Boolean']['output']>;
   /**
    * Get (count of) user's versions. By default gets all versions of all projects the user has access to.

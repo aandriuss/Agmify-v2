@@ -1,72 +1,105 @@
 <template>
   <div>
-    <ViewerLayoutPanel @close="$emit('close')">
+    <ViewerLayoutPanel :initial-width="400" @close="$emit('close')">
       <template #title>Datasets</template>
       <div class="p-4">
         <DataTable
+          :key="tableKey"
           v-model:expandedRows="expandedRows"
           :table-id="TABLE_ID"
           :data="schedules"
           :columns="tableColumns"
           :detail-columns="detailColumns"
-          @update:columns="handleColumnsUpdate"
-        />
+          :expand-button-aria-label="'Expand row'"
+          :collapse-button-aria-label="'Collapse row'"
+          data-key="id"
+          @update:columns="handleParentColumnsUpdate"
+          @update:detail-columns="handleChildColumnsUpdate"
+        ></DataTable>
       </div>
     </ViewerLayoutPanel>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-// import { useViewerPreferences } from '~/lib/store/viewerPreferences'
+import { ref, onMounted, watch } from 'vue'
 import { useUserSettings } from '~/composables/useUserSettings'
-
 import DataTable from '~/components/viewer/tables/DataTable.vue'
 
 // Define emits
 defineEmits(['close'])
 
-const { updateSettings } = useUserSettings()
-// const preferences = useViewerPreferences()
 const TABLE_ID = 'schedules-table'
-const { tableConfig, saveSettings } = useUserSettings(TABLE_ID)
+// Use single instance of useUserSettings
+const {
+  parentTableConfig,
+  childTableConfig,
+  settings,
+  loading,
+  saveSettings,
+  updateSettings
+} = useUserSettings(TABLE_ID)
 
-// Define columns configuration
-const defaultColumns = [
-  { field: 'name', header: 'Name', visible: true, removable: false },
-  { field: 'startDate', header: 'Start Date', visible: true, removable: false },
-  { field: 'endDate', header: 'End Date', visible: true, removable: false }
+const defaultParentColumns = [
+  { field: 'name', header: 'Name', visible: true, order: 0 },
+  {
+    field: 'startDate',
+    header: 'Start Date',
+    visible: true,
+
+    order: 1
+  },
+  { field: 'endDate', header: 'End Date', visible: true, order: 2 }
 ]
 
-const tableColumns = ref(defaultColumns)
-
-// When a column configuration changes
-const handleColumnsUpdate = (newColumns) => {
-  tableColumns.value = newColumns
-  saveSettings(newColumns)
-}
-
-const detailColumns = [
-  { field: 'description', header: 'Description' },
-  { field: 'assignee', header: 'Assignee' },
-  { field: 'priority', header: 'Priority' },
-  { field: 'status', header: 'Status' }
+const defaultChildColumns = [
+  {
+    field: 'description',
+    header: 'Description',
+    visible: true,
+    order: 0
+  },
+  { field: 'assignee', header: 'Assignee', visible: true, order: 1 },
+  { field: 'priority', header: 'Priority', visible: true, order: 2 },
+  { field: 'status', header: 'Status', visible: true, order: 3 }
 ]
+
+// Table columns
+const tableColumns = computed(() => {
+  const savedColumns = settings.value?.tables?.[TABLE_ID]?.parentColumns
+  if (savedColumns?.length > 0) {
+    return [...savedColumns].sort((a, b) => a.order - b.order)
+  }
+  return defaultParentColumns
+})
+
+const detailColumns = computed(() => {
+  const savedColumns = settings.value?.tables?.[TABLE_ID]?.childColumns
+  if (savedColumns?.length > 0) {
+    return [...savedColumns].sort((a, b) => a.order - b.order)
+  }
+  return defaultChildColumns
+})
+
+const expandedRows = ref([])
 
 // Sample data
 const schedules = ref([
   {
+    id: 1,
     name: 'Schedule 1',
     startDate: '2024-01-01',
     endDate: '2024-01-10',
     details: [
       {
+        id: '1-1',
         description: 'Task 1',
         assignee: 'John Doe',
         priority: 'High',
         status: 'In Progress'
       },
       {
+        id: '1-2',
         description: 'Task 2',
         assignee: 'Jane Smith',
         priority: 'Medium',
@@ -75,34 +108,120 @@ const schedules = ref([
     ]
   },
   {
+    id: 2,
     name: 'Schedule 2',
     startDate: '2024-02-01',
     endDate: '2024-02-10',
     details: [
       {
-        description: 'Task 3',
-        assignee: 'Alice Johnson',
-        priority: 'Low',
-        status: 'Completed'
-      },
-      {
-        description: 'Task 4',
-        assignee: 'Bob Wilson',
+        id: '2-1',
+        description: 'Task 1',
+        assignee: 'John Doe',
         priority: 'High',
         status: 'In Progress'
+      },
+      {
+        id: '2-2',
+        description: 'Task 2',
+        assignee: 'Jane Smith',
+        priority: 'Medium',
+        status: 'Pending'
       }
     ]
   }
 ])
 
-// Initialize settings
-onMounted(() => {
-  if (tableConfig.value.length > 0) {
-    tableColumns.value = tableConfig.value
-  }
+//TODO make this work without the need for a key
+// Refresh key
+const tableKey = computed(() => {
+  return JSON.stringify({
+    parent: settings.value?.tables?.[TABLE_ID]?.parentColumns,
+    child: settings.value?.tables?.[TABLE_ID]?.childColumns
+  })
 })
 
-//<<<<<<<<<<<<
+// Watch for initial load AND subsequent changes
+watch(
+  () => settings.value?.tables?.[TABLE_ID]?.parentColumns,
+  (newColumns) => {
+    console.log('Parent columns loaded:', newColumns)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => settings.value?.tables?.[TABLE_ID]?.childColumns,
+  (newColumns) => {
+    console.log('Child columns loaded:', newColumns)
+  },
+  { immediate: true }
+)
+
+const handleParentColumnsUpdate = async (newColumns) => {
+  const columnsToSave = newColumns.map((col, index) => ({
+    ...col,
+    order: index
+  }))
+
+  // Update the settings structure correctly
+  const updatedSettings = {
+    ...settings.value,
+    tables: {
+      ...settings.value?.tables,
+      [TABLE_ID]: {
+        ...settings.value?.tables?.[TABLE_ID],
+        parentColumns: columnsToSave
+      }
+    }
+  }
+  await saveSettings(updatedSettings)
+}
+
+const handleChildColumnsUpdate = async (newColumns) => {
+  const columnsToSave = newColumns.map((col, index) => ({
+    ...col,
+    order: index
+  }))
+
+  // Update the settings structure correctly
+  const updatedSettings = {
+    ...settings.value,
+    tables: {
+      ...settings.value?.tables,
+      [TABLE_ID]: {
+        ...settings.value?.tables?.[TABLE_ID],
+        childColumns: columnsToSave
+      }
+    }
+  }
+  await saveSettings(updatedSettings)
+}
+
+// Debug mount
+onMounted(() => {
+  const currentSettings = {
+    isLoading: loading.value,
+    settings: settings.value,
+    parentColumns: settings.value?.tables?.[TABLE_ID]?.parentColumns,
+    childColumns: settings.value?.tables?.[TABLE_ID]?.childColumns,
+    tableColumns: tableColumns.value,
+    detailColumns: detailColumns.value
+  }
+  console.log('Component mounted with:', currentSettings)
+
+  // Initialize settings if they don't exist
+  if (!settings.value?.tables?.[TABLE_ID]) {
+    const initialSettings = {
+      tables: {
+        [TABLE_ID]: {
+          parentColumns: defaultParentColumns,
+          childColumns: defaultChildColumns
+        }
+      }
+    }
+    saveSettings(initialSettings)
+  }
+})
 </script>
 
 <style scoped>

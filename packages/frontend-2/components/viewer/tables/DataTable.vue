@@ -6,7 +6,7 @@
 
     <LayoutDialog
       v-model:open="dialogOpen"
-      :max-width="'md'"
+      :max-width="'lg'"
       :hide-closer="false"
       :prevent-close-on-click-outside="false"
       title="Column Manager"
@@ -23,71 +23,102 @@
         }
       }"
     >
-      <div class="flex gap-4 h-[400px]">
-        <!-- Left Panel: Available Parameters -->
-        <div
-          class="flex-1 border rounded"
-          @dragover.prevent
-          @drop="handleDropToAvailable"
-        >
-          <div class="p-1 border-b bg-gray-50">
-            <h3 class="font-medium text-sm">Available Parameters</h3>
-          </div>
-          <div class="p-1 space-y-1 overflow-y-auto max-h-[calc(400px-3rem)]">
-            <div
-              v-for="param in availableParameters"
-              :key="param.field"
-              class="flex items-center justify-between p-0.5 hover:bg-gray-50 rounded cursor-move text-sm"
-              draggable="true"
-              @dragstart="dragStart($event, param, 'available')"
+      <div class="flex flex-col gap-4">
+        <!-- Tabs -->
+        <div class="border-b">
+          <div class="flex gap-4">
+            <button
+              :class="[
+                'px-4 py-2',
+                activeTab === 'parent' ? 'border-b-2 border-blue-500' : ''
+              ]"
+              @click="activeTab = 'parent'"
             >
-              <span>{{ param.header }}</span>
-              <FormButton
-                color="outline"
-                size="xs"
-                class="!h-4 !w-4 !p-0 !min-w-0 text-xs flex items-center justify-center"
-                @click="addColumn(param)"
-              >
-                →
-              </FormButton>
-            </div>
+              Parent Columns
+            </button>
+            <button
+              :class="[
+                'px-4 py-2',
+                activeTab === 'child' ? 'border-b-2 border-blue-500' : ''
+              ]"
+              @click="activeTab = 'child'"
+            >
+              Child Columns
+            </button>
           </div>
         </div>
 
-        <!-- Right Panel: Active Columns -->
-        <div
-          class="flex-1 border rounded"
-          @dragover.prevent="handleDragOver($event)"
-          @drop="handleDropToActive($event)"
-        >
-          <div class="p-1 border-b bg-gray-50">
-            <h3 class="font-medium text-sm">Active Columns</h3>
-          </div>
-          <div class="p-1 space-y-1 overflow-y-auto max-h-[calc(400px-3rem)]">
-            <div
-              v-for="(col, index) in tempColumns"
-              :key="col.field"
-              class="flex items-center justify-between p-0.5 hover:bg-gray-50 rounded text-sm"
-              draggable="true"
-              :class="{ 'border-t-2 border-blue-500': dragOverIndex === index }"
-              @dragstart="dragStart($event, col, 'active', index)"
-              @dragenter.prevent="handleDragEnter($event, index)"
-            >
-              <div class="flex items-center gap-1">
-                <i class="pi pi-bars cursor-move text-gray-400 text-xs"></i>
-                <span>{{ col.header }}</span>
-              </div>
-              <div class="flex items-center gap-1">
+        <!-- Column Management Area -->
+        <div class="flex gap-4 h-[400px]">
+          <!-- Left Panel: Available Parameters -->
+          <div
+            class="flex-1 border rounded"
+            @dragover.prevent
+            @drop="handleDropToAvailable"
+          >
+            <div class="p-1 border-b bg-gray-50">
+              <h3 class="font-medium text-sm">Available Parameters</h3>
+            </div>
+            <div class="p-1 space-y-1 overflow-y-auto max-h-[calc(400px-3rem)]">
+              <div
+                v-for="param in currentAvailableParameters"
+                :key="param.field"
+                class="flex items-center justify-between p-0.5 hover:bg-gray-50 rounded cursor-move text-sm"
+                draggable="true"
+                @dragstart="dragStart($event, param, 'available')"
+              >
+                <span>{{ param.header }}</span>
                 <FormButton
-                  v-if="col.removable"
-                  color="danger"
+                  color="outline"
                   size="xs"
                   class="!h-4 !w-4 !p-0 !min-w-0 text-xs flex items-center justify-center"
-                  @click="removeColumn(col)"
+                  @click="addColumn(param)"
                 >
-                  ←
+                  →
                 </FormButton>
-                <Checkbox v-model="col.visible" :input-id="col.field" :binary="true" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Panel: Active Columns -->
+          <div
+            class="flex-1 border rounded"
+            @dragover.prevent="handleDragOver($event)"
+            @drop="handleDropToActive($event)"
+          >
+            <div class="p-1 border-b bg-gray-50">
+              <h3 class="font-medium text-sm">Active Columns</h3>
+            </div>
+            <div class="p-1 space-y-1 overflow-y-auto max-h-[calc(400px-3rem)]">
+              <div
+                v-for="(col, index) in currentTempColumns"
+                :key="col.field"
+                class="flex items-center justify-between p-0.5 hover:bg-gray-50 rounded text-sm"
+                draggable="true"
+                :class="{ 'border-t-2 border-blue-500': dragOverIndex === index }"
+                @dragstart="dragStart($event, col, 'active', index)"
+                @dragenter.prevent="handleDragEnter($event, index)"
+              >
+                <div class="flex items-center gap-1">
+                  <i class="pi pi-bars cursor-move text-gray-400 text-xs"></i>
+                  <span>{{ col.header }}</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <FormButton
+                    v-if="col.removable"
+                    color="danger"
+                    size="xs"
+                    class="!h-4 !w-4 !p-0 !min-w-0 text-xs flex items-center justify-center"
+                    @click="removeColumn(col)"
+                  >
+                    ←
+                  </FormButton>
+                  <Checkbox
+                    v-model="col.visible"
+                    :input-id="col.field"
+                    :binary="true"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -105,6 +136,7 @@
       :paginator="false"
       :rows="10"
       expand-mode="row"
+      @column-resize="onColumnResize"
     >
       <template #expansion="slotProps">
         <div class="p-1">
@@ -116,10 +148,11 @@
             class="nested-table"
           >
             <Column
-              v-for="col in detailColumns"
+              v-for="col in visibleChildColumns"
               :key="col.field"
               :field="col.field"
               :header="col.header"
+              :style="{ width: col.width ? `${col.width}px` : 'auto' }"
               sortable
             />
           </DataTable>
@@ -128,7 +161,7 @@
 
       <Column :expander="true" style="width: 3rem" />
       <Column
-        v-for="col in visibleColumns"
+        v-for="col in visibleParentColumns"
         :key="col.field"
         :field="col.field"
         :header="col.header"
@@ -150,12 +183,8 @@ interface ColumnDef {
   header: string
   visible: boolean
   removable?: boolean
-}
-
-interface Props {
-  data: any[]
-  columns: ColumnDef[]
-  detailColumns: ColumnDef[]
+  width?: number
+  order: number
 }
 
 const props = defineProps<{
@@ -164,58 +193,112 @@ const props = defineProps<{
   columns: ColumnDef[]
   detailColumns: ColumnDef[]
 }>()
-const emit = defineEmits(['update:columns'])
+
+const emit = defineEmits(['update:columns', 'update:detailColumns'])
 
 const dialogOpen = ref(false)
 const expandedRows = ref([])
-const tempColumns = ref<ColumnDef[]>([]) // Temporary state for columns
-const localColumns = ref<ColumnDef[]>([]) // Actual state that affects the table
+const activeTab = ref('parent')
 
-// Sample available parameters (replace with actual data later)
-const availableParameters = ref([
+// Separate states for parent and child columns
+const tempParentColumns = ref<ColumnDef[]>([])
+const tempChildColumns = ref<ColumnDef[]>([])
+const localParentColumns = ref<ColumnDef[]>([])
+const localChildColumns = ref<ColumnDef[]>([])
+
+// Available parameters for both levels
+const availableParentParameters = ref([
   { field: 'area', header: 'Area (m²)' },
   { field: 'volume', header: 'Volume (m³)' },
   { field: 'cost', header: 'Cost ($)' },
   { field: 'weight', header: 'Weight (kg)' }
 ])
 
-// Open dialog and initialize temp state
+const availableChildParameters = ref([
+  { field: 'description', header: 'Description' },
+  { field: 'assignee', header: 'Assignee' },
+  { field: 'priority', header: 'Priority' },
+  { field: 'status', header: 'Status' },
+  { field: 'dueDate', header: 'Due Date' },
+  { field: 'progress', header: 'Progress' }
+])
+
+// Computed properties for current tab
+const currentTempColumns = computed(() => {
+  return activeTab.value === 'parent' ? tempParentColumns.value : tempChildColumns.value
+})
+
+const currentAvailableParameters = computed(() => {
+  return activeTab.value === 'parent'
+    ? availableParentParameters.value
+    : availableChildParameters.value
+})
+
+const visibleParentColumns = computed(() => {
+  return localParentColumns.value.filter((col) => col.visible)
+})
+
+const visibleChildColumns = computed(() => {
+  return localChildColumns.value.filter((col) => col.visible)
+})
+
+// Initialize columns when component mounts
+if (props.columns) {
+  localParentColumns.value = JSON.parse(JSON.stringify(props.columns))
+  tempParentColumns.value = JSON.parse(JSON.stringify(props.columns))
+}
+
+if (props.detailColumns) {
+  localChildColumns.value = JSON.parse(JSON.stringify(props.detailColumns))
+  tempChildColumns.value = JSON.parse(JSON.stringify(props.detailColumns))
+}
+
+// Dialog management
 const openDialog = () => {
-  tempColumns.value = JSON.parse(JSON.stringify(localColumns.value))
+  tempParentColumns.value = JSON.parse(JSON.stringify(localParentColumns.value))
+  tempChildColumns.value = JSON.parse(JSON.stringify(localChildColumns.value))
   dialogOpen.value = true
 }
 
-// Apply changes
 const applyChanges = () => {
-  localColumns.value = JSON.parse(JSON.stringify(tempColumns.value))
-  emit('update:columns', localColumns.value)
+  localParentColumns.value = JSON.parse(JSON.stringify(tempParentColumns.value))
+  localChildColumns.value = JSON.parse(JSON.stringify(tempChildColumns.value))
+  emit(
+    'update:columns',
+    localParentColumns.value.map((col, index) => ({
+      ...col,
+      order: index
+    }))
+  )
+  emit(
+    'update:detailColumns',
+    localChildColumns.value.map((col, index) => ({
+      ...col,
+      order: index
+    }))
+  )
   dialogOpen.value = false
 }
 
-// Add this cleanup method
-const resetDragState = () => {
-  draggedItem.value = null
-  dragOverIndex.value = -1
-}
-
-// Modify your existing cancelChanges to include cleanup
 const cancelChanges = () => {
-  tempColumns.value = JSON.parse(JSON.stringify(localColumns.value))
+  tempParentColumns.value = JSON.parse(JSON.stringify(localParentColumns.value))
+  tempChildColumns.value = JSON.parse(JSON.stringify(localChildColumns.value))
   resetDragState()
   dialogOpen.value = false
 }
 
-// Initialize localColumns when component mounts
-if (props.columns) {
-  localColumns.value = JSON.parse(JSON.stringify(props.columns))
-  tempColumns.value = JSON.parse(JSON.stringify(props.columns))
-}
-// Drag and drop handlers
+// Drag and drop state
 const dragOverIndex = ref(-1)
 const draggedItem = ref<{ item: ColumnDef; source: string; index?: number } | null>(
   null
 )
 
+const resetDragState = () => {
+  draggedItem.value = null
+  dragOverIndex.value = -1
+}
+
+// Drag and drop handlers
 const dragStart = (
   event: DragEvent,
   item: ColumnDef,
@@ -245,8 +328,7 @@ const handleDropToAvailable = (event: DragEvent) => {
       removeColumn(item)
     }
   }
-  draggedItem.value = null
-  dragOverIndex.value = -1
+  resetDragState()
 }
 
 const handleDropToActive = (event: DragEvent) => {
@@ -254,57 +336,69 @@ const handleDropToActive = (event: DragEvent) => {
 
   if (draggedItem.value) {
     const { item, source, index: dragIndex } = draggedItem.value
+    const columns = activeTab.value === 'parent' ? tempParentColumns : tempChildColumns
 
     if (source === 'available') {
       if (dropIndex >= 0) {
-        tempColumns.value.splice(dropIndex, 0, {
+        columns.value.splice(dropIndex, 0, {
           field: item.field,
           header: item.header,
           visible: true,
-          removable: true
+          removable: true,
+          order: dropIndex
         })
       } else {
         addColumn(item)
       }
     } else if (source === 'active' && typeof dragIndex === 'number' && dropIndex >= 0) {
-      const [movedColumn] = tempColumns.value.splice(dragIndex, 1)
-      tempColumns.value.splice(dropIndex, 0, movedColumn)
+      const [movedColumn] = columns.value.splice(dragIndex, 1)
+      columns.value.splice(dropIndex, 0, movedColumn)
+
+      // Update order after move
+      columns.value.forEach((col, index) => {
+        col.order = index
+      })
     }
   }
 
-  draggedItem.value = null
-  dragOverIndex.value = -1
+  resetDragState()
 }
 
-// const handleDrop = (event: DragEvent) => {
-//   const data = event.dataTransfer?.getData('text/plain')
-//   if (data) {
-//     const item = JSON.parse(data)
-//     addColumn(item)
-//   }
-// }
-
-const visibleColumns = computed(() => {
-  return localColumns.value.filter((col) => col.visible)
-})
-
 const addColumn = (param: ColumnDef) => {
-  if (!tempColumns.value.find((col) => col.field === param.field)) {
-    tempColumns.value.push({
+  const columns = activeTab.value === 'parent' ? tempParentColumns : tempChildColumns
+
+  if (!columns.value.find((col) => col.field === param.field)) {
+    columns.value.push({
       field: param.field,
       header: param.header,
       visible: true,
-      removable: true
+      removable: true,
+      order: columns.value.length
     })
   }
 }
 
 const removeColumn = (column: ColumnDef) => {
   if (column.removable) {
-    const index = tempColumns.value.findIndex((col) => col.field === column.field)
+    const columns = activeTab.value === 'parent' ? tempParentColumns : tempChildColumns
+    const index = columns.value.findIndex((col) => col.field === column.field)
     if (index !== -1) {
-      tempColumns.value.splice(index, 1)
+      columns.value.splice(index, 1)
+      // Update order after removal
+      columns.value.forEach((col, idx) => {
+        col.order = idx
+      })
     }
+  }
+}
+
+const onColumnResize = (event: any) => {
+  const { element, delta } = event
+  const columns = activeTab.value === 'parent' ? tempParentColumns : tempChildColumns
+  const column = columns.value.find((col) => col.field === element.dataset.field)
+  if (column) {
+    column.width = element.offsetWidth
+    emit('update:columns', columns.value)
   }
 }
 </script>

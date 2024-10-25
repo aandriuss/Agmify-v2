@@ -341,6 +341,8 @@ const elementsData = computed(() => {
   })
 })
 
+// console.log('elementsData:', JSON.stringify(elementsData))
+
 function findAndLogElements(nodes: ExplorerNode[], depth = 0, visited = new WeakSet()) {
   if (depth > 10) {
     console.warn('Max depth reached, stopping traversal')
