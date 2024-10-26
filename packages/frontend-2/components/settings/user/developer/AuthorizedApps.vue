@@ -53,7 +53,7 @@
           </template>
           <template v-else>
             <HeaderLogoBlock minimal no-link />
-            <span>Speckle</span>
+            <span>Agmify</span>
           </template>
         </div>
       </template>

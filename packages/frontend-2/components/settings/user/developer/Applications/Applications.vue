@@ -24,7 +24,7 @@
       ]"
     >
       <p class="text-body-xs pt-6 md:pt-4 text-foreground">
-        Register and manage third-party Speckle Apps that, once authorised by a user on
+        Register and manage third-party Agmify Apps that, once authorised by a user on
         this server, can act on their behalf.
       </p>
     </SettingsSectionHeader>

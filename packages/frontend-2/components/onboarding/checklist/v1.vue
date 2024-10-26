@@ -20,7 +20,7 @@
           >
             <div class="text-heading-sm">Quickstart checklist</div>
             <div class="text-body-sm text-foreground-2">
-              Become a Speckle pro in four steps!
+              Become a Agmify pro in four steps!
             </div>
             <div class="space-x-1">
               <FormButton v-if="!allCompleted" size="sm" @click="dismissChecklist()">
@@ -292,7 +292,7 @@ const getStatus = () => {
 const steps = ref([
   {
     title: 'Install Manager ⚙️',
-    blurb: 'Use Manager to install the Speckle Connectors for your apps!',
+    blurb: 'Use Manager to install the Agmify Connectors for your apps!',
     active: false,
     cta: "Let's go!",
     postCompletionCta: 'Download again',
@@ -314,7 +314,7 @@ const steps = ref([
   },
   {
     title: 'Log in 🔑',
-    blurb: 'Authorise our application connectors to send data to Speckle.',
+    blurb: 'Authorise our application connectors to send data to Agmify.',
     active: false,
     cta: "Let's go!",
     postCompletionCta: 'Login again',
@@ -336,7 +336,7 @@ const steps = ref([
   },
   {
     title: 'Your first model upload ⬆️',
-    blurb: 'Use your favourite design app to send your first model to Speckle.',
+    blurb: 'Use your favourite design app to send your first model to Agmify.',
     active: false,
     cta: "Let's go!",
     postCompletionCta: 'Show again',

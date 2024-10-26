@@ -90,6 +90,6 @@ const openCreateNewAutomation = (fn: CreateAutomationSelectableFunction) => {
 
 useSeoMeta({
   title: 'All functions',
-  description: 'Select a function get started with Speckle Automate'
+  description: 'Select a function get started with Agmify Automate'
 })
 </script>

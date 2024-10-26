@@ -1,7 +1,7 @@
 .prime-local {
   /* Base PrimeVue variable overrides */
   --primary-color: your-primary-color;
-  --font-family: your-font-family;
+  --font-family: montserrat, sans-serif;
   /* Add other variables as needed */
 }
 

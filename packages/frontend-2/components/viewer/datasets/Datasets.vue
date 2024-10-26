@@ -206,58 +206,6 @@ useViewerEventListener(ViewerEvent.Busy, (isBusy: boolean) => {
 // Compute the root nodes from the viewer's world tree
 const { rootNodes, expandLevel } = useRootNodes()
 
-// const rootNodes = computed(() => {
-//   refhack.value
-
-//   if (!worldTree.value) return []
-//   expandLevel.value = -1
-//   const rootNodes = worldTree.value._root.children as ExplorerNode[]
-
-//   const results: Record<number, ExplorerNode[]> = {}
-//   const unmatchedNodes: ExplorerNode[] = []
-
-//   for (const node of rootNodes) {
-//     const objectId = ((node.model as Record<string, unknown>).id as string)
-//       .split('/')
-//       .reverse()[0] as string
-//     const resourceItemIdx = resourceItems.value.findIndex(
-//       (res) => res.objectId === objectId
-//     )
-//     const resourceItem =
-//       resourceItemIdx !== -1 ? resourceItems.value[resourceItemIdx] : null
-
-//     const raw = node.model?.raw as Record<string, unknown>
-//     if (resourceItem?.modelId) {
-//       const model = modelsAndVersionIds.value.find(
-//         (item) => item.model.id === resourceItem.modelId
-//       )?.model
-//       raw.name = model?.name
-//       raw.type = model?.id
-//     } else {
-//       raw.name = 'Object'
-//       raw.type = 'Single object'
-//     }
-
-//     const res = node.model as ExplorerNode
-//     if (resourceItem) {
-//       ;(results[resourceItemIdx] = results[resourceItemIdx] || []).push(res)
-//     } else {
-//       unmatchedNodes.push(res)
-//     }
-//   }
-
-//   const nodes = [
-//     ...flatten(sortBy(Object.entries(results), (i) => i[0]).map((i) => i[1])),
-//     ...unmatchedNodes
-//   ]
-
-//   return nodes.map(
-//     (n): TreeItemComponentModel => ({
-//       rawNode: markRaw(n)
-//     })
-//   )
-// })
-
 // Utility function to safely stringify objects
 function safeStringify(obj: any, depth = 0): string {
   const maxDepth = 3
@@ -281,7 +229,28 @@ function safeStringify(obj: any, depth = 0): string {
 
 const restructuredNodes = ref<TreeItemComponentModel[]>([])
 
-// Watch for changes in rootNodes and update restructuredNodes accordingly
+// watch(
+//   worldTree,
+//   (newWorldTree) => {
+//     console.log(
+//       'Initial World Tree Structure:',
+//       JSON.stringify(newWorldTree?._root?.children?.[0], null, 2)
+//     )
+//   },
+//   { immediate: true }
+// )
+
+function getSimpleNodeInfo(node: ExplorerNode) {
+  if (!node?.raw) return null
+  return {
+    type: node.raw.type,
+    id: node.raw.id,
+    mark: node.raw.Mark,
+    host: node.raw.Constraints?.Host
+  }
+}
+
+// Watch for changes in rootNodes and restructure the data
 watch(
   rootNodes,
   (newRootNodes) => {
@@ -292,19 +261,43 @@ watch(
 
     const wallsMap = new Map<string, ExplorerNode>()
 
-    // Step 1: Collect all wall nodes in a map for quick lookup
     function collectWalls(node: ExplorerNode, level = 0) {
       const rawNode = node.raw ?? { id: 'placeholder', type: 'Unknown' }
-      if (
-        rawNode &&
-        rawNode.type === 'IFCWALLSTANDARDCASE' &&
-        (rawNode.Name || rawNode.Mark)
-      ) {
-        const identifier = rawNode.Name || rawNode.Mark || rawNode.id
+
+      // For walls
+      if (rawNode?.type === 'IFCWALLSTANDARDCASE') {
+        // Log only primitive values and necessary properties
+        console.log('Wall found:', {
+          type: rawNode.type,
+          mark: rawNode.Mark,
+          id: rawNode.id,
+          name: rawNode.Name,
+          revitMark: rawNode.properties?.Revit?.Mark,
+          psetMark: rawNode.properties?.PSet_Revit?.Mark
+        })
+
+        // Use the first available identifier
+        const identifier =
+          rawNode.Mark ||
+          rawNode.properties?.Revit?.Mark ||
+          rawNode.properties?.PSet_Revit?.Mark ||
+          rawNode.Name ||
+          rawNode.id
+
         if (identifier) {
+          console.log('Adding wall with identifier:', identifier)
           wallsMap.set(identifier, node)
         }
       }
+
+      // For beams
+      if (rawNode?.type === 'IFCBEAM') {
+        console.log('Beam found:', {
+          id: rawNode.id,
+          host: rawNode.Constraints?.Host
+        })
+      }
+
       if (node.children) {
         node.children.forEach((child) => collectWalls(child, level + 1))
       }
@@ -312,6 +305,12 @@ watch(
 
     // Collect wall nodes into wallsMap
     newRootNodes.forEach((node) => collectWalls(node))
+
+    // Log wall map info without stringifying the whole objects
+    console.log('Wall Map info:', {
+      numberOfWalls: wallsMap.size,
+      wallIdentifiers: Array.from(wallsMap.keys())
+    })
 
     // Step 2: Restructure the rootNodes and group beams under walls
     restructuredNodes.value = traverseAndGroup(
@@ -322,8 +321,11 @@ watch(
       wallsMap
     )
 
-    // Optional: Log elements for verification
-    findAndLogElements(restructuredNodes.value)
+    // Log final structure summary
+    console.log('Restructuring complete:', {
+      totalNodes: restructuredNodes.value.length,
+      types: restructuredNodes.value.map((node) => node.raw.type)
+    })
   },
   { immediate: true }
 )
@@ -341,8 +343,6 @@ const elementsData = computed(() => {
   })
 })
 
-// console.log('elementsData:', JSON.stringify(elementsData))
-
 function findAndLogElements(nodes: ExplorerNode[], depth = 0, visited = new WeakSet()) {
   if (depth > 10) {
     console.warn('Max depth reached, stopping traversal')
@@ -354,11 +354,8 @@ function findAndLogElements(nodes: ExplorerNode[], depth = 0, visited = new Weak
     return
   }
 
-  // console.log(`Searching at depth ${depth}:`, safeStringify(nodes, 0))
-
   nodes.forEach((node, index) => {
     if (!node || visited.has(node)) {
-      console.warn('Skipping null/undefined node or already visited node')
       return
     }
     visited.add(node)
@@ -366,23 +363,27 @@ function findAndLogElements(nodes: ExplorerNode[], depth = 0, visited = new Weak
     const rawNode = node.raw ?? { id: `placeholder_${index}`, type: 'Unknown' }
     node.raw = rawNode
 
-    const { type, Mark, Constraints } = rawNode
-    if (type === 'IFCWALLSTANDARDCASE') {
-      console.log('Found Wall:', { Mark, id: rawNode.id })
-    } else if (type === 'IFCBEAM' && Constraints) {
-      console.log('Found Beam:', { Host: Constraints.Host, id: rawNode.id })
+    // Log only necessary properties
+    if (rawNode.type === 'IFCWALLSTANDARDCASE') {
+      console.log('Found Wall:', {
+        id: rawNode.id,
+        mark: rawNode.Mark,
+        name: rawNode.Name
+      })
+    } else if (rawNode.type === 'IFCBEAM' && rawNode.Constraints) {
+      console.log('Found Beam:', {
+        id: rawNode.id,
+        host: rawNode.Constraints.Host
+      })
     }
 
-    // Recursively search children
     if (Array.isArray(node.children)) {
       findAndLogElements(node.children, depth + 1, visited)
     }
   })
 }
 
-/**
- * Traverse and group nodes, associating beams under corresponding walls.
- */
+// Traverse the nodes and group beams under walls
 function traverseAndGroup(
   nodes: ExplorerNode[],
   wallsMap: Map<string, ExplorerNode>
@@ -403,7 +404,16 @@ function traverseAndGroup(
       const rawNode = node.raw ?? { id: `placeholder_${index}`, type: 'Unknown' }
 
       if (rawNode.type === 'IFCBEAM' && rawNode.Constraints?.Host) {
-        const hostWall = wallsMap.get(rawNode.Constraints.Host)
+        const hostId = rawNode.Constraints.Host
+        const hostWall = wallsMap.get(hostId)
+
+        // Log beam-wall matching without circular references
+        console.log('Beam-Wall matching:', {
+          beamId: rawNode.id,
+          hostId,
+          wallFound: Boolean(hostWall)
+        })
+
         if (hostWall) {
           hostWall.children = hostWall.children || []
           hostWall.children.push(node)

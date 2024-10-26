@@ -4,8 +4,8 @@
       <div
         class="rounded border bg-foundation-page border-outline-3 text-body-xs text-foreground py-4 px-6"
       >
-        Permanently delete this project and all of its content from the Speckle
-        platform. This action is not reversible.
+        Permanently delete this project and all of its content from the Agmify platform.
+        This action is not reversible.
       </div>
       <template #bottom-buttons>
         <FormButton color="danger" @click="showDeleteDialog = true">

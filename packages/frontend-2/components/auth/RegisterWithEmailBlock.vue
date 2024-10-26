@@ -48,7 +48,7 @@
       <FormCheckbox
         v-model="newsletterConsent"
         name="newsletter"
-        label="Opt in for exclusive Speckle news and tips"
+        label="Opt in for exclusive Agmify news and tips"
         class="text-body-xs"
       />
     </div>

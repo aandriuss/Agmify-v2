@@ -8,7 +8,7 @@
   >
     <div class="flex flex-col gap-4">
       <p class="text-body-xs text-foreground font-medium">
-        How can we improve Speckle? If you have a feature request, please also share how
+        How can we improve Agmify? If you have a feature request, please also share how
         you would use it and why it's important to you
       </p>
       <FormTextArea

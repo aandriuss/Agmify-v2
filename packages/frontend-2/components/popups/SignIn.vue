@@ -3,7 +3,7 @@
     v-model:open="showDialog"
     dialog-mode
     max-width="sm"
-    subtitle="Create a free account to keep using Speckle!"
+    subtitle="Create account to keep using Agmify!"
   />
 </template>
 <script setup lang="ts">
