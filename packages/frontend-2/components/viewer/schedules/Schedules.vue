@@ -1,13 +1,13 @@
 <template>
   <div>
     <ViewerLayoutPanel :initial-width="400" @close="$emit('close')">
-      <template #title>Datasets</template>
+      <template #title>Elements Schedule</template>
       <div class="p-4">
         <DataTable
           :key="tableKey"
           v-model:expandedRows="expandedRows"
           :table-id="TABLE_ID"
-          :data="schedules"
+          :data="scheduleData"
           :columns="tableColumns"
           :detail-columns="detailColumns"
           :expand-button-aria-label="'Expand row'"
@@ -17,55 +17,37 @@
           @update:detail-columns="handleChildColumnsUpdate"
           @update:both-columns="handleBothColumnsUpdate"
           @column-reorder="handleColumnReorder"
-        ></DataTable>
+        />
       </div>
     </ViewerLayoutPanel>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref } from 'vue'
 import { useUserSettings } from '~/composables/useUserSettings'
+import { useElementsData } from '~/composables/useElementsData'
 import DataTable from '~/components/viewer/tables/DataTable.vue'
-import type { ColumnDef } from '~/composables/useUserSettings'
 
-// Emit events
-const emit = defineEmits([
-  'close',
-  'update:columns',
-  'update:detailColumns',
-  'update:both-columns'
-])
-
-const TABLE_ID = 'schedules-table'
-// Use single instance of useUserSettings
+const emit = defineEmits(['close'])
+const TABLE_ID = 'elements-schedule'
 const { settings, loading, saveSettings } = useUserSettings(TABLE_ID)
+const { scheduleData } = useElementsData()
 
 const defaultParentColumns = [
-  { field: 'name', header: 'Name', visible: true, order: 0 },
-  {
-    field: 'startDate',
-    header: 'Start Date',
-    visible: true,
-
-    order: 1
-  },
-  { field: 'endDate', header: 'End Date', visible: true, order: 2 }
+  { field: 'id', header: 'ID', visible: true, order: 0 },
+  { field: 'mark', header: 'Mark', visible: true, order: 1 },
+  { field: 'name', header: 'Name', visible: true, order: 2 },
+  { field: 'category', header: 'Category', visible: true, order: 3 }
 ]
 
 const defaultChildColumns = [
-  {
-    field: 'description',
-    header: 'Description',
-    visible: true,
-    order: 0
-  },
-  { field: 'assignee', header: 'Assignee', visible: true, order: 1 },
-  { field: 'priority', header: 'Priority', visible: true, order: 2 },
-  { field: 'status', header: 'Status', visible: true, order: 3 }
+  { field: 'id', header: 'ID', visible: true, order: 0 },
+  { field: 'type', header: 'Type', visible: true, order: 1 },
+  { field: 'host', header: 'Host', visible: true, order: 2 }
 ]
 
-// Table columns
+// Table columns with settings
 const tableColumns = computed(() => {
   const savedColumns = settings.value?.tables?.[TABLE_ID]?.parentColumns
   if (savedColumns?.length > 0) {
@@ -83,54 +65,6 @@ const detailColumns = computed(() => {
 })
 
 const expandedRows = ref([])
-
-// Sample data
-const schedules = ref([
-  {
-    id: 1,
-    name: 'Schedule 1',
-    startDate: '2024-01-01',
-    endDate: '2024-01-10',
-    details: [
-      {
-        id: '1-1',
-        description: 'Task 1',
-        assignee: 'John Doe',
-        priority: 'High',
-        status: 'In Progress'
-      },
-      {
-        id: '1-2',
-        description: 'Task 2',
-        assignee: 'Jane Smith',
-        priority: 'Medium',
-        status: 'Pending'
-      }
-    ]
-  },
-  {
-    id: 2,
-    name: 'Schedule 2',
-    startDate: '2024-02-01',
-    endDate: '2024-02-10',
-    details: [
-      {
-        id: '2-1',
-        description: 'Task 1',
-        assignee: 'John Doe',
-        priority: 'High',
-        status: 'In Progress'
-      },
-      {
-        id: '2-2',
-        description: 'Task 2',
-        assignee: 'Jane Smith',
-        priority: 'Medium',
-        status: 'Pending'
-      }
-    ]
-  }
-])
 
 //TODO make this work without the need for a key
 // Refresh key
