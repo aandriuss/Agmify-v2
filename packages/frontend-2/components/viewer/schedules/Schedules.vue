@@ -24,27 +24,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useUserSettings } from '~/composables/useUserSettings'
 import { useElementsData } from '~/composables/useElementsData'
 import DataTable from '~/components/viewer/tables/DataTable.vue'
 
 const emit = defineEmits(['close'])
 const TABLE_ID = 'elements-schedule'
-const { settings, loading, saveSettings } = useUserSettings(TABLE_ID)
+const { settings, loading, saveSettings, loadSettings } = useUserSettings(TABLE_ID)
 const { scheduleData } = useElementsData()
 
 const defaultParentColumns = [
   { field: 'id', header: 'ID', visible: true, order: 0 },
-  { field: 'mark', header: 'Mark', visible: true, order: 1 },
-  { field: 'name', header: 'Name', visible: true, order: 2 },
-  { field: 'category', header: 'Category', visible: true, order: 3 }
+  { field: 'category', header: 'Category', visible: true, order: 1 },
+  { field: 'mark', header: 'Mark', visible: true, order: 2 },
+  { field: 'host', header: 'Host', visible: true, order: 3 },
+  { field: 'comment', header: 'Comment', visible: true, order: 4 }
 ]
 
 const defaultChildColumns = [
   { field: 'id', header: 'ID', visible: true, order: 0 },
-  { field: 'type', header: 'Type', visible: true, order: 1 },
-  { field: 'host', header: 'Host', visible: true, order: 2 }
+  { field: 'category', header: 'Category', visible: true, order: 1 },
+  { field: 'mark', header: 'Mark', visible: true, order: 2 },
+  { field: 'host', header: 'Host', visible: true, order: 3 },
+  { field: 'comment', header: 'Comment', visible: true, order: 4 }
 ]
 
 // Table columns with settings
