@@ -2,7 +2,73 @@
   <div>
     <ViewerLayoutPanel :initial-width="400" @close="$emit('close')">
       <template #title>Elements Schedule</template>
-      <div class="p-4">
+      <template #actions>
+        <FormButton
+          text
+          size="sm"
+          color="subtle"
+          :icon-right="showCategoryOptions ? ChevronUpIcon : ChevronDownIcon"
+          @click="showCategoryOptions = !showCategoryOptions"
+        >
+          Category filter options
+        </FormButton>
+      </template>
+      <div class="flex flex-col">
+        <!-- Category Options Section -->
+        <div
+          v-show="showCategoryOptions"
+          class="sticky top-10 px-2 py-2 border-b-2 border-primary-muted bg-foundation"
+        >
+          <div class="flex flex-row justify-between">
+            <!-- Parent Categories -->
+            <div class="flex-1 mr-4">
+              <span class="text-body-xs text-foreground font-medium mb-2 block">
+                Host Categories
+              </span>
+              <div class="max-h-[200px] overflow-y-auto">
+                <div v-for="category in parentCategories" :key="category">
+                  <FormButton
+                    size="sm"
+                    :icon-left="
+                      selectedParentCategories.includes(category)
+                        ? CheckCircleIcon
+                        : CheckCircleIconOutlined
+                    "
+                    text
+                    @click="toggleParentCategory(category)"
+                  >
+                    {{ category }}
+                  </FormButton>
+                </div>
+              </div>
+            </div>
+
+            <!-- Child Categories -->
+            <div class="flex-1">
+              <span class="text-body-xs text-foreground font-medium mb-2 block">
+                Child Categories
+              </span>
+              <div class="max-h-[200px] overflow-y-auto">
+                <div v-for="category in childCategories" :key="category">
+                  <FormButton
+                    size="sm"
+                    :icon-left="
+                      selectedChildCategories.includes(category)
+                        ? CheckCircleIcon
+                        : CheckCircleIconOutlined
+                    "
+                    text
+                    @click="toggleChildCategory(category)"
+                  >
+                    {{ category }}
+                  </FormButton>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table Section (Always Visible) -->
         <DataTable
           :key="tableKey"
           v-model:expandedRows="expandedRows"
@@ -24,31 +90,64 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useUserSettings } from '~/composables/useUserSettings'
 import { useElementsData } from '~/composables/useElementsData'
 import DataTable from '~/components/viewer/tables/DataTable.vue'
+import {
+  CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
+} from '@heroicons/vue/24/solid'
+import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/outline'
 
 const emit = defineEmits(['close'])
 const TABLE_ID = 'elements-schedule'
 const { settings, loading, saveSettings, loadSettings } = useUserSettings(TABLE_ID)
-const { scheduleData } = useElementsData()
 
-const defaultParentColumns = [
-  { field: 'id', header: 'ID', visible: true, order: 0 },
-  { field: 'category', header: 'Category', visible: true, order: 1 },
-  { field: 'mark', header: 'Mark', visible: true, order: 2 },
-  { field: 'host', header: 'Host', visible: true, order: 3 },
-  { field: 'comment', header: 'Comment', visible: true, order: 4 }
+// Show/hide category options
+const showCategoryOptions = ref(false)
+
+// Available categories
+const parentCategories = ['Walls', 'Floors', 'Roofs']
+
+const childCategories = [
+  'Structural Framing',
+  'Structural Connections',
+  'Windows',
+  'Doors',
+  'Ducts',
+  'Pipes',
+  'Cable Trays',
+  'Conduits',
+  'Lighting Fixtures'
 ]
 
-const defaultChildColumns = [
-  { field: 'id', header: 'ID', visible: true, order: 0 },
-  { field: 'category', header: 'Category', visible: true, order: 1 },
-  { field: 'mark', header: 'Mark', visible: true, order: 2 },
-  { field: 'host', header: 'Host', visible: true, order: 3 },
-  { field: 'comment', header: 'Comment', visible: true, order: 4 }
-]
+const selectedParentCategories = ref<string[]>([])
+const selectedChildCategories = ref<string[]>([])
+
+// Use the flexible elements data hook
+const { scheduleData, updateCategories } = useElementsData()
+
+const toggleParentCategory = (category: string) => {
+  const index = selectedParentCategories.value.indexOf(category)
+  if (index === -1) {
+    selectedParentCategories.value.push(category)
+  } else {
+    selectedParentCategories.value.splice(index, 1)
+  }
+  updateCategories(selectedParentCategories.value, selectedChildCategories.value)
+}
+
+const toggleChildCategory = (category: string) => {
+  const index = selectedChildCategories.value.indexOf(category)
+  if (index === -1) {
+    selectedChildCategories.value.push(category)
+  } else {
+    selectedChildCategories.value.splice(index, 1)
+  }
+  updateCategories(selectedParentCategories.value, selectedChildCategories.value)
+}
 
 // Table columns with settings
 const tableColumns = computed(() => {

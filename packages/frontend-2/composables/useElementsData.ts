@@ -2,51 +2,57 @@ import { ref, computed, watch } from 'vue'
 import { useRootNodes } from '~/components/viewer/composables/useRootNodes'
 
 export function useElementsData() {
-  const wallsMap = ref(new Map())
-  const beamsList = ref([])
+  const elementsMap = ref(new Map())
+  const childElementsList = ref([])
+  const selectedParentCategories = ref<string[]>([])
+  const selectedChildCategories = ref<string[]>([])
   const { rootNodes } = useRootNodes()
+
+  function getElementCategory(node: any): string {
+    return (
+      node.raw.Other?.Category ||
+      node.raw.speckle_type ||
+      node.raw.type ||
+      'Uncategorized'
+    )
+  }
 
   function processElements(rootNodes: any[]) {
     function traverse(node: any) {
-      if (!node) return
+      if (!node?.raw) return
 
-      if (node.raw?.type === 'IFCWALLSTANDARDCASE') {
-        const wallMark = node.raw['Identity Data']?.Mark
-        if (wallMark) {
-          wallsMap.value.set(wallMark, {
+      const category = getElementCategory(node)
+
+      // Process parent elements
+      if (selectedParentCategories.value.includes(category)) {
+        const elementMark = node.raw['Identity Data']?.Mark
+        if (elementMark) {
+          elementsMap.value.set(elementMark, {
             id: node.raw.id,
             type: node.raw.type,
-            mark: wallMark,
+            mark: elementMark,
             name: node.raw.Name,
-            // Look for category in Other group, then fall back to speckle_type
-            category:
-              node.raw.Other?.Category || node.raw.speckle_type || 'Uncategorized'
+            category
           })
         }
       }
 
-      if (node.raw?.type === 'IFCBEAM') {
-        beamsList.value.push({
+      // Process child elements only if child categories are selected
+      if (
+        selectedChildCategories.value.length > 0 &&
+        selectedChildCategories.value.includes(category)
+      ) {
+        childElementsList.value.push({
           id: node.raw.id,
           type: node.raw.type,
           mark: node.raw['Identity Data']?.Mark,
           name: node.raw.Name,
           host: node.raw.Constraints?.Host,
-          // Look for category in Other group, then fall back to speckle_type
-          category: node.raw.Other?.Category || node.raw.speckle_type || 'Uncategorized'
+          category
         })
       }
 
-      // Debug the raw node data
-      if (node.raw?.type === 'IFCBEAM' || node.raw?.type === 'IFCWALLSTANDARDCASE') {
-        console.log(`Element type ${node.raw.type}:`, {
-          category: node.raw.Other?.Category,
-          speckle_type: node.raw.speckle_type,
-          raw: node.raw
-        })
-      }
-
-      // Traverse all possible children
+      // Traverse children
       if (node.children) {
         node.children.forEach((child: any) => traverse(child))
       }
@@ -55,73 +61,105 @@ export function useElementsData() {
       }
     }
 
-    // Clear previous data
-    wallsMap.value.clear()
-    beamsList.value = []
+    // Clear existing data
+    elementsMap.value.clear()
+    childElementsList.value = []
 
-    // Process nodes
-    if (rootNodes) {
+    // Process nodes if parent categories are selected
+    if (rootNodes && selectedParentCategories.value.length > 0) {
       rootNodes.forEach((node) => traverse(node.rawNode))
     }
   }
 
+  const updateCategories = (parentCategories: string[], childCategories: string[]) => {
+    selectedParentCategories.value = parentCategories
+    selectedChildCategories.value = childCategories
+
+    if (rootNodes.value) {
+      processElements(rootNodes.value)
+    }
+  }
+
+  const scheduleData = computed(() => {
+    const parentsWithChildren = Array.from(elementsMap.value.values()).map((parent) => {
+      const baseElement = {
+        id: parent.id,
+        category: parent.category,
+        mark: parent.mark || 'No Mark',
+        host: 'N/A',
+        comment: parent.name || ''
+      }
+
+      // Only add details if child categories are selected
+      if (selectedChildCategories.value.length > 0) {
+        return {
+          ...baseElement,
+          details: childElementsList.value
+            .filter((child) => child.host === parent.mark)
+            .map((child) => ({
+              id: child.id,
+              category: child.category,
+              mark: child.mark || 'No Mark',
+              host: parent.mark,
+              comment: child.name || ''
+            }))
+        }
+      }
+
+      return baseElement
+    })
+
+    let result = [...parentsWithChildren]
+
+    // Only process unattached children if child categories are selected
+    if (selectedChildCategories.value.length > 0) {
+      const unattachedChildren = childElementsList.value
+        .filter(
+          (child) =>
+            !child.host || !Array.from(elementsMap.value.keys()).includes(child.host)
+        )
+        .map((child) => ({
+          id: child.id,
+          category: child.category,
+          mark: child.mark || 'No Mark',
+          host: 'No Host',
+          comment: child.name || '',
+          details: []
+        }))
+
+      result = [...result, ...unattachedChildren]
+    }
+
+    const unmarkedParents = Array.from(elementsMap.value.values())
+      .filter((parent) => !parent.mark)
+      .map((parent) => ({
+        id: parent.id,
+        category: parent.category,
+        mark: 'No Mark',
+        host: 'N/A',
+        comment: parent.name || '',
+        details: []
+      }))
+
+    return [...result, ...unmarkedParents]
+  })
+
+  // Watch for root nodes changes
   watch(
     rootNodes,
     (newRootNodes) => {
-      if (!newRootNodes) {
-        console.error('No rootNodes found.')
-        return
+      if (newRootNodes && selectedParentCategories.value.length > 0) {
+        processElements(newRootNodes)
       }
-
-      processElements(newRootNodes)
     },
     { immediate: true }
   )
 
-  const processedData = computed(() => {
-    const allWalls = Array.from(wallsMap.value.values()).map((wall) => ({
-      id: wall.id,
-      category: wall.category || 'Uncategorized',
-      mark: wall.mark || 'No Mark',
-      host: 'N/A',
-      comment: wall.name || ''
-    }))
-
-    const allBeams = beamsList.value.map((beam) => ({
-      id: beam.id,
-      category: beam.category || 'Uncategorized',
-      mark: beam.mark || 'No Mark',
-      host: beam.host || 'No Host',
-      comment: beam.name || ''
-    }))
-
-    const wallBeamStructure = allWalls.map((wall) => ({
-      ...wall,
-      details: allBeams.filter((beam) => beam.host === wall.mark)
-    }))
-
-    const unattachedBeams = allBeams.filter(
-      (beam) => !beam.host || !allWalls.some((wall) => wall.mark === beam.host)
-    )
-
-    if (unattachedBeams.length > 0) {
-      wallBeamStructure.push({
-        id: 'unattached',
-        category: 'Various',
-        mark: 'No Host',
-        host: 'N/A',
-        comment: 'Unattached Elements',
-        details: unattachedBeams
-      })
-    }
-
-    return wallBeamStructure
-  })
-
   return {
-    scheduleData: processedData,
-    wallsMap,
-    beamsList,
+    scheduleData,
+    updateCategories,
+    elementsMap,
+    childElementsList,
     processElements
   }
 }
