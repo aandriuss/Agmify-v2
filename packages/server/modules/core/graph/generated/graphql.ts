@@ -525,6 +525,18 @@ export type BranchUpdateInput = {
   streamId: Scalars['String']['input'];
 };
 
+/** Category filters for the table */
+export type CategoryFilters = {
+  __typename?: 'CategoryFilters';
+  selectedChildCategories: Array<Scalars['String']['output']>;
+  selectedParentCategories: Array<Scalars['String']['output']>;
+};
+
+export type CategoryFiltersInput = {
+  selectedChildCategories: Array<Scalars['String']['input']>;
+  selectedParentCategories: Array<Scalars['String']['input']>;
+};
+
 export type Comment = {
   __typename?: 'Comment';
   archived: Scalars['Boolean']['output'];
@@ -834,6 +846,12 @@ export type CreateModelInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
   projectId: Scalars['ID']['input'];
+};
+
+export type CreateNamedTableInput = {
+  categoryFilters?: InputMaybe<CategoryFiltersInput>;
+  config: TableConfigInput;
+  name: Scalars['String']['input'];
 };
 
 export type CreateUserEmailInput = {
@@ -1271,6 +1289,10 @@ export type Mutation = {
    * @deprecated Part of the old API surface and will be removed in the future. Use VersionMutations.moveToModel instead.
    */
   commitsMove: Scalars['Boolean']['output'];
+  /** Create a new named table configuration */
+  createNamedTable: NamedTableConfig;
+  /** Delete a named table configuration */
+  deleteNamedTable: Scalars['Boolean']['output'];
   /**
    * Delete a pending invite
    * Note: The required scope to invoke this is not given out to app or personal access tokens
@@ -1359,6 +1381,8 @@ export type Mutation = {
   streamUpdatePermission?: Maybe<Scalars['Boolean']['output']>;
   /** @deprecated Part of the old API surface and will be removed in the future. Use ProjectMutations.batchDelete instead. */
   streamsDelete: Scalars['Boolean']['output'];
+  /** Update an existing named table configuration */
+  updateNamedTable: NamedTableConfig;
   /**
    * Used for broadcasting real time typing status in comment threads. Does not persist any info.
    * @deprecated Use broadcastViewerUserActivity
@@ -1515,6 +1539,16 @@ export type MutationCommitsMoveArgs = {
 };
 
 
+export type MutationCreateNamedTableArgs = {
+  input: CreateNamedTableInput;
+};
+
+
+export type MutationDeleteNamedTableArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationInviteDeleteArgs = {
   inviteId: Scalars['String']['input'];
 };
@@ -1626,6 +1660,11 @@ export type MutationStreamsDeleteArgs = {
 };
 
 
+export type MutationUpdateNamedTableArgs = {
+  input: UpdateNamedTableInput;
+};
+
+
 export type MutationUserCommentThreadActivityBroadcastArgs = {
   commentId: Scalars['String']['input'];
   data?: InputMaybe<Scalars['JSONObject']['input']>;
@@ -1677,6 +1716,15 @@ export type MutationWebhookDeleteArgs = {
 
 export type MutationWebhookUpdateArgs = {
   webhook: WebhookUpdateInput;
+};
+
+/** Named table configuration with additional metadata */
+export type NamedTableConfig = {
+  __typename?: 'NamedTableConfig';
+  categoryFilters?: Maybe<CategoryFilters>;
+  config: TableConfig;
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
 };
 
 export type Object = {
@@ -2460,6 +2508,10 @@ export type Query = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   discoverableStreams?: Maybe<StreamCollection>;
+  /** Get a specific named table configuration */
+  namedTableConfig?: Maybe<NamedTableConfig>;
+  /** Get all named table configurations for the current user */
+  namedTableConfigs: Array<NamedTableConfig>;
   /** Get the (limited) profile information of another server user */
   otherUser?: Maybe<LimitedUser>;
   /**
@@ -2592,6 +2644,11 @@ export type QueryDiscoverableStreamsArgs = {
   cursor?: InputMaybe<Scalars['String']['input']>;
   limit?: Scalars['Int']['input'];
   sort?: InputMaybe<DiscoverableStreamsSortingInput>;
+};
+
+
+export type QueryNamedTableConfigArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -3356,6 +3413,38 @@ export type SubscriptionViewerUserActivityBroadcastedArgs = {
   target: ViewerUpdateTrackingTarget;
 };
 
+/** Column configuration for tables */
+export type TableColumn = {
+  __typename?: 'TableColumn';
+  field: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  order: Scalars['Int']['output'];
+  removable?: Maybe<Scalars['Boolean']['output']>;
+  visible: Scalars['Boolean']['output'];
+  width?: Maybe<Scalars['Int']['output']>;
+};
+
+export type TableColumnInput = {
+  field: Scalars['String']['input'];
+  header: Scalars['String']['input'];
+  order: Scalars['Int']['input'];
+  removable?: InputMaybe<Scalars['Boolean']['input']>;
+  visible: Scalars['Boolean']['input'];
+  width?: InputMaybe<Scalars['Int']['input']>;
+};
+
+/** Table configuration for storing parent and child columns */
+export type TableConfig = {
+  __typename?: 'TableConfig';
+  childColumns: Array<TableColumn>;
+  parentColumns: Array<TableColumn>;
+};
+
+export type TableConfigInput = {
+  childColumns: Array<TableColumnInput>;
+  parentColumns: Array<TableColumnInput>;
+};
+
 export type TestAutomationRun = {
   __typename?: 'TestAutomationRun';
   automationRunId: Scalars['String']['output'];
@@ -3415,6 +3504,13 @@ export type UpdateModelInput = {
   id: Scalars['ID']['input'];
   name?: InputMaybe<Scalars['String']['input']>;
   projectId: Scalars['ID']['input'];
+};
+
+export type UpdateNamedTableInput = {
+  categoryFilters?: InputMaybe<CategoryFiltersInput>;
+  config?: InputMaybe<TableConfigInput>;
+  id: Scalars['ID']['input'];
+  name?: InputMaybe<Scalars['String']['input']>;
 };
 
 /** Only non-null values will be updated */
@@ -4357,6 +4453,8 @@ export type ResolversTypes = {
   BranchCreateInput: BranchCreateInput;
   BranchDeleteInput: BranchDeleteInput;
   BranchUpdateInput: BranchUpdateInput;
+  CategoryFilters: ResolverTypeWrapper<CategoryFilters>;
+  CategoryFiltersInput: CategoryFiltersInput;
   Comment: ResolverTypeWrapper<CommentGraphQLReturn>;
   CommentActivityMessage: ResolverTypeWrapper<Omit<CommentActivityMessage, 'comment'> & { comment: ResolversTypes['Comment'] }>;
   CommentCollection: ResolverTypeWrapper<Omit<CommentCollection, 'items'> & { items: Array<ResolversTypes['Comment']> }>;
@@ -4381,6 +4479,7 @@ export type ResolversTypes = {
   CreateCommentInput: CreateCommentInput;
   CreateCommentReplyInput: CreateCommentReplyInput;
   CreateModelInput: CreateModelInput;
+  CreateNamedTableInput: CreateNamedTableInput;
   CreateUserEmailInput: CreateUserEmailInput;
   CreateVersionInput: CreateVersionInput;
   Currency: Currency;
@@ -4413,6 +4512,7 @@ export type ResolversTypes = {
   ModelsTreeItemCollection: ResolverTypeWrapper<Omit<ModelsTreeItemCollection, 'items'> & { items: Array<ResolversTypes['ModelsTreeItem']> }>;
   MoveVersionsInput: MoveVersionsInput;
   Mutation: ResolverTypeWrapper<{}>;
+  NamedTableConfig: ResolverTypeWrapper<NamedTableConfig>;
   Object: ResolverTypeWrapper<ObjectGraphQLReturn>;
   ObjectCollection: ResolverTypeWrapper<Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversTypes['Object']> }>;
   ObjectCreateInput: ObjectCreateInput;
@@ -4499,6 +4599,10 @@ export type ResolversTypes = {
   StreamUpdatePermissionInput: StreamUpdatePermissionInput;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
   Subscription: ResolverTypeWrapper<{}>;
+  TableColumn: ResolverTypeWrapper<TableColumn>;
+  TableColumnInput: TableColumnInput;
+  TableConfig: ResolverTypeWrapper<TableConfig>;
+  TableConfigInput: TableConfigInput;
   TestAutomationRun: ResolverTypeWrapper<TestAutomationRun>;
   TestAutomationRunTrigger: ResolverTypeWrapper<TestAutomationRunTrigger>;
   TestAutomationRunTriggerPayload: ResolverTypeWrapper<TestAutomationRunTriggerPayload>;
@@ -4508,6 +4612,7 @@ export type ResolversTypes = {
   TriggeredAutomationsStatus: ResolverTypeWrapper<TriggeredAutomationsStatusGraphQLReturn>;
   UpdateAutomateFunctionInput: UpdateAutomateFunctionInput;
   UpdateModelInput: UpdateModelInput;
+  UpdateNamedTableInput: UpdateNamedTableInput;
   UpdateVersionInput: UpdateVersionInput;
   User: ResolverTypeWrapper<UserGraphQLReturn>;
   UserAutomateInfo: ResolverTypeWrapper<UserAutomateInfoGraphQLReturn>;
@@ -4617,6 +4722,8 @@ export type ResolversParentTypes = {
   BranchCreateInput: BranchCreateInput;
   BranchDeleteInput: BranchDeleteInput;
   BranchUpdateInput: BranchUpdateInput;
+  CategoryFilters: CategoryFilters;
+  CategoryFiltersInput: CategoryFiltersInput;
   Comment: CommentGraphQLReturn;
   CommentActivityMessage: Omit<CommentActivityMessage, 'comment'> & { comment: ResolversParentTypes['Comment'] };
   CommentCollection: Omit<CommentCollection, 'items'> & { items: Array<ResolversParentTypes['Comment']> };
@@ -4641,6 +4748,7 @@ export type ResolversParentTypes = {
   CreateCommentInput: CreateCommentInput;
   CreateCommentReplyInput: CreateCommentReplyInput;
   CreateModelInput: CreateModelInput;
+  CreateNamedTableInput: CreateNamedTableInput;
   CreateUserEmailInput: CreateUserEmailInput;
   CreateVersionInput: CreateVersionInput;
   DateTime: Scalars['DateTime']['output'];
@@ -4671,6 +4779,7 @@ export type ResolversParentTypes = {
   ModelsTreeItemCollection: Omit<ModelsTreeItemCollection, 'items'> & { items: Array<ResolversParentTypes['ModelsTreeItem']> };
   MoveVersionsInput: MoveVersionsInput;
   Mutation: {};
+  NamedTableConfig: NamedTableConfig;
   Object: ObjectGraphQLReturn;
   ObjectCollection: Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversParentTypes['Object']> };
   ObjectCreateInput: ObjectCreateInput;
@@ -4743,6 +4852,10 @@ export type ResolversParentTypes = {
   StreamUpdatePermissionInput: StreamUpdatePermissionInput;
   String: Scalars['String']['output'];
   Subscription: {};
+  TableColumn: TableColumn;
+  TableColumnInput: TableColumnInput;
+  TableConfig: TableConfig;
+  TableConfigInput: TableConfigInput;
   TestAutomationRun: TestAutomationRun;
   TestAutomationRunTrigger: TestAutomationRunTrigger;
   TestAutomationRunTriggerPayload: TestAutomationRunTriggerPayload;
@@ -4751,6 +4864,7 @@ export type ResolversParentTypes = {
   TriggeredAutomationsStatus: TriggeredAutomationsStatusGraphQLReturn;
   UpdateAutomateFunctionInput: UpdateAutomateFunctionInput;
   UpdateModelInput: UpdateModelInput;
+  UpdateNamedTableInput: UpdateNamedTableInput;
   UpdateVersionInput: UpdateVersionInput;
   User: UserGraphQLReturn;
   UserAutomateInfo: UserAutomateInfoGraphQLReturn;
@@ -5131,6 +5245,12 @@ export type BranchCollectionResolvers<ContextType = GraphQLContext, ParentType e
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type CategoryFiltersResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['CategoryFilters'] = ResolversParentTypes['CategoryFilters']> = {
+  selectedChildCategories?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  selectedParentCategories?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type CommentResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['Comment'] = ResolversParentTypes['Comment']> = {
   archived?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   author?: Resolver<ResolversTypes['LimitedUser'], ParentType, ContextType>;
@@ -5398,6 +5518,8 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   commitUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitUpdateArgs, 'commit'>>;
   commitsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsDeleteArgs, 'input'>>;
   commitsMove?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsMoveArgs, 'input'>>;
+  createNamedTable?: Resolver<ResolversTypes['NamedTableConfig'], ParentType, ContextType, RequireFields<MutationCreateNamedTableArgs, 'input'>>;
+  deleteNamedTable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteNamedTableArgs, 'id'>>;
   inviteDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationInviteDeleteArgs, 'inviteId'>>;
   inviteResend?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationInviteResendArgs, 'inviteId'>>;
   modelMutations?: Resolver<ResolversTypes['ModelMutations'], ParentType, ContextType>;
@@ -5422,6 +5544,7 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   streamUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationStreamUpdateArgs, 'stream'>>;
   streamUpdatePermission?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationStreamUpdatePermissionArgs, 'permissionParams'>>;
   streamsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, Partial<MutationStreamsDeleteArgs>>;
+  updateNamedTable?: Resolver<ResolversTypes['NamedTableConfig'], ParentType, ContextType, RequireFields<MutationUpdateNamedTableArgs, 'input'>>;
   userCommentThreadActivityBroadcast?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserCommentThreadActivityBroadcastArgs, 'commentId' | 'streamId'>>;
   userDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserDeleteArgs, 'userConfirmation'>>;
   userNotificationPreferencesUpdate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationUserNotificationPreferencesUpdateArgs, 'preferences'>>;
@@ -5434,6 +5557,14 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   webhookDelete?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<MutationWebhookDeleteArgs, 'webhook'>>;
   webhookUpdate?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<MutationWebhookUpdateArgs, 'webhook'>>;
   workspaceMutations?: Resolver<ResolversTypes['WorkspaceMutations'], ParentType, ContextType>;
+};
+
+export type NamedTableConfigResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['NamedTableConfig'] = ResolversParentTypes['NamedTableConfig']> = {
+  categoryFilters?: Resolver<Maybe<ResolversTypes['CategoryFilters']>, ParentType, ContextType>;
+  config?: Resolver<ResolversTypes['TableConfig'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export type ObjectResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['Object'] = ResolversParentTypes['Object']> = {
@@ -5699,6 +5830,8 @@ export type QueryResolvers<ContextType = GraphQLContext, ParentType extends Reso
   comment?: Resolver<Maybe<ResolversTypes['Comment']>, ParentType, ContextType, RequireFields<QueryCommentArgs, 'id' | 'streamId'>>;
   comments?: Resolver<Maybe<ResolversTypes['CommentCollection']>, ParentType, ContextType, RequireFields<QueryCommentsArgs, 'archived' | 'limit' | 'streamId'>>;
   discoverableStreams?: Resolver<Maybe<ResolversTypes['StreamCollection']>, ParentType, ContextType, RequireFields<QueryDiscoverableStreamsArgs, 'limit'>>;
+  namedTableConfig?: Resolver<Maybe<ResolversTypes['NamedTableConfig']>, ParentType, ContextType, RequireFields<QueryNamedTableConfigArgs, 'id'>>;
+  namedTableConfigs?: Resolver<Array<ResolversTypes['NamedTableConfig']>, ParentType, ContextType>;
   otherUser?: Resolver<Maybe<ResolversTypes['LimitedUser']>, ParentType, ContextType, RequireFields<QueryOtherUserArgs, 'id'>>;
   project?: Resolver<ResolversTypes['Project'], ParentType, ContextType, RequireFields<QueryProjectArgs, 'id'>>;
   projectInvite?: Resolver<Maybe<ResolversTypes['PendingStreamCollaborator']>, ParentType, ContextType, RequireFields<QueryProjectInviteArgs, 'projectId'>>;
@@ -5940,6 +6073,22 @@ export type SubscriptionResolvers<ContextType = GraphQLContext, ParentType exten
   userStreamRemoved?: SubscriptionResolver<Maybe<ResolversTypes['JSONObject']>, "userStreamRemoved", ParentType, ContextType>;
   userViewerActivity?: SubscriptionResolver<Maybe<ResolversTypes['JSONObject']>, "userViewerActivity", ParentType, ContextType, RequireFields<SubscriptionUserViewerActivityArgs, 'resourceId' | 'streamId'>>;
   viewerUserActivityBroadcasted?: SubscriptionResolver<ResolversTypes['ViewerUserActivityMessage'], "viewerUserActivityBroadcasted", ParentType, ContextType, RequireFields<SubscriptionViewerUserActivityBroadcastedArgs, 'target'>>;
+};
+
+export type TableColumnResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableColumn'] = ResolversParentTypes['TableColumn']> = {
+  field?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  header?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  order?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  removable?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
+  visible?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  width?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type TableConfigResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableConfig'] = ResolversParentTypes['TableConfig']> = {
+  childColumns?: Resolver<Array<ResolversTypes['TableColumn']>, ParentType, ContextType>;
+  parentColumns?: Resolver<Array<ResolversTypes['TableColumn']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export type TestAutomationRunResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TestAutomationRun'] = ResolversParentTypes['TestAutomationRun']> = {
@@ -6302,6 +6451,7 @@ export type Resolvers<ContextType = GraphQLContext> = {
   BlobMetadataCollection?: BlobMetadataCollectionResolvers<ContextType>;
   Branch?: BranchResolvers<ContextType>;
   BranchCollection?: BranchCollectionResolvers<ContextType>;
+  CategoryFilters?: CategoryFiltersResolvers<ContextType>;
   Comment?: CommentResolvers<ContextType>;
   CommentActivityMessage?: CommentActivityMessageResolvers<ContextType>;
   CommentCollection?: CommentCollectionResolvers<ContextType>;
@@ -6326,6 +6476,7 @@ export type Resolvers<ContextType = GraphQLContext> = {
   ModelsTreeItem?: ModelsTreeItemResolvers<ContextType>;
   ModelsTreeItemCollection?: ModelsTreeItemCollectionResolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
+  NamedTableConfig?: NamedTableConfigResolvers<ContextType>;
   Object?: ObjectResolvers<ContextType>;
   ObjectCollection?: ObjectCollectionResolvers<ContextType>;
   PasswordStrengthCheckFeedback?: PasswordStrengthCheckFeedbackResolvers<ContextType>;
@@ -6373,6 +6524,8 @@ export type Resolvers<ContextType = GraphQLContext> = {
   StreamCollaborator?: StreamCollaboratorResolvers<ContextType>;
   StreamCollection?: StreamCollectionResolvers<ContextType>;
   Subscription?: SubscriptionResolvers<ContextType>;
+  TableColumn?: TableColumnResolvers<ContextType>;
+  TableConfig?: TableConfigResolvers<ContextType>;
   TestAutomationRun?: TestAutomationRunResolvers<ContextType>;
   TestAutomationRunTrigger?: TestAutomationRunTriggerResolvers<ContextType>;
   TestAutomationRunTriggerPayload?: TestAutomationRunTriggerPayloadResolvers<ContextType>;

@@ -1,4 +1,4 @@
-import { ref, watch, computed } from 'vue'
+import { ref, watch, reactive } from 'vue'
 import { useMutation, useQuery } from '@vue/apollo-composable'
 import gql from 'graphql-tag'
 
@@ -16,13 +16,6 @@ const GET_USER_SETTINGS = gql`
   }
 `
 
-export interface UserSettings {
-  controlsWidth?: number
-  tables?: {
-    [tableId: string]: TableConfig
-  }
-}
-
 export interface ColumnConfig {
   field: string
   header: string
@@ -37,79 +30,132 @@ export interface TableConfig {
   childColumns: ColumnConfig[]
 }
 
+export interface NamedTableConfig {
+  id: string
+  name: string
+  parentColumns: ColumnConfig[]
+  childColumns: ColumnConfig[]
+  categoryFilters?: {
+    selectedParentCategories: string[]
+    selectedChildCategories: string[]
+  }
+}
+
+export interface UserSettings {
+  controlsWidth?: number
+  tables?: Record<string, TableConfig>
+  namedTables?: Record<string, NamedTableConfig>
+}
+
 export function useUserSettings(tableId?: string) {
   const parentTableConfig = ref<ColumnConfig[]>([])
   const childTableConfig = ref<ColumnConfig[]>([])
   const { mutate: updateSettingsMutation } = useMutation(UPDATE_USER_SETTINGS)
   const { result, loading } = useQuery(GET_USER_SETTINGS)
 
-  const settings = computed(() => {
-    const settingsValue = result.value?.activeUser?.userSettings
-    console.log('Settings computed:', settingsValue)
-    return settingsValue || {}
-  })
+  const settings = ref<UserSettings>({ tables: {}, namedTables: {} })
 
-  // Load settings
-  const loadSettings = () => {
-    if (!loading.value && result.value?.activeUser?.userSettings) {
-      if (tableId) {
-        const tableSettings = result.value.activeUser.userSettings?.tables?.[tableId]
+  // Load settings from the query result
+  watch(
+    () => result.value?.activeUser?.userSettings,
+    (newSettings) => {
+      if (newSettings) {
+        settings.value = { ...settings.value, ...newSettings }
+        console.log('Loaded settings:', settings.value)
+      }
+    },
+    { immediate: true }
+  )
 
-        // Load parent columns
-        const savedParentConfig = tableSettings?.parentColumns
-        if (savedParentConfig && Array.isArray(savedParentConfig)) {
-          parentTableConfig.value = [...savedParentConfig].sort(
-            (a, b) => a.order - b.order
-          )
-        }
-
-        // Load child columns
-        const savedChildConfig = tableSettings?.childColumns
-        if (savedChildConfig && Array.isArray(savedChildConfig)) {
-          childTableConfig.value = [...savedChildConfig].sort(
-            (a, b) => a.order - b.order
-          )
+  const createNamedTable = async (
+    name: string,
+    initialConfig?: Partial<TableConfig>
+  ) => {
+    try {
+      const newTableId = crypto.randomUUID()
+      const newNamedTable = {
+        id: newTableId,
+        name,
+        parentColumns: initialConfig?.parentColumns || [],
+        childColumns: initialConfig?.childColumns || [],
+        categoryFilters: {
+          selectedParentCategories: [],
+          selectedChildCategories: []
         }
       }
+
+      // Add the new named table to settings
+      settings.value.namedTables = {
+        ...settings.value.namedTables,
+        [newTableId]: newNamedTable
+      }
+
+      // Save the updated settings
+      await updateSettingsMutation({
+        settings: settings.value
+      })
+
+      return newTableId
+    } catch (error) {
+      console.error('Error creating named table:', error)
+      throw error
     }
   }
 
-  // Save settings with GraphQL mutation
-  const saveSettings = async (newTableConfig: Partial<TableConfig>) => {
+  const updateNamedTable = async (
+    tableId: string,
+    updates: Partial<NamedTableConfig>
+  ) => {
     try {
-      const currentSettings = settings.value || {}
-
-      // Create a complete table config that includes both column types
-      const updatedTableConfig = {
-        ...(currentSettings.tables?.[tableId] || {}),
-        ...(newTableConfig.parentColumns
-          ? { parentColumns: newTableConfig.parentColumns }
-          : {}),
-        ...(newTableConfig.childColumns
-          ? { childColumns: newTableConfig.childColumns }
-          : {})
+      if (!settings.value.namedTables || !settings.value.namedTables[tableId]) {
+        throw new Error('Table not found')
       }
 
-      const newSettings = {
-        ...currentSettings,
-        tables: {
-          ...currentSettings.tables,
-          [tableId]: updatedTableConfig
-        }
+      settings.value.namedTables[tableId] = {
+        ...settings.value.namedTables[tableId],
+        ...updates
       }
 
-      const result = await updateSettingsMutation({
-        settings: newSettings
+      await updateSettingsMutation({
+        settings: settings.value
       })
+    } catch (error) {
+      console.error('Error updating named table:', error)
+      throw error
+    }
+  }
 
-      // Update both local refs after successful save
-      if (newTableConfig.parentColumns) {
-        parentTableConfig.value = [...newTableConfig.parentColumns]
-      }
-      if (newTableConfig.childColumns) {
-        childTableConfig.value = [...newTableConfig.childColumns]
-      }
+  const deleteNamedTable = async (tableId: string) => {
+    try {
+      if (!settings.value.namedTables) return
 
+      const { [tableId]: _, ...remainingTables } = settings.value.namedTables
+      settings.value.namedTables = remainingTables
+
+      await updateSettingsMutation({
+        settings: settings.value
+      })
+    } catch (error) {
+      console.error('Error deleting named table:', error)
+      throw error
+    }
+  }
+
+  const loadSettings = () => {
+    if (!loading.value && result.value?.activeUser?.userSettings) {
+      const settingsData = result.value.activeUser.userSettings
+      settings.value = { ...settings.value, ...settingsData }
+      console.log('Loaded settings data:', settings.value)
+    }
+  }
+
+  const saveSettings = async (newSettings) => {
+    try {
+      settings.value = { ...settings.value, ...newSettings }
+      const result = await updateSettingsMutation({
+        settings: settings.value
+      })
+      console.log('Mutation result:', result)
       return result
     } catch (error) {
       console.error('Error saving settings:', error)
@@ -117,54 +163,16 @@ export function useUserSettings(tableId?: string) {
     }
   }
 
-  // Update settings with GraphQL mutation
-  const updateSettings = async (newSettings: Partial<UserSettings>) => {
-    try {
-      const currentSettings = settings.value || {}
-      await updateSettingsMutation({
-        settings: {
-          // Remove the variables wrapper
-          ...currentSettings,
-          ...newSettings
-        }
-      })
-    } catch (error) {
-      console.error('Error updating settings:', error)
-      throw error
-    }
-  }
-
-  // Watch for parent columns changes
-  watch(
-    () => result.value?.activeUser?.userSettings?.tables?.[tableId]?.parentColumns,
-    (newColumns) => {
-      if (newColumns?.length > 0) {
-        console.log('Updating parent tableConfig:', newColumns)
-        parentTableConfig.value = [...newColumns].sort((a, b) => a.order - b.order)
-      }
-    },
-    { immediate: true }
-  )
-
-  // Watch for child columns changes
-  watch(
-    () => result.value?.activeUser?.userSettings?.tables?.[tableId]?.childColumns,
-    (newColumns) => {
-      if (newColumns?.length > 0) {
-        console.log('Updating child tableConfig:', newColumns)
-        childTableConfig.value = [...newColumns].sort((a, b) => a.order - b.order)
-      }
-    },
-    { immediate: true }
-  )
-
+  // Return only necessary data and functions
   return {
     parentTableConfig,
     childTableConfig,
     settings,
     loading,
     saveSettings,
-    updateSettings,
-    loadSettings
+    loadSettings,
+    createNamedTable,
+    updateNamedTable,
+    deleteNamedTable
   }
 }

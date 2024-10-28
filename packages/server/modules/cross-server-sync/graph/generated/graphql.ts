@@ -509,6 +509,18 @@ export type BranchUpdateInput = {
   streamId: Scalars['String']['input'];
 };
 
+/** Category filters for the table */
+export type CategoryFilters = {
+  __typename?: 'CategoryFilters';
+  selectedChildCategories: Array<Scalars['String']['output']>;
+  selectedParentCategories: Array<Scalars['String']['output']>;
+};
+
+export type CategoryFiltersInput = {
+  selectedChildCategories: Array<Scalars['String']['input']>;
+  selectedParentCategories: Array<Scalars['String']['input']>;
+};
+
 export type Comment = {
   __typename?: 'Comment';
   archived: Scalars['Boolean']['output'];
@@ -818,6 +830,12 @@ export type CreateModelInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
   projectId: Scalars['ID']['input'];
+};
+
+export type CreateNamedTableInput = {
+  categoryFilters?: InputMaybe<CategoryFiltersInput>;
+  config: TableConfigInput;
+  name: Scalars['String']['input'];
 };
 
 export type CreateUserEmailInput = {
@@ -1255,6 +1273,10 @@ export type Mutation = {
    * @deprecated Part of the old API surface and will be removed in the future. Use VersionMutations.moveToModel instead.
    */
   commitsMove: Scalars['Boolean']['output'];
+  /** Create a new named table configuration */
+  createNamedTable: NamedTableConfig;
+  /** Delete a named table configuration */
+  deleteNamedTable: Scalars['Boolean']['output'];
   /**
    * Delete a pending invite
    * Note: The required scope to invoke this is not given out to app or personal access tokens
@@ -1343,6 +1365,8 @@ export type Mutation = {
   streamUpdatePermission?: Maybe<Scalars['Boolean']['output']>;
   /** @deprecated Part of the old API surface and will be removed in the future. Use ProjectMutations.batchDelete instead. */
   streamsDelete: Scalars['Boolean']['output'];
+  /** Update an existing named table configuration */
+  updateNamedTable: NamedTableConfig;
   /**
    * Used for broadcasting real time typing status in comment threads. Does not persist any info.
    * @deprecated Use broadcastViewerUserActivity
@@ -1499,6 +1523,16 @@ export type MutationCommitsMoveArgs = {
 };
 
 
+export type MutationCreateNamedTableArgs = {
+  input: CreateNamedTableInput;
+};
+
+
+export type MutationDeleteNamedTableArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationInviteDeleteArgs = {
   inviteId: Scalars['String']['input'];
 };
@@ -1610,6 +1644,11 @@ export type MutationStreamsDeleteArgs = {
 };
 
 
+export type MutationUpdateNamedTableArgs = {
+  input: UpdateNamedTableInput;
+};
+
+
 export type MutationUserCommentThreadActivityBroadcastArgs = {
   commentId: Scalars['String']['input'];
   data?: InputMaybe<Scalars['JSONObject']['input']>;
@@ -1661,6 +1700,15 @@ export type MutationWebhookDeleteArgs = {
 
 export type MutationWebhookUpdateArgs = {
   webhook: WebhookUpdateInput;
+};
+
+/** Named table configuration with additional metadata */
+export type NamedTableConfig = {
+  __typename?: 'NamedTableConfig';
+  categoryFilters?: Maybe<CategoryFilters>;
+  config: TableConfig;
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
 };
 
 export type Object = {
@@ -2444,6 +2492,10 @@ export type Query = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   discoverableStreams?: Maybe<StreamCollection>;
+  /** Get a specific named table configuration */
+  namedTableConfig?: Maybe<NamedTableConfig>;
+  /** Get all named table configurations for the current user */
+  namedTableConfigs: Array<NamedTableConfig>;
   /** Get the (limited) profile information of another server user */
   otherUser?: Maybe<LimitedUser>;
   /**
@@ -2576,6 +2628,11 @@ export type QueryDiscoverableStreamsArgs = {
   cursor?: InputMaybe<Scalars['String']['input']>;
   limit?: Scalars['Int']['input'];
   sort?: InputMaybe<DiscoverableStreamsSortingInput>;
+};
+
+
+export type QueryNamedTableConfigArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -3340,6 +3397,38 @@ export type SubscriptionViewerUserActivityBroadcastedArgs = {
   target: ViewerUpdateTrackingTarget;
 };
 
+/** Column configuration for tables */
+export type TableColumn = {
+  __typename?: 'TableColumn';
+  field: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  order: Scalars['Int']['output'];
+  removable?: Maybe<Scalars['Boolean']['output']>;
+  visible: Scalars['Boolean']['output'];
+  width?: Maybe<Scalars['Int']['output']>;
+};
+
+export type TableColumnInput = {
+  field: Scalars['String']['input'];
+  header: Scalars['String']['input'];
+  order: Scalars['Int']['input'];
+  removable?: InputMaybe<Scalars['Boolean']['input']>;
+  visible: Scalars['Boolean']['input'];
+  width?: InputMaybe<Scalars['Int']['input']>;
+};
+
+/** Table configuration for storing parent and child columns */
+export type TableConfig = {
+  __typename?: 'TableConfig';
+  childColumns: Array<TableColumn>;
+  parentColumns: Array<TableColumn>;
+};
+
+export type TableConfigInput = {
+  childColumns: Array<TableColumnInput>;
+  parentColumns: Array<TableColumnInput>;
+};
+
 export type TestAutomationRun = {
   __typename?: 'TestAutomationRun';
   automationRunId: Scalars['String']['output'];
@@ -3399,6 +3488,13 @@ export type UpdateModelInput = {
   id: Scalars['ID']['input'];
   name?: InputMaybe<Scalars['String']['input']>;
   projectId: Scalars['ID']['input'];
+};
+
+export type UpdateNamedTableInput = {
+  categoryFilters?: InputMaybe<CategoryFiltersInput>;
+  config?: InputMaybe<TableConfigInput>;
+  id: Scalars['ID']['input'];
+  name?: InputMaybe<Scalars['String']['input']>;
 };
 
 /** Only non-null values will be updated */

@@ -1,0 +1,98 @@
+"""
+Table configuration for storing parent and child columns
+"""
+type TableConfig {
+  parentColumns: [TableColumn!]!
+  childColumns: [TableColumn!]!
+}
+
+"""
+Column configuration for tables
+"""
+type TableColumn {
+  field: String!
+  header: String!
+  width: Int
+  visible: Boolean!
+  removable: Boolean
+  order: Int!
+}
+
+"""
+Named table configuration with additional metadata
+"""
+type NamedTableConfig {
+  id: ID!
+  name: String!
+  config: TableConfig!
+  categoryFilters: CategoryFilters
+}
+
+"""
+Category filters for the table
+"""
+type CategoryFilters {
+  selectedParentCategories: [String!]!
+  selectedChildCategories: [String!]!
+}
+
+input TableColumnInput {
+  field: String!
+  header: String!
+  width: Int
+  visible: Boolean!
+  removable: Boolean
+  order: Int!
+}
+
+input TableConfigInput {
+  parentColumns: [TableColumnInput!]!
+  childColumns: [TableColumnInput!]!
+}
+
+input CategoryFiltersInput {
+  selectedParentCategories: [String!]!
+  selectedChildCategories: [String!]!
+}
+
+input CreateNamedTableInput {
+  name: String!
+  config: TableConfigInput!
+  categoryFilters: CategoryFiltersInput
+}
+
+input UpdateNamedTableInput {
+  id: ID!
+  name: String
+  config: TableConfigInput
+  categoryFilters: CategoryFiltersInput
+}
+
+extend type Query {
+  """
+  Get all named table configurations for the current user
+  """
+  namedTableConfigs: [NamedTableConfig!]!
+
+  """
+  Get a specific named table configuration
+  """
+  namedTableConfig(id: ID!): NamedTableConfig
+}
+
+extend type Mutation {
+  """
+  Create a new named table configuration
+  """
+  createNamedTable(input: CreateNamedTableInput!): NamedTableConfig!
+
+  """
+  Update an existing named table configuration
+  """
+  updateNamedTable(input: UpdateNamedTableInput!): NamedTableConfig!
+
+  """
+  Delete a named table configuration
+  """
+  deleteNamedTable(id: ID!): Boolean!
+}
