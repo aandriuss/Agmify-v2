@@ -1,7 +1,7 @@
 <template>
   <div>
     <Portal to="navigation">
-      <HeaderNavLink :to="'/downloads'" name="Speckle connectors"></HeaderNavLink>
+      <HeaderNavLink :to="'/downloads'" name="Agmify connectors"></HeaderNavLink>
     </Portal>
     <div
       class="flex flex-col md:flex-row space-y-2 space-x-2 justify-between mb-4 md:items-center"
@@ -9,7 +9,7 @@
       <div>
         <h5 class="text-heading-lg">Connector downloads</h5>
         <div class="text-sm text-foreground-2 max-w- max-w-sm">
-          Most of our connectors are available through Speckle Manager. You can also
+          Most of our connectors are available through Agmify Manager. You can also
           direct download the individual installers below.
         </div>
       </div>
@@ -58,7 +58,7 @@ import type { ConnectorTag, ConnectorVersion, Tag } from '~~/lib/connectors'
 import { MagnifyingGlassIcon } from '@heroicons/vue/24/solid'
 
 useHead({
-  title: 'Speckle Connectors'
+  title: 'Agmify Connectors'
 })
 
 const spacesEndpoint = 'https://releases.speckle.dev'

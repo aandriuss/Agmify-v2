@@ -4,7 +4,7 @@
       <div class="text-xs flex items-center space-x-2">
         <ShieldCheckIcon
           v-if="!tag.isCommunity"
-          v-tippy="'Made by Speckle'"
+          v-tippy="'Made by Agmify'"
           class="w-4 h-4 text-primary"
         />
         <GlobeEuropeAfricaIcon

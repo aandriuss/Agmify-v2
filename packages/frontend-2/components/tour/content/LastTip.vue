@@ -1,6 +1,6 @@
 <template>
   <div>
-    <p class="text-sm">There's much more to Speckle.</p>
+    <p class="text-sm">There's much more to Agmify.</p>
   </div>
 </template>
 <script setup lang="ts">

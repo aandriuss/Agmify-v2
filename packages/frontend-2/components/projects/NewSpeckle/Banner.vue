@@ -7,7 +7,7 @@
         <div class="h-8 w-8 flex items-center justify-center">
           <SparklesIcon class="h-5 w-5 text-primary" />
         </div>
-        <div class="text-foreground text-sm">Announcing the new Speckle web app</div>
+        <div class="text-foreground text-sm">Announcing the new Agmify web app</div>
       </div>
       <div class="flex gap-3">
         <FormButton color="primary" text @click="emit('dismissed')">Skip</FormButton>

@@ -75,7 +75,7 @@
               ]"
               @click="toggleInviteDialog"
             >
-              Invite to Speckle
+              Invite to Agmify
             </NuxtLink>
           </MenuItem>
           <MenuItem v-slot="{ active }">

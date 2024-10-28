@@ -151,7 +151,7 @@
                 external
                 target="_blank"
               >
-                Reply in Speckle
+                Reply in Agmify
               </FormButton>
             </div>
             <div

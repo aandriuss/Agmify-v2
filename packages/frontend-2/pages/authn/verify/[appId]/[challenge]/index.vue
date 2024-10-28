@@ -30,7 +30,7 @@
               />
               {{ app?.name }}
             </span>
-            wants to access your Speckle account.
+            wants to access your Agmify account.
           </div>
           <div v-if="!trustByDefault" class="w-full">
             <Disclosure v-slot="{ open }">
@@ -128,13 +128,13 @@
               <template v-if="action === ChosenAction.Allow">
                 <span class="font-medium text-primary">{{ app?.name }}</span>
                 is connected to your
-                <span class="font-medium">Speckle</span>
+                <span class="font-medium">Agmify</span>
                 account.
               </template>
               <template v-else>
                 <span class="font-medium text-primary">{{ app?.name }}</span>
                 has not been connected to your
-                <span class="font-medium">Speckle</span>
+                <span class="font-medium">Agmify</span>
                 account.
               </template>
             </template>

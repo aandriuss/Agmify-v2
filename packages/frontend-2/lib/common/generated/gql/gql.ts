@@ -128,6 +128,8 @@ const documents = {
     "\n  fragment SettingsWorkspacesSecurityDomainRemoveDialog_WorkspaceDomain on WorkspaceDomain {\n    id\n    domain\n  }\n": types.SettingsWorkspacesSecurityDomainRemoveDialog_WorkspaceDomainFragmentDoc,
     "\n  fragment SettingsWorkspacesSecurityDomainRemoveDialog_Workspace on Workspace {\n    id\n    domains {\n      ...SettingsWorkspacesSecurityDomainRemoveDialog_WorkspaceDomain\n    }\n  }\n": types.SettingsWorkspacesSecurityDomainRemoveDialog_WorkspaceFragmentDoc,
     "\n  fragment SettingsWorkspacesSecuritySso_Workspace on Workspace {\n    id\n    slug\n  }\n": types.SettingsWorkspacesSecuritySso_WorkspaceFragmentDoc,
+    "\n  mutation UpdateUserSettings($settings: JSONObject!) {\n    userSettingsUpdate(settings: $settings)\n  }\n": types.UpdateUserSettingsDocument,
+    "\n  query GetUserSettings {\n    activeUser {\n      userSettings\n    }\n  }\n": types.GetUserSettingsDocument,
     "\n  fragment ModelPageProject on Project {\n    id\n    createdAt\n    name\n    visibility\n    workspace {\n      id\n      slug\n      name\n    }\n  }\n": types.ModelPageProjectFragmentDoc,
     "\n  fragment ThreadCommentAttachment on Comment {\n    text {\n      attachments {\n        id\n        fileName\n        fileType\n        fileSize\n      }\n    }\n  }\n": types.ThreadCommentAttachmentFragmentDoc,
     "\n  fragment ViewerCommentsListItem on Comment {\n    id\n    rawText\n    archived\n    author {\n      ...LimitedUserAvatar\n    }\n    createdAt\n    viewedAt\n    replies {\n      totalCount\n      cursor\n      items {\n        ...ViewerCommentsReplyItem\n      }\n    }\n    replyAuthors(limit: 4) {\n      totalCount\n      items {\n        ...FormUsersSelectItem\n      }\n    }\n    resources {\n      resourceId\n      resourceType\n    }\n  }\n": types.ViewerCommentsListItemFragmentDoc,
@@ -814,6 +816,14 @@ export function graphql(source: "\n  fragment SettingsWorkspacesSecurityDomainRe
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function graphql(source: "\n  fragment SettingsWorkspacesSecuritySso_Workspace on Workspace {\n    id\n    slug\n  }\n"): (typeof documents)["\n  fragment SettingsWorkspacesSecuritySso_Workspace on Workspace {\n    id\n    slug\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  mutation UpdateUserSettings($settings: JSONObject!) {\n    userSettingsUpdate(settings: $settings)\n  }\n"): (typeof documents)["\n  mutation UpdateUserSettings($settings: JSONObject!) {\n    userSettingsUpdate(settings: $settings)\n  }\n"];
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "\n  query GetUserSettings {\n    activeUser {\n      userSettings\n    }\n  }\n"): (typeof documents)["\n  query GetUserSettings {\n    activeUser {\n      userSettings\n    }\n  }\n"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

@@ -125,7 +125,7 @@ const ghostContentApi = new GhostContentAPI({
 
 const quickStartItems = shallowRef<QuickStartItem[]>([
   {
-    title: 'Install Speckle manager',
+    title: 'Install Agmify manager',
     description: 'Use our Manager to install and manage Connectors with ease.',
     buttons: [
       {

@@ -3,7 +3,7 @@
     <template #header>Log in 🔑</template>
     <CommonVimeoEmbed
       vimeo-id="925894038"
-      title="Onboarding: Log in to your Speckle account"
+      title="Onboarding: Log in to your Agmify account"
       autoplay
       controls
     />

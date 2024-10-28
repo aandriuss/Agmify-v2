@@ -4,9 +4,9 @@
     <form @submit="onSubmit">
       <div class="flex flex-col gap-y-3 text-foreground mb-4">
         <p class="text-body-xs">
-          Speckle will send a server invite link to the email(-s) below. You can also
-          add a personal message if you want to. To add multiple e-mails, seperate them
-          with commas.
+          Agmify will send a server invite link to the email(-s) below. You can also add
+          a personal message if you want to. To add multiple e-mails, seperate them with
+          commas.
         </p>
         <FormTextInput
           name="emailsString"

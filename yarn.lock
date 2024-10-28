@@ -11549,6 +11549,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@interactjs/types@npm:1.10.27":
+  version: 1.10.27
+  resolution: "@interactjs/types@npm:1.10.27"
+  checksum: 10/0555e444f61e8dd0ea2251a301e2039b69037d02409f248ac5da0827928d855d3cea28b2770b73a9f72bfae947b6e06e6b6effe88a2c98c42e17444777aad4dd
+  languageName: node
+  linkType: hard
+
 "@ioredis/as-callback@npm:^3.0.0":
   version: 3.0.0
   resolution: "@ioredis/as-callback@npm:3.0.0"
@@ -13675,6 +13682,53 @@ __metadata:
   version: 2.11.5
   resolution: "@popperjs/core@npm:2.11.5"
   checksum: 10/c4cfebf1cd155691fc842b78aec4d4e6317f9ff34024d8d7ecab50c5ccbaaf20cd8e4b89e4f3a1b26017605bf8ea35fedb79fb5ff555df59ac9f8c53080cfe29
+  languageName: node
+  linkType: hard
+
+"@primeuix/styled@npm:^0.2.0":
+  version: 0.2.0
+  resolution: "@primeuix/styled@npm:0.2.0"
+  dependencies:
+    "@primeuix/utils": "npm:^0.2.0"
+  checksum: 10/2e1e5b16587837ec04c405728941b1cc9a53ed70639f31af6d5e6e9f923bc1b749bfb29df96ad6da154efa20700aa243035a4b10b72125229f4446ecb36e4b0e
+  languageName: node
+  linkType: hard
+
+"@primeuix/utils@npm:^0.2.0":
+  version: 0.2.0
+  resolution: "@primeuix/utils@npm:0.2.0"
+  checksum: 10/3ee70f64a3036afab183cec7b727e8cd78a03917912374e291bd9c45b532ed621bf577672e1ec4e990be59b50fec13c7d86b1cb4db3abb05ec6fcc79fb10371c
+  languageName: node
+  linkType: hard
+
+"@primevue/core@npm:4.1.1":
+  version: 4.1.1
+  resolution: "@primevue/core@npm:4.1.1"
+  dependencies:
+    "@primeuix/styled": "npm:^0.2.0"
+    "@primeuix/utils": "npm:^0.2.0"
+  peerDependencies:
+    vue: ^3.0.0
+  checksum: 10/8105e4a84655f1a6ba3d1c6763e8bff177322af89a29c296812a525da1fea6efd8132e00be874e8c9a23c5b4e07328f0b2910676c8d7a8b2d7fab3d622373bff
+  languageName: node
+  linkType: hard
+
+"@primevue/icons@npm:4.1.1":
+  version: 4.1.1
+  resolution: "@primevue/icons@npm:4.1.1"
+  dependencies:
+    "@primeuix/utils": "npm:^0.2.0"
+    "@primevue/core": "npm:4.1.1"
+  checksum: 10/91045ae4fed0796f094cab333ead107ec1b005e0e0e71b080702944732cc617611bb8acafcb54d74319116d12488376b5124e97a60843dbd5b6e64380044bc55
+  languageName: node
+  linkType: hard
+
+"@primevue/themes@npm:^4.1.1":
+  version: 4.1.1
+  resolution: "@primevue/themes@npm:4.1.1"
+  dependencies:
+    "@primeuix/styled": "npm:^0.2.0"
+  checksum: 10/46ccb0cfafc60b5aec48c72a6895ddc97887e8e03177e6cc9d461f2fb2e33136b4e917e560136485c55ce890e7fa326ed787eb27953e3815ffc2aa0ebe1caf05
   languageName: node
   linkType: hard
 
@@ -16269,6 +16323,7 @@ __metadata:
     "@nuxt/eslint": "npm:^0.3.13"
     "@nuxtjs/tailwindcss": "npm:^6.3.0"
     "@parcel/watcher": "npm:^2.4.1"
+    "@primevue/themes": "npm:^4.1.1"
     "@speckle/shared": "workspace:^"
     "@speckle/tailwind-theme": "workspace:^"
     "@speckle/ui-components": "workspace:^"
@@ -16325,6 +16380,7 @@ __metadata:
     eslint-config-prettier: "npm:^9.1.0"
     eslint-plugin-vuejs-accessibility: "npm:^2.3.0"
     graphql: "npm:^16.6.0"
+    interactjs: "npm:^1.10.27"
     ioredis: "npm:^5.3.2"
     js-cookie: "npm:^3.0.1"
     jsdom: "npm:^22.1.0"
@@ -16345,6 +16401,9 @@ __metadata:
     postcss-html: "npm:^1.5.0"
     postcss-nesting: "npm:^10.2.0"
     prettier: "npm:^2.7.1"
+    primeflex: "npm:^3.3.1"
+    primeicons: "npm:^7.0.0"
+    primevue: "npm:^4.1.1"
     react: "npm:^18.2.0"
     react-dom: "npm:^18.2.0"
     seq-logging: "npm:^2.1.1"
@@ -16363,6 +16422,7 @@ __metadata:
     vue-advanced-cropper: "npm:^2.8.8"
     vue-tippy: "npm:^6.0.0"
     vue-tsc: "npm:2.0.10"
+    vuedraggable: "npm:^2.24.3"
     wait-on: "npm:^6.0.1"
     whatwg-url: "npm:^14.0.0"
     ws: "npm:^8.17.1"
@@ -20174,8 +20234,8 @@ __metadata:
 
 "@types/react@file:./packages/frontend-2/type-augmentations/stubs/types__react::locator=root%40workspace%3A.":
   version: 0.0.0
-  resolution: "@types/react@file:./packages/frontend-2/type-augmentations/stubs/types__react#./packages/frontend-2/type-augmentations/stubs/types__react::hash=3341b8&locator=root%40workspace%3A."
-  checksum: 10/e8bc37abe6beea68fddb76a579cc3fac358b3603c587c1b740589544a2338a0acd98193b9b83c6cac90de61bb97435e673d4255e7698c33385d3f28dc6fc5aed
+  resolution: "@types/react@file:./packages/frontend-2/type-augmentations/stubs/types__react#./packages/frontend-2/type-augmentations/stubs/types__react::hash=2ea486&locator=root%40workspace%3A."
+  checksum: 10/500d185a1e5fc9e977520f4704194ad2e4391cfb8ef7747ca9f2a59bc7a52b555726e6d59e212f4a6b11ee08f06737615224031f80b7da3e216a8905642280fe
   languageName: node
   linkType: hard
 
@@ -34355,6 +34415,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"interactjs@npm:^1.10.27":
+  version: 1.10.27
+  resolution: "interactjs@npm:1.10.27"
+  dependencies:
+    "@interactjs/types": "npm:1.10.27"
+  checksum: 10/d92f323ad42617e4831cfb9035cba359ba99ea1df52197587d0c1e814c58b56699bdd357345ab52ed47ea556ab177bc1da75f2e52bd2e572d0a7d72b5c644ff3
+  languageName: node
+  linkType: hard
+
 "internal-slot@npm:^1.0.3":
   version: 1.0.3
   resolution: "internal-slot@npm:1.0.3"
@@ -44017,6 +44086,32 @@ __metadata:
   version: 1.0.3
   resolution: "pretty-hrtime@npm:1.0.3"
   checksum: 10/0a462e88a0a3fd3320288fd8307f488974326ae8e13eea8c27f590f8ee767ccb59cf35bcae1cadff241cd8b72f3e373fc76ff1be95243649899bf8c816874af9
+  languageName: node
+  linkType: hard
+
+"primeflex@npm:^3.3.1":
+  version: 3.3.1
+  resolution: "primeflex@npm:3.3.1"
+  checksum: 10/5f35983c3040c7eb0a3b4b823b685f7b64e4bfc3ef70047f1f547a869c46df939680c368fa0b29e5e138c4d35360b67211013c2c80dbfa661f3a138195ca8182
+  languageName: node
+  linkType: hard
+
+"primeicons@npm:^7.0.0":
+  version: 7.0.0
+  resolution: "primeicons@npm:7.0.0"
+  checksum: 10/ff1d698a4d5932105393cd3288c6b1fd92ad30b6fbce1b49de86bcc1917d74d6769c12061d43aa8657fe52ac79d9336527f0708d8c5a0347a1ddcd3e47d0eb73
+  languageName: node
+  linkType: hard
+
+"primevue@npm:^4.1.1":
+  version: 4.1.1
+  resolution: "primevue@npm:4.1.1"
+  dependencies:
+    "@primeuix/styled": "npm:^0.2.0"
+    "@primeuix/utils": "npm:^0.2.0"
+    "@primevue/core": "npm:4.1.1"
+    "@primevue/icons": "npm:4.1.1"
+  checksum: 10/b2d6ee895ebbf144b69a9f1f375304cd70da368e8cdf5d2b0cc3ca7ee0c1280edf4d32d0de0fca70d01e2e1b036178e24cd406763dbe743eb982a79cd3bde027
   languageName: node
   linkType: hard
 

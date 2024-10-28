@@ -1,0 +1,19 @@
+extend type User {
+  userSettings: JSONObject @isOwner
+}
+
+extend type Mutation {
+  # Mutations for updating user settings
+  userSettingsUpdate(settings: JSONObject!): Boolean @hasServerRole(role: SERVER_GUEST)
+  activeUserMutations: ActiveUserMutations
+}
+
+# The ActiveUserMutations should be handled as part of the main Mutation schema
+type ActiveUserMutations {
+  # Allows updating the user's settings
+  userSettingsUpdate(settings: JSONObject!): Boolean
+  # Allows marking onboarding as complete
+  finishOnboarding: Boolean
+  # Updates the user profile information
+  update: User
+}

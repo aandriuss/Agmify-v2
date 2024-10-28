@@ -27,6 +27,7 @@ const {
 const db = require('@/db/knex')
 const { BadRequestError } = require('@/modules/shared/errors')
 const { saveActivityFactory } = require('@/modules/activitystream/repositories')
+const { getUserSettings, updateUserSettings } = require('@/modules/core/services/users/settings'); 
 
 /** @type {import('@/modules/core/graph/generated/graphql').Resolvers} */
 module.exports = {
@@ -105,7 +106,6 @@ module.exports = {
 
   User: {
     async email(parent, args, context) {
-      // NOTE: we're redacting the field (returning null) rather than throwing a full error which would invalidate the request.
       if (context.userId === parent.id) {
         try {
           await validateScopes(context.scopes, Scopes.Profile.Email)
@@ -116,7 +116,6 @@ module.exports = {
       }
 
       try {
-        // you should only have access to other users email if you have elevated privileges
         await throwForNotHavingServerRole(context, Roles.Server.Admin)
         await validateScopes(context.scopes, Scopes.Users.Email)
         return parent.email
@@ -133,13 +132,22 @@ module.exports = {
         key: UsersMeta.metaKey.isOnboardingFinished
       })
       return !!metaVal?.value
+    },
+    async userSettings(parent, args, context) {
+      // Check authentication
+      if (!context.userId) throw new Error('User not authenticated')
+      
+      // Get settings for the user
+      return await getUserSettings(parent.id)
     }
   },
+  
   LimitedUser: {
     async role(parent) {
       return await getUserRole(parent.id)
     }
   },
+
   Mutation: {
     async userUpdate(_parent, args, context) {
       await throwForNotHavingServerRole(context, Roles.Server.Guest)
@@ -175,9 +183,6 @@ module.exports = {
         throw new BadRequestError('Malformed input: emails do not match.')
       }
 
-      // The below are not really needed anymore as we've added the hasRole and hasScope
-      // directives in the graphql schema itself.
-      // Since I am paranoid, I'll leave them here too.
       await throwForNotHavingServerRole(context, Roles.Server.Guest)
       await validateScopes(context.scopes, Scopes.Profile.Delete)
 
@@ -198,8 +203,27 @@ module.exports = {
       return true
     },
 
-    activeUserMutations: () => ({})
+    async userSettingsUpdate(_parent, { settings }, context) {
+      const userId = context.userId;
+      if (!userId) throw new Error('User not authenticated');
+
+      const existingSettings = await getUserSettings(userId);
+
+      const updatedSettings = {
+        ...existingSettings,  
+        ...settings
+      };
+
+      await db('users')
+        .where({ id: userId })
+        .update({ usersettings: updatedSettings });
+
+      return true;
+    },
+
+    activeUserMutations: () => ({}) // Empty function to prevent errors
   },
+
   ActiveUserMutations: {
     async finishOnboarding(_parent, _args, ctx) {
       return await markOnboardingComplete(ctx.userId || '')
@@ -209,4 +233,4 @@ module.exports = {
       return newUser
     }
   }
-}
+};

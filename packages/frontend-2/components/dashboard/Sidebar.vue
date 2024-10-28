@@ -154,9 +154,9 @@
           </LayoutSidebarMenu>
           <template #promo>
             <LayoutSidebarPromo
-              title="SpeckleCon 2024"
-              text="Join us in London on Nov 13-14 for the ultimate community event."
-              button-text="Get tickets"
+              title="SideBar Promo"
+              text="Promo text"
+              button-text="Button"
               @on-click="onPromoClick"
             />
           </template>
@@ -254,7 +254,7 @@ const onPromoClick = () => {
     campaign: 'specklecon2024'
   })
 
-  window.open('https://conf.speckle.systems/', '_blank')
+  window.open('http://localhost:8081/', '_blank')
 }
 
 const openFeedbackDialog = () => {

@@ -53,6 +53,10 @@ extend type Query {
     )
 }
 
+extend type User {
+  userSettings: JSONObject @isOwner
+}
+
 type PasswordStrengthCheckResults {
   """
   Integer from 0-4 (useful for implementing a strength bar):

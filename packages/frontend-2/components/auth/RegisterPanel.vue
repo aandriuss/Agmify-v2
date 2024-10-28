@@ -3,7 +3,7 @@
     <div class="space-y-6">
       <div v-if="!workspaceInvite" class="flex flex-col items-center gap-y-2">
         <h1 class="text-heading-xl text-center inline-block">
-          Create your Speckle account
+          Create your Agmify account
         </h1>
         <h2 class="text-body-sm text-center text-foreground-2">
           Connectivity, Collaboration and Automation for 3D

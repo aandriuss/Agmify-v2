@@ -24,9 +24,8 @@
       ]"
     >
       <p class="text-body-xs pt-6 md:pt-4 text-foreground">
-        Personal Access Tokens can be used to access the Speckle API on this server;
-        they function like ordinary OAuth access tokens. Use them in your scripts or
-        apps!
+        Personal Access Tokens can be used to access the Agmify API on this server; they
+        function like ordinary OAuth access tokens. Use them in your scripts or apps!
         <br />
         <span class="font-medium">
           Treat them like a password: do not post them anywhere where they could be

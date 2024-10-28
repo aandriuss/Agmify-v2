@@ -32,8 +32,8 @@
         class="flex justify-center flex-col space-y-2 text-body-xs text-foreground w-full items-center text-center"
       >
         <p>
-          Speckle Connectors exist only for applications running on Windows or Mac OS.
-          If you want, you can still go ahead and download Speckle Manager for
+          Agmify Connectors exist only for applications running on Windows or Mac OS. If
+          you want, you can still go ahead and download Agmify Manager for
           <FormButton link @click="downloadManager('exe')">Windows</FormButton>
           or
           <FormButton link @click="downloadManager('dmg')">Mac OS</FormButton>

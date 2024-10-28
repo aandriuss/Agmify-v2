@@ -50,7 +50,7 @@ const tests = ref([
   {
     name: 'Simple call with parameters',
     test: async (): Promise<unknown> => {
-      await $testBindings.sayHi('Speckle', 3, false)
+      await $testBindings.sayHi('Agmify', 3, false)
       return 'ok'
     },
     status: 0,
@@ -64,7 +64,7 @@ const tests = ref([
           $testBindings as unknown as {
             sayHi: (name: string, count: number) => Promise<string>
           }
-        ).sayHi('Speckle', 0) // note, invalid on purpose, it looks long because ts needs to be happy
+        ).sayHi('Agmify', 0) // note, invalid on purpose, it looks long because ts needs to be happy
         return 'not ok'
       } catch (e) {
         return 'ok'

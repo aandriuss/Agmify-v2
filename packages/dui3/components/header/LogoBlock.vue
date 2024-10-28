@@ -4,13 +4,13 @@
       class="block h-6 w-6"
       :class="{ 'mr-2': !minimal, grayscale: active }"
       src="~~/assets/images/speckle_logo_big.png"
-      alt="Speckle"
+      alt="Agmify"
     />
     <div
       v-if="!minimal"
       class="text-primary h6 mt-0 hidden font-bold leading-7 md:flex"
     >
-      Speckle
+      Agmify
     </div>
   </NuxtLink>
 </template>

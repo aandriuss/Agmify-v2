@@ -33,8 +33,11 @@
     </div>
   </div>
 </template>
+
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import { XMarkIcon } from '@heroicons/vue/24/solid'
+
 defineEmits(['close'])
 defineProps({
   hideClose: {
@@ -47,3 +50,10 @@ defineProps({
   }
 })
 </script>
+
+<style scoped>
+.size-3 {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+</style>
