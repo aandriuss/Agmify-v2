@@ -224,19 +224,28 @@ if (props.detailColumns) {
 
 // Available parameters for both levels
 const availableParentParameters = ref([
-  { field: 'area', header: 'Area (m²)' },
-  { field: 'volume', header: 'Volume (m³)' },
-  { field: 'cost', header: 'Cost ($)' },
-  { field: 'weight', header: 'Weight (kg)' }
+  { field: 'Id', header: 'ID' },
+  { field: 'Category', header: 'Category' },
+  { field: 'Mark', header: 'Mark' },
+  { field: 'Description', header: 'Description' },
+  { field: 'Level', header: 'Level' },
+  { field: 'Family', header: 'Family' },
+  { field: 'Type', header: 'Type' },
+  { field: 'Status', header: 'Status' },
+  { field: 'Comments', header: 'Comments' }
 ])
 
 const availableChildParameters = ref([
-  { field: 'description', header: 'Description' },
-  { field: 'assignee', header: 'Assignee' },
-  { field: 'priority', header: 'Priority' },
-  { field: 'status', header: 'Status' },
-  { field: 'dueDate', header: 'Due Date' },
-  { field: 'progress', header: 'Progress' }
+  { field: 'Id', header: 'ID' },
+  { field: 'Category', header: 'Category' },
+  { field: 'Mark', header: 'Mark' },
+  { field: 'Host', header: 'Host' },
+  { field: 'Description', header: 'Description' },
+  { field: 'Level', header: 'Level' },
+  { field: 'Family', header: 'Family' },
+  { field: 'Type', header: 'Type' },
+  { field: 'Status', header: 'Status' },
+  { field: 'Comments', header: 'Comments' }
 ])
 
 // Computed properties for current tab
@@ -531,7 +540,7 @@ const handleColumnReorder = (event) => {
 watch(
   () => props.columns,
   (newCols) => {
-    console.log('Parent columns updated:', newCols)
+    // console.log('Parent columns updated:', newCols)
   },
   { deep: true }
 )
@@ -539,7 +548,7 @@ watch(
 watch(
   () => props.detailColumns,
   (newCols) => {
-    console.log('Detail columns updated:', newCols)
+    // console.log('Detail columns updated:', newCols)
   },
   { deep: true }
 )
