@@ -165,6 +165,17 @@ const {
 // Get schedule data
 const { scheduleData = ref([]), updateCategories } = useElementsData()
 
+// Add detailed data inspection
+console.log('Full Schedule Data:', {
+  rawData: scheduleData.value,
+  firstParentItem: scheduleData.value?.[0] || null,
+  firstChildItem: scheduleData.value?.[0]?.details?.[0] || null,
+  parentFields: scheduleData.value?.[0] ? Object.keys(scheduleData.value[0]) : [],
+  childFields: scheduleData.value?.[0]?.details?.[0]
+    ? Object.keys(scheduleData.value[0].details[0])
+    : []
+})
+
 // UI State
 const tableName = ref('')
 const showCategoryOptions = ref(false)
@@ -205,21 +216,50 @@ const currentTableId = computed(() => selectedTableId.value || DEFAULT_TABLE_ID)
 // Default column configurations
 const defaultParentColumns = [
   { field: 'category', header: 'Category', visible: true, removable: false, order: 0 },
-  { field: 'name', header: 'Name', visible: true, removable: false, order: 1 },
-  { field: 'level', header: 'Level', visible: true, removable: true, order: 2 }
+  { field: 'id', header: 'ID', visible: true, removable: true, order: 1 },
+  { field: 'mark', header: 'Mark', visible: true, removable: true, order: 2 },
+  { field: 'host', header: 'Host', visible: true, removable: true, order: 3 },
+  { field: 'comment', header: 'Comment', visible: true, removable: true, order: 4 }
 ]
 
 const defaultChildColumns = [
-  { field: 'type', header: 'Type', visible: true, removable: false, order: 0 },
-  { field: 'material', header: 'Material', visible: true, removable: true, order: 1 },
-  {
-    field: 'dimensions',
-    header: 'Dimensions',
-    visible: true,
-    removable: true,
-    order: 2
-  }
+  { field: 'category', header: 'Category', visible: true, removable: false, order: 0 },
+  { field: 'id', header: 'ID', visible: true, removable: true, order: 1 },
+  { field: 'mark', header: 'Mark', visible: true, removable: true, order: 2 },
+  { field: 'host', header: 'Host', visible: true, removable: true, order: 3 },
+  { field: 'comment', header: 'Comment', visible: true, removable: true, order: 4 }
 ]
+
+const availableParentParameters = ref([
+  { field: 'category', header: 'Category' },
+  { field: 'id', header: 'ID' },
+  { field: 'mark', header: 'Mark' },
+  { field: 'host', header: 'Host' },
+  { field: 'comment', header: 'Comment' }
+])
+
+const availableChildParameters = ref([
+  { field: 'category', header: 'Category' },
+  { field: 'id', header: 'ID' },
+  { field: 'mark', header: 'Mark' },
+  { field: 'host', header: 'Host' },
+  { field: 'comment', header: 'Comment' }
+])
+
+const extractColumnsFromData = (data: any[]) => {
+  if (!data || data.length === 0) return []
+
+  const firstItem = data[0]
+  return Object.keys(firstItem)
+    .filter((key) => !['details', 'length', 'lastIndex', 'lastItem'].includes(key))
+    .map((field, index) => ({
+      field,
+      header: field.charAt(0).toUpperCase() + field.slice(1), // Capitalize first letter
+      visible: true,
+      removable: field !== 'category',
+      order: index
+    }))
+}
 
 // Current columns computed properties
 const currentTableColumns = computed(() => {
@@ -663,6 +703,31 @@ watch(
     }
   }
 )
+
+// Watch to update available parameters when data changes
+watch(
+  scheduleData,
+  (newData) => {
+    if (newData && newData.length > 0) {
+      const parentFields = extractColumnsFromData(newData)
+      const childFields = extractColumnsFromData(newData[0]?.details || [])
+
+      // Only update if we have new fields
+      if (parentFields.length > 0) {
+        availableParentParameters.value = parentFields
+      }
+      if (childFields.length > 0) {
+        availableChildParameters.value = childFields
+      }
+    }
+  },
+  { immediate: true }
+)
+
+// temp watch
+watch(scheduleData, (newData) => {
+  console.log('Updated uuuu scheduleData:', newData)
+})
 </script>
 
 <style scoped>
