@@ -331,11 +331,11 @@ const GET_USER_SETTINGS = gql`
     }
   }
 `
-console.log('GET_USER_SETTINGS', GET_USER_SETTINGS)
+// console.log('GET_USER_SETTINGS', GET_USER_SETTINGS)
 
 onMounted(() => {
   const settings = result.value?.activeUser?.userSettings
-  console.log('settings controlsWidth', settings?.controlsWidth)
+  // console.log('settings controlsWidth', settings?.controlsWidth)
   if (settings?.controlsWidth) {
     width.value = settings.controlsWidth // Load saved width
   }
@@ -354,17 +354,17 @@ const { mutate: updateSettings } = useMutation(UPDATE_USER_SETTINGS)
 // const { result } = useQuery(GET_USER_SETTINGS)
 const { result, loading, error, onResult } = useQuery(GET_USER_SETTINGS)
 
-console.log('Loading state:', loading.value)
-console.log('Error state:', error.value)
-console.log('Raw result:', result.value)
+// console.log('Loading state:', loading.value)
+// console.log('Error state:', error.value)
+// console.log('Raw result:', result.value)
 
-onResult((queryResult) => {
-  console.log('Query completed, full response:', queryResult)
-})
+// onResult((queryResult) => {
+//   console.log('Query completed, full response:', queryResult)
+// })
 
-watch(loading, (isLoading) => {
-  console.log('Query loading:', isLoading)
-})
+// watch(loading, (isLoading) => {
+//   console.log('Query loading:', isLoading)
+// })
 
 watch(error, (newError) => {
   if (newError) {
@@ -375,12 +375,12 @@ watch(error, (newError) => {
 watch(
   result,
   (newResult) => {
-    console.log('Result changed:', newResult)
+    // console.log('Result changed:', newResult)
     if (newResult?.activeUser?.userSettings) {
       width.value = newResult.activeUser.userSettings.controlsWidth || width.value
-      console.log('Width updated to:', width.value)
+      // console.log('Width updated to:', width.value)
     } else {
-      console.log('No user settings found, using default width:', width.value)
+      // console.log('No user settings found, using default width:', width.value)
     }
   },
   { immediate: true }

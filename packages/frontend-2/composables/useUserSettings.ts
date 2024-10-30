@@ -108,7 +108,7 @@ export function useUserSettings(defaultTableId?: string) {
 
       // Update local state
       settings.value = updatedSettings
-      console.log('Settings saved with preserved data:', settings.value)
+      // console.log('Settings saved with preserved data:', settings.value)
       return true
     } catch (error) {
       console.error('Error saving settings:', error)

@@ -200,9 +200,17 @@ const props = defineProps<{
   data: any[]
   columns: ColumnDef[]
   detailColumns: ColumnDef[]
+  availableParentParameters: ParameterDefinition[] // Add these new props
+  availableChildParameters: ParameterDefinition[]
 }>()
 
-const emit = defineEmits(['update:columns', 'update:detailColumns'])
+const emit = defineEmits<{
+  'update:expandedRows': [value: any[]]
+  'update:columns': [columns: any[]]
+  'update:detail-columns': [columns: any[]]
+  'update:both-columns': [updates: { parentColumns: any[]; childColumns: any[] }]
+  'column-reorder': [event: any]
+}>()
 
 const dialogOpen = ref(false)
 const expandedRows = ref([])
@@ -222,32 +230,6 @@ if (props.detailColumns) {
   localChildColumns.value = JSON.parse(JSON.stringify(props.detailColumns))
 }
 
-// Available parameters for both levels
-const availableParentParameters = ref([
-  { field: 'Id', header: 'ID' },
-  { field: 'Category', header: 'Category' },
-  { field: 'Mark', header: 'Mark' },
-  { field: 'Description', header: 'Description' },
-  { field: 'Level', header: 'Level' },
-  { field: 'Family', header: 'Family' },
-  { field: 'Type', header: 'Type' },
-  { field: 'Status', header: 'Status' },
-  { field: 'Comments', header: 'Comments' }
-])
-
-const availableChildParameters = ref([
-  { field: 'Id', header: 'ID' },
-  { field: 'Category', header: 'Category' },
-  { field: 'Mark', header: 'Mark' },
-  { field: 'Host', header: 'Host' },
-  { field: 'Description', header: 'Description' },
-  { field: 'Level', header: 'Level' },
-  { field: 'Family', header: 'Family' },
-  { field: 'Type', header: 'Type' },
-  { field: 'Status', header: 'Status' },
-  { field: 'Comments', header: 'Comments' }
-])
-
 // Computed properties for current tab
 const currentTempColumns = computed(() => {
   return activeTab.value === 'parent' ? tempParentColumns.value : tempChildColumns.value
@@ -255,8 +237,8 @@ const currentTempColumns = computed(() => {
 
 const currentAvailableParameters = computed(() => {
   return activeTab.value === 'parent'
-    ? availableParentParameters.value
-    : availableChildParameters.value
+    ? props.availableParentParameters
+    : props.availableChildParameters
 })
 
 const visibleParentColumns = computed(() => {
@@ -287,15 +269,22 @@ const openDialog = () => {
 
 const applyChanges = () => {
   try {
+    console.log('Applying changes:', {
+      parentColumns: tempParentColumns.value,
+      childColumns: tempChildColumns.value
+    })
+
+    // Update local state
     localParentColumns.value = JSON.parse(JSON.stringify(tempParentColumns.value))
     localChildColumns.value = JSON.parse(JSON.stringify(tempChildColumns.value))
 
-    // Emit both updates together as a single batch
+    // Emit both column updates together
     emit('update:both-columns', {
-      parentColumns: localParentColumns.value,
-      childColumns: localChildColumns.value
+      parentColumns: tempParentColumns.value,
+      childColumns: tempChildColumns.value
     })
 
+    // Close the dialog
     dialogOpen.value = false
   } catch (error) {
     console.error('Error applying changes:', error)
@@ -536,21 +525,58 @@ const handleColumnReorder = (event) => {
   }
 }
 
-// Add debug logging
-watch(
-  () => props.columns,
-  (newCols) => {
-    // console.log('Parent columns updated:', newCols)
-  },
-  { deep: true }
-)
-
+// Debug logging
 watch(
   () => props.detailColumns,
   (newCols) => {
     // console.log('Detail columns updated:', newCols)
   },
   { deep: true }
+)
+
+watch(
+  () => props.data,
+  (newData) => {
+    // console.log('Raw Data Structure:', {
+    //   fullData: newData,
+    //   firstItem: newData?.[0],
+    //   allFields: newData?.[0] ? Object.keys(newData[0]) : [],
+    //   firstDetails: newData?.[0]?.details,
+    //   firstDetailItem: newData?.[0]?.details?.[0],
+    //   detailFields: newData?.[0]?.details?.[0]
+    //     ? Object.keys(newData[0].details[0])
+    //     : [],
+    //   categories: [...new Set(newData?.map((item) => item.category))]
+    // })
+
+    // Log sample items for each category
+    const categories = [...new Set(newData?.map((item) => item.category))]
+    categories.forEach((category) => {
+      const example = newData.find((item) => item.category === category)
+      console.log(`Category ${category} sample:`, {
+        mainFields: example ? Object.keys(example) : [],
+        detailFields: example?.details?.[0] ? Object.keys(example.details[0]) : [],
+        sampleItem: example
+      })
+    })
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.availableParentParameters,
+  (newParams) => {
+    console.log('Available parent parameters updated:', newParams)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.availableChildParameters,
+  (newParams) => {
+    console.log('Available child parameters updated:', newParams)
+  },
+  { immediate: true }
 )
 </script>
 
