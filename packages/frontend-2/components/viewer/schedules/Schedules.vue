@@ -108,7 +108,7 @@
         <DataTable
           v-if="shouldRenderTable"
           :key="state.tableKey"
-          v-model:expandedRows="state.expandedRows"
+          v-model:expanded-rows="state.expandedRows"
           :table-id="currentTableId"
           :data="scheduleData || []"
           :columns="currentTableColumns"
@@ -653,41 +653,6 @@ const toggleChildCategory = async (category: string) => {
     updateCategories(selectedParentCategories.value, selectedChildCategories.value)
   }
 }
-
-// const toggleChildCategory = async (category: string) => {
-//   try {
-//     const current = [...selectedChildCategories.value]
-//     const updated = current.includes(category)
-//       ? current.filter((c) => c !== category)
-//       : [...current, category]
-
-//     // Update local state first
-//     selectedChildCategories.value = updated
-//     updateCategories(selectedParentCategories.value, updated)
-
-//     if (selectedTableId.value) {
-//       // Get the complete current table state
-//       const currentTable = settings.value?.namedTables?.[selectedTableId.value]
-
-//       // Preserve all existing table data while updating filters
-//       await updateNamedTable(selectedTableId.value, {
-//         ...currentTable,
-//         name: currentTable.name,
-//         parentColumns: currentTable.parentColumns,
-//         childColumns: currentTable.childColumns,
-//         categoryFilters: {
-//           selectedParentCategories: selectedParentCategories.value,
-//           selectedChildCategories: updated
-//         }
-//       })
-//     }
-//   } catch (error) {
-//     console.error('Error toggling child category:', error)
-//     // Revert local state on error
-//     selectedChildCategories.value = [...selectedChildCategories.value]
-//     updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-//   }
-// }
 
 const shouldRenderTable = computed(() => {
   return !!(currentTableColumns.value?.length && settings.value)

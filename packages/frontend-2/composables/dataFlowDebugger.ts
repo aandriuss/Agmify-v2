@@ -32,6 +32,52 @@ export function useDataFlowDebugger() {
     console.groupEnd()
   }
 
+  function logWallElements(stage: string, nodes: any[]) {
+    console.group(`🧱 Wall Elements - ${stage}`)
+    try {
+      const wallElements = nodes.filter((node) => {
+        const raw = node.rawNode?.raw || node.raw
+        if (!raw) return false
+
+        // Check various properties that might indicate a wall
+        const isWall =
+          raw.type?.toLowerCase().includes('wall') ||
+          raw.speckle_type?.toLowerCase().includes('wall') ||
+          raw.Other?.Category === 'Walls' ||
+          raw['Identity Data']?.Category === 'Walls'
+
+        return isWall
+      })
+
+      console.log('Wall Elements Found:', {
+        total: wallElements.length,
+        breakdown: wallElements.map((node) => {
+          const raw = node.rawNode?.raw || node.raw
+          return {
+            id: raw.id,
+            type: raw.type,
+            category: raw.Other?.Category || raw['Identity Data']?.Category,
+            mark: raw['Identity Data']?.Mark || raw.Name,
+            hasIdentityData: !!raw['Identity Data'],
+            hasConstraints: !!raw.Constraints,
+            constraintsHost: raw.Constraints?.Host
+          }
+        })
+      })
+
+      if (wallElements.length === 0) {
+        console.warn('❌ No wall elements found at this stage')
+      }
+    } finally {
+      console.groupEnd()
+    }
+
+    return {
+      wallCount: wallElements.length,
+      timestamp: new Date().toISOString()
+    }
+  }
+
   function logHeaderExtraction(
     headers: { parent: any[]; child: any[] },
     rootNodes: any[]
@@ -74,63 +120,88 @@ export function useDataFlowDebugger() {
   }
 
   function logDataProcessing(
+    stage: string, // Add stage parameter
     processedData: any[],
     currentTableColumns: any[],
     currentDetailColumns: any[]
   ) {
-    const parameterValues = new Map()
+    console.group(`🔄 Data Processing - ${stage}`)
 
-    // Analyze parameter values distribution
-    processedData.forEach((item) => {
-      currentTableColumns.forEach((col) => {
-        if (!parameterValues.has(col.field)) {
-          parameterValues.set(col.field, new Set())
-        }
-        parameterValues.get(col.field).add(item[col.field])
-      })
+    try {
+      // Ensure processedData is an array
+      const dataArray = Array.isArray(processedData) ? processedData : []
 
-      if (item.details) {
-        item.details.forEach((detail) => {
-          currentDetailColumns.forEach((col) => {
-            if (!parameterValues.has(`detail_${col.field}`)) {
-              parameterValues.set(`detail_${col.field}`, new Set())
+      const parameterValues = new Map()
+
+      // Safely process data if we have any
+      if (dataArray.length > 0) {
+        dataArray.forEach((item) => {
+          if (!item) return // Skip null/undefined items
+
+          currentTableColumns.forEach((col) => {
+            if (!parameterValues.has(col.field)) {
+              parameterValues.set(col.field, new Set())
             }
-            parameterValues.get(`detail_${col.field}`).add(detail[col.field])
+            if (item[col.field] !== undefined) {
+              parameterValues.get(col.field).add(item[col.field])
+            }
           })
+
+          if (item.details && Array.isArray(item.details)) {
+            item.details.forEach((detail) => {
+              if (!detail) return // Skip null/undefined details
+
+              currentDetailColumns.forEach((col) => {
+                if (!parameterValues.has(`detail_${col.field}`)) {
+                  parameterValues.set(`detail_${col.field}`, new Set())
+                }
+                if (detail[col.field] !== undefined) {
+                  parameterValues.get(`detail_${col.field}`).add(detail[col.field])
+                }
+              })
+            })
+          }
         })
       }
-    })
 
-    debugState.value.dataProcessing = {
-      processedElements: processedData.length,
-      parameterValues: Object.fromEntries(
-        Array.from(parameterValues.entries()).map(([key, values]) => [
-          key,
-          Array.from(values).length
-        ])
-      ),
-      timestamp: new Date().toISOString()
+      debugState.value.dataProcessing = {
+        processedElements: dataArray.length,
+        parameterValues: Object.fromEntries(
+          Array.from(parameterValues.entries()).map(([key, values]) => [
+            key,
+            Array.from(values).length
+          ])
+        ),
+        timestamp: new Date().toISOString()
+      }
+
+      console.log('Processing State:', {
+        stage,
+        elementCount: dataArray.length,
+        hasData: dataArray.length > 0,
+        sampleElement: dataArray[0]
+          ? {
+              category: dataArray[0].category,
+              mark: dataArray[0].mark,
+              hasDetails: !!dataArray[0].details
+            }
+          : null
+      })
+
+      if (dataArray.length > 0) {
+        console.log('Parameter Distribution:', {
+          uniqueCategories: [...new Set(dataArray.map((item) => item.category))],
+          totalElements: dataArray.length,
+          withDetails: dataArray.filter((item) => item.details?.length > 0).length
+        })
+      } else {
+        console.warn('No data to process at this stage')
+      }
+    } catch (error) {
+      console.error('Error in data processing:', error)
+    } finally {
+      console.groupEnd()
     }
-
-    console.group('🔄 Data Processing Check')
-    console.log('Processed Elements:', {
-      totalCount: processedData.length,
-      parentElements: processedData.filter((d) => !d.details).length,
-      elementsWithChildren: processedData.filter((d) => d.details?.length > 0).length
-    })
-    console.log(
-      'Parameter Values Distribution:',
-      Object.fromEntries(
-        Array.from(parameterValues.entries()).map(([key, values]) => [
-          key,
-          {
-            uniqueValues: Array.from(values).length,
-            sampleValues: Array.from(values).slice(0, 3)
-          }
-        ])
-      )
-    )
-    console.groupEnd()
   }
 
   // Watch for state changes and verify data flow integrity
@@ -177,6 +248,7 @@ export function useDataFlowDebugger() {
     debugState,
     logCategorySelection,
     logHeaderExtraction,
-    logDataProcessing
+    logDataProcessing,
+    logWallElements
   }
 }

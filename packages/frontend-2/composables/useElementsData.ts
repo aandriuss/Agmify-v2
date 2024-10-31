@@ -96,7 +96,33 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   }
 
   const scheduleData = computed(() => {
-    const parentsWithChildren = Array.from(elementsMap.value.values()).map((parent) => {
+    const initialParents = Array.from(elementsMap.value.values())
+
+    // Log initial state
+    console.group('📊 Schedule Data Processing')
+    console.log('Initial State:', {
+      totalParents: initialParents.length,
+      parentsByCategory: initialParents.reduce((acc, p) => {
+        acc[p.category] = (acc[p.category] || 0) + 1
+        return acc
+      }, {}),
+      totalChildren: childElementsList.value.length,
+      childrenByCategory: childElementsList.value.reduce((acc, c) => {
+        acc[c.category] = (acc[c.category] || 0) + 1
+        return acc
+      }, {})
+    })
+
+    // Process parents with children
+    const parentsWithChildren = initialParents.map((parent) => {
+      console.group(`Processing Parent: ${parent.mark || parent.id}`)
+      console.log('Parent Details:', {
+        id: parent.id,
+        category: parent.category,
+        mark: parent.mark,
+        type: parent.type
+      })
+
       const baseElement = {
         ...parent,
         host: 'N/A'
@@ -104,66 +130,103 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
 
       // Only add details if child categories are selected
       if (selectedChildCategories.value.length > 0) {
-        // Debug log to check matching
-        console.log('Matching children for parent:', {
+        const matchingChildren = childElementsList.value.filter(
+          (child) => child.host === parent.mark
+        )
+
+        console.log('Children Matching:', {
           parentMark: parent.mark,
-          children: childElementsList.value
-            .filter((child) => child.host === parent.mark)
-            .map((child) => ({ host: child.host, category: child.category }))
+          totalMatches: matchingChildren.length,
+          matchingChildren: matchingChildren.map((child) => ({
+            id: child.id,
+            category: child.category,
+            host: child.host
+          }))
         })
 
-        return {
+        const result = {
           ...baseElement,
-          details: childElementsList.value
-            .filter((child) => {
-              const matches = child.host === parent.mark
-              // Log each potential match
-              console.log('Child match check:', {
-                childHost: child.host,
-                parentMark: parent.mark,
-                matches,
-                childCategory: child.category
-              })
-              return matches
-            })
-            .map((child) => ({
-              ...child,
-              host: parent.mark
-            }))
+          details: matchingChildren.map((child) => ({
+            ...child,
+            host: parent.mark
+          }))
         }
+
+        console.log('Processed Result:', {
+          mark: result.mark,
+          category: result.category,
+          childrenCount: result.details.length
+        })
+
+        console.groupEnd()
+        return result
       }
 
+      console.groupEnd()
       return baseElement
     })
 
     let result = [...parentsWithChildren]
 
-    // Only process unattached children if child categories are selected
+    // Process unattached children
     if (selectedChildCategories.value.length > 0) {
-      const unattachedChildren = childElementsList.value
-        .filter(
-          (child) =>
-            !child.host || !Array.from(elementsMap.value.keys()).includes(child.host)
-        )
-        .map((child) => ({
-          ...child, // Spread all child parameters
-          host: 'No Host',
-          details: []
-        }))
+      const unattachedChildren = childElementsList.value.filter(
+        (child) =>
+          !child.host || !Array.from(elementsMap.value.keys()).includes(child.host)
+      )
 
-      result = [...result, ...unattachedChildren]
-    }
+      console.log('Unattached Children:', {
+        count: unattachedChildren.length,
+        breakdown: unattachedChildren.reduce((acc, child) => {
+          acc[child.category] = (acc[child.category] || 0) + 1
+          return acc
+        }, {})
+      })
 
-    const unmarkedParents = Array.from(elementsMap.value.values())
-      .filter((parent) => !parent.mark)
-      .map((parent) => ({
-        ...parent, // Spread all parent parameters
-        mark: 'No Mark',
-        host: 'N/A',
+      const processedUnattached = unattachedChildren.map((child) => ({
+        ...child,
+        host: 'No Host',
         details: []
       }))
 
-    return [...result, ...unmarkedParents]
+      result = [...result, ...processedUnattached]
+    }
+
+    // Process unmarked parents
+    const unmarkedParents = initialParents.filter((parent) => !parent.mark)
+
+    console.log('Unmarked Parents:', {
+      count: unmarkedParents.length,
+      breakdown: unmarkedParents.reduce((acc, parent) => {
+        acc[parent.category] = (acc[parent.category] || 0) + 1
+        return acc
+      }, {})
+    })
+
+    const processedUnmarked = unmarkedParents.map((parent) => ({
+      ...parent,
+      mark: 'No Mark',
+      host: 'N/A',
+      details: []
+    }))
+
+    const finalResult = [...result, ...processedUnmarked]
+
+    // Log final state
+    console.log('Final Result:', {
+      totalElements: finalResult.length,
+      byCategory: finalResult.reduce((acc, el) => {
+        acc[el.category] = (acc[el.category] || 0) + 1
+        return acc
+      }, {}),
+      withChildren: finalResult.filter((el) => el.details?.length > 0).length,
+      unmarked: finalResult.filter((el) => el.mark === 'No Mark').length,
+      unattached: finalResult.filter((el) => el.host === 'No Host').length
+    })
+
+    console.groupEnd()
+
+    return finalResult
   })
 
   interface HeaderInfo {
@@ -416,6 +479,21 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   }
 
   function processElements(rootNodes: any[]) {
+    // Use existing debugger functions
+    logDataProcessing(
+      'Start Processing',
+      [],
+      currentTableColumns.value,
+      currentDetailColumns.value
+    )
+
+    console.group('🔄 Elements Processing')
+    console.log('Initial state:', {
+      rootNodesCount: rootNodes.length,
+      selectedParentCategories: selectedParentCategories.value,
+      selectedChildCategories: selectedChildCategories.value
+    })
+
     // Clear existing data before processing
     elementsMap.value.clear()
     childElementsList.value = []
@@ -427,6 +505,13 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
       if (!node?.raw) return
 
       const category = getElementCategory(node)
+
+      console.log('Processing potential parent:', {
+        id: node.raw.id,
+        category,
+        type: node.raw.type,
+        isParentCategory: selectedParentCategories.value.includes(category)
+      })
 
       // Process only parent category elements first
       if (selectedParentCategories.value.includes(category)) {
@@ -443,15 +528,10 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
             })
             parameterValues[column.field] = value
           }
-
-          console.log('Parent parameter processed:', {
-            field: column.field,
-            category: column.category,
-            value: parameterValues[column.field]
-          })
         })
 
-        const elementMark = getParameterValue(node, { field: 'mark' })
+        const elementMark =
+          parameterValues.mark || getParameterValue(node, { field: 'mark' })
 
         if (elementMark) {
           // Store parent element
@@ -466,11 +546,10 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
           elementsMap.value.set(elementMark, elementData)
           parentMarks.add(elementMark)
 
-          console.log('Registered parent element:', {
-            category,
+          console.log('Added parent element:', {
             mark: elementMark,
-            id: node.raw.id,
-            data: elementData
+            category,
+            id: node.raw.id
           })
         }
       }
@@ -484,7 +563,27 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
       }
     }
 
-    // Second pass: process child elements and match to parents
+    // Process root nodes for parents
+    rootNodes.forEach((node) => processParents(node.rawNode))
+
+    console.log('Parent processing complete:', {
+      totalParents: elementsMap.value.size,
+      parentCategories: [
+        ...new Set(Array.from(elementsMap.value.values()).map((p) => p.category))
+      ],
+      parentMarks: Array.from(parentMarks)
+    })
+
+    // After processing parents
+    const processedParents = Array.from(elementsMap.value.values())
+    logDataProcessing(
+      'After Parent Processing',
+      processedParents,
+      currentTableColumns.value,
+      currentDetailColumns.value
+    )
+
+    // Second pass: process children
     function processChildren(node: any) {
       if (!node?.raw) return
 
@@ -495,20 +594,6 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
 
         // Get host value
         const hostValue = getNestedValue(node, ['raw', 'Constraints', 'Host'])
-
-        console.log('Processing child element:', {
-          id: node.raw.id,
-          category,
-          hostValue,
-          isValidHost: hostValue && parentMarks.has(hostValue),
-          constraints: node.raw.Constraints,
-          raw: {
-            type: node.raw.type,
-            category: getElementCategory(node),
-            hasConstraints: !!node.raw.Constraints,
-            hasIdentityData: !!node.raw['Identity Data']
-          }
-        })
 
         // Process child parameters
         currentDetailColumns.value.forEach((column) => {
@@ -534,12 +619,11 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
           ...childParamValues
         }
 
-        console.log('Child element being added:', {
+        console.log('Processing child element:', {
           id: childData.id,
           category: childData.category,
           host: childData.host,
-          mark: childData.mark,
-          hasValidHost: hostValue && parentMarks.has(hostValue)
+          mark: childData.mark
         })
 
         childElementsList.value.push(childData)
@@ -554,46 +638,34 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
       }
     }
 
-    console.log('Starting element processing:', {
-      selectedParentCategories: selectedParentCategories.value,
-      selectedChildCategories: selectedChildCategories.value,
-      rootNodesCount: rootNodes.length
-    })
-
-    // First collect all parent elements
-    rootNodes.forEach((node) => processParents(node.rawNode))
-
-    console.log('Parent processing completed:', {
-      totalParents: elementsMap.value.size,
-      parentMarks: Array.from(parentMarks)
-    })
-
-    // Then process all child elements
+    // Process root nodes for children
     rootNodes.forEach((node) => processChildren(node.rawNode))
 
-    // Log final statistics
-    console.log('Processing completed:', {
-      totalParentMarks: parentMarks.size,
-      availableParentMarks: Array.from(parentMarks),
-      totalChildren: childElementsList.value.length,
-      childrenWithValidHosts: childElementsList.value.filter(
-        (c) => c.host !== 'No Host'
-      ).length,
-      hostDistribution: childElementsList.value.reduce((acc, child) => {
-        acc[child.host] = (acc[child.host] || 0) + 1
-        return acc
-      }, {} as Record<string, number>),
-      categoryBreakdown: {
-        parents: Array.from(elementsMap.value.values()).reduce((acc, p) => {
-          acc[p.category] = (acc[p.category] || 0) + 1
-          return acc
-        }, {} as Record<string, number>),
-        children: childElementsList.value.reduce((acc, c) => {
-          acc[c.category] = (acc[c.category] || 0) + 1
-          return acc
-        }, {} as Record<string, number>)
+    console.log('Processing completion state:', {
+      parentElements: {
+        total: elementsMap.value.size,
+        categories: [
+          ...new Set(Array.from(elementsMap.value.values()).map((p) => p.category))
+        ]
+      },
+      childElements: {
+        total: childElementsList.value.length,
+        categories: [...new Set(childElementsList.value.map((c) => c.category))],
+        withValidHosts: childElementsList.value.filter((c) => c.host !== 'No Host')
+          .length
       }
     })
+
+    console.groupEnd()
+
+    // Final state logging
+    const finalData = [...processedParents, ...childElementsList.value]
+    logDataProcessing(
+      'Processing Complete',
+      finalData,
+      currentTableColumns.value,
+      currentDetailColumns.value
+    )
   }
 
   // Verify data integrity
@@ -634,11 +706,9 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   watch(
     () => rootNodes.value,
     (newNodes) => {
-      console.log('Root nodes updated:', {
-        hasNodes: !!newNodes,
-        nodeCount: newNodes?.length,
-        firstNodeCategory: newNodes?.[0]?.rawNode?.raw?.category
-      })
+      if (newNodes) {
+        logWallElements('Initial Data', newNodes)
+      }
     },
     { immediate: true }
   )
