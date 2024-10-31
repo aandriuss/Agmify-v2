@@ -43,13 +43,11 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: speckle
       KC_DB_PASSWORD: speckle
-      KC_HOSTNAME: keycloak
-      KC_HOSTNAME_PORT: 9000
-      KC_HOSTNAME_STRICT: false
-      KC_HOSTNAME_STRICT_HTTPS: false
-      KC_LOG_LEVEL: info
-      KC_METRICS_ENABLED: true
-      KC_HEALTH_ENABLED: true
+      KC_DB_SCHEMA: public
+      KC_HOSTNAME: localhost
+      KC_HTTP_ENABLED: 'true'
+      KC_HOSTNAME_STRICT: 'false'
+      KC_HOSTNAME_STRICT_HTTPS: 'false'
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
     ports:
@@ -64,8 +62,8 @@ services:
     image: maildev/maildev
     container_name: maildev
     ports:
-      - "1080:80"
-      - "1025:1025"
+      - '1080:80'
+      - '1025:1025'
     restart: always
 
   speckle-ingress:
