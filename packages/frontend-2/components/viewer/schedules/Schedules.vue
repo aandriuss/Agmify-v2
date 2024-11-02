@@ -105,7 +105,7 @@
         </div>
 
         <!-- Table Section -->
-        <DataTable
+        <!-- <DataTable
           v-if="shouldRenderTable"
           :key="state.tableKey"
           v-model:expanded-rows="state.expandedRows"
@@ -122,6 +122,15 @@
           @update:detail-columns="handleChildColumnsUpdate"
           @update:both-columns="handleBothColumnsUpdate"
           @column-reorder="handleColumnReorder"
+        /> -->
+        <DataTable
+          :table-id="tableId"
+          :data="scheduleData"
+          :columns="currentTableColumns"
+          :detail-columns="currentDetailColumns"
+          :available-parent-parameters="mergedParentParameters"
+          :available-child-parameters="mergedChildParameters"
+          @update:both-columns="handleBothColumnsUpdate"
         />
       </div>
     </ViewerLayoutPanel>
@@ -131,8 +140,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, reactive } from 'vue'
 import { useUserSettings } from '~/composables/useUserSettings'
-import { useElementsData } from '~/components/viewer/composables/useElementsData'
-import DataTable from '~/components/viewer/tables/DataTable.vue'
+import { useElementsData } from '~/components/viewer/schedules/composables/useElementsData'
+import DataTable from '~/components/viewer/components/tables/DataTable/index.vue'
 import {
   CheckCircleIcon,
   ChevronDownIcon,

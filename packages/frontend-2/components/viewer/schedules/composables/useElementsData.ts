@@ -1,9 +1,9 @@
 import { ref, computed, watch, defineComponent, h, d } from 'vue'
 import { useRootNodes } from '~/components/viewer/composables/useRootNodes'
-import { renderParameterWithBadge } from './parameterManagement'
-import ParameterHeader from '../schedules/ParameterHeader.vue'
+import { renderParameterWithBadge } from '../../composables/parameterManagement'
+import ParameterHeader from '../ParameterHeader.vue'
 
-import { useDataFlowDebugger } from '../../../composables/dataFlowDebugger'
+import { useDataFlowDebugger } from '../../../../composables/dataFlowDebugger'
 
 export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   const { logCategorySelection, logHeaderExtraction, logDataProcessing } =
