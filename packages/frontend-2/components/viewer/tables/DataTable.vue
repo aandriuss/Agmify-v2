@@ -53,71 +53,177 @@
         <!-- Column Management Area -->
         <div class="flex gap-4 h-[400px]">
           <!-- Left Panel: Available Parameters -->
-          <div
-            class="flex-1 border rounded"
-            @dragover.prevent
-            @drop="handleDropToAvailable"
-          >
-            <div class="p-1 border-b bg-gray-50">
+          <div class="flex-1 border rounded flex flex-col">
+            <div class="p-3 border-b bg-gray-50 space-y-3">
               <h3 class="font-medium text-sm">Available Parameters</h3>
-            </div>
-            <div class="p-1 space-y-1 overflow-y-auto max-h-[calc(400px-3rem)]">
-              <div
-                v-for="param in currentAvailableParameters"
-                :key="param.field"
-                class="flex items-center justify-between p-0.5 hover:bg-gray-50 rounded cursor-move text-sm"
-                draggable="true"
-                @dragstart="dragStart($event, param, 'available')"
-              >
-                <span>{{ param.header }}</span>
-                <FormButton
-                  color="outline"
-                  size="xs"
-                  class="!h-4 !w-4 !p-0 !min-w-0 text-xs flex items-center justify-center"
-                  @click="addColumn(param)"
-                >
-                  →
-                </FormButton>
+
+              <!-- Search Bar -->
+              <div class="relative">
+                <i
+                  class="pi pi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  v-model="searchTerm"
+                  type="text"
+                  placeholder="Search parameters..."
+                  class="w-full pl-9 pr-4 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <Button
+                  v-if="searchTerm"
+                  icon="pi pi-times"
+                  text
+                  severity="secondary"
+                  class="absolute right-2 top-1/2 transform -translate-y-1/2"
+                  @click="searchTerm = ''"
+                />
               </div>
+
+              <!-- Filter Controls -->
+              <div class="flex gap-2">
+                <Menu as="div" class="relative">
+                  <MenuButton
+                    class="px-2 py-1 text-sm border rounded-md hover:bg-gray-50 flex items-center gap-1"
+                  >
+                    <i class="pi pi-sliders-h" />
+                    Filters
+                  </MenuButton>
+
+                  <MenuItems
+                    class="absolute left-0 mt-1 w-56 bg-white border rounded-md shadow-lg p-1 z-10"
+                  >
+                    <MenuItem v-slot="{ active }">
+                      <button
+                        :class="[
+                          'w-full text-left px-2 py-1 text-sm rounded',
+                          active ? 'bg-gray-100' : ''
+                        ]"
+                        @click="toggleGrouping"
+                      >
+                        <div class="flex items-center gap-2">
+                          <Checkbox :model-value="isGrouped" :binary="true" />
+                          Group by Category
+                        </div>
+                      </button>
+                    </MenuItem>
+
+                    <div class="h-px bg-gray-200 my-1" />
+
+                    <div class="px-2 py-1">
+                      <div class="text-xs font-medium text-gray-500 mb-1">Sort by</div>
+                      <RadioGroup v-model="sortBy" class="space-y-1">
+                        <RadioGroupOption
+                          v-for="option in sortOptions"
+                          :key="option.value"
+                          v-slot="{ checked }"
+                          :value="option.value"
+                        >
+                          <button
+                            class="w-full flex items-center gap-2 px-2 py-1 text-sm rounded hover:bg-gray-50"
+                            :class="{ 'bg-blue-50': checked }"
+                          >
+                            <div
+                              class="w-3 h-3 rounded-full border"
+                              :class="{ 'bg-blue-500 border-blue-500': checked }"
+                            />
+                            {{ option.label }}
+                          </button>
+                        </RadioGroupOption>
+                      </RadioGroup>
+                    </div>
+                  </MenuItems>
+                </Menu>
+
+                <button
+                  v-if="hasFilters"
+                  class="px-2 py-1 text-sm text-gray-500 hover:text-gray-700"
+                  @click="clearFilters"
+                >
+                  <i class="pi pi-times mr-1" />
+                  Clear All
+                </button>
+              </div>
+            </div>
+
+            <!-- Parameters List -->
+            <div class="flex-1 overflow-y-auto p-1 space-y-1">
+              <!-- When Grouped -->
+              <template v-if="isGrouped">
+                <div
+                  v-for="group in groupedParameters"
+                  :key="group.category"
+                  class="space-y-1"
+                >
+                  <div class="px-2 py-1 bg-gray-50 text-sm font-medium rounded">
+                    {{ group.category }}
+                  </div>
+                  <div class="space-y-1 pl-2">
+                    <template v-for="param in group.parameters" :key="param.field">
+                      <ParameterItem
+                        :parameter="param"
+                        :is-active="isParameterActive(param)"
+                        draggable="true"
+                        @add="addColumn"
+                        @remove="removeColumn"
+                        @dragstart="dragStart($event, param, 'available')"
+                      />
+                    </template>
+                  </div>
+                </div>
+              </template>
+
+              <!-- When Not Grouped -->
+              <template v-else>
+                <ParameterItem
+                  v-for="param in filteredParameters"
+                  :key="param.field"
+                  :parameter="param"
+                  :is-active="isParameterActive(param)"
+                  draggable="true"
+                  @add="addColumn"
+                  @remove="removeColumn"
+                  @dragstart="dragStart($event, param, 'available')"
+                />
+              </template>
             </div>
           </div>
 
           <!-- Right Panel: Active Columns -->
           <div
-            class="flex-1 border rounded"
-            @dragover.prevent="handleDragOver($event)"
-            @drop="handleDropToActive($event)"
+            class="flex-1 border rounded flex flex-col"
+            @dragover.prevent="handleDragOver"
+            @drop="handleDropToActive"
           >
-            <div class="p-1 border-b bg-gray-50">
+            <div class="p-3 border-b bg-gray-50">
               <h3 class="font-medium text-sm">Active Columns</h3>
             </div>
-            <div class="p-1 space-y-1 overflow-y-auto max-h-[calc(400px-3rem)]">
+
+            <div class="flex-1 overflow-y-auto p-1 space-y-1">
               <div
-                v-for="(col, index) in currentTempColumns"
-                :key="col.field"
-                class="flex items-center justify-between p-0.5 hover:bg-gray-50 rounded text-sm"
+                v-for="(column, index) in currentTempColumns"
+                :key="column.field"
+                class="flex items-center justify-between p-2 hover:bg-gray-50 rounded text-sm"
                 draggable="true"
                 :class="{ 'border-t-2 border-blue-500': dragOverIndex === index }"
-                @dragstart="dragStart($event, col, 'active', index)"
+                @dragstart="dragStart($event, column, 'active', index)"
                 @dragenter.prevent="handleDragEnter($event, index)"
               >
-                <div class="flex items-center gap-1">
-                  <i class="pi pi-bars cursor-move text-gray-400 text-xs"></i>
-                  <span>{{ col.header }}</span>
+                <div class="flex items-center gap-2">
+                  <i class="pi pi-bars text-gray-400 cursor-move" />
+                  <ParameterBadge :parameter="column" />
                 </div>
-                <div class="flex items-center gap-1">
-                  <FormButton
-                    v-if="col.removable"
-                    color="danger"
-                    size="xs"
-                    class="!h-4 !w-4 !p-0 !min-w-0 text-xs flex items-center justify-center"
-                    @click="removeColumn(col)"
-                  >
-                    ←
-                  </FormButton>
+
+                <div class="flex items-center gap-2">
+                  <Button
+                    v-if="column.removable"
+                    icon="pi pi-times"
+                    text
+                    severity="danger"
+                    size="small"
+                    @click="removeColumn(column)"
+                  />
                   <Checkbox
-                    v-model="col.visible"
-                    :input-id="col.field"
+                    v-model="column.visible"
+                    :input-id="column.field"
                     :binary="true"
                   />
                 </div>
@@ -128,8 +234,9 @@
       </div>
     </LayoutDialog>
 
+    <!-- Data Tables -->
     <DataTable
-      v-model:expandedRows="expandedRows"
+      v-model:expanded-rows="expandedRows"
       :value="data"
       resizable-columns
       reorderable-columns
@@ -172,6 +279,7 @@
         :key="col.field"
         :field="col.field"
         :header="col.header"
+        :header-component="col.headerComponent"
         :data-field="col.field"
         sortable
       />
@@ -185,6 +293,19 @@ import { LayoutDialog, FormButton } from '@speckle/ui-components'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Checkbox from 'primevue/checkbox'
+import Button from 'primevue/button'
+import Menu from 'primevue/menu'
+import {
+  Menu as HMenu,
+  MenuButton,
+  MenuItems,
+  MenuItem,
+  RadioGroup,
+  RadioGroupOption
+} from '@headlessui/vue'
+
+import ParameterItem from '~/components/viewer/composables/ParameterItem.vue'
+import ParameterBadge from '~/components/viewer/composables/ParameterBadge.vue'
 
 interface ColumnDef {
   field: string
@@ -195,15 +316,6 @@ interface ColumnDef {
   order: number
 }
 
-const props = defineProps<{
-  tableId: string
-  data: any[]
-  columns: ColumnDef[]
-  detailColumns: ColumnDef[]
-  availableParentParameters: ParameterDefinition[] // Add these new props
-  availableChildParameters: ParameterDefinition[]
-}>()
-
 const emit = defineEmits<{
   'update:expandedRows': [value: any[]]
   'update:columns': [columns: any[]]
@@ -212,23 +324,11 @@ const emit = defineEmits<{
   'column-reorder': [event: any]
 }>()
 
-const dialogOpen = ref(false)
-const expandedRows = ref([])
-const activeTab = ref('parent')
-
 // Separate states for parent and child columns
 const tempParentColumns = ref<ColumnDef[]>([])
 const tempChildColumns = ref<ColumnDef[]>([])
 const localParentColumns = ref<ColumnDef[]>([])
 const localChildColumns = ref<ColumnDef[]>([])
-
-if (props.columns) {
-  localParentColumns.value = JSON.parse(JSON.stringify(props.columns))
-}
-
-if (props.detailColumns) {
-  localChildColumns.value = JSON.parse(JSON.stringify(props.detailColumns))
-}
 
 // Computed properties for current tab
 const currentTempColumns = computed(() => {
@@ -240,6 +340,139 @@ const currentAvailableParameters = computed(() => {
     ? props.availableParentParameters
     : props.availableChildParameters
 })
+
+const getIsFixed = (field: string): boolean => {
+  // Check in the current available parameters list
+  const param = currentAvailableParameters.value.find((p) => p.field === field)
+  return param?.isFixed ?? false
+}
+// Parameter utility functions
+const parameterUtils = {
+  search(parameters: ParameterDefinition[], searchTerm: string) {
+    const normalizedSearch = searchTerm.toLowerCase().trim()
+    if (!normalizedSearch) return parameters
+
+    return parameters.filter(
+      (param) =>
+        param.header.toLowerCase().includes(normalizedSearch) ||
+        param.field.toLowerCase().includes(normalizedSearch) ||
+        param.category?.toLowerCase().includes(normalizedSearch) ||
+        param.type?.toLowerCase().includes(normalizedSearch)
+    )
+  },
+
+  sort(parameters: ParameterDefinition[], sortBy: string) {
+    return [...parameters].sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.header.localeCompare(b.header)
+        case 'category':
+          return (a.category || 'Other').localeCompare(b.category || 'Other')
+        case 'type':
+          return (a.type || '').localeCompare(b.type || '')
+        case 'fixed':
+          if (a.isFixed === b.isFixed) {
+            return a.header.localeCompare(b.header)
+          }
+          return a.isFixed ? -1 : 1
+        default:
+          return 0
+      }
+    })
+  },
+
+  groupByCategory(parameters: ParameterDefinition[]) {
+    const groups: Record<string, ParameterDefinition[]> = {}
+
+    parameters.forEach((param) => {
+      const category = param.category || 'Other'
+      if (!groups[category]) {
+        groups[category] = []
+      }
+      groups[category].push(param)
+    })
+
+    return Object.entries(groups)
+      .map(([category, parameters]) => ({
+        category,
+        parameters: parameters.sort((a, b) => a.header.localeCompare(b.header))
+      }))
+      .sort((a, b) => a.category.localeCompare(b.category))
+  }
+}
+
+interface ParameterDefinition {
+  field: string
+  header: string
+  type?: string
+  description?: string
+  category?: string
+  isFixed?: boolean
+  order?: number
+  visible?: boolean
+}
+
+const props = defineProps<{
+  tableId: string
+  data: any[]
+  columns: ColumnDef[]
+  detailColumns: ColumnDef[]
+  availableParentParameters: ParameterDefinition[]
+  availableChildParameters: ParameterDefinition[]
+}>()
+
+// State
+const dialogOpen = ref(false)
+const expandedRows = ref([])
+const activeTab = ref('parent')
+const searchTerm = ref('')
+const isGrouped = ref(true)
+const sortBy = ref<'name' | 'category' | 'type' | 'fixed'>('category')
+
+// Sort options
+const sortOptions = [
+  { value: 'name', label: 'Name' },
+  { value: 'category', label: 'Category' },
+  { value: 'type', label: 'Type' },
+  { value: 'fixed', label: 'Fixed First' }
+]
+
+// Computed properties using the utility functions
+const filteredParameters = computed(() => {
+  let result =
+    activeTab.value === 'parent'
+      ? props.availableParentParameters
+      : props.availableChildParameters
+
+  if (searchTerm.value) {
+    result = parameterUtils.search(result, searchTerm.value)
+  }
+
+  return parameterUtils.sort(result, sortBy.value)
+})
+
+const groupedParameters = computed(() => {
+  return parameterUtils.groupByCategory(filteredParameters.value)
+})
+
+const hasFilters = computed(() => {
+  return searchTerm.value || sortBy.value !== 'category' || !isGrouped.value
+})
+
+// Utility functions
+const toggleGrouping = () => {
+  isGrouped.value = !isGrouped.value
+}
+
+const clearFilters = () => {
+  searchTerm.value = ''
+  sortBy.value = 'category'
+  isGrouped.value = true
+}
+
+const isParameterActive = (param: ParameterDefinition) => {
+  return currentTempColumns.value.some((col) => col.field === param.field)
+}
 
 const visibleParentColumns = computed(() => {
   return localParentColumns.value.filter((col) => col.visible)
@@ -375,7 +608,7 @@ const handleDropToActive = (event: DragEvent) => {
   resetDragState()
 }
 
-const addColumn = (param: ColumnDef) => {
+const addColumn = (param: ParameterDefinition) => {
   const columns = activeTab.value === 'parent' ? tempParentColumns : tempChildColumns
 
   if (!columns.value.find((col) => col.field === param.field)) {
@@ -384,7 +617,8 @@ const addColumn = (param: ColumnDef) => {
       header: param.header,
       visible: true,
       removable: true,
-      order: columns.value.length
+      order: columns.value.length,
+      isFixed: param.isFixed // Preserve the isFixed property
     })
   }
 }
@@ -563,20 +797,50 @@ watch(
   { immediate: true }
 )
 
+// watch(
+//   () => props.availableParentParameters,
+//   (newParams) => {
+//     console.log('Available parent parameters updated:', newParams)
+//   },
+//   { immediate: true }
+// )
+
+// watch(
+//   () => props.availableChildParameters,
+//   (newParams) => {
+//     console.log('Available child parameters updated:', newParams)
+//   },
+//   { immediate: true }
+// )
+
 watch(
   () => props.availableParentParameters,
-  (newParams) => {
-    console.log('Available parent parameters updated:', newParams)
+  (params) => {
+    console.log(
+      'Available parent parameters:',
+      params?.map((p) => ({
+        field: p.field,
+        isFixed: p.isFixed,
+        category: p.category
+      }))
+    )
   },
-  { immediate: true }
+  { immediate: true, deep: true }
 )
 
 watch(
   () => props.availableChildParameters,
-  (newParams) => {
-    console.log('Available child parameters updated:', newParams)
+  (params) => {
+    console.log(
+      'Available child parameters:',
+      params?.map((p) => ({
+        field: p.field,
+        isFixed: p.isFixed,
+        category: p.category
+      }))
+    )
   },
-  { immediate: true }
+  { immediate: true, deep: true }
 )
 </script>
 
@@ -800,5 +1064,13 @@ watch(
 :deep(.p-dialog-header-close:hover) {
   background-color: #f3f4f6;
   color: #374151;
+}
+
+span[class*='bg-'] {
+  transition: opacity 0.15s ease-in-out;
+}
+
+.hover\:bg-gray-50:hover span[class*='bg-'] {
+  opacity: 0.9;
 }
 </style>

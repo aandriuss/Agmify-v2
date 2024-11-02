@@ -113,8 +113,8 @@
           :data="scheduleData || []"
           :columns="currentTableColumns"
           :detail-columns="currentDetailColumns"
-          :available-parent-parameters="availableHeaders.parent"
-          :available-child-parameters="availableHeaders.child"
+          :available-parent-parameters="mergedParentParameters"
+          :available-child-parameters="mergedChildParameters"
           :expand-button-aria-label="'Expand row'"
           :collapse-button-aria-label="'Collapse row'"
           data-key="id"
@@ -131,7 +131,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, reactive } from 'vue'
 import { useUserSettings } from '~/composables/useUserSettings'
-import { useElementsData } from '~/composables/useElementsData'
+import { useElementsData } from '~/components/viewer/composables/useElementsData'
 import DataTable from '~/components/viewer/tables/DataTable.vue'
 import {
   CheckCircleIcon,
@@ -145,7 +145,13 @@ import {
   extractParametersFromData,
   mergeParameters,
   type ParameterDefinition
-} from './parameterDefinitions'
+} from '../composables/parameterDefinitions'
+
+import {
+  mergeAndCategorizeParameters,
+  fixedParentParameters,
+  fixedChildParameters
+} from '../composables/parameterManagement'
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -337,6 +343,22 @@ function mergeColumnDefinitions(
     return savedCol
   })
 }
+
+const mergedParentParameters = computed(() =>
+  mergeAndCategorizeParameters(
+    fixedParentParameters,
+    availableHeaders.value.parent,
+    selectedParentCategories.value
+  )
+)
+
+const mergedChildParameters = computed(() =>
+  mergeAndCategorizeParameters(
+    fixedChildParameters,
+    availableHeaders.value.child,
+    selectedChildCategories.value
+  )
+)
 
 // Save table handler
 const saveTable = async () => {

@@ -1,6 +1,9 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, defineComponent, h, d } from 'vue'
 import { useRootNodes } from '~/components/viewer/composables/useRootNodes'
-import { useDataFlowDebugger } from './dataFlowDebugger'
+import { renderParameterWithBadge } from './parameterManagement'
+import ParameterHeader from '../schedules/ParameterHeader.vue'
+
+import { useDataFlowDebugger } from '../../../composables/dataFlowDebugger'
 
 export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   const { logCategorySelection, logHeaderExtraction, logDataProcessing } =
@@ -21,12 +24,12 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     mark: (node) => {
       if (!node?.raw) return 'No Mark'
 
-      console.log('Mark extraction for node:', {
-        id: node.raw.id,
-        hasIdentityData: !!node.raw['Identity Data'],
-        name: node.raw.Name,
-        type: node.raw.type
-      })
+      // console.log('Mark extraction for node:', {
+      //   id: node.raw.id,
+      //   hasIdentityData: !!node.raw['Identity Data'],
+      //   name: node.raw.Name,
+      //   type: node.raw.type
+      // })
 
       // For walls, prefer Name as mark
       if (getElementCategory(node) === 'Walls' && node.raw.Name) {
@@ -54,12 +57,12 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
       if (!node?.raw) return 'No Host'
 
       // Log the node structure for debugging
-      console.log('Host extraction for node:', {
-        id: node.raw.id,
-        hasConstraints: !!node.raw.Constraints,
-        hostValue: node.raw.Constraints?.Host,
-        category: getElementCategory(node)
-      })
+      // console.log('Host extraction for node:', {
+      //   id: node.raw.id,
+      //   hasConstraints: !!node.raw.Constraints,
+      //   hostValue: node.raw.Constraints?.Host,
+      //   category: getElementCategory(node)
+      // })
 
       const hostValue = node.raw.Constraints?.Host
       return hostValue || 'No Host'
@@ -99,29 +102,29 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     const initialParents = Array.from(elementsMap.value.values())
 
     // Log initial state
-    console.group('📊 Schedule Data Processing')
-    console.log('Initial State:', {
-      totalParents: initialParents.length,
-      parentsByCategory: initialParents.reduce((acc, p) => {
-        acc[p.category] = (acc[p.category] || 0) + 1
-        return acc
-      }, {}),
-      totalChildren: childElementsList.value.length,
-      childrenByCategory: childElementsList.value.reduce((acc, c) => {
-        acc[c.category] = (acc[c.category] || 0) + 1
-        return acc
-      }, {})
-    })
+    // console.group('📊 Schedule Data Processing')
+    // console.log('Initial State:', {
+    //   totalParents: initialParents.length,
+    //   parentsByCategory: initialParents.reduce((acc, p) => {
+    //     acc[p.category] = (acc[p.category] || 0) + 1
+    //     return acc
+    //   }, {}),
+    //   totalChildren: childElementsList.value.length,
+    //   childrenByCategory: childElementsList.value.reduce((acc, c) => {
+    //     acc[c.category] = (acc[c.category] || 0) + 1
+    //     return acc
+    //   }, {})
+    // })
 
     // Process parents with children
     const parentsWithChildren = initialParents.map((parent) => {
-      console.group(`Processing Parent: ${parent.mark || parent.id}`)
-      console.log('Parent Details:', {
-        id: parent.id,
-        category: parent.category,
-        mark: parent.mark,
-        type: parent.type
-      })
+      // console.group(`Processing Parent: ${parent.mark || parent.id}`)
+      // console.log('Parent Details:', {
+      //   id: parent.id,
+      //   category: parent.category,
+      //   mark: parent.mark,
+      //   type: parent.type
+      // })
 
       const baseElement = {
         ...parent,
@@ -134,15 +137,15 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
           (child) => child.host === parent.mark
         )
 
-        console.log('Children Matching:', {
-          parentMark: parent.mark,
-          totalMatches: matchingChildren.length,
-          matchingChildren: matchingChildren.map((child) => ({
-            id: child.id,
-            category: child.category,
-            host: child.host
-          }))
-        })
+        // console.log('Children Matching:', {
+        //   parentMark: parent.mark,
+        //   totalMatches: matchingChildren.length,
+        //   matchingChildren: matchingChildren.map((child) => ({
+        //     id: child.id,
+        //     category: child.category,
+        //     host: child.host
+        //   }))
+        // })
 
         const result = {
           ...baseElement,
@@ -152,17 +155,17 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
           }))
         }
 
-        console.log('Processed Result:', {
-          mark: result.mark,
-          category: result.category,
-          childrenCount: result.details.length
-        })
+        // console.log('Processed Result:', {
+        //   mark: result.mark,
+        //   category: result.category,
+        //   childrenCount: result.details.length
+        // })
 
-        console.groupEnd()
+        // console.groupEnd()
         return result
       }
 
-      console.groupEnd()
+      // console.groupEnd()
       return baseElement
     })
 
@@ -175,13 +178,13 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
           !child.host || !Array.from(elementsMap.value.keys()).includes(child.host)
       )
 
-      console.log('Unattached Children:', {
-        count: unattachedChildren.length,
-        breakdown: unattachedChildren.reduce((acc, child) => {
-          acc[child.category] = (acc[child.category] || 0) + 1
-          return acc
-        }, {})
-      })
+      // console.log('Unattached Children:', {
+      //   count: unattachedChildren.length,
+      //   breakdown: unattachedChildren.reduce((acc, child) => {
+      //     acc[child.category] = (acc[child.category] || 0) + 1
+      //     return acc
+      //   }, {})
+      // })
 
       const processedUnattached = unattachedChildren.map((child) => ({
         ...child,
@@ -195,13 +198,13 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     // Process unmarked parents
     const unmarkedParents = initialParents.filter((parent) => !parent.mark)
 
-    console.log('Unmarked Parents:', {
-      count: unmarkedParents.length,
-      breakdown: unmarkedParents.reduce((acc, parent) => {
-        acc[parent.category] = (acc[parent.category] || 0) + 1
-        return acc
-      }, {})
-    })
+    // console.log('Unmarked Parents:', {
+    //   count: unmarkedParents.length,
+    //   breakdown: unmarkedParents.reduce((acc, parent) => {
+    //     acc[parent.category] = (acc[parent.category] || 0) + 1
+    //     return acc
+    //   }, {})
+    // })
 
     const processedUnmarked = unmarkedParents.map((parent) => ({
       ...parent,
@@ -213,18 +216,18 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     const finalResult = [...result, ...processedUnmarked]
 
     // Log final state
-    console.log('Final Result:', {
-      totalElements: finalResult.length,
-      byCategory: finalResult.reduce((acc, el) => {
-        acc[el.category] = (acc[el.category] || 0) + 1
-        return acc
-      }, {}),
-      withChildren: finalResult.filter((el) => el.details?.length > 0).length,
-      unmarked: finalResult.filter((el) => el.mark === 'No Mark').length,
-      unattached: finalResult.filter((el) => el.host === 'No Host').length
-    })
+    // console.log('Final Result:', {
+    //   totalElements: finalResult.length,
+    //   byCategory: finalResult.reduce((acc, el) => {
+    //     acc[el.category] = (acc[el.category] || 0) + 1
+    //     return acc
+    //   }, {}),
+    //   withChildren: finalResult.filter((el) => el.details?.length > 0).length,
+    //   unmarked: finalResult.filter((el) => el.mark === 'No Mark').length,
+    //   unattached: finalResult.filter((el) => el.host === 'No Host').length
+    // })
 
-    console.groupEnd()
+    // console.groupEnd()
 
     return finalResult
   })
@@ -239,27 +242,28 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     const parentHeaders = new Map<string, HeaderInfo>()
     const childHeaders = new Map<string, HeaderInfo>()
 
+    // Define addHeader function first
     function addHeader(
       headersMap: Map<string, HeaderInfo>,
       field: string,
       source: string
     ) {
-      // Don't normalize - keep original field name
       const headerKey = field
       if (!headersMap.has(headerKey)) {
-        console.log('Adding header:', { field, source })
+        // console.log('Adding header:', { field, source })
         headersMap.set(headerKey, {
-          field, // Keep original field name
-          header: field, // Keep original field name for display
+          field,
+          header: field,
           source
         })
       }
     }
 
+    // Process node function stays the same
     function processNode(node: any, headersMap: Map<string, HeaderInfo>) {
       if (!node?.raw) return
 
-      console.log('Raw node data:', JSON.stringify(node.raw, null, 2))
+      // console.log('Raw node data:', JSON.stringify(node.raw, null, 2))
 
       // Base Properties
       addHeader(headersMap, 'type', 'Base Properties')
@@ -324,15 +328,16 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
       })
     }
 
+    // Traverse function remains the same
     function traverse(node: any) {
       if (!node?.raw) return
 
       const category = getElementCategory(node)
-      console.log('Traversing node:', {
-        category,
-        isParentCategory: selectedParentCategories.value.includes(category),
-        isChildCategory: selectedChildCategories.value.includes(category)
-      })
+      // console.log('Traversing node:', {
+      //   category,
+      //   isParentCategory: selectedParentCategories.value.includes(category),
+      //   isChildCategory: selectedChildCategories.value.includes(category)
+      // })
 
       if (selectedParentCategories.value.includes(category)) {
         processNode(node, parentHeaders)
@@ -354,38 +359,40 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     // Process all nodes
     rootNodes.forEach((node) => traverse(node.rawNode))
 
-    // Convert headers to parameter definitions
-    const headers = {
-      parent: Array.from(parentHeaders.values()).map(({ field, header, source }) => ({
-        field,
-        header,
+    // Process headers after all nodes have been traversed
+    const processedHeaders = (headers: Map<string, HeaderInfo>) =>
+      Array.from(headers.values()).map((header) => ({
+        ...header,
         type: 'string',
-        category: source,
-        description: `Field from ${source}`
-      })),
-      child: Array.from(childHeaders.values()).map(({ field, header, source }) => ({
-        field,
-        header,
-        type: 'string',
-        category: source,
-        description: `Field from ${source}`
+        category: header.source,
+        description: `Field from ${header.source}`,
+        headerComponent: defineComponent({
+          setup() {
+            return () => h(ParameterHeader, { parameter: header })
+          }
+        })
       }))
+
+    // Return processed headers
+    const result = {
+      parent: processedHeaders(parentHeaders),
+      child: processedHeaders(childHeaders)
     }
 
-    console.log('Extracted Headers:', {
-      parentHeaders: {
-        count: headers.parent.length,
-        fields: headers.parent.map((h) => h.field),
-        categories: [...new Set(headers.parent.map((h) => h.category))]
-      },
-      childHeaders: {
-        count: headers.child.length,
-        fields: headers.child.map((h) => h.field),
-        categories: [...new Set(headers.child.map((h) => h.category))]
-      }
-    })
+    // console.log('Extracted Headers:', {
+    //   parentHeaders: {
+    //     count: result.parent.length,
+    //     fields: result.parent.map((h) => h.field),
+    //     categories: [...new Set(result.parent.map((h) => h.category))]
+    //   },
+    //   childHeaders: {
+    //     count: result.child.length,
+    //     fields: result.child.map((h) => h.field),
+    //     categories: [...new Set(result.child.map((h) => h.category))]
+    //   }
+    // })
 
-    return headers
+    return result
   }
 
   function getElementCategory(node: any): string {
@@ -420,16 +427,16 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     if (!paramDef?.field || !node?.raw) return null
 
     // Log the structure we're searching through
-    console.log('Searching for parameter:', {
-      field: paramDef.field,
-      category: paramDef.category,
-      nodeStructure: {
-        rawKeys: Object.keys(node.raw),
-        hasIdentityData: !!node.raw['Identity Data'],
-        hasParameters: !!node.raw['Parameters'],
-        hasProperties: !!node.raw['Properties']
-      }
-    })
+    // console.log('Searching for parameter:', {
+    //   field: paramDef.field,
+    //   category: paramDef.category,
+    //   nodeStructure: {
+    //     rawKeys: Object.keys(node.raw),
+    //     hasIdentityData: !!node.raw['Identity Data'],
+    //     hasParameters: !!node.raw['Parameters'],
+    //     hasProperties: !!node.raw['Properties']
+    //   }
+    // })
 
     // Common property paths to check
     const pathsToCheck = [
@@ -459,7 +466,7 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     for (const path of pathsToCheck) {
       const value = getNestedValue(node, path)
       if (value !== null && value !== undefined) {
-        console.log('Found value at path:', { path, value })
+        // console.log('Found value at path:', { path, value })
         return value
       }
     }
@@ -469,11 +476,11 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
       return node.raw[paramDef.field][0] // Return first element of array
     }
 
-    console.log('Parameter value not found:', {
-      field: paramDef.field,
-      category: paramDef.category,
-      availablePaths: Object.keys(node.raw)
-    })
+    // console.log('Parameter value not found:', {
+    //   field: paramDef.field,
+    //   category: paramDef.category,
+    //   availablePaths: Object.keys(node.raw)
+    // })
 
     return null
   }
@@ -487,12 +494,12 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
       currentDetailColumns.value
     )
 
-    console.group('🔄 Elements Processing')
-    console.log('Initial state:', {
-      rootNodesCount: rootNodes.length,
-      selectedParentCategories: selectedParentCategories.value,
-      selectedChildCategories: selectedChildCategories.value
-    })
+    // console.group('🔄 Elements Processing')
+    // console.log('Initial state:', {
+    //   rootNodesCount: rootNodes.length,
+    //   selectedParentCategories: selectedParentCategories.value,
+    //   selectedChildCategories: selectedChildCategories.value
+    // })
 
     // Clear existing data before processing
     elementsMap.value.clear()
@@ -506,12 +513,12 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
 
       const category = getElementCategory(node)
 
-      console.log('Processing potential parent:', {
-        id: node.raw.id,
-        category,
-        type: node.raw.type,
-        isParentCategory: selectedParentCategories.value.includes(category)
-      })
+      // console.log('Processing potential parent:', {
+      //   id: node.raw.id,
+      //   category,
+      //   type: node.raw.type,
+      //   isParentCategory: selectedParentCategories.value.includes(category)
+      // })
 
       // Process only parent category elements first
       if (selectedParentCategories.value.includes(category)) {
@@ -546,11 +553,11 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
           elementsMap.value.set(elementMark, elementData)
           parentMarks.add(elementMark)
 
-          console.log('Added parent element:', {
-            mark: elementMark,
-            category,
-            id: node.raw.id
-          })
+          // console.log('Added parent element:', {
+          //   mark: elementMark,
+          //   category,
+          //   id: node.raw.id
+          // })
         }
       }
 
@@ -566,13 +573,13 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     // Process root nodes for parents
     rootNodes.forEach((node) => processParents(node.rawNode))
 
-    console.log('Parent processing complete:', {
-      totalParents: elementsMap.value.size,
-      parentCategories: [
-        ...new Set(Array.from(elementsMap.value.values()).map((p) => p.category))
-      ],
-      parentMarks: Array.from(parentMarks)
-    })
+    // console.log('Parent processing complete:', {
+    //   totalParents: elementsMap.value.size,
+    //   parentCategories: [
+    //     ...new Set(Array.from(elementsMap.value.values()).map((p) => p.category))
+    //   ],
+    //   parentMarks: Array.from(parentMarks)
+    // })
 
     // After processing parents
     const processedParents = Array.from(elementsMap.value.values())
@@ -619,12 +626,12 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
           ...childParamValues
         }
 
-        console.log('Processing child element:', {
-          id: childData.id,
-          category: childData.category,
-          host: childData.host,
-          mark: childData.mark
-        })
+        // console.log('Processing child element:', {
+        //   id: childData.id,
+        //   category: childData.category,
+        //   host: childData.host,
+        //   mark: childData.mark
+        // })
 
         childElementsList.value.push(childData)
       }
@@ -641,22 +648,22 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     // Process root nodes for children
     rootNodes.forEach((node) => processChildren(node.rawNode))
 
-    console.log('Processing completion state:', {
-      parentElements: {
-        total: elementsMap.value.size,
-        categories: [
-          ...new Set(Array.from(elementsMap.value.values()).map((p) => p.category))
-        ]
-      },
-      childElements: {
-        total: childElementsList.value.length,
-        categories: [...new Set(childElementsList.value.map((c) => c.category))],
-        withValidHosts: childElementsList.value.filter((c) => c.host !== 'No Host')
-          .length
-      }
-    })
+    // console.log('Processing completion state:', {
+    //   parentElements: {
+    //     total: elementsMap.value.size,
+    //     categories: [
+    //       ...new Set(Array.from(elementsMap.value.values()).map((p) => p.category))
+    //     ]
+    //   },
+    //   childElements: {
+    //     total: childElementsList.value.length,
+    //     categories: [...new Set(childElementsList.value.map((c) => c.category))],
+    //     withValidHosts: childElementsList.value.filter((c) => c.host !== 'No Host')
+    //       .length
+    //   }
+    // })
 
-    console.groupEnd()
+    // console.groupEnd()
 
     // Final state logging
     const finalData = [...processedParents, ...childElementsList.value]
@@ -669,22 +676,22 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   }
 
   // Verify data integrity
-  function verifyDataIntegrity(data: any) {
-    console.log('Data Integrity Check:', {
-      missingValues: currentTableColumns.value.map((col) => ({
-        field: col.field,
-        missingCount: data.filter((d) => d[col.field] === null).length,
-        totalCount: data.length
-      })),
-      sampleValues: data
-        .slice(0, 3)
-        .map((item) =>
-          Object.fromEntries(
-            currentTableColumns.value.map((col) => [col.field, item[col.field]])
-          )
-        )
-    })
-  }
+  // function verifyDataIntegrity(data: any) {
+  //   console.log('Data Integrity Check:', {
+  //     missingValues: currentTableColumns.value.map((col) => ({
+  //       field: col.field,
+  //       missingCount: data.filter((d) => d[col.field] === null).length,
+  //       totalCount: data.length
+  //     })),
+  //     sampleValues: data
+  //       .slice(0, 3)
+  //       .map((item) =>
+  //         Object.fromEntries(
+  //           currentTableColumns.value.map((col) => [col.field, item[col.field]])
+  //         )
+  //       )
+  //   })
+  // }
 
   // Available headers for parent and child elements
   const availableHeaders = computed(() => {
@@ -703,24 +710,24 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     { immediate: true }
   )
 
-  watch(
-    () => rootNodes.value,
-    (newNodes) => {
-      if (newNodes) {
-        logWallElements('Initial Data', newNodes)
-      }
-    },
-    { immediate: true }
-  )
+  // watch(
+  //   () => rootNodes.value,
+  //   (newNodes) => {
+  //     if (newNodes) {
+  //       logWallElements('Initial Data', newNodes)
+  //     }
+  //   },
+  //   { immediate: true }
+  // )
 
   watch(
     [() => currentTableColumns.value, () => currentDetailColumns.value],
     () => {
-      console.warn('Column configuration changed:', {
-        parentColumns: currentTableColumns.value?.map((c) => c.field) || [],
-        childColumns: currentDetailColumns.value?.map((c) => c.field) || [],
-        timestamp: new Date().toISOString()
-      })
+      // console.warn('Column configuration changed:', {
+      //   parentColumns: currentTableColumns.value?.map((c) => c.field) || [],
+      //   childColumns: currentDetailColumns.value?.map((c) => c.field) || [],
+      //   timestamp: new Date().toISOString()
+      // })
     },
     { deep: true }
   )
