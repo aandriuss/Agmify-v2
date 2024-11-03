@@ -1,58 +1,123 @@
 <template>
   <div class="flex-1 border rounded flex flex-col" @dragover.prevent>
-    <div class="p-3 border-b bg-gray-50">
+    <!-- Header -->
+    <div class="p-3 border-b bg-gray-50 flex items-center justify-between">
       <h3 class="font-medium text-sm">Active Columns</h3>
+      <div class="flex items-center gap-2 text-sm">
+        <span class="text-gray-500">
+          {{ visibleColumnsCount }}/{{ totalColumnsCount }} visible
+        </span>
+        <Button
+          v-if="hasHiddenColumns"
+          icon="pi pi-eye"
+          text
+          severity="secondary"
+          size="small"
+          @click="showAllColumns"
+        >
+          Show All
+        </Button>
+      </div>
     </div>
 
-    <ColumnList
-      :columns="columns"
-      @remove="handleRemove"
-      @reorder="handleReorder"
-      @visibility-change="handleVisibilityChange"
-    />
+    <!-- Main Content -->
+    <div
+      class="flex-1 flex flex-col overflow-hidden"
+      :class="{ 'opacity-50': isUpdating }"
+    >
+      <EnhancedColumnList
+        :columns="columns"
+        mode="active"
+        @remove="handleRemove"
+        @visibility-change="handleVisibilityChange"
+        @update:columns="handleColumnsUpdate"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import ColumnList from './ColumnList.vue'
+import { ref, computed } from 'vue'
+import Button from 'primevue/button'
 import type { ColumnDef } from '../../../composables/types'
+import EnhancedColumnList from '../EnhancedColumnList.vue'
 
-const props = defineProps<{
-  columns: ColumnDef[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    columns: ColumnDef[]
+  }>(),
+  {
+    columns: () => []
+  }
+)
 
 const emit = defineEmits<{
   'update:columns': [columns: ColumnDef[]]
 }>()
 
-const handleRemove = (column: ColumnDef) => {
+// State
+const isUpdating = ref(false)
+
+// Computed with safety checks
+const totalColumnsCount = computed(() => props.columns?.length || 0)
+
+const visibleColumnsCount = computed(
+  () => (props.columns || []).filter((col) => col.visible).length
+)
+
+const hasHiddenColumns = computed(
+  () =>
+    visibleColumnsCount.value < totalColumnsCount.value && totalColumnsCount.value > 0
+)
+
+// Methods
+const updateColumns = async (newColumns: ColumnDef[]) => {
+  try {
+    isUpdating.value = true
+    emit('update:columns', newColumns)
+  } finally {
+    setTimeout(() => {
+      isUpdating.value = false
+    }, 300)
+  }
+}
+
+const handleColumnsUpdate = async (newColumns: ColumnDef[]) => {
+  await updateColumns(newColumns || [])
+}
+
+const handleRemove = async (column: ColumnDef) => {
   if (!column.removable) return
 
-  const updatedColumns = props.columns.filter((col) => col.field !== column.field)
-  emit('update:columns', updatedColumns)
+  const updatedColumns = (props.columns || []).filter(
+    (col) => col.field !== column.field
+  )
+  await updateColumns(updatedColumns)
 }
 
-const handleReorder = (fromIndex: number, toIndex: number) => {
-  const columns = [...props.columns]
-  const [movedColumn] = columns.splice(fromIndex, 1)
-  columns.splice(toIndex, 0, movedColumn)
-
-  // Update order property
-  columns.forEach((col, index) => {
-    col.order = index
-  })
-
-  emit('update:columns', columns)
-}
-
-const handleVisibilityChange = (column: ColumnDef, visible: boolean) => {
-  const updatedColumns = props.columns.map((col) => {
+const handleVisibilityChange = async (column: ColumnDef, visible: boolean) => {
+  const updatedColumns = (props.columns || []).map((col) => {
     if (col.field === column.field) {
       return { ...col, visible }
     }
     return col
   })
 
-  emit('update:columns', updatedColumns)
+  await updateColumns(updatedColumns)
+}
+
+const showAllColumns = async () => {
+  const updatedColumns = (props.columns || []).map((col) => ({
+    ...col,
+    visible: true
+  }))
+
+  await updateColumns(updatedColumns)
 }
 </script>
+
+<style scoped>
+.opacity-50 {
+  pointer-events: none;
+}
+</style>

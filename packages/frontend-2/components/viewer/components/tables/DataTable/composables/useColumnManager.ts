@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef } from '../types'
+import type { ColumnDef } from '../composables/types'
 
 interface UseColumnManagerOptions {
   initialParentColumns: ColumnDef[]

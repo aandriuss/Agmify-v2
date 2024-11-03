@@ -9,7 +9,6 @@
         <i
           class="pi pi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
         />
-        <!-- eslint-disable-next-line vuejs-accessibility/form-control-has-label -->
         <input
           v-model="localSearchTerm"
           type="text"
@@ -22,12 +21,12 @@
           text
           severity="secondary"
           class="absolute right-2 top-1/2 transform -translate-y-1/2"
-          @click="localSearchTerm = ''"
+          @click="clearFilters"
         />
       </div>
 
       <!-- Filter Controls -->
-      <div class="flex gap-2">
+      <div class="flex items-center gap-2">
         <Menu as="div" class="relative">
           <MenuButton
             class="px-2 py-1 text-sm border rounded-md hover:bg-gray-50 flex items-center gap-1"
@@ -150,6 +149,8 @@ import type { ParameterDefinition } from '../../../composables/types'
 // import FilterControls from './FilterControls.vue'
 // import ParametersList from './ParametersList.vue'
 import { useParameterFiltering } from '~/components/viewer/components/tables/DataTable/composables/useParameterFiltering'
+
+import EnhancedColumnList from '../EnhancedColumnList.vue'
 
 const props = defineProps<{
   parameters: ParameterDefinition[]
