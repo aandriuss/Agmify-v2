@@ -26,11 +26,11 @@
       :class="{ 'opacity-50': isUpdating }"
     >
       <EnhancedColumnList
-        :columns="columns"
+        :items="columns"
         mode="active"
         @remove="handleRemove"
         @visibility-change="handleVisibilityChange"
-        @update:columns="handleColumnsUpdate"
+        @update:items="handleReorder"
       />
     </div>
   </div>
@@ -40,7 +40,7 @@
 import { ref, computed } from 'vue'
 import Button from 'primevue/button'
 import type { ColumnDef } from '../../../composables/types'
-import EnhancedColumnList from '../EnhancedColumnList.vue'
+import EnhancedColumnList from '../shared/EnhancedColumnList.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -53,66 +53,64 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:columns': [columns: ColumnDef[]]
+  remove: [column: ColumnDef]
+  'visibility-change': [column: ColumnDef, visible: boolean]
+  reorder: [fromIndex: number, toIndex: number]
 }>()
 
-// State
 const isUpdating = ref(false)
 
-// Computed with safety checks
+// Computed properties
 const totalColumnsCount = computed(() => props.columns?.length || 0)
 
 const visibleColumnsCount = computed(
-  () => (props.columns || []).filter((col) => col.visible).length
+  () => props.columns?.filter((col) => col.visible).length || 0
 )
 
 const hasHiddenColumns = computed(
-  () =>
-    visibleColumnsCount.value < totalColumnsCount.value && totalColumnsCount.value > 0
+  () => visibleColumnsCount.value < totalColumnsCount.value
 )
 
 // Methods
-const updateColumns = async (newColumns: ColumnDef[]) => {
-  try {
-    isUpdating.value = true
-    emit('update:columns', newColumns)
-  } finally {
-    setTimeout(() => {
-      isUpdating.value = false
-    }, 300)
+const handleRemove = (column: ColumnDef) => {
+  emit('remove', column)
+}
+
+const handleVisibilityChange = (column: ColumnDef, visible: boolean) => {
+  emit('visibility-change', column, visible)
+}
+
+const handleReorderColumns = (fromIndex: number, toIndex: number) => {
+  emit('reorder', fromIndex, toIndex)
+}
+
+const handleDragStart = (event: DragEvent, column: ColumnDef, index: number) => {
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', JSON.stringify({ column, index }))
   }
 }
 
-const handleColumnsUpdate = async (newColumns: ColumnDef[]) => {
-  await updateColumns(newColumns || [])
+const handleDragEnter = (index: number) => {
+  // Handle drag enter logic if needed
 }
 
-const handleRemove = async (column: ColumnDef) => {
-  if (!column.removable) return
+const handleDrop = (event: DragEvent, index: number) => {
+  const data = event.dataTransfer?.getData('text/plain')
+  if (!data) return
 
-  const updatedColumns = (props.columns || []).filter(
-    (col) => col.field !== column.field
-  )
-  await updateColumns(updatedColumns)
+  const { index: fromIndex } = JSON.parse(data)
+  if (fromIndex !== index) {
+    handleReorderColumns(fromIndex, index)
+  }
 }
 
-const handleVisibilityChange = async (column: ColumnDef, visible: boolean) => {
-  const updatedColumns = (props.columns || []).map((col) => {
-    if (col.field === column.field) {
-      return { ...col, visible }
-    }
-    return col
-  })
-
-  await updateColumns(updatedColumns)
-}
-
-const showAllColumns = async () => {
-  const updatedColumns = (props.columns || []).map((col) => ({
+const showAllColumns = () => {
+  const updatedColumns = props.columns.map((col) => ({
     ...col,
     visible: true
   }))
-
-  await updateColumns(updatedColumns)
+  emit('update:columns', updatedColumns)
 }
 </script>
 

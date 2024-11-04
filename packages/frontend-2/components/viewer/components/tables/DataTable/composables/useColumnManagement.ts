@@ -3,7 +3,7 @@ import type { Ref } from 'vue'
 import type { ColumnDef, ParameterDefinition } from './types'
 
 interface UseColumnManagementOptions {
-  initialColumns: ColumnDef[]
+  initialColumns: (ColumnDef | ParameterDefinition)[]
   searchTerm?: Ref<string>
   isGrouped?: Ref<boolean>
   sortBy?: Ref<'name' | 'category' | 'type' | 'fixed'>
@@ -15,41 +15,42 @@ export function useColumnManagement({
   isGrouped = ref(true),
   sortBy = ref('category' as const)
 }: UseColumnManagementOptions) {
-  // Initialize with empty array if initialColumns is undefined
-  const columns = ref<ColumnDef[]>(initialColumns || [])
+  const columns = ref<(ColumnDef | ParameterDefinition)[]>(initialColumns || [])
   const dragOverIndex = ref(-1)
 
   const filteredColumns = computed(() => {
-    // Ensure we're working with an array
     let result = Array.isArray(columns.value) ? [...columns.value] : []
 
     if (searchTerm.value) {
       const normalizedSearch = searchTerm.value.toLowerCase().trim()
-      result = result.filter(
-        (col) =>
-          col.header.toLowerCase().includes(normalizedSearch) ||
-          col.field.toLowerCase().includes(normalizedSearch)
-      )
+      result = result.filter((col) => {
+        const header = 'header' in col ? col.header : col.field
+        const field = col.field
+        return (
+          header.toLowerCase().includes(normalizedSearch) ||
+          field.toLowerCase().includes(normalizedSearch)
+        )
+      })
     }
 
-    // Apply sorting
     return [...result].sort((a, b) => {
       switch (sortBy.value) {
         case 'name':
-          return a.header.localeCompare(b.header)
+          return (a.header || a.field).localeCompare(b.header || b.field)
         case 'category':
           return (a.category || 'Other').localeCompare(b.category || 'Other')
-        case 'type':
-          return ((a as ParameterDefinition).type || '').localeCompare(
-            (b as ParameterDefinition).type || ''
-          )
+        case 'type': {
+          const typeA = 'type' in a ? a.type : 'unknown'
+          const typeB = 'type' in b ? b.type : 'unknown'
+          return typeA.localeCompare(typeB)
+        }
         case 'fixed':
           if (a.isFixed === b.isFixed) {
-            return a.header.localeCompare(b.header)
+            return (a.header || a.field).localeCompare(b.header || b.field)
           }
           return a.isFixed ? -1 : 1
         default:
-          return a.order - b.order
+          return (a.order || 0) - (b.order || 0)
       }
     })
   })
@@ -57,7 +58,7 @@ export function useColumnManagement({
   const groupedColumns = computed(() => {
     if (!isGrouped.value) return []
 
-    const groups: Record<string, ColumnDef[]> = {}
+    const groups: Record<string, (ColumnDef | ParameterDefinition)[]> = {}
 
     filteredColumns.value.forEach((col) => {
       const category = col.category || 'Other'
@@ -68,58 +69,27 @@ export function useColumnManagement({
     })
 
     return Object.entries(groups)
-      .map(([category, cols]) => ({
+      .map(([category, columns]) => ({
         category,
-        columns: cols.sort((a, b) => a.order - b.order)
+        columns: columns.sort((a, b) => (a.order || 0) - (b.order || 0))
       }))
       .sort((a, b) => a.category.localeCompare(b.category))
   })
 
-  const updateColumns = (newColumns: ColumnDef[]) => {
-    columns.value = newColumns
+  const updateColumns = (newColumns: (ColumnDef | ParameterDefinition)[]) => {
+    columns.value = newColumns.map((col, index) => ({
+      ...col,
+      order: col.order ?? index,
+      visible: col.visible ?? true
+    }))
   }
 
-  const handleDragStart = (event: DragEvent, column: ColumnDef, index: number) => {
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move'
-      event.dataTransfer.setData('text/plain', JSON.stringify({ column, index }))
-    }
-  }
-
-  const handleDragEnter = (index: number) => {
-    dragOverIndex.value = index
-  }
-
-  const handleDragLeave = () => {
-    dragOverIndex.value = -1
-  }
-
-  const handleDrop = (event: DragEvent, dropIndex: number) => {
-    event.preventDefault()
-    const data = JSON.parse(event.dataTransfer?.getData('text/plain') || '{}')
-    const dragIndex = data.index
-
-    if (typeof dragIndex === 'number' && dragIndex !== dropIndex) {
-      const updatedColumns = [...columns.value]
-      const [movedColumn] = updatedColumns.splice(dragIndex, 1)
-      updatedColumns.splice(dropIndex, 0, movedColumn)
-
-      // Update order property
-      updatedColumns.forEach((col, index) => {
-        col.order = index
-      })
-
-      columns.value = updatedColumns
-    }
-
-    dragOverIndex.value = -1
-  }
-
-  // Watch for changes in initialColumns
   watch(
     () => initialColumns,
     (newColumns) => {
-      columns.value = newColumns
+      if (newColumns) {
+        updateColumns(newColumns)
+      }
     },
     { deep: true }
   )
@@ -129,10 +99,6 @@ export function useColumnManagement({
     dragOverIndex,
     filteredColumns,
     groupedColumns,
-    updateColumns,
-    handleDragStart,
-    handleDragEnter,
-    handleDragLeave,
-    handleDrop
+    updateColumns
   }
 }

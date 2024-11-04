@@ -124,7 +124,7 @@
           @column-reorder="handleColumnReorder"
         /> -->
         <DataTable
-          :table-id="tableId"
+          :table-id="state.selectedTableId || DEFAULT_TABLE_ID"
           :data="scheduleData"
           :columns="currentTableColumns"
           :detail-columns="currentDetailColumns"
@@ -187,14 +187,67 @@ const {
   updateNamedTable
 } = useUserSettings()
 
-// UI State
-const state = reactive({
+const state = reactive<TableState>({
+  selectedTableId: null,
   tableName: '',
   showCategoryOptions: false,
   expandedRows: [],
-  selectedTableId: null as string | null,
   tableKey: Date.now().toString()
 })
+
+// Computed properties for table management
+const currentTableId = computed(() => state.selectedTableId || DEFAULT_TABLE_ID)
+
+// Get current table
+const currentTable = computed(() => {
+  return settings.value?.namedTables?.[currentTableId.value]
+})
+
+const isDefaultTable = computed(() => currentTableId.value === DEFAULT_TABLE_ID)
+
+// Table initialization function
+const initializeDefaultTable = async () => {
+  const currentSettings = settings.value
+
+  if (
+    !currentSettings?.namedTables ||
+    Object.keys(currentSettings.namedTables).length === 0
+  ) {
+    console.log('Initializing default table...')
+
+    const defaultTable: TableConfig = {
+      name: 'Default Table',
+      parentColumns: defaultParentColumns,
+      childColumns: defaultChildColumns,
+      categoryFilters: {
+        selectedParentCategories: [],
+        selectedChildCategories: []
+      }
+    }
+
+    await saveSettings({
+      ...currentSettings,
+      namedTables: {
+        [DEFAULT_TABLE_ID]: defaultTable
+      }
+    })
+  }
+}
+
+// Table selection handler
+const handleTableSelection = async (tableId: string) => {
+  state.selectedTableId = tableId
+  const selectedTable = settings.value?.namedTables?.[tableId]
+
+  if (selectedTable) {
+    state.tableName = selectedTable.name
+    selectedParentCategories.value =
+      selectedTable.categoryFilters?.selectedParentCategories || []
+    selectedChildCategories.value =
+      selectedTable.categoryFilters?.selectedChildCategories || []
+    updateCategories(selectedParentCategories.value, selectedChildCategories.value)
+  }
+}
 
 // Categories
 const parentCategories = ['Walls', 'Floors', 'Roofs']
@@ -222,9 +275,6 @@ const tablesArray = computed(() => {
     name: table.name
   }))
 })
-
-// Get current table ID (either selected or default)
-const currentTableId = computed(() => state.selectedTableId || DEFAULT_TABLE_ID)
 
 // Default column configurations
 const defaultParentColumns = [
@@ -692,6 +742,8 @@ const shouldRenderTable = computed(() => {
 // Modified initialization
 onMounted(async () => {
   await loadSettings()
+  await initializeDefaultTable()
+  await loadSettings()
   const currentSettings = settings.value
 
   // Only create default table if there are absolutely no tables
@@ -730,22 +782,11 @@ onMounted(async () => {
   // Set selected table to existing table or default
   const availableTables = settings.value?.namedTables || {}
   if (Object.keys(availableTables).length > 0) {
-    // Prefer default table if it exists, otherwise take first available
     const tableToSelect = availableTables[DEFAULT_TABLE_ID]
       ? DEFAULT_TABLE_ID
       : Object.keys(availableTables)[0]
 
-    state.selectedTableId = tableToSelect
-    const selectedTable = availableTables[tableToSelect]
-
-    if (selectedTable) {
-      state.tableName = selectedTable.name
-      selectedParentCategories.value =
-        selectedTable.categoryFilters?.selectedParentCategories || []
-      selectedChildCategories.value =
-        selectedTable.categoryFilters?.selectedChildCategories || []
-      updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-    }
+    await handleTableSelection(tableToSelect)
   }
 })
 
@@ -831,6 +872,17 @@ watch(
     }
   },
   { deep: true }
+)
+
+// Watchers for table ID changes
+watch(
+  () => currentTableId.value,
+  async (newTableId) => {
+    if (newTableId) {
+      console.log('Current table ID changed:', newTableId)
+      await handleTableSelection(newTableId)
+    }
+  }
 )
 </script>
 

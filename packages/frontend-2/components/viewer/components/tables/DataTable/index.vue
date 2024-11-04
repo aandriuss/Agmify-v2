@@ -1,21 +1,23 @@
 <template>
-  <div class="datatable-wrapper">
+  <div class="prime-local">
     <FormButton color="outline" class="mb-3" @click="openDialog">
       Manage Columns
     </FormButton>
 
     <span v-if="isSaving" class="text-sm text-gray-500">Saving changes...</span>
 
+    <!-- Column Manager -->
     <ColumnManager
+      v-if="dialogOpen"
       :open="dialogOpen"
-      :parent-columns="tempParentColumns"
-      :child-columns="tempChildColumns"
+      :table-id="tableId"
+      :parent-columns="localParentColumns"
+      :child-columns="localChildColumns"
       :available-parent-parameters="availableParentParameters"
       :available-child-parameters="availableChildParameters"
       @update:open="dialogOpen = $event"
       @update:columns="handleColumnsUpdate"
       @cancel="handleCancel"
-      @apply="handleApply"
     />
 
     <TableWrapper
@@ -89,6 +91,27 @@ const emit = defineEmits<{
   filter: [filters: Record<string, any>]
   error: [error: Error]
 }>()
+
+const { settings, loading, saveSettings, loadSettings, updateNamedTable } =
+  useUserSettings(props.tableId) // Pass tableId to the hook
+
+// Add watch for settings changes
+watch(
+  () => settings.value?.namedTables?.[props.tableId],
+  (newTableSettings) => {
+    if (newTableSettings) {
+      localParentColumns.value = newTableSettings.parentColumns || []
+      localChildColumns.value = newTableSettings.childColumns || []
+    }
+  },
+  { deep: true }
+)
+
+// Add check for existing settings before apply
+const checkExistingSettings = () => {
+  const existingSettings = settings.value?.namedTables?.[props.tableId]
+  return !!existingSettings
+}
 
 // State
 const dialogOpen = ref(false)
@@ -172,17 +195,43 @@ const handleColumnsUpdate = (updates: ColumnUpdateEvent) => {
 const handleApply = async () => {
   try {
     isSaving.value = true
-    localParentColumns.value = JSON.parse(JSON.stringify(tempParentColumns.value))
-    localChildColumns.value = JSON.parse(JSON.stringify(tempChildColumns.value))
 
-    emit('update:both-columns', {
+    const settingsExist = checkExistingSettings()
+    const tableConfig = {
+      id: props.tableId,
+      name: settingsExist ? settings.value.namedTables[props.tableId].name : 'tt36',
+      parentColumns: localParentColumns.value,
+      childColumns: localChildColumns.value,
+      categoryFilters: settingsExist
+        ? settings.value.namedTables[props.tableId].categoryFilters
+        : {
+            selectedParentCategories: [],
+            selectedChildCategories: []
+          }
+    }
+
+    if (!settingsExist) {
+      // Create new settings
+      await saveSettings({
+        ...settings.value,
+        namedTables: {
+          ...(settings.value?.namedTables || {}),
+          [props.tableId]: tableConfig
+        }
+      })
+    } else {
+      // Update existing settings
+      await updateNamedTable(props.tableId, tableConfig)
+    }
+
+    emit('update:columns', {
       parentColumns: localParentColumns.value,
       childColumns: localChildColumns.value
     })
 
-    dialogOpen.value = false
+    emit('update:open', false)
   } catch (error) {
-    handleError(error as Error)
+    console.error('Failed to save column settings:', error)
   } finally {
     isSaving.value = false
   }

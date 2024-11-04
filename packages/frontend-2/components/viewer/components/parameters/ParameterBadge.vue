@@ -11,6 +11,7 @@
     <span v-if="parameter.category" class="ml-1 text-xs opacity-75">
       ({{ parameter.category }})
     </span>
+    <span v-if="parameter?.isFixed" class="fixed-badge">Fixed</span>
   </div>
 </template>
 

@@ -20,7 +20,12 @@
             @click="$emit('update:isGrouped', !isGrouped)"
           >
             <div class="flex items-center gap-2">
-              <Checkbox :model-value="isGrouped" :binary="true" />
+              <input
+                type="checkbox"
+                :checked="isGrouped"
+                class="rounded border-gray-300"
+                @change="$emit('update:isGrouped', !isGrouped)"
+              />
               Group by Category
             </div>
           </button>
@@ -36,7 +41,7 @@
             @update:model-value="$emit('update:sortBy', $event)"
           >
             <RadioGroupOption
-              v-for="option in sortOptions"
+              v-for="option in availableSortOptions"
               :key="option.value"
               v-slot="{ checked }"
               :value="option.value"
@@ -58,7 +63,7 @@
     </Menu>
 
     <button
-      v-if="hasFilters"
+      v-if="showClearButton"
       class="px-2 py-1 text-sm text-gray-500 hover:text-gray-700"
       @click="$emit('clear')"
     >
@@ -70,7 +75,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import Checkbox from 'primevue/checkbox'
+// import Checkbox from 'primevue/checkbox'
 import {
   Menu,
   MenuButton,
@@ -80,28 +85,34 @@ import {
   RadioGroupOption
 } from '@headlessui/vue'
 
-type SortOption = 'name' | 'category' | 'type' | 'fixed'
+// type SortOption = 'name' | 'category' | 'type' | 'fixed'
 
-const props = defineProps<{
-  isGrouped: boolean
-  sortBy: SortOption
-  searchTerm: string
-}>()
-
-const emit = defineEmits<{
-  'update:isGrouped': [value: boolean]
-  'update:sortBy': [value: SortOption]
-  clear: []
-}>()
-
-const sortOptions = [
+const availableSortOptions = [
   { value: 'name', label: 'Name' },
   { value: 'category', label: 'Category' },
   { value: 'type', label: 'Type' },
   { value: 'fixed', label: 'Fixed First' }
 ] as const
 
-const hasFilters = computed(() => {
+interface Props {
+  isGrouped: boolean
+  sortBy: 'name' | 'category' | 'type' | 'fixed'
+  searchTerm?: string
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  isGrouped: true,
+  sortBy: 'category',
+  searchTerm: ''
+})
+
+const emit = defineEmits<{
+  'update:isGrouped': [value: boolean]
+  'update:sortBy': [value: 'name' | 'category' | 'type' | 'fixed']
+  clear: []
+}>()
+
+const showClearButton = computed(() => {
   return props.searchTerm || props.sortBy !== 'category' || !props.isGrouped
 })
 </script>

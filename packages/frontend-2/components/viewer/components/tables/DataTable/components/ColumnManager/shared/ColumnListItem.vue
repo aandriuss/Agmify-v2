@@ -2,21 +2,21 @@
   <div
     class="flex items-center justify-between p-2 hover:bg-gray-50 rounded text-sm"
     :class="{ 'border-t-2 border-blue-500': isDraggingOver }"
-    :draggable="mode === 'active'"
+    :draggable="true"
     @dragstart="$emit('dragstart', $event)"
     @dragenter.prevent="$emit('dragenter', $event)"
     @dragleave.prevent="$emit('dragleave', $event)"
     @dragover.prevent
-    @drop="$emit('drop', $event)"
+    @drop.prevent="$emit('drop', $event)"
   >
     <div class="flex items-center gap-2">
       <i v-if="mode === 'active'" class="pi pi-bars text-gray-400 cursor-move" />
-      <ParameterBadge :parameter="column" />
+      <ParameterBadge v-if="column" :parameter="column" />
     </div>
 
     <div class="flex items-center gap-2">
       <Button
-        v-if="column.removable && mode === 'active'"
+        v-if="column?.removable && mode === 'active'"
         icon="pi pi-times"
         text
         severity="danger"
@@ -36,15 +36,30 @@
 import { computed } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
-import ParameterBadge from '../../../../../components/parameters/ParameterBadge.vue'
+import ParameterBadge from '../../../../../../components/parameters/ParameterBadge.vue'
 
-import type { ColumnDef } from '../../composables/types'
+import type { ColumnDef } from '../../../composables/types'
 
-const props = defineProps<{
+interface ItemType {
+  field: string
+  header: string
+  visible?: boolean
+  removable?: boolean
+  category?: string
+}
+
+interface Props {
   column: ColumnDef
   mode: 'active' | 'available'
   isDraggingOver?: boolean
-}>()
+}
+
+const props = defineProps<Props>()
+
+const isVisible = computed({
+  get: () => props.column?.visible ?? true,
+  set: (value) => emit('visibility-change', props.column, value)
+})
 
 const emit = defineEmits<{
   remove: [column: ColumnDef]
@@ -54,9 +69,4 @@ const emit = defineEmits<{
   dragleave: [event: DragEvent]
   drop: [event: DragEvent]
 }>()
-
-const isVisible = computed({
-  get: () => props.column.visible,
-  set: (value) => emit('visibility-change', props.column, value)
-})
 </script>

@@ -1,5 +1,5 @@
 <template>
-  <div class="relative">
+  <div class="relative mb-3">
     <i
       class="pi pi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
     />
@@ -7,7 +7,7 @@
       :value="modelValue"
       type="text"
       placeholder="Search parameters..."
-      class="w-full pl-9 pr-9 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="w-full pl-9 pr-4 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
       @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />
     <Button
@@ -23,7 +23,6 @@
 
 <script setup lang="ts">
 import Button from 'primevue/button'
-
 defineProps<{
   modelValue: string
 }>()
