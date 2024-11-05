@@ -59,8 +59,8 @@ import { ref, watch, onMounted } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import ColumnManager from './components/ColumnManager/index.vue'
 import TableWrapper from './components/TableWrapper/index.vue'
+import type { ColumnDef } from './composables/columns/types'
 import type {
-  ColumnDef,
   ParameterDefinition,
   TableState,
   ColumnUpdateEvent,

@@ -1,8 +1,8 @@
-import type { ParameterDefinition } from './parameterManagement'
+import type { ParameterDefinition } from '../../tables/DataTable/composables/parameters/parameterManagement'
 import {
   mergeAndCategorizeParameters,
   fixedParentParameters
-} from './parameterManagement'
+} from '../../tables/DataTable/composables/parameters/parameterManagement'
 
 export const standardParameters: ParameterDefinition[] = [
   { field: 'id', header: 'ID', type: 'string', category: 'identification' },

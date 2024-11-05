@@ -7,7 +7,7 @@
       :value="modelValue"
       type="text"
       placeholder="Search parameters..."
-      class="w-full pl-9 pr-4 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="w-full pl-2 pr-2 py-0.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
       @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />
     <Button

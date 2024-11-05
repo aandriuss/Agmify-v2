@@ -10,7 +10,7 @@
 
 <script setup lang="ts">
 import { CommonBadge } from '@speckle/ui-components'
-import type { ParameterDefinition } from '../composables/parameterManagement'
+import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 
 defineProps<{
   parameter: ParameterDefinition

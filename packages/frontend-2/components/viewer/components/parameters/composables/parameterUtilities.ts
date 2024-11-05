@@ -1,4 +1,4 @@
-import type { ParameterDefinition } from './parameterManagement'
+import type { ParameterDefinition } from '../../tables/DataTable/composables/parameters/parameterManagement'
 
 export interface ParameterGroup {
   category: string

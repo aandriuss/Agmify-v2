@@ -154,13 +154,13 @@ import {
   extractParametersFromData,
   mergeParameters,
   type ParameterDefinition
-} from '../composables/parameterDefinitions'
+} from '../components/parameters/composables/parameterDefinitions'
 
 import {
   mergeAndCategorizeParameters,
   fixedParentParameters,
   fixedChildParameters
-} from '../composables/parameterManagement'
+} from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 
 const emit = defineEmits<{
   (e: 'close'): void

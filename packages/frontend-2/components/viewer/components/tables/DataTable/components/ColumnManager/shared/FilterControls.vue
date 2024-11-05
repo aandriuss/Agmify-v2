@@ -1,5 +1,5 @@
 <template>
-  <div class="flex gap-2">
+  <div class="flex gap-1">
     <Menu as="div" class="relative">
       <MenuButton
         class="px-2 py-1 text-sm border rounded-md hover:bg-gray-50 flex items-center gap-1"
@@ -9,7 +9,7 @@
       </MenuButton>
 
       <MenuItems
-        class="absolute left-0 mt-1 w-56 bg-white border rounded-md shadow-lg p-1 z-10"
+        class="absolute right-0 mt-1 w-56 bg-white border rounded-md shadow-lg p-1 z-10"
       >
         <MenuItem v-slot="{ active }">
           <button
@@ -19,7 +19,7 @@
             ]"
             @click="$emit('update:isGrouped', !isGrouped)"
           >
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1">
               <input
                 type="checkbox"
                 :checked="isGrouped"
@@ -47,7 +47,7 @@
               :value="option.value"
             >
               <button
-                class="w-full flex items-center gap-2 px-2 py-1 text-sm rounded hover:bg-gray-50"
+                class="w-full flex items-center gap-1 px-2 py-1 text-sm rounded hover:bg-gray-50"
                 :class="{ 'bg-blue-50': checked }"
               >
                 <div
@@ -59,17 +59,16 @@
             </RadioGroupOption>
           </RadioGroup>
         </div>
+        <button
+          v-if="showClearButton"
+          class="px-2 py-1 text-sm text-gray-500 hover:text-gray-700"
+          @click="$emit('clear')"
+        >
+          <i class="pi pi-times mr-1" />
+          Clear All
+        </button>
       </MenuItems>
     </Menu>
-
-    <button
-      v-if="showClearButton"
-      class="px-2 py-1 text-sm text-gray-500 hover:text-gray-700"
-      @click="$emit('clear')"
-    >
-      <i class="pi pi-times mr-1" />
-      Clear All
-    </button>
   </div>
 </template>
 

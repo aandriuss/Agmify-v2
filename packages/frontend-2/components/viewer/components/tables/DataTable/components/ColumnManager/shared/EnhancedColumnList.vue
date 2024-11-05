@@ -2,7 +2,7 @@
   <div class="h-full flex flex-col">
     <!-- Search and Filter Controls - Only for Available Parameters -->
     <template v-if="props.mode === 'available'">
-      <div class="px-2 pt-2">
+      <div class="flex px-1 pt-1">
         <SearchBar
           v-model="localSearchTerm"
           @update:model-value="$emit('update:searchTerm', $event)"
@@ -10,6 +10,7 @@
         <FilterControls
           v-model:is-grouped="localIsGrouped"
           v-model:sort-by="localSortBy"
+          class="ml-auto"
           :sort-options="sortOptions"
           @update:is-grouped="$emit('update:isGrouped', $event)"
           @update:sort-by="$emit('update:sortBy', $event)"
@@ -21,8 +22,9 @@
     <div
       class="flex-1 overflow-y-auto p-2 space-y-1"
       @dragover.prevent
-      @dragenter.prevent
-      @drop="(e) => $emit('drop', e)"
+      @dragenter.prevent="handleListDragEnter"
+      @dragleave.prevent="handleListDragLeave"
+      @drop="handleListDrop"
     >
       <!-- When Grouped and Available -->
       <template v-if="shouldShowGroupedView">
@@ -104,7 +106,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { ColumnDef, ParameterDefinition } from '../../../composables/types'
-import { useColumnManagement } from '../../../composables/useColumnManagement'
+import { useColumns } from '../../../composables/columns/useColumns'
 import ColumnListItem from './ColumnListItem.vue'
 import SearchBar from './SearchBar.vue'
 import FilterControls from './FilterControls.vue'
@@ -114,7 +116,7 @@ interface Props {
   mode: 'active' | 'available'
   searchTerm?: string
   isGrouped?: boolean
-  sortBy?: 'name' | 'category' | 'type' | 'fixed'
+  sortBy?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -137,14 +139,12 @@ const emit = defineEmits<{
 }>()
 
 // Use column management composable
-const { columns, filteredColumns, groupedColumns, updateColumns } = useColumnManagement(
-  {
-    initialColumns: props.items,
-    searchTerm: computed(() => props.searchTerm),
-    isGrouped: computed(() => props.isGrouped),
-    sortBy: computed(() => props.sortBy)
-  }
-)
+const { filteredColumns, groupedColumns } = useColumns({
+  initialColumns: props.items,
+  searchTerm: computed(() => props.searchTerm),
+  isGrouped: computed(() => props.isGrouped),
+  sortBy: computed(() => props.sortBy)
+})
 
 // Local state
 const draggedItem = ref<{
@@ -186,22 +186,71 @@ const getAbsoluteIndex = (category: string, index: number): number => {
 }
 
 // Drag and drop handlers
+const handleListDragEnter = (event: DragEvent) => {
+  event.preventDefault()
+  if (props.mode === 'available') {
+    isDraggingOver.value = true
+  }
+}
+
+const handleListDragLeave = (event: DragEvent) => {
+  event.preventDefault()
+  if (
+    event.target instanceof HTMLElement &&
+    !event.currentTarget?.contains(event.relatedTarget as Node)
+  ) {
+    isDraggingOver.value = false
+  }
+}
+
+const handleListDrop = (event: DragEvent) => {
+  event.preventDefault()
+  console.log('List drop on', props.mode) // Debug
+
+  const jsonData = event.dataTransfer?.getData('application/json')
+  if (!jsonData) {
+    console.log('No data in transfer')
+    return
+  }
+
+  try {
+    const draggedData = JSON.parse(jsonData)
+    console.log('Drop data in list:', draggedData) // Debug log
+
+    // Access item and sourceList from draggedData
+    const { item, sourceList } = draggedData
+
+    // Check both source and target before emitting events
+    if (props.mode === 'available' && sourceList === 'active') {
+      console.log('Emitting remove for item:', item) // Debug log
+      emit('remove', item)
+    } else if (props.mode === 'active' && sourceList === 'available') {
+      console.log('Emitting add for item:', item) // Debug log
+      emit('add', item)
+    }
+  } catch (error) {
+    console.error('Error processing list drop:', error)
+  }
+
+  resetDragState()
+}
+
 const handleDragStart = (
   event: DragEvent,
   item: ColumnDef | ParameterDefinition,
   index: number
 ) => {
   if (!event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'move'
 
-  draggedItem.value = {
+  const dragData = {
     item,
-    sourceMode: props.mode,
-    index,
-    category: 'category' in item ? item.category : undefined
+    sourceList: props.mode,
+    index
   }
 
-  event.dataTransfer.effectAllowed = 'move'
-  event.dataTransfer.setData('application/json', JSON.stringify(draggedItem.value))
+  console.log('Starting drag:', dragData)
+  event.dataTransfer.setData('application/json', JSON.stringify(dragData))
   emit('drag-start', event, item)
 }
 
@@ -227,40 +276,10 @@ const handleDragLeave = (event: DragEvent) => {
 
 const handleDrop = (event: DragEvent, index: number, category?: string) => {
   event.preventDefault()
-  const jsonData = event.dataTransfer?.getData('application/json')
-  if (!jsonData || !draggedItem.value) return
+  event.stopPropagation()
 
-  const { sourceMode, index: sourceIndex } = draggedItem.value
-
-  if (sourceMode === props.mode) {
-    // Reordering within the same list
-    if (sourceIndex !== index) {
-      emit('reorder', sourceIndex, index)
-    }
-  } else if (sourceMode === 'available' && props.mode === 'active') {
-    // Adding from available to active
-    emit('add', draggedItem.value.item as ParameterDefinition)
-  } else if (sourceMode === 'active' && props.mode === 'available') {
-    // Removing from active
-    emit('remove', draggedItem.value.item as ColumnDef)
-  }
-
-  resetDragState()
-}
-
-const handleListDrop = (event: DragEvent) => {
-  event.preventDefault()
-  if (!draggedItem.value) return
-
-  const { sourceMode } = draggedItem.value
-
-  if (sourceMode === 'available' && props.mode === 'active') {
-    emit('add', draggedItem.value.item as ParameterDefinition)
-  } else if (sourceMode === 'active' && props.mode === 'available') {
-    emit('remove', draggedItem.value.item)
-  }
-
-  resetDragState()
+  console.log('Drop event:', { index, category })
+  emit('drop', event, index)
 }
 
 const resetDragState = () => {
@@ -304,7 +323,7 @@ const showNoResults = computed(
 
 const noResultsMessage = computed(() => {
   if (localSearchTerm.value) {
-    return 'No columns match your search'
+    return 'No parameters match your search'
   }
   return props.mode === 'active' ? 'No active columns' : 'No available columns'
 })

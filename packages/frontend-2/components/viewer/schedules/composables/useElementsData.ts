@@ -1,6 +1,5 @@
 import { ref, computed, watch, defineComponent, h, d } from 'vue'
-import { useRootNodes } from '~/components/viewer/composables/useRootNodes'
-import { renderParameterWithBadge } from '../../composables/parameterManagement'
+import { useDataOrganization } from '~/components/viewer/components/tables/DataTable/composables/dataOrganization/useDataOrganization'
 import ParameterHeader from '../ParameterHeader.vue'
 
 import { useDataFlowDebugger } from '../../../../composables/dataFlowDebugger'
@@ -13,7 +12,7 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   const childElementsList = ref([])
   const selectedParentCategories = ref<string[]>([])
   const selectedChildCategories = ref<string[]>([])
-  const { rootNodes } = useRootNodes()
+  const { rootNodes } = useDataOrganization()
 
   // Special handling for common fields
   const specialFieldMappings = {

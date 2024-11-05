@@ -1,30 +1,4 @@
-export interface ColumnDef {
-  field: string
-  header: string
-  visible: boolean
-  removable?: boolean
-  width?: number
-  order: number
-  headerComponent?: any
-  isFixed?: boolean
-}
-
-export interface ParameterDefinition {
-  field: string
-  header: string
-  type?: string
-  description?: string
-  category?: string
-  isFixed?: boolean
-  order?: number
-  visible?: boolean
-}
-
-export interface ParameterGroup {
-  category: string
-  parameters: ParameterDefinition[]
-}
-
+// Core table types
 export interface TableState {
   columns: ColumnDef[]
   expandedRows: any[]
@@ -33,6 +7,7 @@ export interface TableState {
   filters?: Record<string, any>
 }
 
+// Table events
 export interface ColumnUpdateEvent {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
@@ -48,3 +23,10 @@ export interface ColumnReorderEvent {
   dropIndex: number
   target: HTMLElement
 }
+
+// Re-export from specific type files for convenience
+export type { ColumnDef } from './columns/types'
+export type {
+  ParameterDefinition,
+  ParameterGroup
+} from '../../../parameters/composables/types'

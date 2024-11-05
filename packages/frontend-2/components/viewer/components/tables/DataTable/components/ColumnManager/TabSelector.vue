@@ -28,9 +28,11 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+interface Props {
   modelValue: 'parent' | 'child'
-}>()
+}
+
+defineProps<Props>()
 
 defineEmits<{
   'update:modelValue': [value: 'parent' | 'child']

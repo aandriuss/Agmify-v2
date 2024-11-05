@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 
-import type { ParameterGroup } from './parameterUtilities'
+import type { ParameterGroup } from '../../../../parameters/composables/parameterUtilities'
 
 export interface ParameterDefinition {
   field: string
@@ -408,4 +408,4 @@ export {
   getCommonParameters,
   generateParameterSummary,
   groupParametersByCategory
-} from './parameterUtilities'
+} from '../../../../parameters/composables/parameterUtilities'

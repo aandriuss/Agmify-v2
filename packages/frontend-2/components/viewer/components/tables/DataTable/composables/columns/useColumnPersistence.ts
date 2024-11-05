@@ -1,5 +1,5 @@
 import { gql, useMutation } from '@vue/apollo-composable'
-import type { ColumnDef } from '../../composables/types'
+import type { ColumnDef } from '../types'
 
 interface ColumnSettings {
   parentColumns: ColumnDef[]

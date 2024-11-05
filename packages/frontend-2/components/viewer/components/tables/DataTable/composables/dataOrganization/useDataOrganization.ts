@@ -8,7 +8,7 @@ import { sortBy, flatten } from 'lodash-es'
 import { ViewerEvent } from '@speckle/viewer'
 import { useViewerEventListener } from '~~/lib/viewer/composables/viewer'
 
-export function useRootNodes() {
+export function useDataOrganization() {
   const { modelsAndVersionIds } = useInjectedViewerLoadedResources()
   const {
     resources: {

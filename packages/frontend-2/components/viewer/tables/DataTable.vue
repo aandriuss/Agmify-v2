@@ -304,8 +304,8 @@ import {
   RadioGroupOption
 } from '@headlessui/vue'
 
-import ParameterItem from '~/components/viewer/components/parameters/ParameterItem.vue'
-import ParameterBadge from '~/components/viewer/components/parameters/ParameterBadge.vue'
+import ParameterItem from '~/components/viewer/components/parameters/components/ParameterItem.vue'
+import ParameterBadge from '~/components/viewer/components/parameters/components/ParameterBadge.vue'
 
 interface ColumnDef {
   field: string

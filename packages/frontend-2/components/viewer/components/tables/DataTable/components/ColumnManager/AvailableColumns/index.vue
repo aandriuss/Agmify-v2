@@ -19,7 +19,7 @@
 import { computed } from 'vue'
 
 import type { ParameterDefinition } from '../../../composables/types'
-import { useParameterFiltering } from '../../../composables/useParameterFiltering'
+import { useParameterFiltering } from '../../../../../parameters/composables/useParameterFiltering'
 
 import EnhancedColumnList from '../shared/EnhancedColumnList.vue'
 

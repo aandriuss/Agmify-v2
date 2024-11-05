@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import type { Ref } from 'vue'
-import type { ColumnDef, ParameterDefinition } from './types'
+import type { ColumnDef, ParameterDefinition } from '../types'
 
 interface DragItem {
   type: 'column' | 'parameter'

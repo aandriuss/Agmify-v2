@@ -1,20 +1,20 @@
 import { ref, computed, watch } from 'vue'
-import type { Ref } from 'vue'
-import type { ColumnDef, ParameterDefinition } from './types'
+import type { ParameterDefinition } from '../../../../parameters/composables/types'
+import type { ColumnDef, UseColumnsOptions } from './types'
 
-interface UseColumnManagementOptions {
-  initialColumns: (ColumnDef | ParameterDefinition)[]
-  searchTerm?: Ref<string>
-  isGrouped?: Ref<boolean>
-  sortBy?: Ref<'name' | 'category' | 'type' | 'fixed'>
-}
+// interface UseColumnsOptions {
+//   initialColumns: (ColumnDef | ParameterDefinition)[]
+//   searchTerm?: Ref<string>
+//   isGrouped?: Ref<boolean>
+//   sortBy?: Ref<'name' | 'category' | 'type' | 'fixed'>
+// }
 
-export function useColumnManagement({
+export function useColumns({
   initialColumns,
   searchTerm = ref(''),
   isGrouped = ref(true),
   sortBy = ref('category' as const)
-}: UseColumnManagementOptions) {
+}: UseColumnsOptions) {
   const columns = ref<(ColumnDef | ParameterDefinition)[]>(initialColumns || [])
   const dragOverIndex = ref(-1)
 
