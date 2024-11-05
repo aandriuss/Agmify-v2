@@ -148,6 +148,44 @@ export function useColumnState({
     createVersion(operation)
   }
 
+  const saveChanges = async () => {
+    if (!isDirty.value) {
+      console.log('SaveChanges - No changes to save')
+      return true
+    }
+
+    console.log('SaveChanges - Starting:', {
+      tableId,
+      parentColumnsCount: parentColumns.value.length,
+      childColumnsCount: childColumns.value.length
+    })
+
+    try {
+      const result = await updateNamedTable(tableId, {
+        parentColumns: parentColumns.value,
+        childColumns: childColumns.value
+      })
+
+      console.log('SaveChanges - Success:', result)
+      isDirty.value = false
+      return true
+    } catch (error) {
+      console.error('SaveChanges - Failed:', error)
+      throw error
+    }
+  }
+
+  // Add validation before save
+  const validateColumns = (columns: ColumnDef[]) => {
+    return columns.every((col, index) => {
+      const isValid = col.field && typeof col.order === 'number'
+      if (!isValid) {
+        console.error('Invalid column:', { col, index })
+      }
+      return isValid
+    })
+  }
+
   // Sync with backend
   const syncChanges = async () => {
     if (!isDirty.value) return
@@ -359,27 +397,6 @@ export function useColumnState({
     const [movedColumn] = columns.splice(fromIndex, 1)
     columns.splice(toIndex, 0, movedColumn)
     updateColumns(columns)
-  }
-
-  const saveChanges = async () => {
-    if (!isDirty.value) return
-
-    console.log('Saving changes to Postgres:', {
-      parentColumns: parentColumns.value,
-      childColumns: childColumns.value
-    })
-
-    try {
-      await updateNamedTable(tableId, {
-        parentColumns: parentColumns.value,
-        childColumns: childColumns.value
-      })
-      isDirty.value = false
-      return true
-    } catch (error) {
-      console.error('Failed to save to Postgres:', error)
-      throw error
-    }
   }
 
   // Reset to initial state

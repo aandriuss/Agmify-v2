@@ -1,69 +1,67 @@
 import { gql, useMutation } from '@vue/apollo-composable'
 import type { ColumnDef } from '../types'
 
-interface ColumnSettings {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-}
-
-const UPDATE_COLUMN_SETTINGS = gql`
-  mutation UpdateColumnSettings($tableId: String!, $settings: String!) {
-    updateColumnSettings(input: { tableId: $tableId, settings: $settings }) {
-      tableId
-      settings
-      updatedAt
+const UPDATE_TABLE_SETTINGS = gql`
+  mutation UpdateTableSettings($tableId: String!, $settings: TableSettings!) {
+    updateTableSettings(tableId: $tableId, settings: $settings) {
+      id
+      name
+      parentColumns
+      childColumns
+      categoryFilters
     }
   }
 `
 
-const GET_COLUMN_SETTINGS = gql`
-  query GetColumnSettings($tableId: String!) {
-    columnSettings(tableId: $tableId) {
-      tableId
-      settings
-      updatedAt
+const GET_TABLE_SETTINGS = gql`
+  query GetTableSettings($tableId: String!) {
+    tableSettings(tableId: $tableId) {
+      id
+      name
+      parentColumns
+      childColumns
+      categoryFilters
     }
   }
 `
 
 export function useColumnSettings() {
-  const {
-    mutate: updateColumnSettings,
-    loading,
-    error
-  } = useMutation(UPDATE_COLUMN_SETTINGS, {
-    update: (cache, { data }) => {
-      if (!data?.updateColumnSettings) return
+  const { mutate: updateSettings, loading, error } = useMutation(UPDATE_TABLE_SETTINGS)
 
-      // Update the cache with new settings
-      cache.writeQuery({
-        query: GET_COLUMN_SETTINGS,
-        variables: { tableId: data.updateColumnSettings.tableId },
-        data: {
-          columnSettings: data.updateColumnSettings
-        }
-      })
+  const saveColumnSettings = async (
+    tableId: string,
+    settings: {
+      name: string
+      parentColumns: ColumnDef[]
+      childColumns: ColumnDef[]
+      categoryFilters?: {
+        selectedParentCategories: string[]
+        selectedChildCategories: string[]
+      }
     }
-  })
-
-  const saveColumnSettings = async (tableId: string, settings: ColumnSettings) => {
+  ) => {
     try {
-      const result = await updateColumnSettings({
+      console.log('Saving table settings:', {
+        tableId,
+        settings
+      })
+
+      const result = await updateSettings({
         variables: {
           tableId,
-          settings: JSON.stringify(settings)
+          settings
         }
       })
 
-      return result.data?.updateColumnSettings
+      return result.data?.updateTableSettings
     } catch (error) {
-      console.error('Failed to update column settings:', error)
+      console.error('Failed to save table settings:', error)
       throw error
     }
   }
 
   return {
-    updateColumnSettings: saveColumnSettings,
+    saveSettings: saveColumnSettings,
     loading,
     error
   }

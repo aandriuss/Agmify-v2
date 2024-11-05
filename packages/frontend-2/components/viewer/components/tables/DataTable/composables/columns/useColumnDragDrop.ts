@@ -1,147 +1,121 @@
 import { ref, computed } from 'vue'
-import type { Ref } from 'vue'
 import type { ColumnDef, ParameterDefinition } from '../types'
 
-interface DragItem {
-  type: 'column' | 'parameter'
-  data: ColumnDef | ParameterDefinition
-  sourceIndex: number
+export interface DragState {
+  item: ColumnDef | ParameterDefinition
   sourceList: 'active' | 'available'
-  sourceCategory?: string
+  sourceIndex: number
+  isDragging: boolean
 }
 
-interface UseColumnDragDropOptions {
-  activeColumns: Ref<ColumnDef[]>
-  availableParameters: Ref<ParameterDefinition[]>
-  onAddColumn?: (param: ParameterDefinition) => void
-  onRemoveColumn?: (column: ColumnDef) => void
-  onReorderColumns?: (fromIndex: number, toIndex: number) => void
-}
+export function useColumnDragDrop() {
+  // State
+  const dragState = ref<DragState | null>(null)
+  const dragOverIndex = ref<number | null>(null)
+  const dropPosition = ref<'above' | 'below' | null>(null)
+  const dragOverList = ref<'active' | 'available' | null>(null)
 
-export function useColumnDragDrop({
-  activeColumns,
-  availableParameters,
-  onAddColumn,
-  onRemoveColumn,
-  onReorderColumns
-}: UseColumnDragDropOptions) {
-  const draggedItem = ref<DragItem | null>(null)
-  const dragOverIndex = ref<number>(-1)
-  const dragOverCategory = ref<string | null>(null)
+  // Computed states
+  const isDragging = computed(() => dragState.value !== null)
 
-  const handleDragStart = (
-    event: DragEvent,
-    item: ColumnDef | ParameterDefinition,
-    sourceIndex: number,
+  // Update drag over state with better error handling
+  const updateDragOver = (
+    index: number,
+    list: 'active' | 'available',
+    position: 'above' | 'below'
+  ) => {
+    try {
+      if (!dragState.value) return
+
+      console.log('Updating drag over:', {
+        index,
+        list,
+        position,
+        currentState: {
+          dragOverIndex: dragOverIndex.value,
+          dragOverList: dragOverList.value,
+          dropPosition: dropPosition.value
+        }
+      })
+
+      dragOverIndex.value = index
+      dragOverList.value = list
+      dropPosition.value = position
+    } catch (error) {
+      console.error('Error in updateDragOver:', error)
+      // Reset state on error
+      clearDragState()
+    }
+  }
+
+  // Clear drag state
+  const clearDragState = () => {
+    console.log('Clearing drag state')
+    dragState.value = null
+    dragOverIndex.value = null
+    dragOverList.value = null
+    dropPosition.value = null
+  }
+
+  // Start dragging
+  const startDrag = (
+    item: any,
     sourceList: 'active' | 'available',
-    category?: string
+    sourceIndex: number
   ) => {
-    if (!event.dataTransfer) return
-
-    const dragData: DragItem = {
-      type: 'field' in item ? 'parameter' : 'column',
-      data: item,
-      sourceIndex,
+    console.log('Starting drag:', {
+      item,
       sourceList,
-      sourceCategory: category
-    }
+      sourceIndex
+    })
 
-    // Set drag data
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('application/json', JSON.stringify(dragData))
-    draggedItem.value = dragData
-
-    // Add custom drag image or styling if needed
-    const dragElement = event.target as HTMLElement
-    if (dragElement) {
-      dragElement.classList.add('dragging')
+    dragState.value = {
+      item,
+      sourceList,
+      sourceIndex,
+      isDragging: true
     }
   }
 
-  const handleDragOver = (event: DragEvent, index: number, category?: string) => {
-    event.preventDefault()
-    dragOverIndex.value = index
-    dragOverCategory.value = category || null
-  }
-
-  const handleDragEnter = (event: DragEvent, index: number, category?: string) => {
-    event.preventDefault()
-    dragOverIndex.value = index
-    dragOverCategory.value = category || null
-  }
-
-  const handleDragLeave = (event: DragEvent) => {
-    event.preventDefault()
-    if (
-      event.target instanceof HTMLElement &&
-      !event.currentTarget?.contains(event.relatedTarget as Node)
-    ) {
-      dragOverIndex.value = -1
-      dragOverCategory.value = null
-    }
-  }
-
-  const handleDrop = async (
-    event: DragEvent,
-    targetIndex: number,
-    category?: string
-  ) => {
-    event.preventDefault()
-
-    // Clear drag state
-    const dragElement = event.target as HTMLElement
-    if (dragElement) {
-      dragElement.classList.remove('dragging')
+  // Handle drop with validation
+  const handleDrop = () => {
+    if (!dragState.value || !dragOverList.value || dragOverIndex.value === null) {
+      console.log('Drop action failed: Incomplete drag state or target data')
+      clearDragState()
+      return null
     }
 
-    const jsonData = event.dataTransfer?.getData('application/json')
-    if (!jsonData || !draggedItem.value) return
-
-    const dragData: DragItem = JSON.parse(jsonData)
-
-    // Handle different drag scenarios
-    if (dragData.sourceList === 'available' && dragOverCategory === null) {
-      // Dragging from available to active
-      const parameter = dragData.data as ParameterDefinition
-      onAddColumn?.(parameter)
-    } else if (dragData.sourceList === 'active' && dragOverCategory !== null) {
-      // Dragging from active to available
-      const column = dragData.data as ColumnDef
-      onRemoveColumn?.(column)
-    } else if (dragData.sourceList === 'active' && dragOverCategory === null) {
-      // Reordering within active list
-      if (dragData.sourceIndex !== targetIndex) {
-        onReorderColumns?.(dragData.sourceIndex, targetIndex)
-      }
+    const result = {
+      item: dragState.value.item,
+      sourceList: dragState.value.sourceList,
+      sourceIndex: dragState.value.sourceIndex,
+      targetList: dragOverList.value,
+      targetIndex: dragOverIndex.value,
+      position: dropPosition.value
     }
 
-    // Reset state
-    draggedItem.value = null
-    dragOverIndex.value = -1
-    dragOverCategory.value = null
-  }
+    console.log('Handling drop:', result)
+    console.log('Before Drop - Active Columns:', dragState.value.sourceList)
 
-  const isDraggingOver = computed(() => dragOverIndex.value !== -1)
+    // TODO: Add code here to update state and persist changes
 
-  const getDragIndicatorStyle = (index: number) => {
-    if (dragOverIndex.value !== index) return {}
+    console.log('After Drop - Active Columns:', result)
 
-    return {
-      borderTop: '2px solid var(--primary-color)',
-      marginTop: '-1px'
-    }
+    clearDragState()
+    return result
   }
 
   return {
-    draggedItem,
+    // State
+    dragState,
     dragOverIndex,
-    dragOverCategory,
-    isDraggingOver,
-    handleDragStart,
-    handleDragOver,
-    handleDragEnter,
-    handleDragLeave,
-    handleDrop,
-    getDragIndicatorStyle
+    dropPosition,
+    isDragging,
+
+    // Methods
+    startDrag,
+    updateDragOver,
+    clearDragState,
+    handleDrop
   }
 }

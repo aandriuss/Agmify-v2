@@ -1,14 +1,14 @@
 <template>
-  <div class="h-full flex flex-col">
+  <div class="enhanced-column-list">
     <!-- List info -->
-    <div v-if="mode === 'available'" class="p-2 text-xs text-gray-500">
-      Found items: {{ items.length }} | Filtered: {{ filteredItems.length }} | Groups:
+    <div v-if="mode === 'available'" class="px-2 py-1 text-xs text-gray-500">
+      Found: {{ items.length }} | Filtered: {{ filteredItems.length }} | Groups:
       {{ Object.keys(groupedItems).length }}
     </div>
 
-    <!-- Search and Filter Controls - Only for Available Parameters -->
-    <template v-if="props.mode === 'available'">
-      <div class="flex px-1 pt-1">
+    <!-- Search and Filter Controls -->
+    <div v-if="mode === 'available'" class="px-2 pt-1">
+      <div class="flex gap-2">
         <SearchBar
           v-model="localSearchTerm"
           @update:model-value="$emit('update:searchTerm', $event)"
@@ -22,59 +22,60 @@
           @update:sort-by="$emit('update:sortBy', $event)"
         />
       </div>
-    </template>
+    </div>
 
-    <!-- Main content area with proper overflow -->
+    <!-- Main content area -->
     <div
-      class="flex-1 overflow-y-auto p-2 space-y-1"
+      class="flex-1 overflow-y-auto p-2 relative"
       @dragover.prevent
       @dragenter.prevent="handleListDragEnter"
       @dragleave.prevent="handleListDragLeave"
-      @drop="handleListDrop"
+      @drop.prevent="handleListDrop"
     >
-      <!-- Grouped View (Available Parameters) -->
+      <!-- Group Items -->
       <template v-if="shouldShowGroupedView">
         <div
-          v-for="category in sortedCategories"
+          v-for="(category, categoryIndex) in sortedCategories"
           :key="category"
-          class="parameter-group"
+          class="mb-2"
         >
           <div
-            class="group-header p-2 bg-gray-50 text-sm font-medium flex justify-between items-center rounded-t"
+            class="group-header mb-1 p-2 bg-gray-50 text-sm font-medium rounded-t flex justify-between items-center"
           >
             <span>{{ category }}</span>
             <span class="text-xs text-gray-500">
               ({{ groupedItems[category]?.length || 0 }})
             </span>
           </div>
-          <div class="group-items">
+
+          <div class="space-y-1">
             <ColumnListItem
-              v-for="(item, index) in groupedItems[category]"
+              v-for="(item, itemIndex) in groupedItems[category]"
               :key="item.field"
               :column="item"
               :mode="mode"
-              :is-dragging-over="
-                isDraggingOver && dragOverIndex === getAbsoluteIndex(category, index)
+              :index="getAbsoluteIndex(categoryIndex, itemIndex)"
+              :is-dragging="
+                draggedItemIndex === getAbsoluteIndex(categoryIndex, itemIndex)
               "
-              draggable="true"
-              @dragstart="
-                (event) =>
-                  handleDragStart(event, item, getAbsoluteIndex(category, index))
+              :is-drop-target="
+                dragOverIndex === getAbsoluteIndex(categoryIndex, itemIndex)
               "
-              @dragenter="
-                (event) => handleDragEnter(event, getAbsoluteIndex(category, index))
-              "
-              @dragleave="handleDragLeave"
-              @drop="(event) => handleDrop(event, getAbsoluteIndex(category, index))"
+              :drop-position="currentDropPosition"
               @add="handleAdd"
               @remove="handleRemove"
               @visibility-change="handleVisibilityChange"
+              @drag-start="handleItemDragStart"
+              @drag-end="handleItemDragEnd"
+              @drag-enter="handleItemDragEnter"
+              @drag-leave="handleItemDragLeave"
+              @drop="handleItemDrop"
             />
           </div>
         </div>
       </template>
 
-      <!-- Flat View (Active Columns or Ungrouped Available) -->
+      <!-- Flat View -->
       <template v-else>
         <div class="space-y-1">
           <ColumnListItem
@@ -82,46 +83,46 @@
             :key="item.field"
             :column="item"
             :mode="mode"
-            :is-dragging-over="isDraggingOver && dragOverIndex === index"
-            draggable="true"
-            :data-index="index"
-            @dragstart="(event) => handleDragStart(event, item, index)"
-            @dragenter="(event) => handleDragEnter(event, index)"
-            @dragleave="handleDragLeave"
-            @drop="(event) => handleDrop(event, index)"
+            :index="index"
+            :is-dragging="draggedItemIndex === index"
+            :is-drop-target="dragOverIndex === index"
+            :drop-position="currentDropPosition"
             @add="handleAdd"
             @remove="handleRemove"
             @visibility-change="handleVisibilityChange"
+            @drag-start="handleItemDragStart"
+            @drag-end="handleItemDragEnd"
+            @drag-enter="handleItemDragEnter"
+            @drag-leave="handleItemDragLeave"
+            @drop="handleItemDrop"
           />
         </div>
       </template>
 
+      <!-- Drop indicator -->
+      <div
+        v-if="showDropIndicator"
+        class="absolute inset-x-0 h-0.5 bg-primary transition-all duration-200"
+        :style="dropIndicatorStyle"
+      />
+
       <!-- No Results Message -->
       <div v-if="showNoResults" class="p-4 text-center text-gray-500">
         {{ noResultsMessage }}
-      </div>
-
-      <!-- Debug Info -->
-      <div class="text-xs p-2 bg-gray-100 border-t mt-auto">
-        <div>Debug Info:</div>
-        <div>Mode: {{ mode }}</div>
-        <div>Items Count: {{ items?.length || 0 }}</div>
-        <div>Display Items Count: {{ displayItems?.length || 0 }}</div>
-        <div>Is Grouped View: {{ shouldShowGroupedView ? 'Yes' : 'No' }}</div>
-        <div>Groups Count: {{ groupedColumns?.length || 0 }}</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import type { ColumnDef, ParameterDefinition } from '../../../composables/types'
-import { useColumns } from '../../../composables/columns/useColumns'
 import ColumnListItem from './ColumnListItem.vue'
 import SearchBar from './SearchBar.vue'
 import FilterControls from './FilterControls.vue'
+import { useColumnDragDrop } from '../../../composables/columns/useColumnDragDrop'
 
+// Props and emits definitions first
 interface Props {
   items: (ColumnDef | ParameterDefinition)[]
   mode: 'active' | 'available'
@@ -144,113 +145,43 @@ const emit = defineEmits<{
   add: [item: ParameterDefinition]
   'visibility-change': [item: ColumnDef | ParameterDefinition, visible: boolean]
   reorder: [fromIndex: number, toIndex: number]
-  'drag-start': [event: DragEvent, item: ColumnDef | ParameterDefinition]
-  'drag-enter': [index: number]
-  drop: [event: DragEvent, index: number]
+  'drag-start': [event: DragEvent, item: ColumnDef | ParameterDefinition, index: number]
+  'drag-end': [event: DragEvent]
+  'drag-enter': [event: DragEvent, index: number, position: 'above' | 'below']
+  'drag-leave': [event: DragEvent]
+  drop: [event: DragEvent, index: number, position: 'above' | 'below']
 }>()
 
-// Debug mounting
-onMounted(() => {
-  console.log('EnhancedColumnList mounted:', {
-    mode: props.mode,
-    itemsCount: props.items?.length,
-    isGrouped: props.isGrouped,
-    items: props.items,
-    searchTerm: props.searchTerm,
-    sortBy: props.sortBy
-  })
-})
+// Initialize drag and drop state first
+const draggedItemIndex = ref<number | null>(null)
 
-// Use column management composable
-const { columns, filteredColumns, groupedColumns } = useColumns({
-  initialColumns: computed(() => props.items),
-  searchTerm: computed(() => props.searchTerm),
-  isGrouped: computed(() => props.isGrouped),
-  sortBy: computed(() => props.sortBy)
-})
+const {
+  dragState,
+  dragOverIndex,
+  dropPosition: currentDropPosition,
+  isDragging,
+  startDrag,
+  updateDragOver,
+  clearDragState,
+  handleDrop: processDrop
+} = useColumnDragDrop()
 
-// Display items computed
-const displayItems = computed(() => {
-  const result = props.mode === 'available' ? filteredColumns.value : props.items
-  console.log('DisplayItems computed:', {
-    mode: props.mode,
-    itemsCount: props.items?.length,
-    filteredCount: filteredColumns.value?.length,
-    resultCount: result?.length
-  })
-  return result
-})
-
-// Show debug info when no results
-const showNoResults = computed(() => {
-  const hasNoItems = !displayItems.value?.length
-  if (hasNoItems) {
-    console.log('No items to display:', {
-      mode: props.mode,
-      originalItems: props.items?.length,
-      filteredItems: filteredColumns.value?.length
-    })
-  }
-  return hasNoItems
-})
-
-const noResultsMessage = computed(() => {
-  if (localSearchTerm.value) {
-    return 'No parameters match your search'
-  }
-  return props.mode === 'active' ? 'No active columns' : 'No available columns'
-})
-
-// Add detailed logging for the filtering process
-const filteredItems = computed(() => {
-  console.log('Filtering items:', {
-    total: props.items.length,
-    searchTerm: props.searchTerm
-  })
-
-  let result = [...props.items]
-
-  if (props.searchTerm) {
-    const search = props.searchTerm.toLowerCase()
-    result = result.filter((item) => {
-      return (
-        item.header?.toLowerCase().includes(search) ||
-        item.field?.toLowerCase().includes(search) ||
-        item.category?.toLowerCase().includes(search)
-      )
-    })
-  }
-
-  return result
-})
-
-const groupedItems = computed(() => {
-  return filteredItems.value.reduce((acc, item) => {
-    const category = item.category || 'Other'
-    if (!acc[category]) {
-      acc[category] = []
+// Now we can safely add the watch after dragState is initialized
+watch(
+  () => dragState.value,
+  (newState) => {
+    if (newState) {
+      console.log('Drag state changed:', {
+        state: newState,
+        dragOverIndex: dragOverIndex.value,
+        dropPosition: currentDropPosition.value
+      })
     }
-    acc[category].push(item)
-    return acc
-  }, {} as Record<string, (ColumnDef | ParameterDefinition)[]>)
-})
+  },
+  { deep: true }
+)
 
-const sortedCategories = computed(() => {
-  return Object.keys(groupedItems.value).sort()
-})
-
-// Local state
-const draggedItem = ref<{
-  item: ColumnDef | ParameterDefinition
-  sourceMode: 'active' | 'available'
-  index: number
-  category?: string
-} | null>(null)
-const dragOverIndex = ref(-1)
-const dragOverCategory = ref<string | null>(null)
-const isDraggingOver = ref(false)
-
-// Computed properties
+// Computed props for two-way binding
 const localSearchTerm = computed({
   get: () => props.searchTerm,
   set: (value) => emit('update:searchTerm', value)
@@ -266,152 +197,223 @@ const localSortBy = computed({
   set: (value) => emit('update:sortBy', value)
 })
 
-// Helper methods
-const getAbsoluteIndex = (category: string, index: number): number => {
-  let absoluteIndex = 0
-  for (const group of groupedColumns.value) {
-    if (group.category === category) {
-      return absoluteIndex + index
-    }
-    absoluteIndex += group.columns.length
+// Rest of your component code...
+
+// Enhanced drop indicator
+const showDropIndicator = computed(
+  () => isDragging.value && dragOverIndex.value !== null
+)
+
+const dropIndicatorStyle = computed(() => {
+  if (!showDropIndicator.value) return {}
+
+  const itemHeight = 40 // Approximate height of each item
+  const top = (dragOverIndex.value || 0) * itemHeight
+
+  return {
+    top: `${currentDropPosition.value === 'above' ? top : top + itemHeight}px`,
+    transform: 'translateY(-50%)'
   }
-  return index
-}
+})
 
-// Drag and drop handlers
-const handleListDragEnter = (event: DragEvent) => {
-  event.preventDefault()
-  if (props.mode === 'available') {
-    isDraggingOver.value = true
-  }
-}
-
-const handleListDragLeave = (event: DragEvent) => {
-  event.preventDefault()
-  if (
-    event.target instanceof HTMLElement &&
-    !event.currentTarget?.contains(event.relatedTarget as Node)
-  ) {
-    isDraggingOver.value = false
-  }
-}
-
-const handleListDrop = (event: DragEvent) => {
-  event.preventDefault()
-  console.log('List drop on', props.mode) // Debug
-
-  const jsonData = event.dataTransfer?.getData('application/json')
-  if (!jsonData) {
-    console.log('No data in transfer')
-    return
-  }
-
+// Event handlers
+const handleItemDragStart = (event: DragEvent, item: any, index: number) => {
   try {
-    const draggedData = JSON.parse(jsonData)
-    console.log('Drop data in list:', draggedData) // Debug log
+    console.log('Drag start:', { mode: props.mode, index, field: item.field })
+    draggedItemIndex.value = index
+    startDrag(item, props.mode, index)
+    emit('drag-start', event, item, index)
+  } catch (error) {
+    console.error('Error in drag start:', error)
+  }
+}
 
-    // Access item and sourceList from draggedData
-    const { item, sourceList } = draggedData
+const handleItemDrop = async (event: DragEvent, targetIndex: number) => {
+  try {
+    if (!dragState.value || !currentDropPosition.value) {
+      console.warn('Missing drag state or drop position')
+      return
+    }
 
-    // Check both source and target before emitting events
-    if (props.mode === 'available' && sourceList === 'active') {
-      console.log('Emitting remove for item:', item) // Debug log
-      emit('remove', item)
-    } else if (props.mode === 'active' && sourceList === 'available') {
-      console.log('Emitting add for item:', item) // Debug log
-      emit('add', item)
+    const { sourceIndex, sourceList } = dragState.value
+
+    console.log('Drop handling:', {
+      sourceIndex,
+      targetIndex,
+      dropPosition: currentDropPosition.value,
+      mode: props.mode,
+      sourceList
+    })
+
+    // Handle cross-list drops
+    if (sourceList !== props.mode) {
+      if (props.mode === 'active') {
+        emit('add', dragState.value.item as ParameterDefinition)
+      } else {
+        emit('remove', dragState.value.item as ColumnDef)
+      }
+      return
+    }
+
+    // Handle reordering within the same list
+    if (sourceIndex !== targetIndex) {
+      // Calculate final target index based on drop position and drag direction
+      let finalTargetIndex = targetIndex
+
+      // Adjust for drop position
+      if (currentDropPosition.value === 'below') {
+        finalTargetIndex += 1
+      }
+
+      // Adjust for dragging up/down
+      if (sourceIndex < finalTargetIndex) {
+        finalTargetIndex -= 1
+      }
+
+      console.log('Reordering:', {
+        from: sourceIndex,
+        to: finalTargetIndex,
+        items: props.items.map((item) => ({
+          field: item.field,
+          index: item.order
+        }))
+      })
+
+      // Emit reorder event
+      emit('reorder', sourceIndex, finalTargetIndex)
     }
   } catch (error) {
-    console.error('Error processing list drop:', error)
-  }
-
-  resetDragState()
-}
-
-const handleDragStart = (
-  event: DragEvent,
-  item: ColumnDef | ParameterDefinition,
-  index: number
-) => {
-  if (!event.dataTransfer) return
-  event.dataTransfer.effectAllowed = 'move'
-
-  const dragData = {
-    item,
-    sourceList: props.mode,
-    index
-  }
-
-  console.log('Starting drag:', dragData)
-  event.dataTransfer.setData('application/json', JSON.stringify(dragData))
-  emit('drag-start', event, item)
-}
-
-const handleDragEnter = (event: DragEvent, index: number, category?: string) => {
-  event.preventDefault()
-  dragOverIndex.value = index
-  dragOverCategory.value = category || null
-  isDraggingOver.value = true
-  emit('drag-enter', index)
-}
-
-const handleDragLeave = (event: DragEvent) => {
-  event.preventDefault()
-  if (
-    event.target instanceof HTMLElement &&
-    !event.currentTarget?.contains(event.relatedTarget as Node)
-  ) {
-    isDraggingOver.value = false
-    dragOverIndex.value = -1
-    dragOverCategory.value = null
-  }
-}
-
-const handleDrop = (event: DragEvent, index: number, category?: string) => {
-  event.preventDefault()
-  event.stopPropagation()
-
-  console.log('Drop event:', { index, category })
-
-  const jsonData = event.dataTransfer?.getData('application/json')
-  if (!jsonData) return
-
-  try {
-    const draggedData = JSON.parse(jsonData)
-    console.log('Drop data:', draggedData)
-
-    if (draggedData.sourceList === props.mode) {
-      // Same list reordering
-      const sourceIndex = draggedData.index
-      const targetIndex = index
-
-      console.log('Emitting reorder:', { sourceIndex, targetIndex })
-      emit('reorder', sourceIndex, targetIndex)
-    } else {
-      // Moving between lists
-      emit('drop', event, index)
-    }
-  } catch (error) {
-    console.error('Error processing drop:', error)
+    console.error('Error in drop handler:', error)
   } finally {
-    resetDragState()
+    draggedItemIndex.value = null
+    clearDragState()
   }
 }
 
-const resetDragState = () => {
-  draggedItem.value = null
-  dragOverIndex.value = -1
-  dragOverCategory.value = null
-  isDraggingOver.value = false
+const handleItemDragEnd = () => {
+  draggedItemIndex.value = null
+  clearDragState()
 }
 
-// Other handlers
-const handleRemove = (item: ColumnDef | ParameterDefinition) => {
-  emit('remove', item)
+// Fix the drag enter handler
+const handleItemDragEnter = (event: DragEvent, index: number) => {
+  if (!dragState.value || !event.currentTarget) return
+
+  const element = event.currentTarget as HTMLElement
+  const rect = element.getBoundingClientRect()
+  const mouseY = event.clientY
+
+  // Calculate relative mouse position within the item
+  const relativeY = mouseY - rect.top
+  const threshold = rect.height / 2
+
+  // Update drop position based on mouse location
+  const position = relativeY < threshold ? 'above' : 'below'
+
+  console.log('Drag enter:', {
+    index,
+    position,
+    relativeY,
+    threshold,
+    element: !!element
+  })
+
+  try {
+    updateDragOver(index, props.mode, position)
+  } catch (error) {
+    console.error('Error updating drag over:', error)
+  }
 }
 
+// Add drag state debugging
+watch(
+  () => dragState.value,
+  (newState) => {
+    console.log('Drag state changed:', {
+      state: newState,
+      dragOverIndex: dragOverIndex.value,
+      dropPosition: currentDropPosition.value
+    })
+  },
+  { deep: true }
+)
+
+// >>>>>>>>>>>>
+
+// Filtered items
+const filteredItems = computed(() => {
+  let result = [...props.items]
+
+  if (localSearchTerm.value) {
+    const search = localSearchTerm.value.toLowerCase()
+    result = result.filter((item) => {
+      return (
+        item.header?.toLowerCase().includes(search) ||
+        item.field?.toLowerCase().includes(search) ||
+        item.category?.toLowerCase().includes(search)
+      )
+    })
+  }
+
+  return result
+})
+
+// Grouped items
+const groupedItems = computed(() => {
+  return filteredItems.value.reduce((acc, item) => {
+    const category = item.category || 'Other'
+    if (!acc[category]) {
+      acc[category] = []
+    }
+    acc[category].push(item)
+    return acc
+  }, {} as Record<string, (ColumnDef | ParameterDefinition)[]>)
+})
+
+const sortedCategories = computed(() => {
+  return Object.keys(groupedItems.value).sort()
+})
+
+const displayItems = computed(() => {
+  return props.mode === 'available' ? filteredItems.value : props.items
+})
+
+const shouldShowGroupedView = computed(() => {
+  return (
+    props.isGrouped &&
+    props.mode === 'available' &&
+    Object.keys(groupedItems.value).length > 0
+  )
+})
+
+const showNoResults = computed(() => {
+  return displayItems.value.length === 0
+})
+
+const noResultsMessage = computed(() => {
+  if (localSearchTerm.value) {
+    return 'No parameters match your search'
+  }
+  return props.mode === 'active' ? 'No active columns' : 'No available columns'
+})
+
+// Helper functions
+const getAbsoluteIndex = (categoryIndex: number, itemIndex: number): number => {
+  let absoluteIndex = 0
+  for (let i = 0; i < categoryIndex; i++) {
+    const category = sortedCategories.value[i]
+    absoluteIndex += groupedItems.value[category]?.length || 0
+  }
+  return absoluteIndex + itemIndex
+}
+
+// Event handlers
 const handleAdd = (item: ParameterDefinition) => {
   emit('add', item)
+}
+
+const handleRemove = (item: ColumnDef | ParameterDefinition) => {
+  emit('remove', item)
 }
 
 const handleVisibilityChange = (
@@ -421,6 +423,76 @@ const handleVisibilityChange = (
   emit('visibility-change', item, visible)
 }
 
+const handleItemDragLeave = () => {
+  dragOverIndex.value = null
+}
+
+// Update drag start to include all necessary data
+const handleDragStart = (
+  event: DragEvent,
+  item: ColumnDef | ParameterDefinition,
+  index: number
+) => {
+  if (!event.dataTransfer) return
+
+  const dragData = {
+    item: {
+      field: item.field,
+      header: item.header,
+      type: item.type,
+      category: item.category
+      // Include other necessary properties but avoid circular references
+    },
+    sourceIndex: index,
+    sourceList: props.mode
+  }
+
+  console.log('Drag start:', {
+    mode: props.mode,
+    index,
+    field: item.field
+  })
+
+  event.dataTransfer.setData('application/json', JSON.stringify(dragData))
+  event.dataTransfer.effectAllowed = 'move'
+
+  // Set drag image if needed
+  const dragElement = event.target as HTMLElement
+  event.dataTransfer.setDragImage(dragElement, 0, 0)
+
+  emit('drag-start', event, item, index)
+}
+
+// Handle drag over to show proper drop position
+const handleDragOver = (event: DragEvent) => {
+  event.preventDefault()
+  const element = event.currentTarget as HTMLElement
+  const rect = element.getBoundingClientRect()
+  const mouseY = event.clientY
+  const threshold = rect.top + rect.height / 2
+
+  // Update visual indicator
+  return mouseY < threshold ? 'above' : 'below'
+}
+
+const handleListDragEnter = () => {
+  // Handle list-level drag enter if needed
+}
+
+const handleListDragLeave = (event: DragEvent) => {
+  if (
+    event.target instanceof HTMLElement &&
+    !event.currentTarget?.contains(event.relatedTarget as Node)
+  ) {
+    dragOverIndex.value = null
+  }
+}
+
+const handleListDrop = () => {
+  draggedItemIndex.value = null
+  dragOverIndex.value = null
+}
+
 // Sort options
 const sortOptions = [
   { value: 'name', label: 'Name' },
@@ -428,96 +500,23 @@ const sortOptions = [
   { value: 'type', label: 'Type' },
   { value: 'fixed', label: 'Fixed First' }
 ] as const
-
-const shouldShowGroupedView = computed(
-  () => props.isGrouped && props.mode === 'available' && groupedColumns.value.length > 0
-)
-
-// Add watcher for items changes
-watch(
-  () => props.items,
-  (newItems) => {
-    console.log('Items changed:', {
-      newItems,
-      length: newItems?.length,
-      mode: props.mode
-    })
-  },
-  { immediate: true }
-)
 </script>
 
 <style scoped>
-.h-full {
-  height: 100%;
+.enhanced-column-list {
+  @apply flex flex-col h-full;
 }
+
+.group-header {
+  @apply sticky top-0 z-10;
+}
+
+/* Smooth transitions for drag and drop */
 .column-list-item {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  cursor: pointer;
+  @apply transition-all duration-200;
 }
 
-.item-content {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-}
-
-.active-mode {
-  background-color: white;
-  border: 1px solid transparent;
-}
-
-.active-mode:hover {
-  background-color: #f9fafb;
-  border-color: #e5e7eb;
-}
-
-.available-mode:hover {
-  background-color: #f9fafb;
-}
-
-.dragging-over {
-  border-top: 2px solid #3b82f6;
-}
-
-.drag-handle {
-  color: #9ca3af;
-  cursor: move;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.column-list-item:hover .drag-handle {
-  opacity: 1;
-}
-
-.actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.action-button {
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.column-list-item:hover .action-button {
-  opacity: 1;
-}
-
-.visibility-checkbox {
-  opacity: 0.5;
-  transition: opacity 0.2s ease;
-}
-
-.column-list-item:hover .visibility-checkbox {
-  opacity: 1;
+.drop-indicator {
+  @apply transition-transform duration-200;
 }
 </style>

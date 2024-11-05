@@ -21,7 +21,7 @@ export interface DragItem {
   sourceCategory?: string
 }
 
-export interface ColumnSettings {
+export interface TableSettings {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   categoryFilters?: {
