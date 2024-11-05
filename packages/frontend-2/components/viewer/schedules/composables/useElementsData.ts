@@ -731,6 +731,25 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     { deep: true }
   )
 
+  watch(
+    () => availableHeaders.value,
+    (headers) => {
+      console.group('🔍 Available Headers Debug')
+      console.log('Parent Headers:', {
+        count: headers.parent.length,
+        fields: headers.parent.map((h) => h.field),
+        categories: [...new Set(headers.parent.map((h) => h.category))]
+      })
+      console.log('Child Headers:', {
+        count: headers.child.length,
+        fields: headers.child.map((h) => h.field),
+        categories: [...new Set(headers.child.map((h) => h.category))]
+      })
+      console.groupEnd()
+    },
+    { immediate: true }
+  )
+
   return {
     scheduleData,
     updateCategories,

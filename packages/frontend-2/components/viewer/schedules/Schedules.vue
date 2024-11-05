@@ -419,6 +419,25 @@ const mergedChildParameters = computed(() =>
   )
 )
 
+watch(
+  [mergedParentParameters, mergedChildParameters],
+  ([parent, child]) => {
+    console.group('🔄 Merged Parameters Debug')
+    console.log('Parent Parameters:', {
+      count: parent.length,
+      fields: parent.map((p) => p.field),
+      categories: [...new Set(parent.map((p) => p.category))]
+    })
+    console.log('Child Parameters:', {
+      count: child.length,
+      fields: child.map((p) => p.field),
+      categories: [...new Set(child.map((p) => p.category))]
+    })
+    console.groupEnd()
+  },
+  { immediate: true }
+)
+
 // Save table handler
 const saveTable = async () => {
   if (!state.tableName) return

@@ -36,6 +36,7 @@ export interface UseColumnsOptions {
   initialColumns: ColumnDef[]
   searchTerm?: Ref<string>
   isGrouped?: Ref<boolean>
-  sortBy?: Ref<SortBy>
+  sortBy?: Ref<'name' | 'category' | 'type' | 'fixed'>
+  selectedCategories?: Ref<string[]>
   onUpdate?: (columns: ColumnDef[]) => void
 }

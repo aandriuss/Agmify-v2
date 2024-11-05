@@ -28,21 +28,18 @@
       <div class="flex gap-1 h-[400px]">
         <!-- Available Parameters Panel -->
         <div class="flex-1 border rounded flex flex-col overflow-hidden bg-background">
-          <div class="p-1 border-b bg-gray-50 flex items-center">
+          <div class="p-1 border-b bg-gray-50 flex items-center justify-between">
             <h3 class="font-medium text-sm">Available Parameters</h3>
           </div>
 
-          <div class="flex-1 min-h-0">
+          <div class="flex-1 min-h-0 overflow-auto">
             <EnhancedColumnList
-              :key="'available-${columnState.currentView.value}'"
+              :key="`available-${columnState.currentView.value}`"
               :items="availableParameters"
               mode="available"
               :search-term="searchTerm"
               :is-grouped="isGrouped"
               :sort-by="sortBy"
-              @update:search-term="searchTerm = $event"
-              @update:is-grouped="isGrouped = $event"
-              @update:sort-by="sortBy = $event"
               @drag-start="(event, item) => handleDragStart(event, item, 'available')"
               @drop="handleDropToAvailable"
             />
@@ -90,11 +87,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { LayoutDialog } from '@speckle/ui-components'
 import Button from 'primevue/button'
 
-import { useColumnState } from '../../../../../composables/useColumnState'
+import { useColumnState } from '../../composables/columns/useColumnState'
 import TabSelector from './TabSelector.vue'
 import EnhancedColumnList from './shared/EnhancedColumnList.vue'
 import type { ColumnDef, ParameterDefinition } from '../../composables/types'
@@ -160,6 +157,11 @@ const handleDragStart = (
   event.dataTransfer.effectAllowed = 'move'
 }
 
+const handleReorder = (fromIndex: number, toIndex: number) => {
+  console.log('Handling reorder:', { fromIndex, toIndex })
+  columnState.handleReorder(fromIndex, toIndex)
+}
+
 const handleDrop = async (event: DragEvent) => {
   if (!event.dataTransfer) return
   event.preventDefault()
@@ -168,8 +170,21 @@ const handleDrop = async (event: DragEvent) => {
   if (!jsonData) return
 
   try {
-    const { index: targetIndex } = JSON.parse(jsonData)
-    columnState.handleDrop(targetIndex)
+    const dragData = JSON.parse(jsonData)
+    console.log('Drop received:', dragData)
+
+    if (dragData.sourceList === 'active') {
+      // Handle reordering
+      const sourceIndex = dragData.index
+      const targetIndex = parseInt(
+        event.currentTarget?.getAttribute('data-index') || '0',
+        10
+      )
+      handleReorder(sourceIndex, targetIndex)
+    } else {
+      // Handle adding from available
+      columnState.handleDrop(event)
+    }
   } catch (error) {
     console.error('Error processing drop:', error)
   }
@@ -198,15 +213,24 @@ const showAllColumns = () => {
   columnState.updateColumns(updatedColumns)
 }
 
-// Save/Cancel handlers
+// Save and Cancel handlers
 const handleApply = async () => {
   isSaving.value = true
   try {
+    console.log('Saving state:', {
+      parent: columnState.parentColumns.value,
+      child: columnState.childColumns.value
+    })
+
     await columnState.saveChanges()
-    emit('update:columns', {
+
+    const updates = {
       parentColumns: columnState.parentColumns.value,
       childColumns: columnState.childColumns.value
-    })
+    }
+
+    console.log('Emitting updates:', updates)
+    emit('update:columns', updates)
     emit('update:open', false)
   } catch (error) {
     console.error('Failed to save column changes:', error)
@@ -219,4 +243,52 @@ const handleCancel = () => {
   emit('cancel')
   emit('update:open', false)
 }
+
+// Debug watchers
+watch(
+  () => props.availableParentParameters,
+  (params) => {
+    console.group('📊 Column Manager Parameters Debug')
+    console.log('Available Parent Parameters:', {
+      count: params.length,
+      fields: params.map((p) => p.field),
+      categories: [...new Set(params.map((p) => p.category))]
+    })
+    console.groupEnd()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => columnState.currentView.value,
+  (newView) => {
+    console.log('View changed in component:', {
+      view: newView,
+      activeColumns: columnState.activeColumns.value,
+      availableParameters: columnState.availableParameters.value
+    })
+  },
+  { immediate: true }
+)
+
+watch(
+  () => columnState.isDirty.value,
+  (isDirty) => {
+    console.log('Dirty state changed:', isDirty)
+  }
+)
+
+watch(
+  () => props.availableParentParameters,
+  (params, old) => {
+    console.group('Column Manager Parameters Update')
+    console.log('New Parameters:', {
+      count: params?.length,
+      categories: [...new Set(params?.map((p) => p.category || 'Other'))]
+    })
+    console.log('Sample Parameters:', params?.slice(0, 3))
+    console.groupEnd()
+  },
+  { immediate: true, deep: true }
+)
 </script>
