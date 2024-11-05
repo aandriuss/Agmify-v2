@@ -1,34 +1,62 @@
 <template>
   <div
-    class="px-2 py-0.5 rounded text-sm inline-flex items-center"
-    :class="[
-      parameter.isFixed
-        ? 'bg-blue-100 text-blue-800 border border-blue-200'
-        : 'bg-green-100 text-green-800 border border-green-200'
-    ]"
+    class="parameter-badge flex items-center gap-1"
+    :class="{
+      'fixed-parameter': parameter.isFixed,
+      'custom-parameter': !parameter.isFixed
+    }"
   >
-    {{ parameter.header }}
-    <span v-if="parameter.category" class="ml-1 text-xs opacity-75">
-      ({{ parameter.category }})
+    <span class="parameter-name">{{ parameter.header }}</span>
+    <span v-if="showDetails" class="parameter-details text-xs text-gray-500">
+      {{ parameter.field }}
+      <span v-if="parameter.category" class="parameter-category">
+        {{ parameter.category }}
+      </span>
     </span>
-    <span v-if="parameter?.isFixed" class="fixed-badge">Fixed</span>
   </div>
 </template>
 
 <script setup lang="ts">
-interface Parameter {
-  header: string
-  category?: string
-  isFixed?: boolean
+import type { ParameterDefinition } from '../../../composables/types'
+
+interface Props {
+  parameter: ParameterDefinition
+  showDetails?: boolean
 }
 
-defineProps<{
-  parameter: Parameter
-}>()
+const props = withDefaults(defineProps<Props>(), {
+  showDetails: false
+})
 </script>
 
 <style scoped>
 .parameter-badge {
-  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.fixed-parameter {
+  background-color: #eff6ff; /* blue-50 */
+  border: 1px solid #bfdbfe; /* blue-200 */
+  color: #2563eb; /* blue-600 */
+}
+
+.custom-parameter {
+  background-color: #f3f4f6; /* gray-100 */
+  border: 1px solid #e5e7eb; /* gray-200 */
+  color: #374151; /* gray-700 */
+}
+
+.parameter-details {
+  opacity: 0.7;
+}
+
+.parameter-category {
+  font-size: 0.75rem;
+  padding: 0 4px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 3px;
+  margin-left: 4px;
 }
 </style>

@@ -1,8 +1,8 @@
 <template>
   <div class="h-full flex flex-col">
-    <!-- Debug info -->
+    <!-- List info -->
     <div v-if="mode === 'available'" class="p-2 text-xs text-gray-500">
-      Raw items: {{ items.length }} | Filtered: {{ filteredItems.length }} | Groups:
+      Found items: {{ items.length }} | Filtered: {{ filteredItems.length }} | Groups:
       {{ Object.keys(groupedItems).length }}
     </div>
 
@@ -32,14 +32,15 @@
       @dragleave.prevent="handleListDragLeave"
       @drop="handleListDrop"
     >
-      <template v-if="isGrouped">
+      <!-- Grouped View (Available Parameters) -->
+      <template v-if="shouldShowGroupedView">
         <div
           v-for="category in sortedCategories"
           :key="category"
           class="parameter-group"
         >
           <div
-            class="group-header p-2 bg-gray-50 border-b text-sm font-medium flex justify-between items-center"
+            class="group-header p-2 bg-gray-50 text-sm font-medium flex justify-between items-center rounded-t"
           >
             <span>{{ category }}</span>
             <span class="text-xs text-gray-500">
@@ -47,47 +48,51 @@
             </span>
           </div>
           <div class="group-items">
-            <div
-              v-for="item in groupedItems[category]"
+            <ColumnListItem
+              v-for="(item, index) in groupedItems[category]"
               :key="item.field"
-              class="parameter-item p-2 hover:bg-gray-50 cursor-pointer border-b"
+              :column="item"
+              :mode="mode"
+              :is-dragging-over="
+                isDraggingOver && dragOverIndex === getAbsoluteIndex(category, index)
+              "
               draggable="true"
-              @dragstart="handleDragStart($event, item)"
-              @dragover.prevent
-              @drop="handleDrop($event, item)"
-            >
-              <div class="flex items-center gap-2">
-                <div class="flex-1">
-                  <div class="font-medium">{{ item.header }}</div>
-                  <div class="text-xs text-gray-500">{{ item.field }}</div>
-                </div>
-                <div v-if="item.category" class="text-xs px-2 py-1 bg-gray-100 rounded">
-                  {{ item.category }}
-                </div>
-              </div>
-            </div>
+              @dragstart="
+                (event) =>
+                  handleDragStart(event, item, getAbsoluteIndex(category, index))
+              "
+              @dragenter="
+                (event) => handleDragEnter(event, getAbsoluteIndex(category, index))
+              "
+              @dragleave="handleDragLeave"
+              @drop="(event) => handleDrop(event, getAbsoluteIndex(category, index))"
+              @add="handleAdd"
+              @remove="handleRemove"
+              @visibility-change="handleVisibilityChange"
+            />
           </div>
         </div>
       </template>
+
+      <!-- Flat View (Active Columns or Ungrouped Available) -->
       <template v-else>
-        <div
-          v-for="item in filteredItems"
-          :key="item.field"
-          class="parameter-item p-2 hover:bg-gray-50 cursor-pointer border-b"
-          draggable="true"
-          @dragstart="handleDragStart($event, item)"
-          @dragover.prevent
-          @drop="handleDrop($event, item)"
-        >
-          <div class="flex items-center gap-2">
-            <div class="flex-1">
-              <div class="font-medium">{{ item.header }}</div>
-              <div class="text-xs text-gray-500">{{ item.field }}</div>
-            </div>
-            <div v-if="item.category" class="text-xs px-2 py-1 bg-gray-100 rounded">
-              {{ item.category }}
-            </div>
-          </div>
+        <div class="space-y-1">
+          <ColumnListItem
+            v-for="(item, index) in displayItems"
+            :key="item.field"
+            :column="item"
+            :mode="mode"
+            :is-dragging-over="isDraggingOver && dragOverIndex === index"
+            draggable="true"
+            :data-index="index"
+            @dragstart="(event) => handleDragStart(event, item, index)"
+            @dragenter="(event) => handleDragEnter(event, index)"
+            @dragleave="handleDragLeave"
+            @drop="(event) => handleDrop(event, index)"
+            @add="handleAdd"
+            @remove="handleRemove"
+            @visibility-change="handleVisibilityChange"
+          />
         </div>
       </template>
 
@@ -95,8 +100,9 @@
       <div v-if="showNoResults" class="p-4 text-center text-gray-500">
         {{ noResultsMessage }}
       </div>
+
       <!-- Debug Info -->
-      <div class="text-xs p-2 bg-gray-100 border-t">
+      <div class="text-xs p-2 bg-gray-100 border-t mt-auto">
         <div>Debug Info:</div>
         <div>Mode: {{ mode }}</div>
         <div>Items Count: {{ items?.length || 0 }}</div>
@@ -444,5 +450,74 @@ watch(
 <style scoped>
 .h-full {
   height: 100%;
+}
+.column-list-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.item-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.active-mode {
+  background-color: white;
+  border: 1px solid transparent;
+}
+
+.active-mode:hover {
+  background-color: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+.available-mode:hover {
+  background-color: #f9fafb;
+}
+
+.dragging-over {
+  border-top: 2px solid #3b82f6;
+}
+
+.drag-handle {
+  color: #9ca3af;
+  cursor: move;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.column-list-item:hover .drag-handle {
+  opacity: 1;
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.action-button {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.column-list-item:hover .action-button {
+  opacity: 1;
+}
+
+.visibility-checkbox {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.column-list-item:hover .visibility-checkbox {
+  opacity: 1;
 }
 </style>
