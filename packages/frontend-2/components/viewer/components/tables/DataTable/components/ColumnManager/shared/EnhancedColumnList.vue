@@ -1,14 +1,8 @@
 <template>
   <div class="enhanced-column-list">
-    <!-- List info -->
-    <div v-if="mode === 'available'" class="px-2 py-1 text-xs text-gray-500">
-      Found: {{ items.length }} | Filtered: {{ filteredItems.length }} | Groups:
-      {{ Object.keys(groupedItems).length }}
-    </div>
-
     <!-- Search and Filter Controls -->
-    <div v-if="mode === 'available'" class="px-2 pt-1">
-      <div class="flex gap-2">
+    <div v-if="mode === 'available' && !showFilterOptions" class="px-2 pt-1">
+      <div class="flex gap-1">
         <SearchBar
           v-model="localSearchTerm"
           @update:model-value="$emit('update:searchTerm', $event)"
@@ -24,9 +18,18 @@
       </div>
     </div>
 
+    <!-- List info -->
+    <div
+      v-if="mode === 'available' && !showFilterOptions"
+      class="px-2 py-0 text-xs text-gray-500 border-b"
+    >
+      Found: {{ items.length }} | Filtered: {{ filteredItems.length }} | Groups:
+      {{ Object.keys(groupedItems).length }}
+    </div>
+
     <!-- Main content area -->
     <div
-      class="flex-1 overflow-y-auto p-2 relative"
+      class="flex-1 overflow-y-auto p-1 relative"
       @dragover.prevent
       @dragenter.prevent="handleListDragEnter"
       @dragleave.prevent="handleListDragLeave"
@@ -37,10 +40,10 @@
         <div
           v-for="(category, categoryIndex) in sortedCategories"
           :key="category"
-          class="mb-2"
+          class="mb-1"
         >
           <div
-            class="group-header mb-1 p-2 bg-gray-50 text-sm font-medium rounded-t flex justify-between items-center"
+            class="group-header mb-1 p-1 bg-gray-50 text-sm font-medium rounded-t flex justify-between items-center"
           >
             <span>{{ category }}</span>
             <span class="text-xs text-gray-500">
@@ -48,7 +51,7 @@
             </span>
           </div>
 
-          <div class="space-y-1">
+          <div class="space-y-">
             <ColumnListItem
               v-for="(item, itemIndex) in groupedItems[category]"
               :key="item.field"
@@ -107,7 +110,7 @@
       />
 
       <!-- No Results Message -->
-      <div v-if="showNoResults" class="p-4 text-center text-gray-500">
+      <div v-if="showNoResults" class="p-2 text-center text-gray-500">
         {{ noResultsMessage }}
       </div>
     </div>
@@ -129,18 +132,23 @@ interface Props {
   searchTerm?: string
   isGrouped?: boolean
   sortBy?: 'name' | 'category' | 'type' | 'fixed'
+  showFilterOptions?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  items: () => [], // Empty array as default
+  mode: 'active',
   searchTerm: '',
   isGrouped: true,
-  sortBy: 'category'
+  sortBy: 'category',
+  showFilterOptions: false
 })
 
 const emit = defineEmits<{
   'update:searchTerm': [value: string]
   'update:isGrouped': [value: boolean]
   'update:sortBy': [value: string]
+  'update:columns': [columns: (ColumnDef | ParameterDefinition)[]]
   remove: [item: ColumnDef | ParameterDefinition]
   add: [item: ParameterDefinition]
   'visibility-change': [item: ColumnDef | ParameterDefinition, visible: boolean]
@@ -228,22 +236,38 @@ const handleItemDragStart = (event: DragEvent, item: any, index: number) => {
   }
 }
 
+const handleReorder = async (fromIndex: number, toIndex: number) => {
+  console.log('Reordering:', { fromIndex, toIndex })
+
+  try {
+    // Get current items
+    const items = [...props.items]
+
+    // Perform reorder
+    const [movedItem] = items.splice(fromIndex, 1)
+    items.splice(toIndex, 0, movedItem)
+
+    // Update order properties
+    const updatedItems = items.map((item, index) => ({
+      ...item,
+      order: index
+    }))
+
+    console.log('Updated items:', updatedItems)
+
+    // Emit both events
+    emit('reorder', fromIndex, toIndex)
+    emit('update:columns', updatedItems)
+  } catch (error) {
+    console.error('Error handling reorder:', error)
+  }
+}
+
 const handleItemDrop = async (event: DragEvent, targetIndex: number) => {
   try {
-    if (!dragState.value || !currentDropPosition.value) {
-      console.warn('Missing drag state or drop position')
-      return
-    }
+    if (!dragState.value || !currentDropPosition.value) return
 
     const { sourceIndex, sourceList } = dragState.value
-
-    console.log('Drop handling:', {
-      sourceIndex,
-      targetIndex,
-      dropPosition: currentDropPosition.value,
-      mode: props.mode,
-      sourceList
-    })
 
     // Handle cross-list drops
     if (sourceList !== props.mode) {
@@ -255,37 +279,11 @@ const handleItemDrop = async (event: DragEvent, targetIndex: number) => {
       return
     }
 
-    // Handle reordering within the same list
-    if (sourceIndex !== targetIndex) {
-      // Calculate final target index based on drop position and drag direction
-      let finalTargetIndex = targetIndex
-
-      // Adjust for drop position
-      if (currentDropPosition.value === 'below') {
-        finalTargetIndex += 1
-      }
-
-      // Adjust for dragging up/down
-      if (sourceIndex < finalTargetIndex) {
-        finalTargetIndex -= 1
-      }
-
-      console.log('Reordering:', {
-        from: sourceIndex,
-        to: finalTargetIndex,
-        items: props.items.map((item) => ({
-          field: item.field,
-          index: item.order
-        }))
-      })
-
-      // Emit reorder event
-      emit('reorder', sourceIndex, finalTargetIndex)
-    }
+    // Handle reordering
+    await handleReorder(sourceIndex, targetIndex)
   } catch (error) {
     console.error('Error in drop handler:', error)
   } finally {
-    draggedItemIndex.value = null
     clearDragState()
   }
 }
@@ -342,11 +340,11 @@ watch(
 
 // Filtered items
 const filteredItems = computed(() => {
-  let result = [...props.items]
+  const items = props.items || []
 
-  if (localSearchTerm.value) {
-    const search = localSearchTerm.value.toLowerCase()
-    result = result.filter((item) => {
+  if (props.searchTerm) {
+    const search = props.searchTerm.toLowerCase()
+    return items.filter((item) => {
       return (
         item.header?.toLowerCase().includes(search) ||
         item.field?.toLowerCase().includes(search) ||
@@ -355,12 +353,16 @@ const filteredItems = computed(() => {
     })
   }
 
-  return result
+  return items
 })
 
 // Grouped items
 const groupedItems = computed(() => {
-  return filteredItems.value.reduce((acc, item) => {
+  const items = filteredItems.value || []
+
+  if (!props.isGrouped) return {}
+
+  return items.reduce((acc, item) => {
     const category = item.category || 'Other'
     if (!acc[category]) {
       acc[category] = []
@@ -375,7 +377,7 @@ const sortedCategories = computed(() => {
 })
 
 const displayItems = computed(() => {
-  return props.mode === 'available' ? filteredItems.value : props.items
+  return props.mode === 'available' ? filteredItems.value : props.items || []
 })
 
 const shouldShowGroupedView = computed(() => {
@@ -387,7 +389,7 @@ const shouldShowGroupedView = computed(() => {
 })
 
 const showNoResults = computed(() => {
-  return displayItems.value.length === 0
+  return (displayItems.value || []).length === 0
 })
 
 const noResultsMessage = computed(() => {
@@ -508,12 +510,7 @@ const sortOptions = [
 }
 
 .group-header {
-  @apply sticky top-0 z-10;
-}
-
-/* Smooth transitions for drag and drop */
-.column-list-item {
-  @apply transition-all duration-200;
+  @apply sticky top-[-6px] z-10;
 }
 
 .drop-indicator {

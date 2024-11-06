@@ -13,9 +13,9 @@
     @dragover.prevent="handleDragOver"
     @drop.prevent="handleDrop"
   >
-    <div class="flex items-center justify-between w-full p-2">
+    <div class="flex items-center justify-between w-full p-1">
       <!-- Left side -->
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1">
         <i
           v-if="mode === 'active'"
           class="pi pi-bars text-gray-400 cursor-move opacity-0 group-hover:opacity-100 transition-opacity"
@@ -24,7 +24,7 @@
       </div>
 
       <!-- Right side -->
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1">
         <!-- Add button for available items -->
         <Button
           v-if="mode === 'available'"

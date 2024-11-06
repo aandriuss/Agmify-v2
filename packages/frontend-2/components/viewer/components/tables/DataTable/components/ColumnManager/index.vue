@@ -45,6 +45,15 @@
             >
               <div class="p-1 border-b bg-gray-50 flex items-center justify-between">
                 <h3 class="font-medium text-sm">Available Parameters</h3>
+                <FormButton
+                  text
+                  size="sm"
+                  color="subtle"
+                  :icon-right="showFilterOptions ? ChevronUpIcon : ChevronDownIcon"
+                  @click="showFilterOptions = !showFilterOptions"
+                >
+                  F
+                </FormButton>
               </div>
 
               <div class="flex-1 min-h-0 overflow-auto">
@@ -52,12 +61,14 @@
                   :key="`available-${columnState.currentView.value}`"
                   :items="availableParameters"
                   mode="available"
+                  :show-filter-options="showFilterOptions"
                   :search-term="searchTerm"
                   :is-grouped="isGrouped"
                   :sort-by="sortBy"
-                  @drag-start="
-                    (event, item) => handleDragStart(event, item, 'available')
-                  "
+                  @update:search-term="searchTerm = $event"
+                  @update:is-grouped="isGrouped = $event"
+                  @update:sort-by="sortBy = $event"
+                  @drag-start="handleDragStart"
                   @drop="handleDropToAvailable"
                 />
               </div>
@@ -91,12 +102,17 @@
 
               <div class="flex-1 min-h-0">
                 <EnhancedColumnList
-                  :key="`active-${columnState.currentView.value}-${activeColumns.length}`"
+                  :key="`active-${columnState.currentView.value}`"
                   :items="activeColumns"
                   mode="active"
-                  @drag-start="(event, item) => handleDragStart(event, item, 'active')"
-                  @drop="handleDrop"
+                  :search-term="searchTerm"
+                  :is-grouped="false"
+                  :sort-by="sortBy"
+                  @update:columns="handleColumnsUpdate"
+                  @add="handleAdd"
+                  @remove="handleRemove"
                   @visibility-change="handleVisibilityChange"
+                  @reorder="handleReorder"
                 />
               </div>
             </div>
@@ -112,6 +128,7 @@ import { ref, computed, watch } from 'vue'
 import { LayoutDialog } from '@speckle/ui-components'
 import Button from 'primevue/button'
 
+import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import { useColumnState } from '../../composables/columns/useColumnState'
 import TabSelector from './TabSelector.vue'
 import EnhancedColumnList from './shared/EnhancedColumnList.vue'
@@ -152,6 +169,7 @@ const sortBy = ref<'name' | 'category' | 'type' | 'fixed'>('category')
 const isSaving = ref(false)
 const initialized = ref(false)
 const loadingError = ref<Error | null>(null)
+const showFilterOptions = ref(false)
 
 // User settings
 const {
@@ -222,7 +240,36 @@ const initializeComponent = async () => {
   }
 }
 
-// >>>>>>>>>>>
+// Initialize with empty arrays if no data
+const localColumns = ref<ColumnDef[]>([])
+
+// Watch for props updates
+watch(
+  () => props.parentColumns,
+  (newColumns) => {
+    if (newColumns) {
+      localColumns.value = [...newColumns]
+    }
+  },
+  { immediate: true }
+)
+
+const handleColumnsUpdate = async (newColumns: ColumnDef[]) => {
+  if (!newColumns) return
+
+  console.log('Columns updated:', newColumns)
+
+  if (columnState.currentView.value === 'parent') {
+    await columnState.updateColumns(newColumns)
+  } else {
+    // Handle child columns update if needed
+    await columnState.updateChildColumns(newColumns)
+  }
+
+  // Force refresh
+  state.tableKey = Date.now().toString()
+}
+
 const handleAdd = async (item: ParameterDefinition) => {
   console.log('Adding item:', item.field)
 
@@ -266,75 +313,9 @@ const handleRemove = async (item: ColumnDef) => {
   }
 }
 
-const handleReorder = async (sourceIndex: number, targetIndex: number) => {
-  try {
-    console.log('ColumnManager handling reorder:', {
-      from: sourceIndex,
-      to: targetIndex,
-      currentView: columnState.currentView.value
-    })
-
-    if (columnState.currentView.value === 'parent') {
-      const updatedColumns = [...columnState.parentColumns.value]
-      const [movedItem] = updatedColumns.splice(sourceIndex, 1)
-      updatedColumns.splice(targetIndex, 0, movedItem)
-
-      // Update order properties
-      await handleColumnsUpdate({
-        parentColumns: updatedColumns.map((col, index) => ({
-          ...col,
-          order: index
-        })),
-        childColumns: columnState.childColumns.value
-      })
-    } else {
-      const updatedColumns = [...columnState.childColumns.value]
-      const [movedItem] = updatedColumns.splice(sourceIndex, 1)
-      updatedColumns.splice(targetIndex, 0, movedItem)
-
-      await handleColumnsUpdate({
-        parentColumns: columnState.parentColumns.value,
-        childColumns: updatedColumns.map((col, index) => ({
-          ...col,
-          order: index
-        }))
-      })
-    }
-  } catch (error) {
-    console.error('Error handling reorder:', error)
-  }
-}
-
-const handleColumnsUpdate = async (updates: {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-}) => {
-  console.log('Updating columns:', {
-    tableId: state.selectedTableId,
-    parentCount: updates.parentColumns.length,
-    childCount: updates.childColumns.length
-  })
-
-  try {
-    // Update local state
-    columnState.updateColumns(updates.parentColumns)
-
-    // Update database
-    await updateNamedTable(state.selectedTableId, {
-      ...currentTable.value,
-      parentColumns: updates.parentColumns,
-      childColumns: updates.childColumns
-    })
-
-    console.log('Column update successful')
-
-    // Emit updates
-    emit('update:columns', updates)
-  } catch (error) {
-    console.error('Error updating columns:', error)
-    // Revert to last known good state
-    loadCurrentTableState()
-  }
+const handleReorder = (fromIndex: number, toIndex: number) => {
+  console.log('Reorder received:', { fromIndex, toIndex })
+  // Any additional reorder handling if needed
 }
 
 // >>>>>>>>>>>>

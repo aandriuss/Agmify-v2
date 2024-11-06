@@ -55,92 +55,109 @@
           <!-- Left Panel: Available Parameters -->
           <div class="flex-1 border rounded flex flex-col">
             <div class="p-3 border-b bg-gray-50 space-y-3">
-              <h3 class="font-medium text-sm">Available Parameters</h3>
-
-              <!-- Search Bar -->
-              <div class="relative">
-                <i
-                  class="pi pi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                />
-                <input
-                  v-model="searchTerm"
-                  type="text"
-                  placeholder="Search parameters..."
-                  class="w-full pl-9 pr-4 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <Button
-                  v-if="searchTerm"
-                  icon="pi pi-times"
+              <!-- Header with Toggle Button -->
+              <div class="flex justify-between items-center">
+                <h3 class="font-medium text-sm">Available Parameterszz</h3>
+                <FormButton
                   text
-                  severity="secondary"
-                  class="absolute right-2 top-1/2 transform -translate-y-1/2"
-                  @click="searchTerm = ''"
-                />
+                  size="sm"
+                  color="subtle"
+                  :icon-right="showFilterOptions ? ChevronUpIcon : ChevronDownIcon"
+                  @click="showFilterOptions = !showFilterOptions"
+                >
+                  Filter Options
+                </FormButton>
               </div>
 
-              <!-- Filter Controls -->
-              <div class="flex gap-2">
-                <Menu as="div" class="relative">
-                  <MenuButton
-                    class="px-2 py-1 text-sm border rounded-md hover:bg-gray-50 flex items-center gap-1"
-                  >
-                    <i class="pi pi-sliders-h" />
-                    Filters
-                  </MenuButton>
+              <!-- Search Bar and Filter Controls (Toggled) -->
+              <div v-show="showFilterOptions" class="space-y-3">
+                <!-- Search Bar -->
+                <div class="relative">
+                  <i
+                    class="pi pi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                  />
+                  <input
+                    v-model="searchTerm"
+                    type="text"
+                    placeholder="Search parameters..."
+                    class="w-full pl-9 pr-4 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <Button
+                    v-if="searchTerm"
+                    icon="pi pi-times"
+                    text
+                    severity="secondary"
+                    class="absolute right-2 top-1/2 transform -translate-y-1/2"
+                    @click="searchTerm = ''"
+                  />
+                </div>
 
-                  <MenuItems
-                    class="absolute left-0 mt-1 w-56 bg-white border rounded-md shadow-lg p-1 z-10"
-                  >
-                    <MenuItem v-slot="{ active }">
-                      <button
-                        :class="[
-                          'w-full text-left px-2 py-1 text-sm rounded',
-                          active ? 'bg-gray-100' : ''
-                        ]"
-                        @click="toggleGrouping"
-                      >
-                        <div class="flex items-center gap-2">
-                          <Checkbox :model-value="isGrouped" :binary="true" />
-                          Group by Category
-                        </div>
-                      </button>
-                    </MenuItem>
+                <!-- Filter Controls -->
+                <div class="flex gap-2">
+                  <Menu as="div" class="relative">
+                    <MenuButton
+                      class="px-2 py-1 text-sm border rounded-md hover:bg-gray-50 flex items-center gap-1"
+                    >
+                      <i class="pi pi-sliders-h" />
+                      Filters
+                    </MenuButton>
 
-                    <div class="h-px bg-gray-200 my-1" />
-
-                    <div class="px-2 py-1">
-                      <div class="text-xs font-medium text-gray-500 mb-1">Sort by</div>
-                      <RadioGroup v-model="sortBy" class="space-y-1">
-                        <RadioGroupOption
-                          v-for="option in sortOptions"
-                          :key="option.value"
-                          v-slot="{ checked }"
-                          :value="option.value"
+                    <MenuItems
+                      class="absolute left-0 mt-1 w-56 bg-white border rounded-md shadow-lg p-1 z-10"
+                    >
+                      <MenuItem v-slot="{ active }">
+                        <button
+                          :class="[
+                            'w-full text-left px-2 py-1 text-sm rounded',
+                            active ? 'bg-gray-100' : ''
+                          ]"
+                          @click="toggleGrouping"
                         >
-                          <button
-                            class="w-full flex items-center gap-2 px-2 py-1 text-sm rounded hover:bg-gray-50"
-                            :class="{ 'bg-blue-50': checked }"
-                          >
-                            <div
-                              class="w-3 h-3 rounded-full border"
-                              :class="{ 'bg-blue-500 border-blue-500': checked }"
-                            />
-                            {{ option.label }}
-                          </button>
-                        </RadioGroupOption>
-                      </RadioGroup>
-                    </div>
-                  </MenuItems>
-                </Menu>
+                          <div class="flex items-center gap-2">
+                            <Checkbox :model-value="isGrouped" :binary="true" />
+                            Group by Category
+                          </div>
+                        </button>
+                      </MenuItem>
 
-                <button
-                  v-if="hasFilters"
-                  class="px-2 py-1 text-sm text-gray-500 hover:text-gray-700"
-                  @click="clearFilters"
-                >
-                  <i class="pi pi-times mr-1" />
-                  Clear All
-                </button>
+                      <div class="h-px bg-gray-200 my-1" />
+
+                      <div class="px-2 py-1">
+                        <div class="text-xs font-medium text-gray-500 mb-1">
+                          Sort by
+                        </div>
+                        <RadioGroup v-model="sortBy" class="space-y-1">
+                          <RadioGroupOption
+                            v-for="option in sortOptions"
+                            :key="option.value"
+                            v-slot="{ checked }"
+                            :value="option.value"
+                          >
+                            <button
+                              class="w-full flex items-center gap-2 px-2 py-1 text-sm rounded hover:bg-gray-50"
+                              :class="{ 'bg-blue-50': checked }"
+                            >
+                              <div
+                                class="w-3 h-3 rounded-full border"
+                                :class="{ 'bg-blue-500 border-blue-500': checked }"
+                              />
+                              {{ option.label }}
+                            </button>
+                          </RadioGroupOption>
+                        </RadioGroup>
+                      </div>
+                    </MenuItems>
+                  </Menu>
+
+                  <button
+                    v-if="hasFilters"
+                    class="px-2 py-1 text-sm text-gray-500 hover:text-gray-700"
+                    @click="clearFilters"
+                  >
+                    <i class="pi pi-times mr-1" />
+                    Clear All
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -306,6 +323,10 @@ import {
 
 import ParameterItem from '~/components/viewer/components/parameters/components/ParameterItem.vue'
 import ParameterBadge from '~/components/viewer/components/parameters/components/ParameterBadge.vue'
+
+import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
+
+const showFilterOptions = ref(false)
 
 interface ColumnDef {
   field: string

@@ -1,34 +1,38 @@
-import { gql, useMutation } from '@vue/apollo-composable'
+// useColumnPersistence.ts
+
+import { gql, useMutation, useQuery } from '@vue/apollo-composable'
 import type { ColumnDef } from '../types'
 
-const UPDATE_TABLE_SETTINGS = gql`
-  mutation UpdateTableSettings($tableId: String!, $settings: TableSettings!) {
-    updateTableSettings(tableId: $tableId, settings: $settings) {
-      id
-      name
-      parentColumns
-      childColumns
-      categoryFilters
-    }
+// This mutation matches the schema - no selections on the Boolean return type
+const UPDATE_USER_SETTINGS = gql`
+  mutation UpdateUserSettings($input: JSONObject!) {
+    userSettingsUpdate(input: $input)
   }
 `
 
-const GET_TABLE_SETTINGS = gql`
-  query GetTableSettings($tableId: String!) {
-    tableSettings(tableId: $tableId) {
-      id
-      name
-      parentColumns
-      childColumns
-      categoryFilters
+const GET_USER_SETTINGS = gql`
+  query GetUserSettings {
+    activeUser {
+      userSettings
     }
   }
 `
 
 export function useColumnSettings() {
-  const { mutate: updateSettings, loading, error } = useMutation(UPDATE_TABLE_SETTINGS)
+  const {
+    mutate: updateSettings,
+    loading: saveLoading,
+    error: saveError
+  } = useMutation(UPDATE_USER_SETTINGS)
 
-  const saveColumnSettings = async (
+  const {
+    result: userSettings,
+    loading: loadLoading,
+    error: loadError,
+    refetch
+  } = useQuery(GET_USER_SETTINGS)
+
+  const saveTableSettings = async (
     tableId: string,
     settings: {
       name: string
@@ -41,28 +45,56 @@ export function useColumnSettings() {
     }
   ) => {
     try {
-      console.log('Saving table settings:', {
-        tableId,
-        settings
-      })
+      console.log('Saving table settings:', { tableId, settings })
 
-      const result = await updateSettings({
+      // Get current settings
+      const currentSettings = userSettings.value?.activeUser?.userSettings || {}
+
+      // Create updated settings object
+      const updatedSettings = {
+        ...currentSettings,
+        namedTables: {
+          ...currentSettings.namedTables,
+          [tableId]: {
+            id: tableId,
+            name: settings.name,
+            parentColumns: settings.parentColumns,
+            childColumns: settings.childColumns,
+            categoryFilters: settings.categoryFilters
+          }
+        }
+      }
+
+      // Save settings
+      await updateSettings({
         variables: {
-          tableId,
-          settings
+          input: updatedSettings
         }
       })
 
-      return result.data?.updateTableSettings
+      // Refetch to get updated data
+      await refetch()
+
+      // Return the updated table settings
+      return updatedSettings.namedTables[tableId]
     } catch (error) {
-      console.error('Failed to save table settings:', error)
+      console.error('Failed to save settings:', error)
       throw error
     }
   }
 
+  // Helper to get current settings for a table
+  const getTableSettings = (tableId: string) => {
+    return userSettings.value?.activeUser?.userSettings?.namedTables?.[tableId]
+  }
+
   return {
-    saveSettings: saveColumnSettings,
-    loading,
-    error
+    saveTableSettings,
+    getTableSettings,
+    userSettings,
+    loadLoading,
+    saveLoading,
+    loadError,
+    saveError
   }
 }
