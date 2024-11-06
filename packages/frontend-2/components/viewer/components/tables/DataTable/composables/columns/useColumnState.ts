@@ -42,6 +42,29 @@ interface PendingOperation {
   timestamp: number
 }
 
+const initializeFromSettings = (settings) => {
+  if (!settings?.namedTables?.[tableId]) return
+
+  console.log('Initializing from settings:', {
+    currentCount: parentColumns.value?.length,
+    settingsCount: settings.namedTables[tableId].parentColumns?.length,
+    settings: settings.namedTables[tableId]
+  })
+
+  isUpdating.value = true
+  try {
+    const tableSettings = settings.namedTables[tableId]
+    if (tableSettings.parentColumns?.length) {
+      parentColumns.value = ensureUniqueKeys(tableSettings.parentColumns)
+    }
+    if (tableSettings.childColumns?.length) {
+      childColumns.value = ensureUniqueKeys(tableSettings.childColumns)
+    }
+  } finally {
+    isUpdating.value = false
+  }
+}
+
 export function useColumnState({
   tableId,
   initialParentColumns,
@@ -49,11 +72,8 @@ export function useColumnState({
   availableParentParameters,
   availableChildParameters
 }: UseColumnStateOptions) {
-  console.log('Initializing useColumnState with:', {
-    tableId,
-    initialParentColumns,
-    initialChildColumns
-  })
+  const isUpdating = ref(false)
+  const { updateNamedTable, settings, loading: settingsLoading } = useUserSettings()
 
   // Core state
   const currentView = ref<'parent' | 'child'>('parent')
@@ -68,7 +88,68 @@ export function useColumnState({
 
   const draggedItem = ref<DragItem | null>(null)
 
-  const { updateNamedTable } = useUserSettings()
+  const initializeState = () => {
+    console.log('Initializing state with:', {
+      tableId,
+      settingsAvailable: !!settings.value?.namedTables?.[tableId],
+      initialParentCount: initialParentColumns?.length,
+      initialChildCount: initialChildColumns?.length
+    })
+
+    isUpdating.value = true
+    try {
+      // If we have saved settings, use those
+      if (settings.value?.namedTables?.[tableId]) {
+        const savedSettings = settings.value.namedTables[tableId]
+        parentColumns.value = ensureUniqueKeys(savedSettings.parentColumns || [])
+        childColumns.value = ensureUniqueKeys(savedSettings.childColumns || [])
+        console.log('Initialized from settings:', {
+          parentCount: parentColumns.value.length,
+          childCount: childColumns.value.length
+        })
+      } else {
+        // Otherwise use initial props
+        parentColumns.value = ensureUniqueKeys(initialParentColumns)
+        childColumns.value = ensureUniqueKeys(initialChildColumns)
+        console.log('Initialized from props:', {
+          parentCount: parentColumns.value.length,
+          childCount: childColumns.value.length
+        })
+      }
+    } finally {
+      isUpdating.value = false
+    }
+  }
+
+  // Call initialize immediately
+  initializeState()
+
+  // Watch for settings changes
+  watch(
+    () => settings.value?.namedTables?.[tableId],
+    (newTableSettings) => {
+      if (!settingsLoading.value && newTableSettings) {
+        console.log('Settings changed:', {
+          currentParentCount: parentColumns.value.length,
+          newParentCount: newTableSettings.parentColumns?.length,
+          timestamp: new Date().toISOString()
+        })
+
+        isUpdating.value = true
+        try {
+          if (newTableSettings.parentColumns?.length) {
+            parentColumns.value = ensureUniqueKeys(newTableSettings.parentColumns)
+          }
+          if (newTableSettings.childColumns?.length) {
+            childColumns.value = ensureUniqueKeys(newTableSettings.childColumns)
+          }
+        } finally {
+          isUpdating.value = false
+        }
+      }
+    },
+    { deep: true }
+  )
 
   // Create initial version
   const createInitialVersion = () => {
@@ -155,23 +236,49 @@ export function useColumnState({
     }
 
     console.log('SaveChanges - Starting:', {
-      tableId,
-      parentColumnsCount: parentColumns.value.length,
-      childColumnsCount: childColumns.value.length
+      currentParentCount: parentColumns.value.length,
+      parentColumns: parentColumns.value
     })
 
+    isUpdating.value = true
     try {
-      const result = await updateNamedTable(tableId, {
-        parentColumns: parentColumns.value,
-        childColumns: childColumns.value
+      const columnsToSave = {
+        parentColumns: parentColumns.value.map((col, index) => ({
+          ...col,
+          order: index,
+          key: `${col.field}-${index}`,
+          visible: col.visible ?? true,
+          removable: col.removable ?? true
+        })),
+        childColumns: childColumns.value.map((col, index) => ({
+          ...col,
+          order: index,
+          key: `${col.field}-${index}`,
+          visible: col.visible ?? true,
+          removable: col.removable ?? true
+        }))
+      }
+
+      console.log('SaveChanges - About to save:', {
+        parentColumnsCount: columnsToSave.parentColumns.length,
+        columns: columnsToSave.parentColumns
       })
 
-      console.log('SaveChanges - Success:', result)
+      const result = await updateNamedTable(tableId, columnsToSave)
       isDirty.value = false
-      return true
+
+      // Verify save
+      console.log('SaveChanges - After save:', {
+        savedParentCount: settings.value?.namedTables?.[tableId]?.parentColumns?.length,
+        expectedCount: columnsToSave.parentColumns.length
+      })
+
+      return result
     } catch (error) {
-      console.error('SaveChanges - Failed:', error)
+      console.error('SaveChanges failed:', error)
       throw error
+    } finally {
+      isUpdating.value = false
     }
   }
 
@@ -235,11 +342,28 @@ export function useColumnState({
   watch(currentView, (newView) => {
     console.log('View changed:', newView)
   })
+  // // Watch for settings changes
+  // watch(
+  //   () => settings.value,
+  //   (newSettings) => {
+  //     if (!settingsLoading.value && newSettings) {
+  //       console.log('Settings changed, initializing columns:', {
+  //         hasSettings: !!newSettings,
+  //         tableData: newSettings?.namedTables?.[tableId],
+  //         currentColumns: parentColumns.value?.length,
+  //         timestamp: new Date().toISOString()
+  //       })
+  //       initializeFromSettings(newSettings)
+  //     }
+  //   },
+  //   { immediate: true, deep: true }
+  // )
 
   // Watch for column changes
   watch(
     [parentColumns, childColumns],
     () => {
+      if (isUpdating.value) return
       isDirty.value = true
     },
     { deep: true }
@@ -277,22 +401,47 @@ export function useColumnState({
 
   // Methods
   const updateColumns = (columns: ColumnDef[]) => {
-    const reorderedColumns = columns.map((col, index) => ({
-      ...col,
-      order: index
-    }))
-
-    if (currentView.value === 'parent') {
-      parentColumns.value = reorderedColumns
-    } else {
-      childColumns.value = reorderedColumns
+    if (isUpdating.value) {
+      console.log('Skipping update while processing')
+      return
     }
 
-    isDirty.value = true
-    console.log('Columns updated:', {
-      view: currentView.value,
-      columns: reorderedColumns
+    console.log('updateColumns called with:', {
+      columnsCount: columns.length,
+      columns: columns.map((c) => ({ field: c.field, order: c.order }))
     })
+
+    if (!columns?.length) {
+      console.warn('Attempting to update with empty columns')
+      return
+    }
+
+    isUpdating.value = true
+    try {
+      const reorderedColumns = columns.map((col, index) => ({
+        ...col,
+        order: index,
+        key: col.key || `${col.field}-${index}`,
+        visible: col.visible ?? true,
+        removable: col.removable ?? true
+      }))
+
+      if (currentView.value === 'parent') {
+        parentColumns.value = reorderedColumns
+      } else {
+        childColumns.value = reorderedColumns
+      }
+
+      isDirty.value = true
+
+      console.log('Columns updated:', {
+        view: currentView.value,
+        count: reorderedColumns.length,
+        columns: reorderedColumns.map((c) => ({ field: c.field, order: c.order }))
+      })
+    } finally {
+      isUpdating.value = false
+    }
   }
 
   const handleAddColumn = (column: ParameterDefinition | ColumnDef) => {
@@ -419,9 +568,49 @@ export function useColumnState({
     { deep: true }
   )
 
+  watch(
+    parentColumns,
+    (newCols, oldCols) => {
+      console.log('Parent columns updated:', {
+        oldColumns: oldCols?.length,
+        newColumns: newCols?.length,
+        firstColumn: newCols?.[0],
+        source: new Error().stack // This will show us where the change is coming from
+      })
+    },
+    { deep: true }
+  )
+
   watch(currentView, (newView) => {
     console.log('View changed:', newView)
   })
+
+  watch(
+    parentColumns,
+    (newCols) => {
+      console.log('Parent columns watch triggered:', {
+        count: newCols.length,
+        firstColumn: newCols[0],
+        allColumns: newCols,
+        stack: new Error().stack // This will show us where the change is coming from
+      })
+    },
+    { deep: true }
+  )
+
+  // Add this to debug column updates
+  watch(
+    parentColumns,
+    (newCols, oldCols) => {
+      console.log('Parent columns changed:', {
+        oldCount: oldCols?.length,
+        newCount: newCols?.length,
+        isUpdating: isUpdating.value,
+        stack: new Error().stack
+      })
+    },
+    { deep: true }
+  )
 
   return {
     // State
@@ -444,23 +633,7 @@ export function useColumnState({
     handleDragStart,
     handleDrop,
     handleDropToAvailable,
-    saveChanges: async () => {
-      console.log('Saving changes...')
-      if (!isDirty.value) return
-
-      try {
-        await updateNamedTable(tableId, {
-          parentColumns: parentColumns.value,
-          childColumns: childColumns.value
-        })
-        isDirty.value = false
-        console.log('Changes saved successfully')
-        return true
-      } catch (error) {
-        console.error('Failed to save changes:', error)
-        throw error
-      }
-    },
+    saveChanges,
     reset: () => {
       console.log('Resetting state...')
       parentColumns.value = ensureUniqueKeys(initialParentColumns)

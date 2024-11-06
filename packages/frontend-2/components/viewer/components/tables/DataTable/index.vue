@@ -1,12 +1,12 @@
 <template>
   <div class="prime-local">
-    <FormButton color="outline" class="mb-3" @click="openDialog">
-      Manage Columns
-    </FormButton>
+    <!-- Column Management -->
+    <div class="flex items-center gap-2 mb-3">
+      <FormButton color="outline" @click="openDialog">Manage Columns</FormButton>
+      <span v-if="isSaving" class="text-sm text-gray-500">Saving changes...</span>
+    </div>
 
-    <span v-if="isSaving" class="text-sm text-gray-500">Saving changes...</span>
-
-    <!-- Column Manager -->
+    <!-- Column Manager Dialog -->
     <ColumnManager
       v-if="dialogOpen"
       :open="dialogOpen"
@@ -20,6 +20,7 @@
       @cancel="handleCancel"
     />
 
+    <!-- Main Table -->
     <TableWrapper
       v-model="expandedRows"
       :data="data"
@@ -46,9 +47,7 @@
       </template>
 
       <template #error>
-        <div class="p-4 text-center text-red-500">
-          {{ errorMessage }}
-        </div>
+        <div class="p-4 text-center text-red-500">{{ errorMessage }}</div>
       </template>
     </TableWrapper>
   </div>
@@ -68,7 +67,8 @@ import type {
   ColumnReorderEvent
 } from './composables/types'
 
-const props = defineProps<{
+// Props and Emits definitions
+interface Props {
   tableId: string
   data: any[]
   columns: ColumnDef[]
@@ -77,7 +77,9 @@ const props = defineProps<{
   availableChildParameters: ParameterDefinition[]
   loading?: boolean
   initialState?: TableState
-}>()
+}
+
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:expandedRows': [value: any[]]
@@ -92,10 +94,29 @@ const emit = defineEmits<{
   error: [error: Error]
 }>()
 
-const { settings, loading, saveSettings, loadSettings, updateNamedTable } =
-  useUserSettings(props.tableId) // Pass tableId to the hook
+// State Management
+const { settings, loading, saveSettings, updateNamedTable } = useUserSettings(
+  props.tableId
+)
 
-// Add watch for settings changes
+// UI State
+const dialogOpen = ref(false)
+const isSaving = ref(false)
+const errorMessage = ref('')
+
+// Table State
+const expandedRows = ref<any[]>([])
+const sortField = ref<string>('')
+const sortOrder = ref<number>(1)
+const filters = ref<Record<string, any>>({})
+
+// Column State
+const localParentColumns = ref<ColumnDef[]>([])
+const localChildColumns = ref<ColumnDef[]>([])
+const tempParentColumns = ref<ColumnDef[]>([])
+const tempChildColumns = ref<ColumnDef[]>([])
+
+// Watchers
 watch(
   () => settings.value?.namedTables?.[props.tableId],
   (newTableSettings) => {
@@ -107,34 +128,10 @@ watch(
   { deep: true }
 )
 
-// Add check for existing settings before apply
-const checkExistingSettings = () => {
-  const existingSettings = settings.value?.namedTables?.[props.tableId]
-  return !!existingSettings
-}
+watch(() => props.columns, updateLocalColumns, { deep: true })
+watch(() => props.data, validateData, { immediate: true })
 
-// State
-const dialogOpen = ref(false)
-const expandedRows = ref<any[]>([])
-const isSaving = ref(false)
-const errorMessage = ref('')
-const sortField = ref<string>('')
-const sortOrder = ref<number>(1)
-const filters = ref<Record<string, any>>({})
-
-// Local column state
-const localParentColumns = ref<ColumnDef[]>([])
-const localChildColumns = ref<ColumnDef[]>([])
-const tempParentColumns = ref<ColumnDef[]>([])
-const tempChildColumns = ref<ColumnDef[]>([])
-
-const handleError = (error: Error) => {
-  errorMessage.value = error.message
-  emit('error', error)
-  console.error('DataTable error:', error)
-}
-
-// Initialize state
+// Initialization
 onMounted(() => {
   try {
     initializeState()
@@ -143,28 +140,23 @@ onMounted(() => {
   }
 })
 
-const updateParentColumns = (newColumns: ColumnDef[]) => {
-  localParentColumns.value = JSON.parse(JSON.stringify(newColumns))
-}
-
-const updateChildColumns = (newColumns: ColumnDef[]) => {
-  localChildColumns.value = JSON.parse(JSON.stringify(newColumns))
-}
-
-const validateData = (data: any[]) => {
+// Utility Functions
+function validateData(data: any[]) {
   if (!Array.isArray(data)) {
     handleError(new Error('Invalid data format: expected array'))
-    return
   }
 }
 
-// Watch for prop changes
-watch(() => props.columns, updateParentColumns, { deep: true })
-watch(() => props.detailColumns, updateChildColumns, { deep: true })
-watch(() => props.data, validateData, { immediate: true })
+function updateLocalColumns(newColumns: ColumnDef[]) {
+  localParentColumns.value = JSON.parse(JSON.stringify(newColumns))
+}
 
-// Methods
-const initializeState = () => {
+function checkExistingSettings() {
+  return !!settings.value?.namedTables?.[props.tableId]
+}
+
+// State Management Functions
+function initializeState() {
   if (props.initialState) {
     localParentColumns.value = [...props.initialState.columns]
     expandedRows.value = [...props.initialState.expandedRows]
@@ -172,12 +164,19 @@ const initializeState = () => {
     sortOrder.value = props.initialState.sortOrder || 1
     filters.value = props.initialState.filters || {}
   } else {
-    updateParentColumns(props.columns)
-    updateChildColumns(props.detailColumns)
+    updateLocalColumns(props.columns)
+    localChildColumns.value = JSON.parse(JSON.stringify(props.detailColumns))
   }
 }
 
-const openDialog = () => {
+// Event Handlers
+function handleError(error: Error) {
+  errorMessage.value = error.message
+  emit('error', error)
+  console.error('DataTable error:', error)
+}
+
+function openDialog() {
   try {
     tempParentColumns.value = JSON.parse(JSON.stringify(localParentColumns.value))
     tempChildColumns.value = JSON.parse(JSON.stringify(localChildColumns.value))
@@ -187,19 +186,19 @@ const openDialog = () => {
   }
 }
 
-const handleColumnsUpdate = (updates: ColumnUpdateEvent) => {
+function handleColumnsUpdate(updates: ColumnUpdateEvent) {
   tempParentColumns.value = updates.parentColumns
   tempChildColumns.value = updates.childColumns
 }
 
-const handleApply = async () => {
+async function handleApply() {
   try {
     isSaving.value = true
-
     const settingsExist = checkExistingSettings()
+
     const tableConfig = {
       id: props.tableId,
-      name: settingsExist ? settings.value.namedTables[props.tableId].name : 'tt36',
+      name: settingsExist ? settings.value.namedTables[props.tableId].name : 'Default',
       parentColumns: localParentColumns.value,
       childColumns: localChildColumns.value,
       categoryFilters: settingsExist
@@ -210,8 +209,9 @@ const handleApply = async () => {
           }
     }
 
-    if (!settingsExist) {
-      // Create new settings
+    if (settingsExist) {
+      await updateNamedTable(props.tableId, tableConfig)
+    } else {
       await saveSettings({
         ...settings.value,
         namedTables: {
@@ -219,31 +219,26 @@ const handleApply = async () => {
           [props.tableId]: tableConfig
         }
       })
-    } else {
-      // Update existing settings
-      await updateNamedTable(props.tableId, tableConfig)
     }
 
-    emit('update:columns', {
+    emit('update:both-columns', {
       parentColumns: localParentColumns.value,
       childColumns: localChildColumns.value
     })
-
-    emit('update:open', false)
   } catch (error) {
-    console.error('Failed to save column settings:', error)
+    handleError(error as Error)
   } finally {
     isSaving.value = false
   }
 }
 
-const handleCancel = () => {
+function handleCancel() {
   tempParentColumns.value = JSON.parse(JSON.stringify(localParentColumns.value))
   tempChildColumns.value = JSON.parse(JSON.stringify(localChildColumns.value))
   dialogOpen.value = false
 }
 
-const handleColumnResize = (event: ColumnResizeEvent) => {
+function handleColumnResize(event: ColumnResizeEvent) {
   try {
     const { element, delta } = event
     const field = element.dataset.field
@@ -267,7 +262,7 @@ const handleColumnResize = (event: ColumnResizeEvent) => {
   }
 }
 
-const handleColumnReorder = async (event: ColumnReorderEvent) => {
+async function handleColumnReorder(event: ColumnReorderEvent) {
   try {
     isSaving.value = true
     const { target } = event
@@ -302,40 +297,34 @@ const handleColumnReorder = async (event: ColumnReorderEvent) => {
   }
 }
 
-const handleSort = (field: string, order: number) => {
-  sortField.value = field
-  sortOrder.value = order
-  emit('sort', field, order)
-}
-
-const handleFilter = (newFilters: Record<string, any>) => {
-  filters.value = newFilters
-  emit('filter', newFilters)
-}
-
-const handleRowExpand = (row: any) => {
+// Row Management Functions
+function handleRowExpand(row: any) {
   if (!expandedRows.value.includes(row)) {
     expandedRows.value.push(row)
   }
 }
 
-const handleRowCollapse = (row: any) => {
+function handleRowCollapse(row: any) {
   const index = expandedRows.value.indexOf(row)
   if (index > -1) {
     expandedRows.value.splice(index, 1)
   }
 }
+
+// Sort and Filter Handlers
+function handleSort(field: string, order: number) {
+  sortField.value = field
+  sortOrder.value = order
+  emit('sort', field, order)
+}
+
+function handleFilter(newFilters: Record<string, any>) {
+  filters.value = newFilters
+  emit('filter', newFilters)
+}
 </script>
 
-<style>
-@import '../../../../../assets/prime-vue.css';
-</style>
-
 <style scoped>
-/* @import 'primevue/resources/themes/nora';
-@import 'primevue/resources/primevue.min.css';
-@import 'primeicons/primeicons.css'; */
-
 .prime-local {
   --primary-color: #3b82f6;
   --surface-ground: #f8f9fa;
@@ -346,17 +335,6 @@ const handleRowCollapse = (row: any) => {
   --text-color-secondary: #6c757d;
 }
 
-.datatable-wrapper {
-  --primary-color: #3b82f6;
-  --surface-ground: #f8f9fa;
-  --surface-section: #fff;
-  --surface-card: #fff;
-  --surface-border: #dfe7ef;
-  --text-color: #495057;
-  --text-color-secondary: #6c757d;
-}
-
-/* PrimeVue DataTable customizations */
 .datatable-wrapper :deep(.p-datatable) {
   background-color: var(--surface-card);
   border-radius: 0.5rem;

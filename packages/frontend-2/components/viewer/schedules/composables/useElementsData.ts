@@ -37,35 +37,35 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
       const category = getElementCategory(node)
 
       // Log all potential mark sources for debugging
-      console.log('Checking mark sources:', {
-        id: node.raw.id,
-        category,
-        identityDataMark: node.raw['Identity Data']?.Mark,
-        rawMark: node.raw.Mark,
-        rawName: node.raw.Name
-      })
+      // console.log('Checking mark sources:', {
+      //   id: node.raw.id,
+      //   category,
+      //   identityDataMark: node.raw['Identity Data']?.Mark,
+      //   rawMark: node.raw.Mark,
+      //   rawName: node.raw.Name
+      // })
 
       const identityMark = node.raw['Identity Data']?.Mark
       const directMark = node.raw.Mark || node.raw.mark
 
       if (identityMark) {
-        console.log('Using Identity Data Mark:', identityMark)
+        // console.log('Using Identity Data Mark:', identityMark)
         return identityMark
       }
 
       if (directMark) {
-        console.log('Using direct Mark property:', directMark)
+        // console.log('Using direct Mark property:', directMark)
         return directMark
       }
 
       if (category === 'Walls' && node.raw.Name) {
-        console.log('Using Wall Name as mark:', node.raw.Name)
+        // console.log('Using Wall Name as mark:', node.raw.Name)
         return node.raw.Name
       }
 
       // Fallback to generated mark
       const generatedMark = `${category}-${node.raw.id.substring(0, 8)}`
-      console.log('Using generated mark:', generatedMark)
+      // console.log('Using generated mark:', generatedMark)
       return generatedMark
     },
 
@@ -187,7 +187,7 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   }
 
   function processElements(rootNodes: any[]) {
-    console.group('🔄 Elements Processing')
+    // console.group('🔄 Elements Processing')
 
     // Clear existing data
     elementsMap.value.clear()
@@ -204,16 +204,16 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
         // Get mark first since it's critical for parent identification
         const elementMark = getMarkValue(node)
 
-        console.log('Parent element mark resolution:', {
-          id: node.raw.id,
-          category,
-          resolvedMark: elementMark,
-          sources: {
-            identityData: node.raw['Identity Data']?.Mark,
-            directMark: node.raw.Mark,
-            name: node.raw.Name
-          }
-        })
+        // console.log('Parent element mark resolution:', {
+        //   id: node.raw.id,
+        //   category,
+        //   resolvedMark: elementMark,
+        //   sources: {
+        //     identityData: node.raw['Identity Data']?.Mark,
+        //     directMark: node.raw.Mark,
+        //     name: node.raw.Name
+        //   }
+        // })
 
         if (elementMark) {
           const parameterValues = {}
@@ -244,12 +244,12 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
           elementsMap.value.set(normalizedMark, elementData)
           parentMarks.add(normalizedMark)
 
-          console.log('Added parent element:', {
-            id: elementData.id,
-            mark: normalizedMark,
-            category,
-            hasIdentityMark: !!node.raw['Identity Data']?.Mark
-          })
+          // console.log('Added parent element:', {
+          //   id: elementData.id,
+          //   mark: normalizedMark,
+          //   category,
+          //   hasIdentityMark: !!node.raw['Identity Data']?.Mark
+          // })
         }
       }
 
@@ -294,12 +294,12 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
           ...parameterValues
         }
 
-        console.log('Processing child:', {
-          id: childData.id,
-          category: childData.category,
-          host: hostValue,
-          hasParent: elementsMap.value.has(hostValue)
-        })
+        // console.log('Processing child:', {
+        //   id: childData.id,
+        //   category: childData.category,
+        //   host: hostValue,
+        //   hasParent: elementsMap.value.has(hostValue)
+        // })
 
         childElementsList.value.push(childData)
       }
@@ -688,18 +688,18 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   watch(
     () => availableHeaders.value,
     (headers) => {
-      console.group('🔍 Available Headers Debug')
-      console.log('Parent Headers:', {
-        count: headers.parent.length,
-        fields: headers.parent.map((h) => h.field),
-        categories: [...new Set(headers.parent.map((h) => h.category))]
-      })
-      console.log('Child Headers:', {
-        count: headers.child.length,
-        fields: headers.child.map((h) => h.field),
-        categories: [...new Set(headers.child.map((h) => h.category))]
-      })
-      console.groupEnd()
+      // console.group('🔍 Available Headers Debug')
+      // console.log('Parent Headers:', {
+      //   count: headers.parent.length,
+      //   fields: headers.parent.map((h) => h.field),
+      //   categories: [...new Set(headers.parent.map((h) => h.category))]
+      // })
+      // console.log('Child Headers:', {
+      //   count: headers.child.length,
+      //   fields: headers.child.map((h) => h.field),
+      //   categories: [...new Set(headers.child.map((h) => h.category))]
+      // })
+      // console.groupEnd()
     },
     { immediate: true }
   )

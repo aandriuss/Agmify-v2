@@ -26,10 +26,10 @@ export function useDataFlowDebugger() {
       childCategories,
       timestamp: new Date().toISOString()
     }
-    console.group('🎯 Category Selection Check')
-    console.log('Parent Categories:', parentCategories)
-    console.log('Child Categories:', childCategories)
-    console.groupEnd()
+    // console.group('🎯 Category Selection Check')
+    // console.log('Parent Categories:', parentCategories)
+    // console.log('Child Categories:', childCategories)
+    // console.groupEnd()
   }
 
   function logWallElements(stage: string, nodes: any[]) {

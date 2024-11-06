@@ -422,18 +422,18 @@ const mergedChildParameters = computed(() =>
 watch(
   [mergedParentParameters, mergedChildParameters],
   ([parent, child]) => {
-    console.group('🔄 Merged Parameters Debug')
-    console.log('Parent Parameters:', {
-      count: parent.length,
-      fields: parent.map((p) => p.field),
-      categories: [...new Set(parent.map((p) => p.category))]
-    })
-    console.log('Child Parameters:', {
-      count: child.length,
-      fields: child.map((p) => p.field),
-      categories: [...new Set(child.map((p) => p.category))]
-    })
-    console.groupEnd()
+    // console.group('🔄 Merged Parameters Debug')
+    // console.log('Parent Parameters:', {
+    //   count: parent.length,
+    //   fields: parent.map((p) => p.field),
+    //   categories: [...new Set(parent.map((p) => p.category))]
+    // })
+    // console.log('Child Parameters:', {
+    //   count: child.length,
+    //   fields: child.map((p) => p.field),
+    //   categories: [...new Set(child.map((p) => p.category))]
+    // })
+    // console.groupEnd()
   },
   { immediate: true }
 )
@@ -852,17 +852,16 @@ watch(
   { immediate: true }
 )
 
-// Add these console logs in Schedules.vue:
 watch(
   () => availableHeaders.value,
   (newHeaders) => {
     if (!newHeaders) return
-    console.log('Available Headers Updated:', {
-      parentHeadersCount: newHeaders.parent.length,
-      childHeadersCount: newHeaders.child.length,
-      parentGroups: [...new Set(newHeaders.parent.map((h) => h.category))],
-      childGroups: [...new Set(newHeaders.child.map((h) => h.category))]
-    })
+    // console.log('Available Headers Updated:', {
+    //   parentHeadersCount: newHeaders.parent.length,
+    //   childHeadersCount: newHeaders.child.length,
+    //   parentGroups: [...new Set(newHeaders.parent.map((h) => h.category))],
+    //   childGroups: [...new Set(newHeaders.child.map((h) => h.category))]
+    // })
   },
   { deep: true }
 )
@@ -871,7 +870,7 @@ watch(
   () => selectedParentCategories.value,
   (newCategories) => {
     if (!newCategories) return
-    console.log('Parent Categories changed:', newCategories)
+    // console.log('Parent Categories changed:', newCategories)
   }
 )
 
@@ -879,7 +878,7 @@ watch(
   () => selectedChildCategories.value,
   (newCategories) => {
     if (!newCategories) return
-    console.log('Child Categories changed:', newCategories)
+    // console.log('Child Categories changed:', newCategories)
   }
 )
 

@@ -49,6 +49,7 @@ export function useColumnSettings() {
 
       // Get current settings
       const currentSettings = userSettings.value?.activeUser?.userSettings || {}
+      console.log('Current settings before save:', currentSettings) // Added log
 
       // Create updated settings object
       const updatedSettings = {
@@ -64,16 +65,19 @@ export function useColumnSettings() {
           }
         }
       }
+      console.log('Updated settings being saved:', updatedSettings) // Added log
 
       // Save settings
-      await updateSettings({
+      const response = await updateSettings({
         variables: {
           input: updatedSettings
         }
       })
+      console.log('GraphQL mutation response:', response) // Added log
 
       // Refetch to get updated data
-      await refetch()
+      const refetchResult = await refetch()
+      console.log('Refetch result:', refetchResult) // Added log
 
       // Return the updated table settings
       return updatedSettings.namedTables[tableId]

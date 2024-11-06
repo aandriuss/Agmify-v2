@@ -18,6 +18,15 @@
       </div>
     </div>
 
+    <!-- List info -->
+    <div
+      v-if="mode === 'available' && !showFilterOptions"
+      class="px-2 py-0 text-xs text-gray-500 border-b"
+    >
+      Found: {{ items.length }} | Filtered: {{ filteredItems.length }} | Groups:
+      {{ Object.keys(groupedItems).length }}
+    </div>
+
     <!-- Main content area -->
     <div
       class="flex-1 overflow-y-auto p-1 relative"

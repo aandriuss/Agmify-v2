@@ -1,19 +1,13 @@
 <template>
   <div>
     <!-- Loading state -->
-    <div
-      v-if="!columnManager.state.initialized && !columnManager.state.loadingError"
-      class="p-4 text-center"
-    >
+    <div v-if="!state.initialized && !state.loadingError" class="p-4 text-center">
       <span class="text-gray-500">Loading...</span>
     </div>
 
     <!-- Error state -->
-    <div
-      v-else-if="columnManager.state.loadingError"
-      class="p-4 text-center text-red-500"
-    >
-      Error loading column manager: {{ columnManager.state.loadingError.message }}
+    <div v-else-if="state.loadingError" class="p-4 text-center text-red-500">
+      Error loading column manager: {{ state.loadingError.message }}
     </div>
 
     <!-- Main content -->
@@ -27,7 +21,7 @@
         :buttons="{
           0: {
             text: 'Apply',
-            props: { color: 'default', link: false, loading: isSaving },
+            props: { color: 'default', link: false, loading: state.isSaving },
             onClick: handleApply
           },
           1: {
@@ -39,6 +33,7 @@
         @update:open="$emit('update:open', $event)"
       >
         <div class="flex flex-col gap-2">
+          <!-- View selector -->
           <TabSelector
             :model-value="columnState.currentView.value"
             @update:model-value="columnState.currentView.value = $event"
@@ -56,11 +51,9 @@
                   size="sm"
                   color="subtle"
                   :icon-right="
-                    columnManager.state.showFilterOptions
-                      ? ChevronUpIcon
-                      : ChevronDownIcon
+                    state.showFilterOptions ? ChevronUpIcon : ChevronDownIcon
                   "
-                  @click="columnManager.toggleFilterOptions()"
+                  @click="toggleFilterOptions"
                 >
                   F
                 </FormButton>
@@ -71,12 +64,12 @@
                   :key="`available-${columnState.currentView.value}`"
                   :items="availableParameters"
                   mode="available"
-                  :show-filter-options="columnManager.state.showFilterOptions"
-                  :search-term="columnManager.state.searchTerm"
-                  :is-grouped="columnManager.state.isGrouped"
-                  :sort-by="columnManager.state.sortBy"
-                  @drag-start="columnManager.handleDragStart"
-                  @drop="(e) => columnManager.handleDrop(e, 'available')"
+                  :show-filter-options="state.showFilterOptions"
+                  :search-term="state.searchTerm"
+                  :is-grouped="state.isGrouped"
+                  :sort-by="state.sortBy"
+                  @drag-start="handleDragStart"
+                  @drop="(e) => handleDrop(e, 'available')"
                 />
               </div>
             </div>
@@ -112,17 +105,17 @@
                   :key="`active-${columnState.currentView.value}`"
                   :items="activeColumns"
                   mode="active"
-                  :show-filter-options="columnManager.state.showFilterOptions"
-                  :search-term="columnManager.state.searchTerm"
+                  :show-filter-options="state.showFilterOptions"
+                  :search-term="state.searchTerm"
                   :is-grouped="false"
-                  :sort-by="columnManager.state.sortBy"
+                  :sort-by="state.sortBy"
                   @update:columns="handleColumnsUpdate"
                   @add="handleAdd"
                   @remove="handleRemove"
-                  @visibility-change="columnManager.handleVisibilityChange"
+                  @visibility-change="handleVisibilityChange"
                   @reorder="handleReorder"
-                  @drag-start="columnManager.handleDragStart"
-                  @drop="(e, index) => columnManager.handleDrop(e, 'active', index)"
+                  @drag-start="handleDragStart"
+                  @drop="(e, index) => handleDrop(e, 'active', index)"
                 />
               </div>
             </div>
@@ -134,11 +127,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, reactive } from 'vue'
 import { LayoutDialog } from '@speckle/ui-components'
 import { debounce } from 'lodash-es'
 import Button from 'primevue/button'
-
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import { useColumnState } from '../../composables/columns/useColumnState'
 import TabSelector from './TabSelector.vue'
@@ -165,326 +157,38 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-// User settings
-const {
-  settings,
-  loadSettings,
-  updateNamedTable, // Add this
-  saveSettings
-} = useUserSettings()
-
-interface UIState {
-  showFilterOptions: boolean
-}
-
-interface TableSettings {
-  name: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-  categoryFilters: {
-    selectedParentCategories: string[]
-    selectedChildCategories: string[]
-  }
-  uiState?: UIState
-}
-
-interface ColumnOperation {
-  type: 'add' | 'remove' | 'reorder' | 'visibility'
-  sourceList: 'active' | 'available'
-  targetList?: 'active' | 'available'
-  item: ColumnDef | ParameterDefinition
-  sourceIndex?: number
-  targetIndex?: number
-  visible?: boolean
-}
-
-interface ColumnManagerState {
-  selectedTableId: string
-  tableName: string
-  tableKey: string
+// State interfaces
+interface State {
   initialized: boolean
   initializing: boolean
   isSaving: boolean
   loadingError: Error | null
+  selectedTableId: string
+  tableName: string
+  tableKey: string
   searchTerm: string
   isGrouped: boolean
   sortBy: 'name' | 'category' | 'type' | 'fixed'
   showFilterOptions: boolean
 }
 
-function isColumnArray(value: any): value is ColumnDef[] {
-  return (
-    Array.isArray(value) &&
-    value.every((item) => typeof item === 'object' && item !== null && 'field' in item)
-  )
-}
+// State management
+const { settings, loadSettings, updateNamedTable } = useUserSettings()
+const state = reactive<State>({
+  initialized: false,
+  initializing: false,
+  isSaving: false,
+  loadingError: null,
+  selectedTableId: props.tableId,
+  tableName: '',
+  tableKey: Date.now().toString(),
+  searchTerm: '',
+  isGrouped: true,
+  sortBy: 'category',
+  showFilterOptions: false
+})
 
-// Column Manager core setup
-const columnManager = {
-  state: reactive<ColumnManagerState>({
-    selectedTableId: props.tableId,
-    tableName: '',
-    tableKey: Date.now().toString(),
-    initialized: false,
-    initializing: false,
-    isSaving: false,
-    loadingError: null,
-    searchTerm: '',
-    isGrouped: true,
-    sortBy: 'category',
-    showFilterOptions: false
-  }),
-
-  async initialize() {
-    if (this.state.initializing) return
-
-    this.state.initializing = true
-    try {
-      await loadSettings()
-      const table = settings.value?.namedTables?.[this.state.selectedTableId]
-
-      if (table) {
-        this.state.tableName = table.name
-        this.restoreUIState()
-        await loadCurrentTableState()
-      }
-
-      this.state.initialized = true
-    } catch (error) {
-      console.error('Column manager initialization failed:', error)
-      this.state.loadingError = error as Error
-    } finally {
-      this.state.initializing = false
-    }
-  },
-
-  debouncedSaveUIState: debounce(function (this: typeof columnManager) {
-    return this.saveUIState()
-  }, 300),
-
-  // Core operations handler
-  async handleOperation(operation: ColumnOperation) {
-    console.log('Processing operation:', operation)
-
-    try {
-      let updatedColumns: ColumnDef[] = []
-
-      switch (operation.type) {
-        case 'add':
-          if (operation.targetList === 'active') {
-            const newColumn: ColumnDef = {
-              ...operation.item,
-              visible: true,
-              removable: true,
-              order: activeColumns.value.length
-            }
-            updatedColumns = [...activeColumns.value, newColumn]
-          }
-          break
-
-        case 'remove':
-          if (operation.sourceList === 'active') {
-            updatedColumns = activeColumns.value.filter(
-              (col) => col.field !== operation.item.field
-            )
-          }
-          break
-
-        case 'reorder':
-          if (
-            operation.sourceIndex !== undefined &&
-            operation.targetIndex !== undefined
-          ) {
-            updatedColumns = [...activeColumns.value]
-            const [movedItem] = updatedColumns.splice(operation.sourceIndex, 1)
-            updatedColumns.splice(operation.targetIndex, 0, movedItem)
-            updatedColumns = updatedColumns.map((col, index) => ({
-              ...col,
-              order: index
-            }))
-          }
-          break
-
-        case 'visibility':
-          if (operation.item && operation.visible !== undefined) {
-            updatedColumns = activeColumns.value.map((col) =>
-              col.field === operation.item.field
-                ? { ...col, visible: operation.visible }
-                : col
-            )
-          }
-          break
-      }
-
-      // Only update if we have columns to update
-      if (updatedColumns.length > 0 || operation.type === 'remove') {
-        const updates = {
-          parentColumns:
-            columnState.currentView.value === 'parent'
-              ? updatedColumns
-              : columnState.parentColumns.value,
-          childColumns:
-            columnState.currentView.value === 'child'
-              ? updatedColumns
-              : columnState.childColumns.value
-        }
-
-        await handleColumnsUpdate(updates)
-      }
-
-      columnManager.state.tableKey = Date.now().toString()
-    } catch (error) {
-      console.error('Operation failed:', error)
-      throw error
-    }
-  },
-
-  // Drag & Drop handlers
-  handleDragStart(
-    event: DragEvent,
-    item: ColumnDef | ParameterDefinition,
-    sourceList: 'active' | 'available'
-  ) {
-    if (!event.dataTransfer) return
-
-    const index =
-      sourceList === 'active'
-        ? activeColumns.value.findIndex((col) => col.field === item.field)
-        : availableParameters.value.findIndex((param) => param.field === item.field)
-
-    const transferData = {
-      item,
-      sourceList,
-      sourceIndex: index
-    }
-
-    event.dataTransfer.setData('application/json', JSON.stringify(transferData))
-    event.dataTransfer.effectAllowed = 'move'
-  },
-
-  toggleFilterOptions() {
-    this.state.showFilterOptions = !this.state.showFilterOptions
-    this.debouncedSaveUIState()
-  },
-
-  async saveUIState() {
-    try {
-      const currentTable = settings.value?.namedTables?.[this.state.selectedTableId]
-      if (currentTable) {
-        const updatedTable = {
-          ...currentTable,
-          uiState: {
-            ...currentTable.uiState,
-            showFilterOptions: this.state.showFilterOptions
-          }
-        }
-
-        await updateNamedTable(this.state.selectedTableId, updatedTable)
-        console.log('UI state saved successfully')
-      }
-    } catch (error) {
-      console.error('Failed to save UI state:', error)
-    }
-  },
-
-  // Add method to restore UI state
-  restoreUIState() {
-    const currentTable = settings.value?.namedTables?.[this.state.selectedTableId]
-    if (currentTable?.uiState) {
-      this.state.showFilterOptions = currentTable.uiState.showFilterOptions ?? false
-      console.log('UI state restored:', this.state.showFilterOptions)
-    } else {
-      this.state.showFilterOptions = false // Default to closed
-    }
-  },
-
-  async handleDrop(
-    event: DragEvent,
-    targetList: 'active' | 'available',
-    targetIndex?: number
-  ) {
-    if (!event.dataTransfer) return
-    event.preventDefault()
-
-    try {
-      const transferData = JSON.parse(event.dataTransfer.getData('application/json'))
-      const { item, sourceList, sourceIndex } = transferData
-
-      console.log('Drop handling:', {
-        sourceList,
-        targetList,
-        sourceIndex,
-        targetIndex,
-        item
-      })
-
-      if (sourceList === targetList && targetIndex !== undefined) {
-        // Reordering within same list
-        if (sourceIndex !== targetIndex) {
-          await columnManager.handleOperation({
-            type: 'reorder',
-            sourceList,
-            item,
-            sourceIndex,
-            targetIndex
-          })
-        }
-      } else if (sourceList === 'available' && targetList === 'active') {
-        // Adding new column
-        await columnManager.handleOperation({
-          type: 'add',
-          sourceList,
-          targetList,
-          item
-        })
-      } else if (sourceList === 'active' && targetList === 'available') {
-        // Removing column
-        await columnManager.handleOperation({
-          type: 'remove',
-          sourceList,
-          item
-        })
-      }
-    } catch (error) {
-      console.error('Drop handling failed:', error)
-    }
-  },
-
-  // UI handlers
-  async handleVisibilityChange(column: ColumnDef, visible: boolean) {
-    await columnManager.handleOperation({
-      type: 'visibility',
-      sourceList: 'active',
-      item: column,
-      visible
-    })
-  },
-
-  async showAllColumns() {
-    const operations = activeColumns.value
-      .filter((col) => !col.visible)
-      .map((col) => ({
-        type: 'visibility' as const,
-        sourceList: 'active' as const,
-        item: col,
-        visible: true
-      }))
-
-    for (const operation of operations) {
-      await columnManager.handleOperation(operation)
-    }
-  }
-}
-
-// Remove duplicate state and use columnManager's state
-const state = columnManager.state
-
-// Local refs
-const isSaving = ref(false)
-const initialized = ref(false)
-const loadingError = ref<Error | null>(null)
-
-// Column state
+// Column state setup
 const columnState = useColumnState({
   tableId: props.tableId,
   initialParentColumns: props.parentColumns,
@@ -493,7 +197,7 @@ const columnState = useColumnState({
   availableChildParameters: props.availableChildParameters
 })
 
-// Computed values
+// Computed properties
 const activeColumns = computed(() => columnState.activeColumns.value)
 const availableParameters = computed(() => columnState.availableParameters.value)
 const hasHiddenColumns = computed(() => activeColumns.value.some((col) => !col.visible))
@@ -501,80 +205,160 @@ const currentTable = computed(
   () => settings.value?.namedTables?.[state.selectedTableId]
 )
 
-// State management functions
-const loadCurrentTableState = () => {
-  if (!settings.value?.namedTables) {
-    console.warn('No settings available')
-    return
-  }
-
-  const table = settings.value.namedTables[state.selectedTableId]
-  if (!table) {
-    console.warn('Current table not found:', state.selectedTableId)
-    return
-  }
-
-  console.log('Loading current table state:', {
-    tableId: state.selectedTableId,
-    parentColumns: table.parentColumns?.length,
-    childColumns: table.childColumns?.length
-  })
-
-  columnState.updateColumns(table.parentColumns || [])
-  state.tableKey = Date.now().toString()
+// Utility functions
+function isColumnArray(value: any): value is ColumnDef[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === 'object' && item !== null && 'field' in item)
+  )
 }
 
-// Initialize component
-const initializeComponent = async () => {
-  console.log('Starting component initialization...')
+// Core initialization
+async function initialize() {
+  if (state.initializing) return
+
+  state.initializing = true
   try {
     await loadSettings()
-    console.log('Settings loaded:', {
-      hasSettings: !!settings.value,
-      hasNamedTables: !!settings.value?.namedTables,
-      tableId: state.selectedTableId
-    })
-
     const table = settings.value?.namedTables?.[state.selectedTableId]
-    console.log('Current table:', {
-      found: !!table,
-      name: table?.name,
-      parentColumnsCount: table?.parentColumns?.length,
-      childColumnsCount: table?.childColumns?.length
-    })
 
     if (table) {
       state.tableName = table.name
+      restoreUIState()
       await loadCurrentTableState()
     }
 
-    // Move this after all initialization is complete
-    columnManager.state.initialized = true
-    initialized.value = true
-
-    console.log('Initialization complete:', {
-      state: columnManager.state,
-      activeColumnsCount: activeColumns.value?.length,
-      availableParametersCount: availableParameters.value?.length
-    })
+    state.initialized = true
   } catch (error) {
-    console.error('Initialization failed:', error)
-    columnManager.state.loadingError = error as Error
-    loadingError.value = error as Error
+    console.error('Column manager initialization failed:', error)
+    state.loadingError = error as Error
+  } finally {
+    state.initializing = false
   }
 }
 
-// Initialize with empty arrays if no data
-const localColumns = ref<ColumnDef[]>([])
+// UI State management
+const debouncedSaveUIState = debounce(saveUIState, 300)
+
+async function saveUIState() {
+  try {
+    const currentTable = settings.value?.namedTables?.[state.selectedTableId]
+    if (currentTable) {
+      await updateNamedTable(state.selectedTableId, {
+        ...currentTable,
+        uiState: {
+          ...currentTable.uiState,
+          showFilterOptions: state.showFilterOptions
+        }
+      })
+    }
+  } catch (error) {
+    console.error('Failed to save UI state:', error)
+  }
+}
+
+function restoreUIState() {
+  const currentTable = settings.value?.namedTables?.[state.selectedTableId]
+  state.showFilterOptions = currentTable?.uiState?.showFilterOptions ?? false
+}
+
+function toggleFilterOptions() {
+  state.showFilterOptions = !state.showFilterOptions
+  debouncedSaveUIState()
+}
+
+// Column operations
+async function handleColumnOperation(operation: {
+  type: 'add' | 'remove' | 'reorder' | 'visibility'
+  sourceList: 'active' | 'available'
+  targetList?: 'active' | 'available'
+  item: ColumnDef | ParameterDefinition
+  sourceIndex?: number
+  targetIndex?: number
+  visible?: boolean
+}) {
+  try {
+    let updatedColumns: ColumnDef[] = []
+
+    switch (operation.type) {
+      case 'add':
+        if (operation.targetList === 'active') {
+          updatedColumns = [
+            ...activeColumns.value,
+            {
+              ...operation.item,
+              visible: true,
+              removable: true,
+              order: activeColumns.value.length
+            }
+          ]
+        }
+        break
+
+      case 'remove':
+        updatedColumns = activeColumns.value.filter(
+          (col) => col.field !== operation.item.field
+        )
+        break
+
+      case 'reorder':
+        if (
+          operation.sourceIndex !== undefined &&
+          operation.targetIndex !== undefined
+        ) {
+          updatedColumns = [...activeColumns.value]
+          const [movedItem] = updatedColumns.splice(operation.sourceIndex, 1)
+          updatedColumns.splice(operation.targetIndex, 0, movedItem)
+          updatedColumns = updatedColumns.map((col, index) => ({
+            ...col,
+            order: index
+          }))
+        }
+        break
+
+      case 'visibility':
+        updatedColumns = activeColumns.value.map((col) =>
+          col.field === operation.item.field
+            ? { ...col, visible: operation.visible }
+            : col
+        )
+        break
+    }
+
+    if (updatedColumns.length > 0 || operation.type === 'remove') {
+      await handleColumnsUpdate({
+        parentColumns:
+          columnState.currentView.value === 'parent'
+            ? updatedColumns
+            : columnState.parentColumns.value,
+        childColumns:
+          columnState.currentView.value === 'child'
+            ? updatedColumns
+            : columnState.childColumns.value
+      })
+    }
+
+    state.tableKey = Date.now().toString()
+  } catch (error) {
+    console.error('Operation failed:', error)
+    throw error
+  }
+}
 
 // Event handlers
-const handleApply = async () => {
-  columnManager.state.isSaving = true
+async function handleApply() {
+  state.isSaving = true
   try {
-    // Save the current UI state along with other changes
-    await columnState.saveChanges()
-    // Ensure UI state is saved
-    await columnManager.saveUIState()
+    const currentTable = settings.value?.namedTables?.[props.tableId]
+    if (!currentTable) throw new Error('Table not found')
+
+    await updateNamedTable(props.tableId, {
+      ...currentTable,
+      parentColumns: columnState.parentColumns.value,
+      childColumns: columnState.childColumns.value
+    })
+
+    await loadSettings()
 
     emit('update:columns', {
       parentColumns: columnState.parentColumns.value,
@@ -582,54 +366,134 @@ const handleApply = async () => {
     })
     emit('update:open', false)
   } catch (error) {
-    console.error('Failed to save changes:', error)
+    console.error('Failed to apply changes:', error)
+    throw error
   } finally {
-    columnManager.state.isSaving = false
+    state.isSaving = false
   }
 }
 
-// Update template bindings
-const handleAdd = (item: ParameterDefinition) =>
-  columnManager.handleOperation({
+function handleCancel() {
+  emit('cancel')
+  emit('update:open', false)
+}
+
+// Drag and drop handlers
+function handleDragStart(
+  event: DragEvent,
+  item: ColumnDef | ParameterDefinition,
+  sourceList: 'active' | 'available'
+) {
+  if (!event.dataTransfer) return
+
+  const index =
+    sourceList === 'active'
+      ? activeColumns.value.findIndex((col) => col.field === item.field)
+      : availableParameters.value.findIndex((param) => param.field === item.field)
+
+  event.dataTransfer.setData(
+    'application/json',
+    JSON.stringify({
+      item,
+      sourceList,
+      sourceIndex: index
+    })
+  )
+  event.dataTransfer.effectAllowed = 'move'
+}
+
+async function handleDrop(
+  event: DragEvent,
+  targetList: 'active' | 'available',
+  targetIndex?: number
+) {
+  if (!event.dataTransfer) return
+  event.preventDefault()
+
+  try {
+    const { item, sourceList, sourceIndex } = JSON.parse(
+      event.dataTransfer.getData('application/json')
+    )
+
+    if (sourceList === targetList && targetIndex !== undefined) {
+      await handleColumnOperation({
+        type: 'reorder',
+        sourceList,
+        item,
+        sourceIndex,
+        targetIndex
+      })
+    } else if (sourceList === 'available' && targetList === 'active') {
+      await handleColumnOperation({
+        type: 'add',
+        sourceList,
+        targetList,
+        item
+      })
+    } else if (sourceList === 'active' && targetList === 'available') {
+      await handleColumnOperation({
+        type: 'remove',
+        sourceList,
+        item
+      })
+    }
+  } catch (error) {
+    console.error('Drop handling failed:', error)
+  }
+}
+
+// Column update handlers
+function handleAdd(item: ParameterDefinition) {
+  return handleColumnOperation({
     type: 'add',
     sourceList: 'available',
     targetList: 'active',
     item
   })
+}
 
-const handleRemove = (item: ColumnDef) =>
-  columnManager.handleOperation({
+function handleRemove(item: ColumnDef) {
+  return handleColumnOperation({
     type: 'remove',
     sourceList: 'active',
     item
   })
+}
 
-const handleReorder = (fromIndex: number, toIndex: number) =>
-  columnManager.handleOperation({
+function handleReorder(fromIndex: number, toIndex: number) {
+  return handleColumnOperation({
     type: 'reorder',
     sourceList: 'active',
     sourceIndex: fromIndex,
     targetIndex: toIndex,
     item: activeColumns.value[fromIndex]
   })
+}
 
-// Watch for props updates
-watch(
-  () => props.parentColumns,
-  (newColumns) => {
-    if (newColumns) {
-      localColumns.value = [...newColumns]
-    }
-  },
-  { immediate: true }
-)
+function handleVisibilityChange(column: ColumnDef, visible: boolean) {
+  return handleColumnOperation({
+    type: 'visibility',
+    sourceList: 'active',
+    item: column,
+    visible
+  })
+}
 
-const handleColumnsUpdate = async (updates: {
+async function showAllColumns() {
+  for (const column of activeColumns.value.filter((col) => !col.visible)) {
+    await handleColumnOperation({
+      type: 'visibility',
+      sourceList: 'active',
+      item: column,
+      visible: true
+    })
+  }
+}
+
+async function handleColumnsUpdate(updates: {
   parentColumns?: ColumnDef[]
   childColumns?: ColumnDef[]
-}) => {
-  console.log('Handling columns update:', updates)
-
+}) {
   if (!updates) return
 
   try {
@@ -650,52 +514,37 @@ const handleColumnsUpdate = async (updates: {
     console.error('Failed to update columns:', error)
     throw error
   }
-
-  if (
-    columnState.currentView.value === 'parent' &&
-    isColumnArray(updates.parentColumns)
-  ) {
-    await columnState.updateColumns(updates.parentColumns)
-  }
 }
 
-const showAllColumns = () => columnManager.showAllColumns()
+async function loadCurrentTableState() {
+  if (!settings.value?.namedTables) return
 
-// Save and Cancel handlers
+  const table = settings.value.namedTables[state.selectedTableId]
+  if (!table) return
 
-const handleCancel = () => {
-  emit('cancel')
-  emit('update:open', false)
+  columnState.updateColumns(table.parentColumns || [])
+  state.tableKey = Date.now().toString()
 }
 
 // Watchers
 watch(
   () => settings.value?.namedTables?.[state.selectedTableId],
   (newTable) => {
-    if (newTable && initialized.value) {
-      console.log('Settings changed:', {
-        tableId: state.selectedTableId,
-        hasTable: true
-      })
+    if (newTable && state.initialized) {
       loadCurrentTableState()
     }
   },
   { deep: true }
 )
 
-// Add these watchers to track state changes
 watch(
-  () => columnManager.state.initialized,
-  (newVal) => {
-    console.log('Column manager initialized state changed:', newVal)
-  }
+  () => state.initialized,
+  (newVal) => console.log('Column manager initialized state changed:', newVal)
 )
 
 watch(
   () => columnState.currentView.value,
-  (newVal) => {
-    console.log('Current view changed:', newVal)
-  }
+  (newVal) => console.log('Current view changed:', newVal)
 )
 
 watch(
@@ -713,19 +562,18 @@ watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
-      columnManager.restoreUIState()
+      restoreUIState()
     }
   }
 )
 
-// Initialize
+// Initialize on mount
 onMounted(async () => {
   try {
-    await columnManager.initialize()
-    await initializeComponent()
+    await initialize()
   } catch (error) {
     console.error('Component mounting failed:', error)
-    columnManager.state.loadingError = error as Error
+    state.loadingError = error as Error
   }
 })
 </script>
