@@ -14,7 +14,18 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
   const selectedChildCategories = ref<string[]>([])
   const { rootNodes } = useDataOrganization()
 
-  // Special handling for common fields
+  // Helper functions need to be defined before they're used
+  function getElementCategory(node: any): string {
+    if (!node?.raw) return 'Uncategorized'
+    return (
+      node.raw.Other?.Category ||
+      node.raw.speckle_type ||
+      node.raw.type ||
+      'Uncategorized'
+    )
+  }
+
+  // Define the special field mappings
   const specialFieldMappings = {
     category: (node) => {
       if (!node?.raw) return 'Uncategorized'
@@ -23,26 +34,50 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     mark: (node) => {
       if (!node?.raw) return 'No Mark'
 
-      // console.log('Mark extraction for node:', {
-      //   id: node.raw.id,
-      //   hasIdentityData: !!node.raw['Identity Data'],
-      //   name: node.raw.Name,
-      //   type: node.raw.type
-      // })
+      const category = getElementCategory(node)
 
-      // For walls, prefer Name as mark
-      if (getElementCategory(node) === 'Walls' && node.raw.Name) {
+      // Log all potential mark sources for debugging
+      console.log('Checking mark sources:', {
+        id: node.raw.id,
+        category,
+        identityDataMark: node.raw['Identity Data']?.Mark,
+        rawMark: node.raw.Mark,
+        rawName: node.raw.Name
+      })
+
+      const identityMark = node.raw['Identity Data']?.Mark
+      const directMark = node.raw.Mark || node.raw.mark
+
+      if (identityMark) {
+        console.log('Using Identity Data Mark:', identityMark)
+        return identityMark
+      }
+
+      if (directMark) {
+        console.log('Using direct Mark property:', directMark)
+        return directMark
+      }
+
+      if (category === 'Walls' && node.raw.Name) {
+        console.log('Using Wall Name as mark:', node.raw.Name)
         return node.raw.Name
       }
 
-      // Try Identity Data Mark first
-      const identityMark = node.raw['Identity Data']?.Mark
-      if (identityMark) return identityMark
+      // Fallback to generated mark
+      const generatedMark = `${category}-${node.raw.id.substring(0, 8)}`
+      console.log('Using generated mark:', generatedMark)
+      return generatedMark
+    },
 
-      // Fallback to Name if available
-      if (node.raw.Name) return node.raw.Name
+    // Add specific mappings for length and height
+    length: (node) => {
+      if (!node?.raw) return null
+      return node.raw.length || node.raw.Length || node.raw.Dimensions?.length
+    },
 
-      return 'No Mark'
+    height: (node) => {
+      if (!node?.raw) return null
+      return node.raw.height || node.raw.Height || node.raw.Dimensions?.height
     },
     id: (node) => {
       if (!node?.raw) return null
@@ -54,32 +89,86 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     },
     host: (node) => {
       if (!node?.raw) return 'No Host'
-
-      // Log the node structure for debugging
-      // console.log('Host extraction for node:', {
-      //   id: node.raw.id,
-      //   hasConstraints: !!node.raw.Constraints,
-      //   hostValue: node.raw.Constraints?.Host,
-      //   category: getElementCategory(node)
-      // })
-
       const hostValue = node.raw.Constraints?.Host
       return hostValue || 'No Host'
     }
   }
 
-  interface ElementData {
-    id: string
-    category: string
-    mark?: string
-    host?: string
-    comment?: string
-    [key: string]: any // For dynamic parameters
+  function getMarkValue(node: any): string {
+    // Try Identity Data Mark first
+    const identityDataMark = node.raw['Identity Data']?.Mark
+    if (identityDataMark) {
+      return identityDataMark.trim()
+    }
+
+    // Try direct Mark property
+    const directMark = node.raw.Mark || node.raw.mark
+    if (directMark) {
+      return directMark.trim()
+    }
+
+    // For walls, use Name if no mark is found
+    const category = getElementCategory(node)
+    if (category === 'Walls' && node.raw.Name) {
+      return node.raw.Name.trim()
+    }
+
+    // Fallback to generated mark
+    return `${category}-${node.raw.id.substring(0, 8)}`
   }
 
-  interface UseElementsDataProps {
-    currentTableColumns: Ref<any[]>
-    currentDetailColumns: Ref<any[]>
+  function getNestedValue(obj: any, path: string | string[]): any {
+    if (!obj) return null
+
+    const parts = Array.isArray(path) ? path : path.split('.')
+    let current = obj
+
+    for (const part of parts) {
+      if (current === null || current === undefined) return null
+      if (Array.isArray(current)) {
+        current = current[0]
+      }
+      current = current[part]
+    }
+    return current
+  }
+
+  function getParameterValue(node: any, paramDef: any) {
+    if (!paramDef?.field || !node?.raw) return null
+
+    // Try special field mapping first
+    if (paramDef.field in specialFieldMappings) {
+      return specialFieldMappings[paramDef.field](node)
+    }
+
+    // Common property paths to check
+    const pathsToCheck = [
+      ['raw', paramDef.field],
+      ['raw', paramDef.category, paramDef.field],
+      ['raw', 'Identity Data', paramDef.field],
+      ['raw', 'Parameters', paramDef.field],
+      ['raw', 'Properties', paramDef.field],
+      ['raw', 'Constraints', paramDef.field],
+      ['raw', 'Dimensions', paramDef.field],
+      ['raw', 'Material Properties', paramDef.field],
+      ['raw', 'Other', paramDef.field],
+      [paramDef.field]
+    ]
+
+    // Try all paths
+    for (const path of pathsToCheck) {
+      const value = getNestedValue(node, path)
+      if (value !== null && value !== undefined) {
+        return value
+      }
+    }
+
+    // Handle array properties
+    if (node.raw[paramDef.field] && Array.isArray(node.raw[paramDef.field])) {
+      return node.raw[paramDef.field][0]
+    }
+
+    return null
   }
 
   interface PossibleHeaders {
@@ -97,138 +186,193 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     }
   }
 
-  const scheduleData = computed(() => {
-    const initialParents = Array.from(elementsMap.value.values())
+  function processElements(rootNodes: any[]) {
+    console.group('🔄 Elements Processing')
 
-    // Log initial state
-    // console.group('📊 Schedule Data Processing')
-    // console.log('Initial State:', {
-    //   totalParents: initialParents.length,
-    //   parentsByCategory: initialParents.reduce((acc, p) => {
-    //     acc[p.category] = (acc[p.category] || 0) + 1
-    //     return acc
-    //   }, {}),
-    //   totalChildren: childElementsList.value.length,
-    //   childrenByCategory: childElementsList.value.reduce((acc, c) => {
-    //     acc[c.category] = (acc[c.category] || 0) + 1
-    //     return acc
-    //   }, {})
-    // })
+    // Clear existing data
+    elementsMap.value.clear()
+    childElementsList.value = []
+    const parentMarks = new Set()
 
-    // Process parents with children
-    const parentsWithChildren = initialParents.map((parent) => {
-      // console.group(`Processing Parent: ${parent.mark || parent.id}`)
-      // console.log('Parent Details:', {
-      //   id: parent.id,
-      //   category: parent.category,
-      //   mark: parent.mark,
-      //   type: parent.type
-      // })
+    // First pass: Process parent elements (Walls)
+    function processParents(node: any) {
+      if (!node?.raw) return
 
-      const baseElement = {
-        ...parent,
-        host: 'N/A'
-      }
+      const category = getElementCategory(node)
 
-      // Only add details if child categories are selected
-      if (selectedChildCategories.value.length > 0) {
-        const matchingChildren = childElementsList.value.filter(
-          (child) => child.host === parent.mark
-        )
+      if (selectedParentCategories.value.includes(category)) {
+        // Get mark first since it's critical for parent identification
+        const elementMark = getMarkValue(node)
 
-        // console.log('Children Matching:', {
-        //   parentMark: parent.mark,
-        //   totalMatches: matchingChildren.length,
-        //   matchingChildren: matchingChildren.map((child) => ({
-        //     id: child.id,
-        //     category: child.category,
-        //     host: child.host
-        //   }))
-        // })
+        console.log('Parent element mark resolution:', {
+          id: node.raw.id,
+          category,
+          resolvedMark: elementMark,
+          sources: {
+            identityData: node.raw['Identity Data']?.Mark,
+            directMark: node.raw.Mark,
+            name: node.raw.Name
+          }
+        })
 
-        const result = {
-          ...baseElement,
-          details: matchingChildren.map((child) => ({
-            ...child,
-            host: parent.mark
-          }))
+        if (elementMark) {
+          const parameterValues = {}
+          currentTableColumns.value.forEach((column) => {
+            if (column.field === 'mark') {
+              parameterValues[column.field] = elementMark
+            } else if (column.field in specialFieldMappings) {
+              parameterValues[column.field] = specialFieldMappings[column.field](node)
+            } else {
+              parameterValues[column.field] = getParameterValue(node, {
+                field: column.field,
+                category: column.category
+              })
+            }
+          })
+
+          const elementData = {
+            id: node.raw.id,
+            type: node.raw.type,
+            mark: elementMark,
+            name: node.raw.Name,
+            category,
+            ...parameterValues
+          }
+
+          // Store with normalized mark for consistent lookup
+          const normalizedMark = elementMark.trim()
+          elementsMap.value.set(normalizedMark, elementData)
+          parentMarks.add(normalizedMark)
+
+          console.log('Added parent element:', {
+            id: elementData.id,
+            mark: normalizedMark,
+            category,
+            hasIdentityMark: !!node.raw['Identity Data']?.Mark
+          })
         }
-
-        // console.log('Processed Result:', {
-        //   mark: result.mark,
-        //   category: result.category,
-        //   childrenCount: result.details.length
-        // })
-
-        // console.groupEnd()
-        return result
       }
 
-      // console.groupEnd()
-      return baseElement
-    })
-
-    let result = [...parentsWithChildren]
-
-    // Process unattached children
-    if (selectedChildCategories.value.length > 0) {
-      const unattachedChildren = childElementsList.value.filter(
-        (child) =>
-          !child.host || !Array.from(elementsMap.value.keys()).includes(child.host)
-      )
-
-      // console.log('Unattached Children:', {
-      //   count: unattachedChildren.length,
-      //   breakdown: unattachedChildren.reduce((acc, child) => {
-      //     acc[child.category] = (acc[child.category] || 0) + 1
-      //     return acc
-      //   }, {})
-      // })
-
-      const processedUnattached = unattachedChildren.map((child) => ({
-        ...child,
-        host: 'No Host',
-        details: []
-      }))
-
-      result = [...result, ...processedUnattached]
+      // Traverse children
+      if (node.children) {
+        node.children.forEach((child) => processParents(child))
+      }
+      if (node.raw?.children) {
+        node.raw.children.forEach((child) => processParents(child))
+      }
     }
 
-    // Process unmarked parents
-    const unmarkedParents = initialParents.filter((parent) => !parent.mark)
+    // Second pass: Process child elements
+    function processChildren(node: any) {
+      if (!node?.raw) return
 
-    // console.log('Unmarked Parents:', {
-    //   count: unmarkedParents.length,
-    //   breakdown: unmarkedParents.reduce((acc, parent) => {
-    //     acc[parent.category] = (acc[parent.category] || 0) + 1
-    //     return acc
-    //   }, {})
-    // })
+      const category = getElementCategory(node)
 
-    const processedUnmarked = unmarkedParents.map((parent) => ({
-      ...parent,
-      mark: 'No Mark',
-      host: 'N/A',
-      details: []
-    }))
+      if (selectedChildCategories.value.includes(category)) {
+        const parameterValues = {}
+        currentDetailColumns.value.forEach((column) => {
+          if (column.field in specialFieldMappings) {
+            parameterValues[column.field] = specialFieldMappings[column.field](node)
+          } else {
+            parameterValues[column.field] = getParameterValue(node, {
+              field: column.field,
+              category: column.category
+            })
+          }
+        })
 
-    const finalResult = [...result, ...processedUnmarked]
+        // Get host value
+        const hostValue = node.raw.Constraints?.Host?.trim() || 'No Host'
 
-    // Log final state
-    // console.log('Final Result:', {
-    //   totalElements: finalResult.length,
-    //   byCategory: finalResult.reduce((acc, el) => {
-    //     acc[el.category] = (acc[el.category] || 0) + 1
-    //     return acc
-    //   }, {}),
-    //   withChildren: finalResult.filter((el) => el.details?.length > 0).length,
-    //   unmarked: finalResult.filter((el) => el.mark === 'No Mark').length,
-    //   unattached: finalResult.filter((el) => el.host === 'No Host').length
-    // })
+        const childData = {
+          id: node.raw.id,
+          type: node.raw.type,
+          mark: node.raw.Name || `${category}_${node.raw.id.substring(0, 6)}`,
+          name: node.raw.Name,
+          category,
+          host: hostValue,
+          ...parameterValues
+        }
 
-    // console.groupEnd()
+        console.log('Processing child:', {
+          id: childData.id,
+          category: childData.category,
+          host: hostValue,
+          hasParent: elementsMap.value.has(hostValue)
+        })
 
-    return finalResult
+        childElementsList.value.push(childData)
+      }
+
+      // Traverse children
+      if (node.children) {
+        node.children.forEach((child) => processChildren(child))
+      }
+      if (node.raw?.children) {
+        node.raw.children.forEach((child) => processChildren(child))
+      }
+    }
+
+    // Process all nodes
+    rootNodes.forEach((node) => processParents(node.rawNode))
+    rootNodes.forEach((node) => processChildren(node.rawNode))
+
+    // Prepare final data structure
+    const parents = Array.from(elementsMap.value.values())
+    const result = []
+
+    // Add parents with their children
+    parents.forEach((parent) => {
+      const children = childElementsList.value.filter(
+        (child) => child.host === parent.mark
+      )
+      result.push({
+        ...parent,
+        details: children
+      })
+    })
+
+    // Add ungrouped elements section if there are any orphaned children
+    const ungroupedChildren = childElementsList.value.filter(
+      (child) => !elementsMap.value.has(child.host)
+    )
+
+    if (ungroupedChildren.length > 0) {
+      result.push({
+        id: 'ungrouped',
+        mark: 'Ungrouped',
+        name: 'Ungrouped Elements',
+        category: 'Ungrouped',
+        type: 'group',
+        details: ungroupedChildren
+      })
+    }
+
+    console.log('Final processed data:', {
+      totalParents: parents.length,
+      totalChildren: childElementsList.value.length,
+      ungroupedCount: ungroupedChildren.length,
+      byCategory: result.reduce((acc, item) => {
+        acc[item.category] = (acc[item.category] || 0) + 1
+        return acc
+      }, {})
+    })
+
+    return result
+  }
+
+  const scheduleData = computed(() => {
+    if (!rootNodes.value || !selectedParentCategories.value.length) return []
+
+    const processedData = processElements(rootNodes.value)
+
+    console.log('Schedule data computed:', {
+      totalRows: processedData.length,
+      withChildren: processedData.filter((row) => row.details?.length > 0).length,
+      hasUngrouped: processedData.some((row) => row.mark === 'Ungrouped')
+    })
+
+    return processedData
   })
 
   interface HeaderInfo {
@@ -484,196 +628,6 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     return null
   }
 
-  function processElements(rootNodes: any[]) {
-    // Use existing debugger functions
-    logDataProcessing(
-      'Start Processing',
-      [],
-      currentTableColumns.value,
-      currentDetailColumns.value
-    )
-
-    // console.group('🔄 Elements Processing')
-    // console.log('Initial state:', {
-    //   rootNodesCount: rootNodes.length,
-    //   selectedParentCategories: selectedParentCategories.value,
-    //   selectedChildCategories: selectedChildCategories.value
-    // })
-
-    // Clear existing data before processing
-    elementsMap.value.clear()
-    childElementsList.value = []
-
-    // First pass: collect all parent elements and their marks
-    const parentMarks = new Set()
-
-    function processParents(node: any) {
-      if (!node?.raw) return
-
-      const category = getElementCategory(node)
-
-      // console.log('Processing potential parent:', {
-      //   id: node.raw.id,
-      //   category,
-      //   type: node.raw.type,
-      //   isParentCategory: selectedParentCategories.value.includes(category)
-      // })
-
-      // Process only parent category elements first
-      if (selectedParentCategories.value.includes(category)) {
-        const parameterValues: Record<string, any> = {}
-
-        // Process columns
-        currentTableColumns.value.forEach((column) => {
-          if (column.field in specialFieldMappings) {
-            parameterValues[column.field] = specialFieldMappings[column.field](node)
-          } else {
-            const value = getParameterValue(node, {
-              field: column.field,
-              category: column.category
-            })
-            parameterValues[column.field] = value
-          }
-        })
-
-        const elementMark =
-          parameterValues.mark || getParameterValue(node, { field: 'mark' })
-
-        if (elementMark) {
-          // Store parent element
-          const elementData = {
-            id: node.raw.id,
-            type: node.raw.type,
-            mark: elementMark,
-            name: node.raw.Name,
-            category,
-            ...parameterValues
-          }
-          elementsMap.value.set(elementMark, elementData)
-          parentMarks.add(elementMark)
-
-          // console.log('Added parent element:', {
-          //   mark: elementMark,
-          //   category,
-          //   id: node.raw.id
-          // })
-        }
-      }
-
-      // Traverse children
-      if (node.children) {
-        node.children.forEach((child: any) => processParents(child))
-      }
-      if (node.raw?.children) {
-        node.raw.children.forEach((child: any) => processParents(child))
-      }
-    }
-
-    // Process root nodes for parents
-    rootNodes.forEach((node) => processParents(node.rawNode))
-
-    // console.log('Parent processing complete:', {
-    //   totalParents: elementsMap.value.size,
-    //   parentCategories: [
-    //     ...new Set(Array.from(elementsMap.value.values()).map((p) => p.category))
-    //   ],
-    //   parentMarks: Array.from(parentMarks)
-    // })
-
-    // After processing parents
-    const processedParents = Array.from(elementsMap.value.values())
-    logDataProcessing(
-      'After Parent Processing',
-      processedParents,
-      currentTableColumns.value,
-      currentDetailColumns.value
-    )
-
-    // Second pass: process children
-    function processChildren(node: any) {
-      if (!node?.raw) return
-
-      const category = getElementCategory(node)
-
-      if (selectedChildCategories.value.includes(category)) {
-        const childParamValues: Record<string, any> = {}
-
-        // Get host value
-        const hostValue = getNestedValue(node, ['raw', 'Constraints', 'Host'])
-
-        // Process child parameters
-        currentDetailColumns.value.forEach((column) => {
-          if (column.field in specialFieldMappings) {
-            childParamValues[column.field] = specialFieldMappings[column.field](node)
-          } else {
-            const value = getParameterValue(node, {
-              field: column.field,
-              category: column.category
-            })
-            childParamValues[column.field] = value
-          }
-        })
-
-        // Create child data
-        const childData = {
-          id: node.raw.id,
-          type: node.raw.type,
-          mark: getParameterValue(node, { field: 'mark' }),
-          name: node.raw.Name,
-          host: hostValue && parentMarks.has(hostValue) ? hostValue : 'No Host',
-          category,
-          ...childParamValues
-        }
-
-        // console.log('Processing child element:', {
-        //   id: childData.id,
-        //   category: childData.category,
-        //   host: childData.host,
-        //   mark: childData.mark
-        // })
-
-        childElementsList.value.push(childData)
-      }
-
-      // Traverse children
-      if (node.children) {
-        node.children.forEach((child: any) => processChildren(child))
-      }
-      if (node.raw?.children) {
-        node.raw.children.forEach((child: any) => processChildren(child))
-      }
-    }
-
-    // Process root nodes for children
-    rootNodes.forEach((node) => processChildren(node.rawNode))
-
-    // console.log('Processing completion state:', {
-    //   parentElements: {
-    //     total: elementsMap.value.size,
-    //     categories: [
-    //       ...new Set(Array.from(elementsMap.value.values()).map((p) => p.category))
-    //     ]
-    //   },
-    //   childElements: {
-    //     total: childElementsList.value.length,
-    //     categories: [...new Set(childElementsList.value.map((c) => c.category))],
-    //     withValidHosts: childElementsList.value.filter((c) => c.host !== 'No Host')
-    //       .length
-    //   }
-    // })
-
-    // console.groupEnd()
-
-    // Final state logging
-    const finalData = [...processedParents, ...childElementsList.value]
-    logDataProcessing(
-      'Processing Complete',
-      finalData,
-      currentTableColumns.value,
-      currentDetailColumns.value
-    )
-  }
-
   // Verify data integrity
   // function verifyDataIntegrity(data: any) {
   //   console.log('Data Integrity Check:', {
@@ -756,6 +710,9 @@ export function useElementsData({ currentTableColumns, currentDetailColumns }) {
     elementsMap,
     childElementsList,
     processElements,
-    availableHeaders
+    availableHeaders: computed(() => {
+      if (!rootNodes.value) return { parent: [], child: [] }
+      return extractPossibleHeaders(rootNodes.value)
+    })
   }
 }

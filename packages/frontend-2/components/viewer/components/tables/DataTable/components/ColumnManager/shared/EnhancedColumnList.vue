@@ -221,30 +221,6 @@ const dropIndicatorStyle = computed(() => {
 })
 
 // Event handlers
-function handleItemDragStart(
-  event: DragEvent,
-  item: ColumnDef | ParameterDefinition,
-  index: number
-) {
-  console.log('Drag start:', { mode: props.mode, item, index })
-  draggedItemField.value = item.field
-
-  if (event.dataTransfer) {
-    const transferData = {
-      field: item.field,
-      sourceMode: props.mode,
-      sourceIndex: index,
-      item
-    }
-
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('application/json', JSON.stringify(transferData))
-  }
-}
-
-function handleItemDragEnd() {
-  clearDragState()
-}
 
 function handleItemDragEnter(event: DragEvent, index: number) {
   if (!draggedItemField.value || !event.currentTarget) return
@@ -260,86 +236,6 @@ function handleItemDragEnter(event: DragEvent, index: number) {
 
 // cccccccc
 
-function handleItemDrop(event: DragEvent, targetIndex: number) {
-  event.preventDefault()
-
-  try {
-    const data = JSON.parse(event.dataTransfer?.getData('application/json') || '{}')
-    const { sourceMode, sourceIndex, item } = data
-
-    console.log('Drop handling:', {
-      sourceMode,
-      currentMode: props.mode,
-      item,
-      targetIndex
-    })
-
-    // Cross-list operation
-    if (sourceMode !== props.mode) {
-      if (props.mode === 'active' && item) {
-        // Adding from available to active
-        const newColumn: ColumnDef = {
-          ...item,
-          visible: true,
-          removable: true,
-          order: props.items.length
-        }
-
-        // Update columns immediately
-        const newColumns = [...props.items, newColumn]
-        console.log('Adding column:', { newColumn, newColumns })
-
-        emit('add', item)
-        emit('update:columns', newColumns)
-      } else if (props.mode === 'available' && draggedItemField.value) {
-        // Find the item being removed
-        const itemToRemove = props.items.find((i) => i.field === draggedItemField.value)
-        if (itemToRemove) {
-          // Remove from columns
-          const newColumns = props.items.filter(
-            (i) => i.field !== draggedItemField.value
-          )
-          console.log('Removing column:', { itemToRemove, newColumns })
-
-          emit('remove', itemToRemove)
-          emit('update:columns', newColumns)
-        }
-      }
-    } else {
-      // Same list reordering
-      const actualFromIndex = sourceIndex
-      let actualToIndex = targetIndex
-
-      if (dropPosition.value === 'below') {
-        actualToIndex += 1
-      }
-
-      // Only emit if indices are different
-      if (actualFromIndex !== actualToIndex) {
-        console.log('Reordering:', { from: actualFromIndex, to: actualToIndex })
-
-        // Update columns immediately
-        const newColumns = [...props.items]
-        const [movedItem] = newColumns.splice(actualFromIndex, 1)
-        newColumns.splice(actualToIndex, 0, movedItem)
-
-        // Update order properties
-        const updatedColumns = newColumns.map((col, index) => ({
-          ...col,
-          order: index
-        }))
-
-        emit('reorder', actualFromIndex, actualToIndex)
-        emit('update:columns', updatedColumns)
-      }
-    }
-  } catch (error) {
-    console.error('Drop handling error:', error)
-  } finally {
-    clearDragState()
-  }
-}
-
 // Update the action handlers to include column updates
 function handleAdd(item: ParameterDefinition) {
   console.log('Handle add:', item)
@@ -353,14 +249,6 @@ function handleAdd(item: ParameterDefinition) {
 
   const newColumns = [...props.items, newColumn]
   emit('add', item)
-  emit('update:columns', newColumns)
-}
-
-function handleRemove(item: ColumnDef | ParameterDefinition) {
-  console.log('Handle remove:', item)
-
-  const newColumns = props.items.filter((i) => i.field !== item.field)
-  emit('remove', item)
   emit('update:columns', newColumns)
 }
 
@@ -388,22 +276,179 @@ watch(
 
 // cccccc
 
-// List-level handlers
-function handleListDragEnter() {
-  // Only needed for list-level effects
-}
-
+// Update list-level handlers
 function handleListDragLeave(event: DragEvent) {
   if (
     event.target instanceof HTMLElement &&
     !event.currentTarget?.contains(event.relatedTarget as Node)
   ) {
+    dragOverIndex.value = null
+    dropPosition.value = null
+  }
+}
+
+// Helper to determine if an item can be dropped in current location
+function canDropHere(sourceMode: string): boolean {
+  if (sourceMode === props.mode) return true // Same list reordering
+  if (sourceMode === 'available' && props.mode === 'active') return true // Adding
+  if (sourceMode === 'active' && props.mode === 'available') return true // Removing
+  return false
+}
+// mmmmmmm
+
+function handleItemDrop(event: DragEvent, targetIndex: number) {
+  event.preventDefault()
+
+  try {
+    const data = JSON.parse(event.dataTransfer?.getData('application/json') || '{}')
+    const { sourceMode, sourceIndex, item } = data
+
+    console.log('Drop handling:', {
+      sourceMode,
+      currentMode: props.mode,
+      item,
+      targetIndex
+    })
+
+    // Cross-list operation
+    if (sourceMode !== props.mode) {
+      if (props.mode === 'active' && item) {
+        // Adding from available to active
+        const newColumn: ColumnDef = {
+          ...item,
+          visible: true,
+          removable: true,
+          order: props.items.length
+        }
+
+        const newColumns = [...props.items, newColumn]
+        console.log('Adding column:', { newColumn, newColumns })
+
+        emit('add', item)
+        emit('update:columns', newColumns)
+      } else if (sourceMode === 'active' && props.mode === 'available') {
+        // Removing by dragging from active to available
+        console.log('Removing column by drag:', item)
+        const updatedColumns = props.items.filter((col) => col.field !== item.field)
+        emit('remove', item)
+        emit('update:columns', updatedColumns)
+      }
+    } else {
+      // Same list reordering
+      let actualToIndex = targetIndex
+      if (dropPosition.value === 'below') {
+        actualToIndex += 1
+      }
+
+      if (sourceIndex !== actualToIndex) {
+        const newColumns = [...props.items]
+        const [movedItem] = newColumns.splice(sourceIndex, 1)
+        newColumns.splice(actualToIndex, 0, movedItem)
+
+        const updatedColumns = newColumns.map((col, index) => ({
+          ...col,
+          order: index
+        }))
+
+        emit('reorder', sourceIndex, actualToIndex)
+        emit('update:columns', updatedColumns)
+      }
+    }
+  } catch (error) {
+    console.error('Drop handling error:', error)
+  } finally {
     clearDragState()
   }
 }
 
-function handleListDrop() {
-  clearDragState()
+function handleListDrop(event: DragEvent) {
+  try {
+    const data = JSON.parse(event.dataTransfer?.getData('application/json') || '{}')
+    const { sourceMode, item } = data
+
+    if (sourceMode === 'active' && props.mode === 'available') {
+      // Handle drop from active to available list container
+      console.log('Removing column by list drop:', item)
+      const updatedColumns = props.items.filter((col) => col.field !== item.field)
+      emit('remove', item)
+      emit('update:columns', updatedColumns)
+    }
+  } catch (error) {
+    console.error('List drop handling error:', error)
+  } finally {
+    clearDragState()
+  }
+}
+
+function handleItemDragEnd(event: DragEvent) {
+  try {
+    // Check if item was dropped outside valid target
+    if (!event.dataTransfer?.dropEffect || event.dataTransfer.dropEffect === 'none') {
+      const draggedItem = props.items.find(
+        (item) => item.field === draggedItemField.value
+      )
+      if (draggedItem && props.mode === 'active') {
+        console.log('Removing column by drag outside:', draggedItem)
+        const updatedColumns = props.items.filter(
+          (col) => col.field !== draggedItem.field
+        )
+        emit('remove', draggedItem)
+        emit('update:columns', updatedColumns)
+      }
+    }
+  } catch (error) {
+    console.error('Drag end handling error:', error)
+  } finally {
+    clearDragState()
+  }
+}
+
+// Also update the handleRemove function to ensure consistency
+function handleRemove(item: ColumnDef | ParameterDefinition) {
+  console.log('Handle remove:', item)
+  const updatedColumns = props.items.filter((col) => col.field !== item.field)
+  emit('remove', item)
+  emit('update:columns', updatedColumns)
+}
+
+// Add a utility function to check if item can be removed
+function canRemoveItem(item: ColumnDef | ParameterDefinition): boolean {
+  return props.mode === 'active' && (item as ColumnDef).removable !== false
+}
+
+// Update drag start to include more data
+function handleItemDragStart(
+  event: DragEvent,
+  item: ColumnDef | ParameterDefinition,
+  index: number
+) {
+  console.log('Drag start:', { mode: props.mode, item, index })
+  draggedItemField.value = item.field
+
+  if (event.dataTransfer) {
+    const transferData = {
+      field: item.field,
+      sourceMode: props.mode,
+      sourceIndex: index,
+      item: {
+        ...item,
+        category: item.category,
+        field: item.field,
+        header: item.header,
+        type: item.type
+      }
+    }
+
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('application/json', JSON.stringify(transferData))
+  }
+}
+
+// lllllll
+
+// List-level handlers
+function handleListDragEnter() {
+  // Only needed for list-level effects
 }
 
 // Action handlers
