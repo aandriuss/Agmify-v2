@@ -1,121 +1,117 @@
 import { ref, computed } from 'vue'
 import type { ColumnDef, ParameterDefinition } from '../types'
 
-export interface DragState {
+export interface DragItem {
   item: ColumnDef | ParameterDefinition
   sourceList: 'active' | 'available'
   sourceIndex: number
-  isDragging: boolean
+}
+
+export interface DropResult {
+  item: ColumnDef | ParameterDefinition
+  sourceList: 'active' | 'available'
+  targetList: 'active' | 'available'
+  sourceIndex: number
+  targetIndex: number
+  position: 'above' | 'below'
 }
 
 export function useColumnDragDrop() {
   // State
-  const dragState = ref<DragState | null>(null)
+  const dragItem = ref<DragItem | null>(null)
   const dragOverIndex = ref<number | null>(null)
   const dropPosition = ref<'above' | 'below' | null>(null)
-  const dragOverList = ref<'active' | 'available' | null>(null)
 
-  // Computed states
-  const isDragging = computed(() => dragState.value !== null)
+  // Computed
+  const isDragging = computed(() => dragItem.value !== null)
+  const canDrop = computed(
+    () =>
+      dragItem.value !== null &&
+      dragOverIndex.value !== null &&
+      dropPosition.value !== null
+  )
 
-  // Update drag over state with better error handling
-  const updateDragOver = (
-    index: number,
-    list: 'active' | 'available',
-    position: 'above' | 'below'
-  ) => {
-    try {
-      if (!dragState.value) return
-
-      console.log('Updating drag over:', {
-        index,
-        list,
-        position,
-        currentState: {
-          dragOverIndex: dragOverIndex.value,
-          dragOverList: dragOverList.value,
-          dropPosition: dropPosition.value
-        }
-      })
-
-      dragOverIndex.value = index
-      dragOverList.value = list
-      dropPosition.value = position
-    } catch (error) {
-      console.error('Error in updateDragOver:', error)
-      // Reset state on error
-      clearDragState()
-    }
+  // Methods
+  function startDrag(
+    item: ColumnDef | ParameterDefinition,
+    sourceList: 'active' | 'available',
+    sourceIndex: number
+  ) {
+    dragItem.value = { item, sourceList, sourceIndex }
   }
 
-  // Clear drag state
-  const clearDragState = () => {
-    console.log('Clearing drag state')
-    dragState.value = null
+  function updateDragOver(index: number, position: 'above' | 'below') {
+    dragOverIndex.value = index
+    dropPosition.value = position
+  }
+
+  function clearDragState() {
+    dragItem.value = null
     dragOverIndex.value = null
-    dragOverList.value = null
     dropPosition.value = null
   }
 
-  // Start dragging
-  const startDrag = (
-    item: any,
-    sourceList: 'active' | 'available',
-    sourceIndex: number
-  ) => {
-    console.log('Starting drag:', {
-      item,
-      sourceList,
-      sourceIndex
-    })
-
-    dragState.value = {
-      item,
-      sourceList,
-      sourceIndex,
-      isDragging: true
-    }
-  }
-
-  // Handle drop with validation
-  const handleDrop = () => {
-    if (!dragState.value || !dragOverList.value || dragOverIndex.value === null) {
-      console.log('Drop action failed: Incomplete drag state or target data')
+  function processDrop(
+    targetList: 'active' | 'available',
+    targetIndex: number
+  ): DropResult | null {
+    if (!dragItem.value || dragOverIndex.value === null || !dropPosition.value) {
       clearDragState()
       return null
     }
 
-    const result = {
-      item: dragState.value.item,
-      sourceList: dragState.value.sourceList,
-      sourceIndex: dragState.value.sourceIndex,
-      targetList: dragOverList.value,
-      targetIndex: dragOverIndex.value,
+    const result: DropResult = {
+      item: dragItem.value.item,
+      sourceList: dragItem.value.sourceList,
+      targetList,
+      sourceIndex: dragItem.value.sourceIndex,
+      targetIndex,
       position: dropPosition.value
     }
-
-    console.log('Handling drop:', result)
-    console.log('Before Drop - Active Columns:', dragState.value.sourceList)
-
-    // TODO: Add code here to update state and persist changes
-
-    console.log('After Drop - Active Columns:', result)
 
     clearDragState()
     return result
   }
 
+  // Transfer data helpers
+  function setTransferData(event: DragEvent, item: DragItem) {
+    if (!event.dataTransfer) return
+
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({
+        field: item.item.field,
+        sourceList: item.sourceList,
+        sourceIndex: item.sourceIndex,
+        item: item.item
+      })
+    )
+  }
+
+  function getTransferData(event: DragEvent): Partial<DragItem> {
+    try {
+      const data = event.dataTransfer?.getData('application/json')
+      return data ? JSON.parse(data) : {}
+    } catch {
+      return {}
+    }
+  }
+
   return {
     // State
-    dragState,
+    dragItem,
     dragOverIndex,
     dropPosition,
     isDragging,
+    canDrop,
 
     // Methods
     startDrag,
     updateDragOver,
     clearDragState,
-    handleDrop
+    processDrop,
+    setTransferData,
+    getTransferData
   }
 }

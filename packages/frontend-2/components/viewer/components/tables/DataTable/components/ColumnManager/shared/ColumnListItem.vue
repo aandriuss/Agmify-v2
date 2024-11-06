@@ -3,18 +3,19 @@
     class="column-list-item group"
     :class="{
       'is-dragging': isDragging,
-      'is-dragging-over': isDraggingOver
+      'drop-target': isDropTarget,
+      [`drop-position-${dropPosition}`]: isDropTarget && dropPosition
     }"
     draggable="true"
     @dragstart="handleDragStart"
     @dragend="handleDragEnd"
     @dragenter.prevent="handleDragEnter"
-    @dragleave.prevent="handleDragLeave"
-    @dragover.prevent="handleDragOver"
+    @dragover.prevent
     @drop.prevent="handleDrop"
   >
+    <!-- Main content -->
     <div class="flex items-center justify-between w-full p-1">
-      <!-- Left side -->
+      <!-- Left side with drag handle and parameter info -->
       <div class="flex items-center gap-1">
         <i
           v-if="mode === 'active'"
@@ -23,7 +24,7 @@
         <ParameterBadge v-if="column" :parameter="column" />
       </div>
 
-      <!-- Right side -->
+      <!-- Right side with action buttons -->
       <div class="flex items-center gap-1">
         <!-- Add button for available items -->
         <Button
@@ -48,23 +49,13 @@
             @click="$emit('remove', column)"
           />
           <Checkbox
-            v-model="isVisibleLocal"
+            v-model="isVisible"
             :binary="true"
             @change="handleVisibilityChange"
           />
         </template>
       </div>
     </div>
-
-    <!-- Drop indicator -->
-    <div
-      v-if="isDraggingOver"
-      class="absolute left-0 right-0 h-0.5 bg-blue-500"
-      :class="{
-        '-top-px': dropPosition === 'above',
-        '-bottom-px': dropPosition === 'below'
-      }"
-    />
   </div>
 </template>
 
@@ -79,9 +70,16 @@ interface Props {
   column: ColumnDef | ParameterDefinition
   mode: 'active' | 'available'
   index: number
+  isDragging?: boolean
+  isDropTarget?: boolean
+  dropPosition?: 'above' | 'below' | null
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  isDragging: false,
+  isDropTarget: false,
+  dropPosition: null
+})
 
 const emit = defineEmits<{
   add: [column: ParameterDefinition]
@@ -93,96 +91,44 @@ const emit = defineEmits<{
     index: number
   ]
   'drag-end': [event: DragEvent]
-  'drag-enter': [event: DragEvent, index: number, position: 'above' | 'below']
-  'drag-leave': [event: DragEvent]
-  drop: [event: DragEvent, index: number, position: 'above' | 'below']
+  'drag-enter': [event: DragEvent, index: number]
+  drop: [event: DragEvent, index: number]
 }>()
 
 // Local state
-const isDragging = ref(false)
-const isDraggingOver = ref(false)
-const dropPosition = ref<'above' | 'below'>('below')
-
-// Computed
-const isVisibleLocal = computed({
+const isVisible = computed({
   get: () => (props.column as ColumnDef)?.visible ?? true,
   set: (value: boolean) => {
     emit('visibility-change', props.column as ColumnDef, value)
   }
 })
 
+// Drag event handlers
 function handleDragStart(event: DragEvent) {
   if (!event.dataTransfer) return
 
-  isDragging.value = true
-
   // Set drag data
-  const dragData = {
-    column: props.column,
-    sourceIndex: props.index,
-    sourceMode: props.mode
-  }
-
   event.dataTransfer.effectAllowed = 'move'
-  event.dataTransfer.setData('application/json', JSON.stringify(dragData))
+  event.dataTransfer.setData('text/plain', '') // Required for Firefox
 
-  // Prevent text selection
-  if (event.target instanceof HTMLElement) {
-    event.target.style.opacity = '0.4'
-  }
-
+  // Emit drag start event
   emit('drag-start', event, props.column, props.index)
 }
 
 function handleDragEnd(event: DragEvent) {
-  isDragging.value = false
-  if (event.target instanceof HTMLElement) {
-    event.target.style.opacity = ''
-  }
   emit('drag-end', event)
 }
 
 function handleDragEnter(event: DragEvent) {
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  const mouseY = event.clientY
-  const threshold = rect.top + rect.height / 2
-
-  dropPosition.value = mouseY < threshold ? 'above' : 'below'
-  isDraggingOver.value = true
-
-  emit('drag-enter', event, props.index, dropPosition.value)
-}
-
-function handleDragLeave(event: DragEvent) {
-  if (!event.currentTarget?.contains(event.relatedTarget as Node)) {
-    isDraggingOver.value = false
-    emit('drag-leave', event)
-  }
-}
-
-function handleDragOver(event: DragEvent) {
-  event.preventDefault()
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  const mouseY = event.clientY
-  const threshold = rect.top + rect.height / 2
-
-  dropPosition.value = mouseY < threshold ? 'above' : 'below'
+  emit('drag-enter', event, props.index)
 }
 
 function handleDrop(event: DragEvent) {
-  event.preventDefault()
-  isDraggingOver.value = false
-
-  try {
-    const dragData = JSON.parse(event.dataTransfer?.getData('application/json') || '{}')
-    emit('drop', event, props.index, dropPosition.value)
-  } catch (error) {
-    console.error('Error processing drop:', error)
-  }
+  emit('drop', event, props.index)
 }
 
 function handleVisibilityChange() {
-  emit('visibility-change', props.column as ColumnDef, isVisibleLocal.value)
+  emit('visibility-change', props.column as ColumnDef, isVisible.value)
 }
 </script>
 
@@ -199,8 +145,17 @@ function handleVisibilityChange() {
   @apply opacity-50 cursor-grabbing;
 }
 
-.is-dragging-over {
+.drop-target {
   @apply bg-blue-50;
+}
+
+.drop-position-below::after {
+  content: '';
+  @apply absolute left-0 right-0 h-0.5 bg-primary;
+}
+
+.drop-position-above::before {
+  @apply -top-px;
 }
 
 [draggable] {
