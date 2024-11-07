@@ -15,6 +15,7 @@
       :child-columns="localChildColumns"
       :available-parent-parameters="availableParentParameters"
       :available-child-parameters="availableChildParameters"
+      :debug="true"
       @update:open="dialogOpen = $event"
       @update:columns="handleColumnsUpdate"
       @cancel="handleCancel"

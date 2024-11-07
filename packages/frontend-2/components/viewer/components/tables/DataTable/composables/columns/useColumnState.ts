@@ -42,6 +42,12 @@ interface PendingOperation {
   timestamp: number
 }
 
+interface ColumnState {
+  currentView: Ref<'parent' | 'child'>
+  parentColumns: Ref<ColumnDef[]>
+  childColumns: Ref<ColumnDef[]>
+}
+
 const initializeFromSettings = (settings) => {
   if (!settings?.namedTables?.[tableId]) return
 
@@ -71,14 +77,33 @@ export function useColumnState({
   initialChildColumns,
   availableParentParameters,
   availableChildParameters
-}: UseColumnStateOptions) {
-  const isUpdating = ref(false)
-  const { updateNamedTable, settings, loading: settingsLoading } = useUserSettings()
+}: {
+  tableId: string
+  initialParentColumns: ColumnDef[]
+  initialChildColumns: ColumnDef[]
+  availableParentParameters: ParameterDefinition[]
+  availableChildParameters: ParameterDefinition[]
+}) {
+  const validateColumns = (cols: any[]): boolean =>
+    Array.isArray(cols) && cols.length > 0
 
-  // Core state
+  // User settings
+  const { settings, loadSettings, updateNamedTable } = useUserSettings()
+  // View state
   const currentView = ref<'parent' | 'child'>('parent')
-  const parentColumns = ref<ColumnDef[]>(ensureUniqueKeys(initialParentColumns))
-  const childColumns = ref<ColumnDef[]>(ensureUniqueKeys(initialChildColumns))
+
+  // Column state
+  const parentColumns = ref<ColumnDef[]>(
+    validateColumns(initialParentColumns) ? initialParentColumns : []
+  )
+  const childColumns = ref<ColumnDef[]>(
+    validateColumns(initialChildColumns) ? initialChildColumns : []
+  )
+
+  // Loading state
+  const settingsLoading = ref(false)
+  const isUpdating = ref(false)
+  const initialized = ref(false)
 
   // Version control
   const stateHistory = ref<StateVersion[]>([])
@@ -86,70 +111,56 @@ export function useColumnState({
   const pendingOperations = ref<PendingOperation[]>([])
   const isDirty = ref(false)
 
-  const draggedItem = ref<DragItem | null>(null)
+  const draggedItem = ref<{
+    item: ColumnDef | ParameterDefinition
+    sourceList: 'active' | 'available'
+    sourceIndex: number
+  } | null>(null)
 
-  const initializeState = () => {
-    console.log('Initializing state with:', {
-      tableId,
-      settingsAvailable: !!settings.value?.namedTables?.[tableId],
-      initialParentCount: initialParentColumns?.length,
-      initialChildCount: initialChildColumns?.length
+  // Computed values
+  const activeColumns = computed(() => {
+    return currentView.value === 'parent' ? parentColumns.value : childColumns.value
+  })
+
+  const availableParameters = computed(() => {
+    const params =
+      currentView.value === 'parent'
+        ? availableParentParameters
+        : availableChildParameters
+
+    console.log('Available parameters computed:', {
+      view: currentView.value,
+      count: params?.length,
+      isArray: Array.isArray(params)
     })
 
-    isUpdating.value = true
+    return params
+  })
+
+  async function initializeState() {
+    if (settingsLoading.value) return
+
+    settingsLoading.value = true
     try {
-      // If we have saved settings, use those
-      if (settings.value?.namedTables?.[tableId]) {
-        const savedSettings = settings.value.namedTables[tableId]
-        parentColumns.value = ensureUniqueKeys(savedSettings.parentColumns || [])
-        childColumns.value = ensureUniqueKeys(savedSettings.childColumns || [])
-        console.log('Initialized from settings:', {
-          parentCount: parentColumns.value.length,
-          childCount: childColumns.value.length
-        })
-      } else {
-        // Otherwise use initial props
-        parentColumns.value = ensureUniqueKeys(initialParentColumns)
-        childColumns.value = ensureUniqueKeys(initialChildColumns)
-        console.log('Initialized from props:', {
-          parentCount: parentColumns.value.length,
-          childCount: childColumns.value.length
-        })
+      await loadSettings()
+      const currentSettings = settings.value?.namedTables?.[tableId]
+
+      if (currentSettings) {
+        if (currentSettings.parentColumns) {
+          await updateColumns(currentSettings.parentColumns, 'parent')
+        }
+        if (currentSettings.childColumns) {
+          await updateColumns(currentSettings.childColumns, 'child')
+        }
       }
+      initialized.value = true
     } finally {
-      isUpdating.value = false
+      settingsLoading.value = false
     }
   }
 
   // Call initialize immediately
   initializeState()
-
-  // Watch for settings changes
-  watch(
-    () => settings.value?.namedTables?.[tableId],
-    (newTableSettings) => {
-      if (!settingsLoading.value && newTableSettings) {
-        console.log('Settings changed:', {
-          currentParentCount: parentColumns.value.length,
-          newParentCount: newTableSettings.parentColumns?.length,
-          timestamp: new Date().toISOString()
-        })
-
-        isUpdating.value = true
-        try {
-          if (newTableSettings.parentColumns?.length) {
-            parentColumns.value = ensureUniqueKeys(newTableSettings.parentColumns)
-          }
-          if (newTableSettings.childColumns?.length) {
-            childColumns.value = ensureUniqueKeys(newTableSettings.childColumns)
-          }
-        } finally {
-          isUpdating.value = false
-        }
-      }
-    },
-    { deep: true }
-  )
 
   // Create initial version
   const createInitialVersion = () => {
@@ -282,17 +293,6 @@ export function useColumnState({
     }
   }
 
-  // Add validation before save
-  const validateColumns = (columns: ColumnDef[]) => {
-    return columns.every((col, index) => {
-      const isValid = col.field && typeof col.order === 'number'
-      if (!isValid) {
-        console.error('Invalid column:', { col, index })
-      }
-      return isValid
-    })
-  }
-
   // Sync with backend
   const syncChanges = async () => {
     if (!isDirty.value) return
@@ -342,22 +342,6 @@ export function useColumnState({
   watch(currentView, (newView) => {
     console.log('View changed:', newView)
   })
-  // // Watch for settings changes
-  // watch(
-  //   () => settings.value,
-  //   (newSettings) => {
-  //     if (!settingsLoading.value && newSettings) {
-  //       console.log('Settings changed, initializing columns:', {
-  //         hasSettings: !!newSettings,
-  //         tableData: newSettings?.namedTables?.[tableId],
-  //         currentColumns: parentColumns.value?.length,
-  //         timestamp: new Date().toISOString()
-  //       })
-  //       initializeFromSettings(newSettings)
-  //     }
-  //   },
-  //   { immediate: true, deep: true }
-  // )
 
   // Watch for column changes
   watch(
@@ -369,6 +353,10 @@ export function useColumnState({
     { deep: true }
   )
 
+  function generateUniqueId(): string {
+    return crypto.randomUUID()
+  }
+
   function ensureUniqueKeys(columns: ColumnDef[]): ColumnDef[] {
     return columns.map((col, index) => ({
       ...col,
@@ -377,72 +365,70 @@ export function useColumnState({
     }))
   }
 
-  // Computed values
-  const activeColumns = computed(() => {
-    console.log('Getting active columns for view:', currentView.value)
-    return currentView.value === 'parent' ? parentColumns.value : childColumns.value
-  })
-
-  const availableParameters = computed(() => {
-    const currentParams =
-      currentView.value === 'parent'
-        ? availableParentParameters
-        : availableChildParameters
-
-    const activeFields = activeColumns.value.map((col) => col.field)
-    console.log('Filtering available parameters:', {
-      total: currentParams.length,
-      activeFields
-    })
-
-    // Filter out parameters that are already active
-    return currentParams.filter((param) => !activeFields.includes(param.field))
-  })
-
   // Methods
-  const updateColumns = (columns: ColumnDef[]) => {
-    if (isUpdating.value) {
-      console.log('Skipping update while processing')
-      return
-    }
-
-    console.log('updateColumns called with:', {
-      columnsCount: columns.length,
-      columns: columns.map((c) => ({ field: c.field, order: c.order }))
-    })
-
-    if (!columns?.length) {
-      console.warn('Attempting to update with empty columns')
-      return
-    }
-
+  async function updateColumns(
+    columns: ColumnDef[],
+    type: 'parent' | 'child' = 'parent'
+  ) {
     isUpdating.value = true
     try {
-      const reorderedColumns = columns.map((col, index) => ({
+      const processedColumns = columns.map((col, index) => ({
         ...col,
-        order: index,
-        key: col.key || `${col.field}-${index}`,
+        order: col.order ?? index,
         visible: col.visible ?? true,
         removable: col.removable ?? true
       }))
 
-      if (currentView.value === 'parent') {
-        parentColumns.value = reorderedColumns
+      if (type === 'parent') {
+        parentColumns.value = processedColumns
       } else {
-        childColumns.value = reorderedColumns
+        childColumns.value = processedColumns
       }
 
-      isDirty.value = true
-
-      console.log('Columns updated:', {
-        view: currentView.value,
-        count: reorderedColumns.length,
-        columns: reorderedColumns.map((c) => ({ field: c.field, order: c.order }))
-      })
+      if (initialized.value) {
+        await saveColumnState()
+      }
     } finally {
       isUpdating.value = false
     }
   }
+  // uuuu
+  async function saveColumnState() {
+    if (!initialized.value || isUpdating.value) return
+
+    try {
+      const currentSettings = settings.value?.namedTables?.[tableId]
+      if (currentSettings) {
+        await updateNamedTable(tableId, {
+          ...currentSettings,
+          parentColumns: parentColumns.value,
+          childColumns: childColumns.value
+        })
+      }
+    } catch (error) {
+      console.error('Failed to save column state:', error)
+      throw error
+    }
+  }
+
+  // async function saveColumnState() {
+  //   try {
+  //     isUpdating.value = true
+  //     const currentSettings = settings.value?.namedTables?.[tableId]
+  //     if (currentSettings) {
+  //       await updateNamedTable(tableId, {
+  //         ...currentSettings,
+  //         parentColumns: parentColumns.value,
+  //         childColumns: childColumns.value
+  //       })
+  //     }
+  //   } catch (error) {
+  //     console.error('Failed to save column state:', error)
+  //     throw error
+  //   } finally {
+  //     isUpdating.value = false
+  //   }
+  // }
 
   const handleAddColumn = (column: ParameterDefinition | ColumnDef) => {
     console.log('Adding column:', column)
@@ -466,27 +452,56 @@ export function useColumnState({
     updateColumns(newColumns)
   }
 
-  // Drag and Drop methods
-  const handleDragStart = (
-    item: ColumnDef | ParameterDefinition,
-    sourceList: 'active' | 'available'
-  ) => {
-    console.log('Drag started:', { item, sourceList })
-    draggedItem.value = { item, sourceList }
+  async function handleColumnRemoval(column: ColumnDef) {
+    if (!column.removable) return
+
+    isUpdating.value = true
+    try {
+      const currentColumns = [...activeColumns.value]
+      const updatedColumns = currentColumns.filter((col) => col.field !== column.field)
+
+      // Update the correct column set based on current view
+      if (currentView.value === 'parent') {
+        parentColumns.value = updatedColumns
+      } else {
+        childColumns.value = updatedColumns
+      }
+
+      // Ensure order is maintained
+      reorderColumns(updatedColumns)
+    } finally {
+      isUpdating.value = false
+    }
   }
 
-  const handleDrop = (targetIndex: number) => {
-    console.log('Drop handled:', { draggedItem: draggedItem.value, targetIndex })
+  function reorderColumns(columns: ColumnDef[]) {
+    return columns.map((col, index) => ({
+      ...col,
+      order: index
+    }))
+  }
+
+  // Drag and Drop methods
+  function handleDragStart(
+    item: ColumnDef | ParameterDefinition,
+    sourceList: 'active' | 'available',
+    sourceIndex: number
+  ) {
+    draggedItem.value = { item, sourceList, sourceIndex }
+  }
+
+  function handleDrop(targetList: 'active' | 'available', targetIndex?: number) {
     if (!draggedItem.value) return
 
-    const { item, sourceList } = draggedItem.value
+    const { item, sourceList, sourceIndex } = draggedItem.value
 
-    if (sourceList === 'available') {
-      // Only add if not already in active columns
-      const isAlreadyActive = activeColumns.value.some(
-        (col) => col.field === item.field
-      )
-      if (!isAlreadyActive) {
+    // Handle drops between lists
+    if (sourceList !== targetList) {
+      if (sourceList === 'active' && targetList === 'available') {
+        // Remove from active
+        handleColumnRemoval(item as ColumnDef)
+      } else if (sourceList === 'available' && targetList === 'active') {
+        // Add to active
         const newColumn: ColumnDef = {
           ...item,
           visible: true,
@@ -494,23 +509,34 @@ export function useColumnState({
           order: activeColumns.value.length
         }
 
-        const newColumns = [...activeColumns.value]
-        newColumns.splice(targetIndex, 0, newColumn)
-        updateColumns(newColumns)
+        if (currentView.value === 'parent') {
+          parentColumns.value = [...parentColumns.value, newColumn]
+        } else {
+          childColumns.value = [...childColumns.value, newColumn]
+        }
       }
-    } else if (sourceList === 'active') {
-      // Handle reordering
-      const sourceIndex = activeColumns.value.findIndex(
-        (col) => col.field === item.field
-      )
-      if (sourceIndex !== -1 && sourceIndex !== targetIndex) {
-        const columns = [...activeColumns.value]
-        const [movedColumn] = columns.splice(sourceIndex, 1)
-        columns.splice(targetIndex, 0, movedColumn)
-        updateColumns(columns)
+    }
+    // Handle reordering within the same list
+    else if (sourceList === 'active' && targetIndex !== undefined) {
+      const columns = [...activeColumns.value]
+      const [moved] = columns.splice(sourceIndex, 1)
+      columns.splice(targetIndex, 0, moved)
+
+      if (currentView.value === 'parent') {
+        parentColumns.value = reorderColumns(columns)
+      } else {
+        childColumns.value = reorderColumns(columns)
       }
     }
 
+    draggedItem.value = null
+  }
+
+  function handleDragEnd() {
+    // If item was dropped outside any valid target
+    if (draggedItem.value?.sourceList === 'active') {
+      handleColumnRemoval(draggedItem.value.item as ColumnDef)
+    }
     draggedItem.value = null
   }
 
@@ -612,6 +638,60 @@ export function useColumnState({
     { deep: true }
   )
 
+  watch(
+    () => settings.value?.namedTables?.[tableId],
+    async (newSettings) => {
+      if (newSettings && !settingsLoading.value) {
+        await initializeState()
+      }
+    },
+    { deep: true }
+  )
+
+  watch(
+    [() => parentColumns.value, () => childColumns.value],
+    async () => {
+      if (initialized.value && !isUpdating.value) {
+        // Handle column updates
+        await saveColumnState()
+      }
+    },
+    { deep: true }
+  )
+  watch(
+    [() => initialParentColumns, () => initialChildColumns],
+    ([newParentCols, newChildCols]) => {
+      if (isUpdating.value) return
+
+      console.log('Column update watcher triggered:', {
+        newParentCount: newParentCols?.length,
+        newChildCount: newChildCols?.length,
+        currentParentCount: parentColumns.value.length,
+        currentChildCount: childColumns.value.length
+      })
+
+      if (validateColumns(newParentCols)) {
+        parentColumns.value = [...newParentCols]
+      }
+      if (validateColumns(newChildCols)) {
+        childColumns.value = [...newChildCols]
+      }
+    },
+    { deep: true }
+  )
+
+  // Watch for external changes to initial columns
+  // watch(
+  //   [() => initialParentColumns, () => initialChildColumns],
+  //   ([newParentCols, newChildCols]) => {
+  //     if (!isUpdating.value) {
+  //       if (newParentCols) parentColumns.value = [...newParentCols]
+  //       if (newChildCols) childColumns.value = [...newChildCols]
+  //     }
+  //   },
+  //   { deep: true }
+  // )
+
   return {
     // State
     currentView,
@@ -624,6 +704,10 @@ export function useColumnState({
     canRedo,
     pendingOperations,
     draggedItem,
+    settings,
+    settingsLoading,
+    isUpdating,
+    initialized,
 
     // Methods
     updateColumns,
@@ -644,18 +728,12 @@ export function useColumnState({
     applyOptimisticUpdate,
     syncChanges,
     undo,
-    redo
+    redo,
+    initializeState,
+
+    // Utilities
+    setView: (view: 'parent' | 'child') => {
+      currentView.value = view
+    }
   }
-}
-
-function generateUniqueId(): string {
-  return crypto.randomUUID()
-}
-
-function ensureUniqueKeys(columns: ColumnDef[]): ColumnDef[] {
-  return columns.map((col, index) => ({
-    ...col,
-    key: `${col.field}-${index}`,
-    order: index
-  }))
 }
