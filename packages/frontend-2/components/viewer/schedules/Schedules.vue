@@ -188,14 +188,20 @@ const selectedChildCategories = ref<string[]>([])
 
 // Category toggle function
 const toggleCategory = (type: 'parent' | 'child', category: string): void => {
-  const categories =
-    type === 'parent' ? selectedParentCategories : selectedChildCategories
-  const index = categories.value.indexOf(category)
-  if (index === -1) {
-    categories.value.push(category)
+  if (type === 'parent') {
+    const index = selectedParentCategories.value.indexOf(category)
+    selectedParentCategories.value =
+      index === -1
+        ? [...selectedParentCategories.value, category]
+        : selectedParentCategories.value.filter((cat) => cat !== category)
   } else {
-    categories.value.splice(index, 1)
+    const index = selectedChildCategories.value.indexOf(category)
+    selectedChildCategories.value =
+      index === -1
+        ? [...selectedChildCategories.value, category]
+        : selectedChildCategories.value.filter((cat) => cat !== category)
   }
+
   updateCategories(selectedParentCategories.value, selectedChildCategories.value)
 }
 
@@ -351,11 +357,19 @@ const { scheduleData, updateCategories, availableHeaders } = useElementsData({
 const handleTableSelection = (tableId: string): void => {
   const selectedTable = settings.value?.namedTables?.[tableId]
   if (selectedTable?.categoryFilters) {
-    selectedParentCategories.value =
-      selectedTable.categoryFilters.selectedParentCategories || []
-    selectedChildCategories.value =
-      selectedTable.categoryFilters.selectedChildCategories || []
+    // Create new arrays for categories
+    selectedParentCategories.value = [
+      ...(selectedTable.categoryFilters.selectedParentCategories || [])
+    ]
+    selectedChildCategories.value = [
+      ...(selectedTable.categoryFilters.selectedChildCategories || [])
+    ]
     updateCategories(selectedParentCategories.value, selectedChildCategories.value)
+  } else {
+    // Initialize with empty arrays if no filters exist
+    selectedParentCategories.value = []
+    selectedChildCategories.value = []
+    updateCategories([], [])
   }
 }
 
@@ -499,10 +513,12 @@ const handleTableChange = async () => {
     if (selectedTable) {
       state.tableName = selectedTable.name
 
-      selectedParentCategories.value =
-        selectedTable.categoryFilters?.selectedParentCategories || []
-      selectedChildCategories.value =
-        selectedTable.categoryFilters?.selectedChildCategories || []
+      selectedParentCategories.value = [
+        ...(selectedTable.categoryFilters?.selectedParentCategories || [])
+      ]
+      selectedChildCategories.value = [
+        ...(selectedTable.categoryFilters?.selectedChildCategories || [])
+      ]
 
       if (selectedTable.parentColumns) {
         const updatedParentColumns = mergeColumnDefinitions(
