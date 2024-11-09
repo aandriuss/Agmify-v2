@@ -1,7 +1,45 @@
 import { ref, watch } from 'vue'
 import { useMutation, useQuery } from '@vue/apollo-composable'
-import gql from 'graphql-tag'
+import { gql } from 'graphql-tag'
+import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/types'
 
+export interface ColumnConfig {
+  field: string
+  header: string
+  width?: number
+  visible: boolean
+  removable?: boolean
+  order: number
+}
+
+export interface NamedTableConfig {
+  id: string
+  name: string
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+  categoryFilters: {
+    selectedParentCategories: string[]
+    selectedChildCategories: string[]
+  }
+  lastUpdateTimestamp?: number
+}
+
+export interface UserSettings {
+  controlsWidth?: number
+  namedTables: Record<string, NamedTableConfig>
+}
+
+interface GetUserSettingsResponse {
+  activeUser: {
+    userSettings: UserSettings | null
+  }
+}
+
+interface UpdateUserSettingsResponse {
+  userSettingsUpdate: boolean
+}
+
+// Define mutation with explicit variable name to match server expectation
 const UPDATE_USER_SETTINGS = gql`
   mutation UpdateUserSettings($settings: JSONObject!) {
     userSettingsUpdate(settings: $settings)
@@ -16,235 +54,227 @@ const GET_USER_SETTINGS = gql`
   }
 `
 
-export interface ColumnConfig {
-  field: string
-  header: string
-  width?: number
-  visible: boolean
-  removable?: boolean
-  order: number
-}
-
-export interface NamedTableConfig {
-  id: string
-  name: string
-  parentColumns: ColumnConfig[]
-  childColumns: ColumnConfig[]
-  categoryFilters?: {
-    selectedParentCategories: string[]
-    selectedChildCategories: string[]
-  }
-}
-
-export interface UserSettings {
-  controlsWidth?: number
-  namedTables: Record<string, NamedTableConfig>
-}
-
-// This composable is used to manage user settings, such as named tables and column configurations
-export function useUserSettings(defaultTableId?: string) {
+export function useUserSettings() {
   const settings = ref<UserSettings>({ namedTables: {} })
-  const { mutate: updateSettingsMutation } = useMutation(UPDATE_USER_SETTINGS)
-  const { result, loading, refetch } = useQuery(GET_USER_SETTINGS)
+  const loading = ref(false)
+  const error = ref<Error | null>(null)
 
-  // Modified watch effect to preserve data
+  const { mutate: updateSettingsMutation } =
+    useMutation<UpdateUserSettingsResponse>(UPDATE_USER_SETTINGS)
+  const {
+    result,
+    loading: queryLoading,
+    refetch
+  } = useQuery<GetUserSettingsResponse>(GET_USER_SETTINGS)
+
+  // Watch for remote changes
   watch(
     () => result.value?.activeUser?.userSettings,
-    (newSettings) => {
-      if (newSettings) {
-        const existingTables = settings.value?.namedTables || {}
-        const incomingTables = newSettings.namedTables || {}
-
-        // Merge tables more carefully
-        const mergedTables = Object.entries(incomingTables).reduce(
-          (acc, [id, table]) => {
-            const existingTable = existingTables[id]
-            if (existingTable) {
-              // Preserve existing category filters if they exist
-              acc[id] = {
-                ...table,
-                categoryFilters: existingTable.categoryFilters || table.categoryFilters
-              }
-            } else {
-              acc[id] = table
-            }
-            return acc
-          },
-          {} as Record<string, NamedTableConfig>
-        )
-
-        settings.value = {
-          ...newSettings,
-          namedTables: mergedTables
-        }
-      }
+    (newSettings: UserSettings | null | undefined) => {
+      if (!newSettings) return
+      settings.value = newSettings
     },
     { deep: true }
   )
 
-  const saveSettings = async (newSettings: Partial<UserSettings>) => {
+  const loadSettings = async (): Promise<void> => {
     try {
-      // Get the latest data from the database first
-      const currentData = await refetch()
-      const dbSettings = currentData?.data?.activeUser?.userSettings || {
-        namedTables: {}
+      loading.value = true
+      error.value = null
+      await refetch()
+    } catch (err) {
+      error.value = err instanceof Error ? err : new Error('Failed to load settings')
+      throw error.value
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const saveSettings = async (newSettings: UserSettings): Promise<boolean> => {
+    try {
+      loading.value = true
+      error.value = null
+
+      // Get existing settings to preserve structure
+      const currentSettings = settings.value || { namedTables: {} }
+
+      // If only controlsWidth is being updated
+      if (
+        newSettings.controlsWidth !== undefined &&
+        Object.keys(newSettings.namedTables).length === 0
+      ) {
+        const result = await updateSettingsMutation({
+          settings: {
+            controlsWidth: newSettings.controlsWidth
+          }
+        })
+        if (result?.data?.userSettingsUpdate) {
+          settings.value = {
+            ...currentSettings,
+            controlsWidth: newSettings.controlsWidth
+          }
+          return true
+        }
+        return false
       }
 
-      // Merge the database data with new settings
+      // If namedTables are being updated
+      const updatedNamedTables = Object.entries(newSettings.namedTables).reduce(
+        (acc, [id, table]) => ({
+          ...acc,
+          [id]: {
+            id: table.id,
+            name: table.name,
+            parentColumns: table.parentColumns.map((col, index) => ({
+              field: col.field,
+              header: col.header,
+              type: col.type || 'string',
+              order: col.order ?? index,
+              visible: col.visible ?? true,
+              removable: col.removable ?? true,
+              width: col.width,
+              category: col.category,
+              description: col.description,
+              isFixed: col.isFixed
+            })),
+            childColumns: table.childColumns.map((col, index) => ({
+              field: col.field,
+              header: col.header,
+              type: col.type || 'string',
+              order: col.order ?? index,
+              visible: col.visible ?? true,
+              removable: col.removable ?? true,
+              width: col.width,
+              category: col.category,
+              description: col.description,
+              isFixed: col.isFixed
+            })),
+            categoryFilters: {
+              selectedParentCategories:
+                table.categoryFilters?.selectedParentCategories || [],
+              selectedChildCategories:
+                table.categoryFilters?.selectedChildCategories || []
+            },
+            lastUpdateTimestamp: Date.now()
+          }
+        }),
+        {}
+      )
+
+      // Create updated settings preserving all existing data
       const updatedSettings = {
-        ...dbSettings,
-        ...newSettings,
+        ...currentSettings,
         namedTables: {
-          ...(dbSettings.namedTables || {}), // Preserve existing tables from DB
-          ...(settings.value?.namedTables || {}), // Preserve local tables
-          ...(newSettings.namedTables || {}) // Add new tables
+          ...currentSettings.namedTables,
+          ...updatedNamedTables
         }
       }
 
-      // Save merged data
-      await updateSettingsMutation({
+      // Send the mutation with the correct structure
+      const result = await updateSettingsMutation({
         settings: updatedSettings
       })
 
-      // Update local state
-      settings.value = updatedSettings
-      // console.log('Settings saved with preserved data:', settings.value)
-      return true
-    } catch (error) {
-      console.error('Error saving settings:', error)
-      throw error
+      if (result?.data?.userSettingsUpdate) {
+        settings.value = updatedSettings
+        return true
+      }
+      return false
+    } catch (err) {
+      error.value = err instanceof Error ? err : new Error('Failed to save settings')
+      throw error.value
+    } finally {
+      loading.value = false
     }
   }
 
   const createNamedTable = async (
     name: string,
-    initialConfig?: Partial<NamedTableConfig>
-  ) => {
+    config: Omit<NamedTableConfig, 'id' | 'name'>
+  ): Promise<string> => {
     try {
-      // Get current data from DB
-      const currentData = await refetch()
-      const dbSettings = currentData?.data?.activeUser?.userSettings || {
-        namedTables: {}
-      }
+      loading.value = true
+      error.value = null
 
-      const newTableId = crypto.randomUUID()
-      const newNamedTable: NamedTableConfig = {
-        id: newTableId,
+      const tableId = `table-${Date.now()}`
+      const newTable: NamedTableConfig = {
+        id: tableId,
         name,
-        parentColumns: initialConfig?.parentColumns || [],
-        childColumns: initialConfig?.childColumns || [],
-        categoryFilters: {
-          selectedParentCategories: [],
-          selectedChildCategories: []
-        }
+        ...config,
+        lastUpdateTimestamp: Date.now()
       }
 
-      // Merge with existing data
-      const updatedSettings = {
-        ...dbSettings,
+      const currentSettings = settings.value
+      const updatedSettings: UserSettings = {
+        ...currentSettings,
         namedTables: {
-          ...(dbSettings.namedTables || {}), // Keep existing DB tables
-          ...(settings.value?.namedTables || {}), // Keep local tables
-          [newTableId]: newNamedTable // Add new table
+          ...currentSettings.namedTables,
+          [tableId]: newTable
         }
       }
 
-      await updateSettingsMutation({
-        settings: updatedSettings
-      })
-
-      settings.value = updatedSettings
-      return newTableId
-    } catch (error) {
-      console.error('Error creating named table:', error)
-      throw error
+      const success = await saveSettings(updatedSettings)
+      if (!success) {
+        throw new Error('Failed to save table settings')
+      }
+      return tableId
+    } catch (err) {
+      error.value = err instanceof Error ? err : new Error('Failed to create table')
+      throw error.value
+    } finally {
+      loading.value = false
     }
   }
 
   const updateNamedTable = async (
     tableId: string,
     updates: Partial<NamedTableConfig>
-  ) => {
+  ): Promise<NamedTableConfig> => {
     try {
-      // Get current data from DB
-      const currentData = await refetch()
-      const dbSettings = currentData?.data?.activeUser?.userSettings || {
-        namedTables: {}
-      }
+      loading.value = true
+      error.value = null
 
-      if (
-        !dbSettings.namedTables?.[tableId] &&
-        !settings.value.namedTables?.[tableId]
-      ) {
+      const currentSettings = settings.value
+      const existingTable = currentSettings.namedTables[tableId]
+
+      if (!existingTable) {
         throw new Error('Table not found')
       }
 
-      // Get the existing table configuration
-      const existingTable =
-        settings.value.namedTables?.[tableId] || dbSettings.namedTables?.[tableId]
-
-      // Deep merge updates with existing table
-      const updatedTable = {
+      const updatedTable: NamedTableConfig = {
         ...existingTable,
         ...updates,
-        id: tableId, // Ensure ID is preserved
-        // Ensure we're not losing column configurations
-        parentColumns: updates.parentColumns || existingTable.parentColumns,
-        childColumns: updates.childColumns || existingTable.childColumns,
-        categoryFilters: {
-          ...existingTable.categoryFilters,
-          ...(updates.categoryFilters || {})
-        }
+        id: tableId,
+        lastUpdateTimestamp: Date.now()
       }
 
-      // Update settings while preserving all other tables
-      const updatedSettings = {
-        ...dbSettings,
+      const updatedSettings: UserSettings = {
+        ...currentSettings,
         namedTables: {
-          ...(dbSettings.namedTables || {}),
-          ...(settings.value?.namedTables || {}),
+          ...currentSettings.namedTables,
           [tableId]: updatedTable
         }
       }
 
-      await updateSettingsMutation({
-        settings: updatedSettings
-      })
-
-      // Update local state
-      settings.value = updatedSettings
-    } catch (error) {
-      console.error('Error updating named table:', error)
-      throw error
-    }
-  }
-
-  const loadSettings = async () => {
-    try {
-      const currentData = await refetch()
-      const dbSettings = currentData?.data?.activeUser?.userSettings
-
-      if (dbSettings) {
-        // Merge with existing settings
-        settings.value = {
-          ...dbSettings,
-          namedTables: {
-            ...(settings.value?.namedTables || {}), // Keep existing local tables
-            ...(dbSettings.namedTables || {}) // Add DB tables
-          }
-        }
-        console.log('Settings loaded with preserved data:', settings.value)
+      const success = await saveSettings(updatedSettings)
+      if (!success) {
+        throw new Error('Failed to save table updates')
       }
-    } catch (error) {
-      console.error('Error loading settings:', error)
+      return updatedTable
+    } catch (err) {
+      error.value = err instanceof Error ? err : new Error('Failed to update table')
+      throw error.value
+    } finally {
+      loading.value = false
     }
   }
 
   return {
     settings,
-    loading,
-    saveSettings,
+    loading: loading.value || queryLoading.value,
+    error,
     loadSettings,
+    saveSettings,
     createNamedTable,
     updateNamedTable
   }

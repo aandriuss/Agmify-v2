@@ -6,8 +6,9 @@
         <div class="flex items-center gap-2">
           <div class="flex items-center gap-2 flex-1">
             <!-- Table Selection Dropdown -->
-            <label class="text-sm">Select Table:</label>
+            <label for="table-select" class="text-sm">Select Table:</label>
             <select
+              id="table-select"
               v-model="state.selectedTableId"
               class="px-2 py-1 rounded border bg-background text-sm h-8 min-w-[150px]"
               @change="handleTableChange"
@@ -18,7 +19,9 @@
               </option>
             </select>
 
+            <label for="table-name" class="sr-only">Table Name</label>
             <input
+              id="table-name"
               v-model="state.tableName"
               type="text"
               class="flex-1 px-2 py-1 rounded border bg-background text-sm h-8"
@@ -71,7 +74,7 @@
                         : CheckCircleIconOutlined
                     "
                     text
-                    @click="toggleParentCategory(category)"
+                    @click="() => toggleCategory('parent', category)"
                   >
                     {{ category }}
                   </FormButton>
@@ -94,7 +97,7 @@
                         : CheckCircleIconOutlined
                     "
                     text
-                    @click="toggleChildCategory(category)"
+                    @click="() => toggleCategory('child', category)"
                   >
                     {{ category }}
                   </FormButton>
@@ -104,33 +107,17 @@
           </div>
         </div>
 
-        <!-- Table Section -->
-        <!-- <DataTable
-          v-if="shouldRenderTable"
-          :key="state.tableKey"
-          v-model:expanded-rows="state.expandedRows"
-          :table-id="currentTableId"
-          :data="scheduleData || []"
-          :columns="currentTableColumns"
-          :detail-columns="currentDetailColumns"
-          :available-parent-parameters="mergedParentParameters"
-          :available-child-parameters="mergedChildParameters"
-          :expand-button-aria-label="'Expand row'"
-          :collapse-button-aria-label="'Collapse row'"
-          data-key="id"
-          @update:columns="handleParentColumnsUpdate"
-          @update:detail-columns="handleChildColumnsUpdate"
-          @update:both-columns="handleBothColumnsUpdate"
-          @column-reorder="handleColumnReorder"
-        /> -->
         <DataTable
-          :table-id="state.selectedTableId || DEFAULT_TABLE_ID"
+          :key="state.tableKey"
+          :table-id="currentTableId"
+          :table-name="state.tableName"
           :data="scheduleData"
           :columns="currentTableColumns"
           :detail-columns="currentDetailColumns"
           :available-parent-parameters="mergedParentParameters"
           :available-child-parameters="mergedChildParameters"
           @update:both-columns="handleBothColumnsUpdate"
+          @table-updated="handleTableUpdate"
         />
       </div>
     </ViewerLayoutPanel>
@@ -138,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { useUserSettings } from '~/composables/useUserSettings'
 import { useElementsData } from '~/components/viewer/schedules/composables/useElementsData'
 import DataTable from '~/components/viewer/components/tables/DataTable/index.vue'
@@ -149,12 +136,8 @@ import {
 } from '@heroicons/vue/24/solid'
 import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/outline'
 
-import {
-  standardParameters,
-  extractParametersFromData,
-  mergeParameters,
-  type ParameterDefinition
-} from '../components/parameters/composables/parameterDefinitions'
+import type { ParameterDefinition } from '../components/parameters/composables/parameterDefinitions'
+import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
 import {
   mergeAndCategorizeParameters,
@@ -162,92 +145,28 @@ import {
   fixedChildParameters
 } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 
-const emit = defineEmits<{
-  (e: 'close'): void
-  (e: 'update:columns', columns: any[]): void
-  (e: 'update:detail-columns', columns: any[]): void
-  (
-    e: 'update:both-columns',
-    updates: { parentColumns: any[]; childColumns: any[] }
-  ): void
-  (
-    e: 'onUpdate:both-columns',
-    updates: { parentColumns: any[]; childColumns: any[] }
-  ): void
-  (e: 'column-reorder', event: any): void
-}>()
+interface TableState {
+  selectedTableId: string
+  tableName: string
+  showCategoryOptions: boolean
+  expandedRows: Record<string, unknown>[]
+  tableKey: string
+  initialized: boolean
+  loadingError: Error | null
+}
 
 const DEFAULT_TABLE_ID = 'elements-schedule'
-const {
-  settings,
-  loading,
-  saveSettings,
-  loadSettings,
-  createNamedTable,
-  updateNamedTable
-} = useUserSettings()
+const { settings, loadSettings, createNamedTable, updateNamedTable } = useUserSettings()
 
 const state = reactive<TableState>({
-  selectedTableId: null,
-  tableName: '',
+  selectedTableId: DEFAULT_TABLE_ID,
+  tableName: 'Default Schedule',
   showCategoryOptions: false,
   expandedRows: [],
-  tableKey: Date.now().toString()
+  tableKey: Date.now().toString(),
+  initialized: false,
+  loadingError: null
 })
-
-// Computed properties for table management
-const currentTableId = computed(() => state.selectedTableId || DEFAULT_TABLE_ID)
-
-// Get current table
-const currentTable = computed(() => {
-  return settings.value?.namedTables?.[currentTableId.value]
-})
-
-const isDefaultTable = computed(() => currentTableId.value === DEFAULT_TABLE_ID)
-
-// Table initialization function
-const initializeDefaultTable = async () => {
-  const currentSettings = settings.value
-
-  if (
-    !currentSettings?.namedTables ||
-    Object.keys(currentSettings.namedTables).length === 0
-  ) {
-    console.log('Initializing default table...')
-
-    const defaultTable: TableConfig = {
-      name: 'Default Table',
-      parentColumns: defaultParentColumns,
-      childColumns: defaultChildColumns,
-      categoryFilters: {
-        selectedParentCategories: [],
-        selectedChildCategories: []
-      }
-    }
-
-    await saveSettings({
-      ...currentSettings,
-      namedTables: {
-        [DEFAULT_TABLE_ID]: defaultTable
-      }
-    })
-  }
-}
-
-// Table selection handler
-const handleTableSelection = async (tableId: string) => {
-  state.selectedTableId = tableId
-  const selectedTable = settings.value?.namedTables?.[tableId]
-
-  if (selectedTable) {
-    state.tableName = selectedTable.name
-    selectedParentCategories.value =
-      selectedTable.categoryFilters?.selectedParentCategories || []
-    selectedChildCategories.value =
-      selectedTable.categoryFilters?.selectedChildCategories || []
-    updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-  }
-}
 
 // Categories
 const parentCategories = ['Walls', 'Floors', 'Roofs']
@@ -267,6 +186,19 @@ const childCategories = [
 const selectedParentCategories = ref<string[]>([])
 const selectedChildCategories = ref<string[]>([])
 
+// Category toggle function
+const toggleCategory = (type: 'parent' | 'child', category: string): void => {
+  const categories =
+    type === 'parent' ? selectedParentCategories : selectedChildCategories
+  const index = categories.value.indexOf(category)
+  if (index === -1) {
+    categories.value.push(category)
+  } else {
+    categories.value.splice(index, 1)
+  }
+  updateCategories(selectedParentCategories.value, selectedChildCategories.value)
+}
+
 // Computed property for tables array
 const tablesArray = computed(() => {
   const tables = settings.value?.namedTables || {}
@@ -276,46 +208,115 @@ const tablesArray = computed(() => {
   }))
 })
 
-// Default column configurations
-const defaultParentColumns = [
-  { field: 'category', header: 'Category', visible: true, removable: false, order: 0 },
-  { field: 'id', header: 'ID', visible: true, removable: true, order: 1 },
-  { field: 'mark', header: 'Mark', visible: true, removable: true, order: 2 },
-  { field: 'host', header: 'Host', visible: true, removable: true, order: 3 },
-  { field: 'comment', header: 'Comment', visible: true, removable: true, order: 4 }
-]
-
-const defaultChildColumns = [
-  { field: 'category', header: 'Category', visible: true, removable: false, order: 0 },
-  { field: 'id', header: 'ID', visible: true, removable: true, order: 1 },
-  { field: 'mark', header: 'Mark', visible: true, removable: true, order: 2 },
-  { field: 'host', header: 'Host', visible: true, removable: true, order: 3 },
-  { field: 'comment', header: 'Comment', visible: true, removable: true, order: 4 }
-]
-
-const availableParentParameters = ref<ParameterDefinition[]>([])
-const availableChildParameters = ref<ParameterDefinition[]>([])
-
-const updateAvailableParameters = () => {
-  if (!scheduleData.value?.length) return
-
-  // Extract parameters from parent data
-  const parentDataParams = extractParametersFromData(scheduleData.value)
-  availableParentParameters.value = mergeParameters(
-    standardParameters,
-    parentDataParams
-  )
-
-  // Extract parameters from child data (if exists)
-  const firstParentWithDetails = scheduleData.value.find((item) => item.details?.length)
-  if (firstParentWithDetails?.details?.length) {
-    const childDataParams = extractParametersFromData(firstParentWithDetails.details)
-    availableChildParameters.value = mergeParameters(
-      standardParameters,
-      childDataParams
-    )
+function processColumn(col: Partial<ColumnDef>, index: number): ColumnDef {
+  return {
+    field: col.field || '',
+    header: col.header || '',
+    type: col.type || 'string',
+    order: col.order ?? index,
+    visible: col.visible ?? true,
+    removable: col.removable ?? true,
+    width: col.width,
+    category: col.category,
+    description: col.description,
+    isFixed: col.isFixed
   }
 }
+
+// Default column configurations
+const defaultParentColumns: ColumnDef[] = [
+  {
+    field: 'category',
+    header: 'Category',
+    type: 'string',
+    visible: true,
+    removable: false,
+    order: 0
+  },
+  {
+    field: 'id',
+    header: 'ID',
+    type: 'string',
+    visible: true,
+    removable: true,
+    order: 1
+  },
+  {
+    field: 'mark',
+    header: 'Mark',
+    type: 'string',
+    visible: true,
+    removable: true,
+    order: 2
+  },
+  {
+    field: 'host',
+    header: 'Host',
+    type: 'string',
+    visible: true,
+    removable: true,
+    order: 3
+  },
+  {
+    field: 'comment',
+    header: 'Comment',
+    type: 'string',
+    visible: true,
+    removable: true,
+    order: 4
+  }
+].map((col, index) => processColumn(col, index))
+
+const defaultChildColumns: ColumnDef[] = [
+  {
+    field: 'category',
+    header: 'Category',
+    type: 'string',
+    visible: true,
+    removable: false,
+    order: 0
+  },
+  {
+    field: 'id',
+    header: 'ID',
+    type: 'string',
+    visible: true,
+    removable: true,
+    order: 1
+  },
+  {
+    field: 'mark',
+    header: 'Mark',
+    type: 'string',
+    visible: true,
+    removable: true,
+    order: 2
+  },
+  {
+    field: 'host',
+    header: 'Host',
+    type: 'string',
+    visible: true,
+    removable: true,
+    order: 3
+  },
+  {
+    field: 'comment',
+    header: 'Comment',
+    type: 'string',
+    visible: true,
+    removable: true,
+    order: 4
+  }
+].map((col, index) => processColumn(col, index))
+
+// Computed properties for table management
+const currentTableId = computed(() => state.selectedTableId || DEFAULT_TABLE_ID)
+
+// Get current table
+const currentTable = computed(() => {
+  return settings.value?.namedTables?.[currentTableId.value]
+})
 
 // Current columns computed properties
 const currentTableColumns = computed(() => {
@@ -341,27 +342,168 @@ const currentDetailColumns = computed(() => {
 })
 
 // Get schedule data
-const { scheduleData, updateCategories, availableHeaders, rootNodes } = useElementsData(
-  {
-    currentTableColumns,
-    currentDetailColumns
-  }
-)
+const { scheduleData, updateCategories, availableHeaders } = useElementsData({
+  currentTableColumns,
+  currentDetailColumns
+})
 
-// Handle table selection change
+// Handle table selection
+const handleTableSelection = (tableId: string): void => {
+  const selectedTable = settings.value?.namedTables?.[tableId]
+  if (selectedTable?.categoryFilters) {
+    selectedParentCategories.value =
+      selectedTable.categoryFilters.selectedParentCategories || []
+    selectedChildCategories.value =
+      selectedTable.categoryFilters.selectedChildCategories || []
+    updateCategories(selectedParentCategories.value, selectedChildCategories.value)
+  }
+}
+
+// Handle table update
+const handleTableUpdate = async ({
+  tableId,
+  tableName
+}: {
+  tableId: string
+  tableName: string
+}) => {
+  try {
+    // Update current table state if needed
+    if (currentTable.value?.id === tableId) {
+      state.tableName = tableName
+      state.selectedTableId = tableId
+      state.tableKey = Date.now().toString() // Force refresh
+
+      // Reload settings and update categories
+      await loadSettings()
+      handleTableSelection(tableId)
+    }
+  } catch (error) {
+    state.loadingError = error as Error
+  }
+}
+
+// Update mergeColumnDefinitions to handle type differences
+function mergeColumnDefinitions(
+  available: ParameterDefinition[],
+  saved: Partial<ColumnDef>[]
+): ColumnDef[] {
+  return saved.map((savedCol, index) => {
+    const availableParam = available.find((p) => p.field === savedCol.field)
+    if (availableParam) {
+      return processColumn(
+        {
+          ...savedCol,
+          header: availableParam.header,
+          category: availableParam.category,
+          type: availableParam.type
+        },
+        index
+      )
+    }
+    return processColumn(savedCol, index)
+  })
+}
+
+// Column update handlers
+const handleParentColumnsUpdate = async (newColumns: Partial<ColumnDef>[]) => {
+  try {
+    if (!newColumns?.length) return
+
+    const currentTable = settings.value?.namedTables?.[currentTableId.value]
+    if (!currentTable) return
+
+    const columnsToSave = newColumns.map((col, index) => processColumn(col, index))
+
+    await updateNamedTable(currentTableId.value, {
+      ...currentTable,
+      parentColumns: columnsToSave,
+      childColumns: currentTable.childColumns,
+      name: currentTable.name,
+      categoryFilters: currentTable.categoryFilters
+    })
+
+    state.tableKey = Date.now().toString()
+  } catch (error) {
+    state.loadingError = error as Error
+  }
+}
+
+const handleChildColumnsUpdate = async (newColumns: Partial<ColumnDef>[]) => {
+  try {
+    if (!newColumns?.length) return
+
+    const currentTable = settings.value?.namedTables?.[currentTableId.value]
+    if (!currentTable) return
+
+    const columnsToSave = newColumns.map((col, index) => processColumn(col, index))
+
+    await updateNamedTable(currentTableId.value, {
+      ...currentTable,
+      childColumns: columnsToSave,
+      parentColumns: currentTable.parentColumns,
+      name: currentTable.name,
+      categoryFilters: currentTable.categoryFilters
+    })
+
+    state.tableKey = Date.now().toString()
+  } catch (error) {
+    state.loadingError = error as Error
+  }
+}
+
+const handleBothColumnsUpdate = async (updates: {
+  parentColumns: Partial<ColumnDef>[]
+  childColumns: Partial<ColumnDef>[]
+}) => {
+  try {
+    const { parentColumns, childColumns } = updates
+
+    const currentTable = settings.value?.namedTables?.[currentTableId.value]
+    if (!currentTable) {
+      throw new Error('Current table configuration not found')
+    }
+
+    const processedParentColumns = parentColumns.map((col, index) =>
+      processColumn(col, index)
+    )
+    const processedChildColumns = childColumns.map((col, index) =>
+      processColumn(col, index)
+    )
+
+    // Preserve existing table properties and merge with updates
+    const updatedTableConfig = {
+      ...currentTable,
+      parentColumns: processedParentColumns,
+      childColumns: processedChildColumns,
+      categoryFilters: {
+        selectedParentCategories: selectedParentCategories.value,
+        selectedChildCategories: selectedChildCategories.value
+      },
+      lastUpdateTimestamp: Date.now()
+    }
+
+    await updateNamedTable(currentTableId.value, updatedTableConfig)
+    updateCategories(selectedParentCategories.value, selectedChildCategories.value)
+    state.tableKey = Date.now().toString()
+  } catch (error) {
+    state.loadingError = error as Error
+    throw new Error('Failed to update both column sets: ' + (error as Error).message)
+  }
+}
+
+// Table Management Functions
 const handleTableChange = async () => {
   if (state.selectedTableId) {
     const selectedTable = settings.value?.namedTables?.[state.selectedTableId]
     if (selectedTable) {
       state.tableName = selectedTable.name
 
-      // Update categories
       selectedParentCategories.value =
         selectedTable.categoryFilters?.selectedParentCategories || []
       selectedChildCategories.value =
         selectedTable.categoryFilters?.selectedChildCategories || []
 
-      // Update columns with previously selected parameters
       if (selectedTable.parentColumns) {
         const updatedParentColumns = mergeColumnDefinitions(
           availableHeaders.value.parent,
@@ -378,31 +520,70 @@ const handleTableChange = async () => {
         await handleChildColumnsUpdate(updatedChildColumns)
       }
 
-      // Update data with new parameters
       updateCategories(selectedParentCategories.value, selectedChildCategories.value)
       state.tableKey = Date.now().toString()
     }
   }
 }
 
-function mergeColumnDefinitions(
-  available: ParameterDefinition[],
-  saved: ColumnDefinition[]
-): ColumnDefinition[] {
-  return saved.map((savedCol) => {
-    const availableParam = available.find((p) => p.field === savedCol.field)
-    if (availableParam) {
-      return {
-        ...savedCol,
-        header: availableParam.header,
-        category: availableParam.category,
-        type: availableParam.type
+const saveTable = async () => {
+  if (!state.tableName) return
+
+  try {
+    if (state.selectedTableId) {
+      const currentTable = settings.value?.namedTables?.[state.selectedTableId]
+      if (!currentTable) {
+        throw new Error('Table not found in current settings')
       }
+
+      await updateNamedTable(state.selectedTableId, {
+        ...currentTable,
+        name: state.tableName,
+        parentColumns: currentTableColumns.value,
+        childColumns: currentDetailColumns.value,
+        categoryFilters: {
+          selectedParentCategories: selectedParentCategories.value,
+          selectedChildCategories: selectedChildCategories.value
+        }
+      })
+    } else {
+      const newTableId = await createNamedTable(state.tableName, {
+        parentColumns: defaultParentColumns,
+        childColumns: defaultChildColumns,
+        categoryFilters: {
+          selectedParentCategories: selectedParentCategories.value,
+          selectedChildCategories: selectedChildCategories.value
+        }
+      })
+
+      if (!newTableId) {
+        throw new Error('Failed to get new table ID')
+      }
+
+      state.selectedTableId = newTableId
+      await loadSettings()
+
+      const savedTable = settings.value?.namedTables?.[newTableId]
+      if (!savedTable) {
+        throw new Error('Failed to verify table save')
+      }
+
+      state.tableName = savedTable.name
+      selectedParentCategories.value =
+        savedTable.categoryFilters?.selectedParentCategories || []
+      selectedChildCategories.value =
+        savedTable.categoryFilters?.selectedChildCategories || []
+      updateCategories(selectedParentCategories.value, selectedChildCategories.value)
     }
-    return savedCol
-  })
+
+    state.tableKey = Date.now().toString()
+  } catch (error) {
+    state.loadingError = error as Error
+    throw error
+  }
 }
 
+// Computed Properties
 const mergedParentParameters = computed(() =>
   mergeAndCategorizeParameters(
     fixedParentParameters,
@@ -419,489 +600,18 @@ const mergedChildParameters = computed(() =>
   )
 )
 
-watch(
-  [mergedParentParameters, mergedChildParameters],
-  ([parent, child]) => {
-    // console.group('🔄 Merged Parameters Debug')
-    // console.log('Parent Parameters:', {
-    //   count: parent.length,
-    //   fields: parent.map((p) => p.field),
-    //   categories: [...new Set(parent.map((p) => p.category))]
-    // })
-    // console.log('Child Parameters:', {
-    //   count: child.length,
-    //   fields: child.map((p) => p.field),
-    //   categories: [...new Set(child.map((p) => p.category))]
-    // })
-    // console.groupEnd()
-  },
-  { immediate: true }
-)
-
-// Save table handler
-const saveTable = async () => {
-  if (!state.tableName) return
-
-  try {
-    console.log('Starting table save...')
-
-    if (state.selectedTableId) {
-      // Update existing table
-      console.log('Updating existing table:', state.selectedTableId)
-
-      const currentTable = settings.value?.namedTables?.[state.selectedTableId]
-      if (!currentTable) {
-        throw new Error('Table not found in current settings')
-      }
-
-      await updateNamedTable(state.selectedTableId, {
-        name: state.tableName,
-        parentColumns: currentTableColumns.value,
-        childColumns: currentDetailColumns.value,
-        categoryFilters: {
-          selectedParentCategories: selectedParentCategories.value,
-          selectedChildCategories: selectedChildCategories.value
-        }
-      })
-    } else {
-      // Create new table
-      console.log('Creating new table:', state.tableName)
-
-      // Create new table and get its ID
-      const newTableId = await createNamedTable(state.tableName, {
-        parentColumns: [...defaultParentColumns],
-        childColumns: [...defaultChildColumns],
-        categoryFilters: {
-          selectedParentCategories: selectedParentCategories.value,
-          selectedChildCategories: selectedChildCategories.value
-        }
-      })
-
-      if (!newTableId) {
-        throw new Error('Failed to get new table ID')
-      }
-
-      // Update selected table ID
-      state.selectedTableId = newTableId
-    }
-
-    // Reload settings and verify save
-    await loadSettings()
-
-    // Verify the table exists in settings
-    const savedTable = settings.value?.namedTables?.[state.selectedTableId]
-    if (!savedTable) {
-      throw new Error('Failed to verify table save')
-    }
-
-    console.log('Table saved successfully:', savedTable)
-
-    // Update UI state
-    state.tableName = savedTable.name
-    selectedParentCategories.value =
-      savedTable.categoryFilters?.selectedParentCategories || []
-    selectedChildCategories.value =
-      savedTable.categoryFilters?.selectedChildCategories || []
-    updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-
-    // Refresh table
-    state.tableKey = Date.now().toString()
-  } catch (error) {
-    console.error('Error saving table:', error)
-    throw error
-  }
-}
-
-// Column update handlers
-const handleParentColumnsUpdate = async (newColumns) => {
-  try {
-    if (!newColumns?.length) return
-
-    // Get current table config
-    const currentTable = settings.value?.namedTables?.[currentTableId.value]
-    if (!currentTable) return
-
-    const columnsToSave = newColumns.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true,
-      field: col.field,
-      header: col.header,
-      removable: col.removable ?? true
-    }))
-
-    // Update while preserving other table settings
-    await updateNamedTable(currentTableId.value, {
-      ...currentTable,
-      parentColumns: columnsToSave,
-      // Preserve other settings explicitly
-      childColumns: currentTable.childColumns,
-      name: currentTable.name,
-      categoryFilters: currentTable.categoryFilters
-    })
-
-    // Force table refresh
-    state.tableKey = Date.now().toString()
-  } catch (error) {
-    console.error('Failed to save parent columns:', error)
-  }
-}
-
-const handleChildColumnsUpdate = async (newColumns) => {
-  try {
-    if (!newColumns?.length) return
-
-    // Get current table config
-    const currentTable = settings.value?.namedTables?.[currentTableId.value]
-    if (!currentTable) return
-
-    const columnsToSave = newColumns.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true,
-      field: col.field,
-      header: col.header,
-      removable: col.removable ?? true
-    }))
-
-    // Update while preserving other table settings
-    await updateNamedTable(currentTableId.value, {
-      ...currentTable,
-      childColumns: columnsToSave,
-      // Preserve other settings explicitly
-      parentColumns: currentTable.parentColumns,
-      name: currentTable.name,
-      categoryFilters: currentTable.categoryFilters
-    })
-
-    // Force table refresh
-    state.tableKey = Date.now().toString()
-  } catch (error) {
-    console.error('Failed to save child columns:', error)
-  }
-}
-
-const handleBothColumnsUpdate = async (updates: {
-  parentColumns: any[]
-  childColumns: any[]
-}) => {
-  try {
-    const { parentColumns, childColumns } = updates
-    console.log('Both columns updating:', { parentColumns, childColumns })
-
-    // Get current table config
-    const currentTable = settings.value?.namedTables?.[currentTableId.value]
-    if (!currentTable) return
-
-    const processedParentColumns = parentColumns.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true,
-      field: col.field,
-      header: col.header,
-      removable: col.removable ?? true
-    }))
-
-    const processedChildColumns = childColumns.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true,
-      field: col.field,
-      header: col.header,
-      removable: col.removable ?? true
-    }))
-
-    // Update table configuration
-    await updateNamedTable(currentTableId.value, {
-      ...currentTable,
-      parentColumns: processedParentColumns,
-      childColumns: processedChildColumns,
-      name: currentTable.name,
-      categoryFilters: currentTable.categoryFilters
-    })
-
-    // Important: Trigger data refresh with new columns
-    updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-
-    // Force table refresh
-    state.tableKey = Date.now().toString()
-
-    console.log('Table updated with new columns, triggering data refresh')
-  } catch (error) {
-    console.error('Failed to update both column sets:', error)
-  }
-}
-
-const handleColumnReorder = async (event) => {
-  try {
-    const dataTable = event.target.closest('.p-datatable')
-    const isChildTable = dataTable.classList.contains('nested-table')
-
-    // Get current table config
-    const currentTable = settings.value?.namedTables?.[currentTableId.value]
-    if (!currentTable) return
-
-    const headers = Array.from(dataTable.querySelectorAll('th[data-field]'))
-    const reorderedColumns = headers
-      .map((header, index) => {
-        const field = header.getAttribute('data-field')
-        const sourceColumns = isChildTable
-          ? currentTable.childColumns
-          : currentTable.parentColumns
-        const existingColumn = sourceColumns.find((col) => col.field === field)
-
-        return existingColumn
-          ? {
-              ...existingColumn,
-              order: index,
-              visible: true,
-              field,
-              header: existingColumn.header,
-              removable: existingColumn.removable ?? true
-            }
-          : null
-      })
-      .filter(Boolean)
-
-    // Update while preserving other settings
-    await updateNamedTable(currentTableId.value, {
-      ...currentTable,
-      [isChildTable ? 'childColumns' : 'parentColumns']: reorderedColumns,
-      // Preserve the other type of columns
-      [isChildTable ? 'parentColumns' : 'childColumns']: isChildTable
-        ? currentTable.parentColumns
-        : currentTable.childColumns,
-      name: currentTable.name,
-      categoryFilters: currentTable.categoryFilters
-    })
-
-    // Force table refresh
-    state.tableKey = Date.now().toString()
-  } catch (error) {
-    console.error('Failed to save reordered columns:', error)
-  }
-}
-
-const toggleParentCategory = async (category: string) => {
-  try {
-    const current = [...selectedParentCategories.value]
-    const updated = current.includes(category)
-      ? current.filter((c) => c !== category)
-      : [...current, category]
-
-    // Update local state first
-    selectedParentCategories.value = updated
-    updateCategories(updated, selectedChildCategories.value)
-
-    if (state.selectedTableId) {
-      // Changed from selectedTableId.value
-      // Get the complete current table state
-      const currentTable = settings.value?.namedTables?.[state.selectedTableId]
-
-      // Preserve all existing table data while updating filters
-      await updateNamedTable(state.selectedTableId, {
-        ...currentTable,
-        name: currentTable.name,
-        parentColumns: currentTable.parentColumns,
-        childColumns: currentTable.childColumns,
-        categoryFilters: {
-          selectedParentCategories: updated,
-          selectedChildCategories: selectedChildCategories.value
-        }
-      })
-    }
-  } catch (error) {
-    console.error('Error toggling parent category:', error)
-    selectedParentCategories.value = [...selectedParentCategories.value]
-    updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-  }
-}
-
-// Similarly update toggleChildCategory
-const toggleChildCategory = async (category: string) => {
-  try {
-    const current = [...selectedChildCategories.value]
-    const updated = current.includes(category)
-      ? current.filter((c) => c !== category)
-      : [...current, category]
-
-    // Update local state first
-    selectedChildCategories.value = updated
-    updateCategories(selectedParentCategories.value, updated)
-
-    if (state.selectedTableId) {
-      // Changed from selectedTableId.value
-      // Get the complete current table state
-      const currentTable = settings.value?.namedTables?.[state.selectedTableId]
-
-      // Preserve all existing table data while updating filters
-      await updateNamedTable(selectedTableId.value, {
-        ...currentTable,
-        name: currentTable.name,
-        parentColumns: currentTable.parentColumns,
-        childColumns: currentTable.childColumns,
-        categoryFilters: {
-          selectedParentCategories: selectedParentCategories.value,
-          selectedChildCategories: updated
-        }
-      })
-    }
-  } catch (error) {
-    console.error('Error toggling child category:', error)
-    // Revert local state on error
-    selectedChildCategories.value = [...selectedChildCategories.value]
-    updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-  }
-}
-
-const shouldRenderTable = computed(() => {
-  return !!(currentTableColumns.value?.length && settings.value)
-})
-
-// Modified initialization
+// Initialize on mount
 onMounted(async () => {
-  await loadSettings()
-  await initializeDefaultTable()
-  await loadSettings()
-  const currentSettings = settings.value
-
-  // Only create default table if there are absolutely no tables
-  if (
-    !currentSettings?.namedTables ||
-    Object.keys(currentSettings.namedTables).length === 0
-  ) {
-    console.log('No tables found, initializing default table...')
-
-    const defaultTable = {
-      id: DEFAULT_TABLE_ID,
-      name: 'Default Table',
-      parentColumns: defaultParentColumns,
-      childColumns: defaultChildColumns,
-      categoryFilters: {
-        selectedParentCategories: [],
-        selectedChildCategories: []
-      }
+  try {
+    await loadSettings()
+    if (currentTable.value) {
+      handleTableSelection(currentTableId.value)
     }
-
-    // Create settings while preserving any existing data
-    const updatedSettings = {
-      ...currentSettings,
-      namedTables: {
-        ...(currentSettings?.namedTables || {}),
-        [DEFAULT_TABLE_ID]: defaultTable
-      }
-    }
-
-    await saveSettings(updatedSettings)
-  }
-
-  // Load settings again to ensure we have the latest data
-  await loadSettings()
-
-  // Set selected table to existing table or default
-  const availableTables = settings.value?.namedTables || {}
-  if (Object.keys(availableTables).length > 0) {
-    const tableToSelect = availableTables[DEFAULT_TABLE_ID]
-      ? DEFAULT_TABLE_ID
-      : Object.keys(availableTables)[0]
-
-    await handleTableSelection(tableToSelect)
+    state.initialized = true
+  } catch (error) {
+    state.loadingError = error as Error
   }
 })
-
-// Watch for settings changes from other clients
-watch(
-  () => settings.value?.namedTables?.[state.selectedTableId]?.categoryFilters,
-  (newFilters) => {
-    if (newFilters) {
-      selectedParentCategories.value = newFilters.selectedParentCategories || []
-      selectedChildCategories.value = newFilters.selectedChildCategories || []
-      updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-    }
-  },
-  { deep: true }
-)
-
-watch(
-  () => settings.value?.namedTables?.[state.selectedTableId]?.categoryFilters,
-  (newFilters) => {
-    if (newFilters) {
-      selectedParentCategories.value = newFilters.selectedParentCategories || []
-      selectedChildCategories.value = newFilters.selectedChildCategories || []
-      updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-    }
-  },
-  { deep: true }
-)
-
-// Watch to update available parameters when data changes
-watch(
-  () => scheduleData.value,
-  (newData) => {
-    if (!newData) return
-    const categories = [...new Set(newData.map((item) => item.category))]
-    categories.forEach((category) => {
-      const example = newData.find((item) => item.category === category)
-      console.log(`Category ${category} sample:`, {
-        mainFields: example ? Object.keys(example) : [],
-        detailFields: example?.details?.[0] ? Object.keys(example.details[0]) : [],
-        sampleItem: example
-      })
-    })
-  },
-  { immediate: true }
-)
-
-watch(
-  () => availableHeaders.value,
-  (newHeaders) => {
-    if (!newHeaders) return
-    // console.log('Available Headers Updated:', {
-    //   parentHeadersCount: newHeaders.parent.length,
-    //   childHeadersCount: newHeaders.child.length,
-    //   parentGroups: [...new Set(newHeaders.parent.map((h) => h.category))],
-    //   childGroups: [...new Set(newHeaders.child.map((h) => h.category))]
-    // })
-  },
-  { deep: true }
-)
-
-watch(
-  () => selectedParentCategories.value,
-  (newCategories) => {
-    if (!newCategories) return
-    // console.log('Parent Categories changed:', newCategories)
-  }
-)
-
-watch(
-  () => selectedChildCategories.value,
-  (newCategories) => {
-    if (!newCategories) return
-    // console.log('Child Categories changed:', newCategories)
-  }
-)
-
-watch(
-  [currentTableColumns, currentDetailColumns],
-  () => {
-    if (selectedParentCategories.value.length > 0) {
-      updateCategories(selectedParentCategories.value, selectedChildCategories.value)
-    }
-  },
-  { deep: true }
-)
-
-// Watchers for table ID changes
-watch(
-  () => currentTableId.value,
-  async (newTableId) => {
-    if (newTableId) {
-      console.log('Current table ID changed:', newTableId)
-      await handleTableSelection(newTableId)
-    }
-  }
-)
 </script>
 
 <style scoped>

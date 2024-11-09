@@ -30,10 +30,13 @@
     <!-- Main content area -->
     <div
       class="flex-1 overflow-y-auto p-1 relative"
+      role="listbox"
+      tabindex="0"
+      aria-label="Column list"
       @dragover.prevent
       @dragenter.prevent="handleListDragEnter"
       @dragleave.prevent="handleListDragLeave"
-      @drop.prevent="$emit('drop', $event)"
+      @drop.prevent="handleListDrop"
     >
       <!-- Empty state -->
       <div v-if="!safeItems.length" class="p-4 text-center text-gray-500">
@@ -66,13 +69,23 @@
               :drop-position="dropState.dropPosition"
               @add="$emit('add', $event)"
               @remove="$emit('remove', $event)"
-              @visibility-change="$emit('visibility-change', $event)"
-              @drag-start="(e, item) => handleDragStart(e, item, index)"
-              @drop="(e) => handleDrop(e, index)"
-              @drag-end="$emit('drag-end', $event)"
+              @visibility-change="handleVisibilityChange"
+              @drag-start="
+                (event) =>
+                  handleItemDragStart(
+                    event,
+                    item,
+                    getAbsoluteIndex(categoryIndex, itemIndex)
+                  )
+              "
+              @drop="
+                (event) =>
+                  handleItemDrop(event, getAbsoluteIndex(categoryIndex, itemIndex))
+              "
+              @drag-end="handleItemDragEnd"
               @drag-enter="
-                (e, index) =>
-                  handleDragEnter(e, getAbsoluteIndex(categoryIndex, itemIndex))
+                (event) =>
+                  handleItemDragEnter(event, getAbsoluteIndex(categoryIndex, itemIndex))
               "
             />
           </div>
@@ -93,11 +106,11 @@
             :drop-position="dropState.dropPosition"
             @add="$emit('add', $event)"
             @remove="$emit('remove', $event)"
-            @visibility-change="$emit('visibility-change', $event)"
-            @drag-start="(e, item) => handleDragStart(e, item, index)"
-            @drop="(e) => handleDrop(e, index)"
-            @drag-end="$emit('drag-end', $event)"
-            @drag-enter="(e) => handleDragEnter(e, index)"
+            @visibility-change="handleVisibilityChange"
+            @drag-start="(event) => handleItemDragStart(event, item, index)"
+            @drop="(event) => handleItemDrop(event, index)"
+            @drag-end="handleItemDragEnd"
+            @drag-enter="(event) => handleItemDragEnter(event, index)"
           />
         </div>
       </template>
@@ -106,31 +119,32 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onUnmounted, watch } from 'vue'
+import { computed, reactive, onUnmounted } from 'vue'
 import type { ColumnDef, ParameterDefinition } from '../../../composables/types'
 import ColumnListItem from './ColumnListItem.vue'
 import SearchBar from './SearchBar.vue'
 import FilterControls from './FilterControls.vue'
 
-const props = withDefaults(
-  defineProps<{
-    items: (ColumnDef | ParameterDefinition)[]
-    mode: 'active' | 'available'
-    searchTerm?: string
-    isGrouped?: boolean
-    sortBy?: 'name' | 'category' | 'type' | 'fixed'
-    debug?: boolean
-    showFilterOptions?: boolean
-  }>(),
-  {
-    items: () => [],
-    searchTerm: '',
-    isGrouped: true,
-    sortBy: 'category',
-    debug: false,
-    showFilterOptions: false
-  }
-)
+interface Props {
+  items: (ColumnDef | ParameterDefinition)[]
+  mode: 'active' | 'available'
+  searchTerm?: string
+  isGrouped?: boolean
+  sortBy?: 'name' | 'category' | 'type' | 'fixed'
+  debug?: boolean
+  showFilterOptions?: boolean
+  dropPosition?: 'above' | 'below' | null
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  items: () => [],
+  searchTerm: '',
+  isGrouped: true,
+  sortBy: 'category',
+  debug: false,
+  showFilterOptions: false,
+  dropPosition: null
+})
 
 const emit = defineEmits<{
   'update:searchTerm': [value: string]
@@ -143,34 +157,22 @@ const emit = defineEmits<{
   'drag-end': [event: DragEvent]
   'drag-enter': [event: DragEvent, index: number]
   drop: [event: DragEvent, index?: number]
+  reorder: [fromIndex: number, toIndex: number]
 }>()
 
-// Update drag state management
+// Drag state management
 const dropState = reactive({
   dragging: null as string | null,
   targetIndex: null as number | null,
-  dropPosition: null as 'above' | 'below' | null
+  dropPosition: props.dropPosition
 })
 
 // Computed properties
 const safeItems = computed(() => {
-  if (!Array.isArray(props.items)) {
-    console.warn('Items prop is not an array:', props.items)
-    return []
-  }
-
-  const validItems = props.items.filter(
-    (item) => item && typeof item === 'object' && 'field' in item
+  return props.items.filter(
+    (item): item is ColumnDef | ParameterDefinition =>
+      item && typeof item === 'object' && 'field' in item
   )
-
-  if (validItems.length !== props.items.length) {
-    console.warn('Some items were invalid:', {
-      total: props.items.length,
-      valid: validItems.length
-    })
-  }
-
-  return validItems
 })
 
 const filteredItems = computed(() => {
@@ -226,7 +228,11 @@ function isDropTarget(categoryIndex: number | null, itemIndex: number): boolean 
   )
 }
 
-function handleDragStart(
+function handleVisibilityChange(column: ColumnDef, visible: boolean) {
+  emit('visibility-change', column, visible)
+}
+
+function handleItemDragStart(
   event: DragEvent,
   item: ColumnDef | ParameterDefinition,
   index: number
@@ -235,48 +241,20 @@ function handleDragStart(
 
   dropState.dragging = item.field
 
-  event.dataTransfer.setData(
-    'application/json',
-    JSON.stringify({
-      field: item.field,
-      sourceMode: props.mode,
-      item,
-      index
-    })
-  )
+  const dragData = {
+    field: item.field,
+    sourceMode: props.mode,
+    item,
+    index
+  }
+
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('application/json', JSON.stringify(dragData))
 
   emit('drag-start', event, item, index)
 }
 
-function handleDrop(event: DragEvent, index?: number) {
-  event.preventDefault()
-
-  try {
-    const data = JSON.parse(event.dataTransfer?.getData('application/json') || '{}')
-    emit('drop', event, index)
-  } catch (error) {
-    console.error('Drop handling error:', error)
-  } finally {
-    clearDropState()
-  }
-}
-
-function handleDragEnd(event: DragEvent) {
-  // Handle drag end outside valid targets
-  if (!event.dataTransfer?.dropEffect || event.dataTransfer.dropEffect === 'none') {
-    if (props.mode === 'active' && dropState.dragging) {
-      const draggedItem = props.items.find((item) => item.field === dropState.dragging)
-      if (draggedItem) {
-        emit('remove', draggedItem)
-      }
-    }
-  }
-
-  clearDropState()
-  emit('drag-end', event)
-}
-
-function handleDragEnter(event: DragEvent, index: number) {
+function handleItemDragEnter(event: DragEvent, index: number) {
   if (!event.currentTarget) return
 
   const element = event.currentTarget as HTMLElement
@@ -286,68 +264,99 @@ function handleDragEnter(event: DragEvent, index: number) {
 
   dropState.targetIndex = index
   dropState.dropPosition = mouseY < threshold ? 'above' : 'below'
+
+  emit('drag-enter', event, index)
 }
 
-function handleListDragLeave(event: DragEvent) {
-  if (
-    event.target instanceof HTMLElement &&
-    !event.currentTarget?.contains(event.relatedTarget as Node)
-  ) {
-    dropState.targetIndex = null
-    dropState.dropPosition = null
+function handleItemDrop(event: DragEvent, targetIndex?: number) {
+  event.preventDefault()
+
+  try {
+    const rawData = event.dataTransfer?.getData('application/json')
+    if (!rawData) return
+
+    const data = JSON.parse(rawData) as {
+      field: string
+      sourceMode: 'active' | 'available'
+      item: ColumnDef | ParameterDefinition
+      index: number
+    }
+
+    if (data.field && data.sourceMode) {
+      if (
+        data.sourceMode === props.mode &&
+        typeof data.index === 'number' &&
+        typeof targetIndex === 'number'
+      ) {
+        const sourceIndex = data.index
+        const finalTargetIndex =
+          dropState.dropPosition === 'below' ? targetIndex + 1 : targetIndex
+
+        if (sourceIndex !== finalTargetIndex) {
+          emit('reorder', sourceIndex, finalTargetIndex)
+        }
+      } else {
+        if (props.mode === 'active' && 'field' in data.item) {
+          emit('add', data.item as ParameterDefinition)
+        } else {
+          emit('remove', data.item)
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error('Drop handling error:', error.message)
+    }
+  } finally {
+    resetDropState()
   }
 }
 
-function clearDropState() {
+function handleItemDragEnd(event: DragEvent) {
+  emit('drag-end', event)
+  resetDropState()
+}
+
+function handleListDragEnter(event: DragEvent) {
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+}
+
+function handleListDrop(event: DragEvent) {
+  emit('drop', event)
+  resetDropState()
+}
+
+function handleListDragLeave(event: DragEvent) {
+  const target = event.target as HTMLElement
+  const relatedTarget = event.relatedTarget as HTMLElement | null
+
+  if (target && (!relatedTarget || !target.contains(relatedTarget))) {
+    resetDropState()
+  }
+}
+
+function resetDropState() {
   dropState.dragging = null
   dropState.targetIndex = null
   dropState.dropPosition = null
 }
 
-const showDropIndicator = computed(
-  () =>
-    dropState.dragging !== null &&
-    dropState.targetIndex !== null &&
-    dropState.dropPosition !== null
-)
-
-const dropIndicatorStyle = computed(() => {
-  if (!showDropIndicator.value) return {}
-
-  const itemHeight = 40
-  const top = (dropState.targetIndex || 0) * itemHeight
-
-  return {
-    top: `${dropState.dropPosition === 'above' ? top : top + itemHeight}px`,
-    transform: 'translateY(-50%)'
-  }
-})
-
-function handleListDragEnter(event: DragEvent) {
-  if (event.target instanceof HTMLElement) {
-    event.preventDefault()
-    event.dataTransfer!.dropEffect = 'move'
-  }
-}
-
 // Helper functions
 function getAbsoluteIndex(categoryIndex: number, itemIndex: number): number {
-  try {
-    let absoluteIndex = 0
-    const categories = sortedCategories.value
-    const groups = groupedItems.value
+  let absoluteIndex = 0
+  const categories = sortedCategories.value
+  const groups = groupedItems.value
 
-    for (let i = 0; i < categoryIndex; i++) {
-      const category = categories[i]
-      if (category && groups[category]) {
-        absoluteIndex += groups[category].length
-      }
+  for (let i = 0; i < categoryIndex; i++) {
+    const category = categories[i]
+    if (category && groups[category]) {
+      absoluteIndex += groups[category].length
     }
-    return absoluteIndex + itemIndex
-  } catch (error) {
-    console.error('Error in getAbsoluteIndex:', error)
-    return 0
   }
+  return absoluteIndex + itemIndex
 }
 
 // UI State computed
@@ -367,24 +376,8 @@ const localSortBy = computed({
 })
 
 onUnmounted(() => {
-  clearDropState()
+  resetDropState()
 })
-
-// Debug watchers
-if (props.debug) {
-  watch(
-    () => props.items,
-    (newItems) => {
-      console.log('EnhancedColumnList items updated:', {
-        mode: props.mode,
-        total: newItems?.length,
-        safe: safeItems.value.length,
-        timestamp: Date.now()
-      })
-    },
-    { immediate: true }
-  )
-}
 
 const sortOptions = [
   { value: 'name', label: 'Name' },
