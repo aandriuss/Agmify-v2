@@ -1,10 +1,13 @@
+import type { ColumnDef } from './columns/types'
+import type { ParameterDefinition } from '../composables/parameters/parameterManagement'
+
 // Core table types
 export interface TableState {
   columns: ColumnDef[]
-  expandedRows: any[]
+  expandedRows: unknown[]
   sortField?: string
   sortOrder?: number
-  filters?: Record<string, any>
+  filters?: Record<string, unknown>
 }
 
 // Table events
@@ -24,9 +27,14 @@ export interface ColumnReorderEvent {
   target: HTMLElement
 }
 
-// Re-export from specific type files for convenience
-export type { ColumnDef } from './columns/types'
-export type {
-  ParameterDefinition,
-  ParameterGroup
-} from '../../../parameters/composables/types'
+// Re-export types for convenience
+export type { ColumnDef }
+export type { ParameterDefinition }
+
+// Parameter grouping
+export interface ParameterGroup {
+  name: string
+  parameters: ParameterDefinition[]
+  color?: string
+  description?: string
+}

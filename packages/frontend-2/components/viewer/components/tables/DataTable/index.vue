@@ -62,24 +62,37 @@ import { FormButton } from '@speckle/ui-components'
 import { useUserSettings } from '~/composables/useUserSettings'
 import ColumnManager from './components/ColumnManager/index.vue'
 import TableWrapper from './components/TableWrapper/index.vue'
+import {
+  safeJSONClone,
+  validateData,
+  sortColumnsByOrder,
+  isTableRowData,
+  updateLocalColumns as updateColumns,
+  transformToTableRowData
+} from './composables/useTableUtils'
 import type { ColumnDef } from './composables/columns/types'
-import type {
-  ParameterDefinition,
-  TableState,
-  ColumnUpdateEvent
-} from './composables/types'
+import type { CustomParameter } from '~/composables/useUserSettings'
+import type { TableRowData } from '~/components/viewer/schedules/types'
+import { debug } from '~/components/viewer/schedules/utils/debug'
 
-// Props and Emits definitions
 interface Props {
   tableId: string
   tableName?: string
-  data: Record<string, unknown>[]
+  data: TableRowData[]
   columns: ColumnDef[]
   detailColumns: ColumnDef[]
-  availableParentParameters: ParameterDefinition[]
-  availableChildParameters: ParameterDefinition[]
+  availableParentParameters: CustomParameter[]
+  availableChildParameters: CustomParameter[]
   loading?: boolean
   initialState?: TableState
+}
+
+interface TableState {
+  columns: ColumnDef[]
+  expandedRows: TableRowData[]
+  sortField?: string
+  sortOrder?: number
+  filters?: Record<string, unknown>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -88,7 +101,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  'update:expandedRows': [value: Record<string, unknown>[]]
+  'update:expandedRows': [value: TableRowData[]]
   'update:columns': [columns: ColumnDef[]]
   'update:detail-columns': [columns: ColumnDef[]]
   'update:both-columns': [
@@ -107,9 +120,10 @@ const { settings, saveSettings } = useUserSettings()
 const dialogOpen = ref(false)
 const isSaving = ref(false)
 const errorMessage = ref('')
+const isInitialized = ref(false)
 
 // Table State
-const expandedRows = ref<Record<string, unknown>[]>([])
+const expandedRows = ref<TableRowData[]>([])
 const sortField = ref<string>('')
 const sortOrder = ref<number>(1)
 const filters = ref<Record<string, unknown>>({})
@@ -120,25 +134,50 @@ const localChildColumns = ref<ColumnDef[]>([])
 const tempParentColumns = ref<ColumnDef[]>([])
 const tempChildColumns = ref<ColumnDef[]>([])
 
-// Utility Functions
-function safeJSONClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj)) as T
+// Error Handler
+function handleError(error: Error): void {
+  errorMessage.value = error.message
+  emit('error', error)
+  debug.error('DataTable error:', error)
 }
 
-// Sort columns by order
-function sortColumnsByOrder<T extends { order?: number }>(columns: T[]): T[] {
-  return [...columns].sort((a, b) => {
-    const orderA = typeof a.order === 'number' ? a.order : 0
-    const orderB = typeof b.order === 'number' ? b.order : 0
-    return orderA - orderB
-  })
+// State Management Functions
+function initializeState(): void {
+  try {
+    debug.log('Initializing table state')
+    if (props.initialState) {
+      localParentColumns.value = safeJSONClone(
+        sortColumnsByOrder(props.initialState.columns)
+      )
+
+      // Transform expanded rows to TableRowData
+      expandedRows.value = transformToTableRowData(props.initialState.expandedRows)
+
+      sortField.value = props.initialState.sortField || ''
+      sortOrder.value = props.initialState.sortOrder || 1
+      filters.value = props.initialState.filters || {}
+    } else {
+      updateColumns(props.columns, (cols) => (localParentColumns.value = cols))
+      localChildColumns.value = safeJSONClone(props.detailColumns)
+    }
+
+    debug.log('Table state initialized:', {
+      parentColumns: localParentColumns.value,
+      childColumns: localChildColumns.value,
+      data: props.data
+    })
+
+    isInitialized.value = true
+  } catch (error) {
+    handleError(error as Error)
+  }
 }
 
 // Watchers
 watch(
   () => settings.value?.namedTables?.[props.tableId],
   (newTableSettings) => {
-    if (newTableSettings) {
+    if (newTableSettings && isInitialized.value) {
       // Sort columns by order before updating local state
       localParentColumns.value = safeJSONClone(
         sortColumnsByOrder(newTableSettings.parentColumns)
@@ -146,13 +185,48 @@ watch(
       localChildColumns.value = safeJSONClone(
         sortColumnsByOrder(newTableSettings.childColumns)
       )
+      debug.log('Updated columns from settings:', {
+        parent: localParentColumns.value,
+        child: localChildColumns.value
+      })
     }
   },
   { deep: true }
 )
 
-watch(() => props.columns, updateLocalColumns, { deep: true })
-watch(() => props.data, validateData, { immediate: true })
+watch(
+  () => props.columns,
+  (cols) => {
+    if (isInitialized.value) {
+      updateColumns(cols, (c) => (localParentColumns.value = c))
+      debug.log('Updated parent columns from props:', localParentColumns.value)
+    }
+  },
+  { deep: true }
+)
+
+watch(
+  () => props.data,
+  (data) => {
+    if (isInitialized.value) {
+      validateData(data, handleError)
+      debug.log('Updated table data:', data)
+    }
+  }
+)
+
+watch(
+  () => expandedRows.value,
+  (newValue) => {
+    if (isInitialized.value) {
+      debug.log('DataTable expanded rows changed:', {
+        expandedCount: newValue.length,
+        firstExpanded: newValue[0],
+        firstExpandedDetails: newValue[0]?.details
+      })
+    }
+  }
+)
 
 // Initialization
 onMounted(() => {
@@ -163,44 +237,7 @@ onMounted(() => {
   }
 })
 
-// Utility Functions
-function validateData(data: Record<string, unknown>[]): void {
-  if (!Array.isArray(data)) {
-    handleError(new Error('Invalid data format: expected array'))
-  }
-}
-
-function updateLocalColumns(newColumns: ColumnDef[]): void {
-  localParentColumns.value = safeJSONClone(sortColumnsByOrder(newColumns))
-}
-
-// State Management Functions
-function initializeState(): void {
-  if (props.initialState) {
-    localParentColumns.value = safeJSONClone(
-      sortColumnsByOrder(props.initialState.columns)
-    )
-    expandedRows.value = props.initialState.expandedRows.map((row) =>
-      typeof row === 'object' ? (row as Record<string, unknown>) : {}
-    )
-    sortField.value = props.initialState.sortField || ''
-    sortOrder.value = props.initialState.sortOrder || 1
-    filters.value = props.initialState.filters || {}
-  } else {
-    updateLocalColumns(props.columns)
-    localChildColumns.value = safeJSONClone(props.detailColumns)
-  }
-}
-
 // Event Handlers
-function handleError(error: Error): void {
-  errorMessage.value = error.message
-  emit('error', error)
-  // Error logging is important for debugging
-  // eslint-disable-next-line no-console
-  console.error('DataTable error:', error)
-}
-
 function openDialog(): void {
   try {
     tempParentColumns.value = safeJSONClone(localParentColumns.value)
@@ -211,7 +248,10 @@ function openDialog(): void {
   }
 }
 
-function handleColumnsUpdate(updates: ColumnUpdateEvent): void {
+function handleColumnsUpdate(updates: {
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+}): void {
   tempParentColumns.value = safeJSONClone(updates.parentColumns)
   tempChildColumns.value = safeJSONClone(updates.childColumns)
 }
@@ -282,6 +322,10 @@ async function handleApply(): Promise<void> {
     })
 
     dialogOpen.value = false
+    debug.log('Applied column updates:', {
+      parent: localParentColumns.value,
+      child: localChildColumns.value
+    })
   } catch (error) {
     handleError(error as Error)
     // Revert temp columns on error
@@ -380,6 +424,10 @@ async function handleColumnReorder(event: {
     }
 
     emit('column-reorder', { target })
+    debug.log('Reordered columns:', {
+      parent: localParentColumns.value,
+      child: localChildColumns.value
+    })
   } catch (error) {
     handleError(error as Error)
   } finally {
@@ -388,7 +436,12 @@ async function handleColumnReorder(event: {
 }
 
 // Row Management Functions
-function handleRowExpand(row: Record<string, unknown>): void {
+function handleRowExpand(row: unknown): void {
+  if (!isTableRowData(row)) {
+    handleError(new Error('Invalid row data'))
+    return
+  }
+
   const rows = expandedRows.value
   if (!rows.includes(row)) {
     rows.push(row)
@@ -396,7 +449,12 @@ function handleRowExpand(row: Record<string, unknown>): void {
   }
 }
 
-function handleRowCollapse(row: Record<string, unknown>): void {
+function handleRowCollapse(row: unknown): void {
+  if (!isTableRowData(row)) {
+    handleError(new Error('Invalid row data'))
+    return
+  }
+
   const rows = expandedRows.value
   const index = rows.indexOf(row)
   if (index > -1) {
@@ -416,6 +474,24 @@ function handleFilter(newFilters: Record<string, unknown>): void {
   filters.value = newFilters
   emit('filter', newFilters)
 }
+
+// Debug data flow
+watch(
+  () => props.data,
+  (newData) => {
+    if (isInitialized.value) {
+      debug.log('DataTable data received:', {
+        rowCount: newData.length,
+        firstRow: newData[0],
+        firstRowDetails: newData[0]?.details,
+        withDetails: newData.filter(
+          (row) => Array.isArray(row.details) && row.details.length > 0
+        ).length,
+        detailsExample: newData[0]?.details?.[0]
+      })
+    }
+  }
+)
 </script>
 
 <style scoped>

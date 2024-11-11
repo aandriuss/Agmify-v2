@@ -12,6 +12,27 @@ export interface ColumnConfig {
   order: number
 }
 
+// Base parameter interface with required fields
+interface BaseParameter {
+  field: string
+  header: string
+  category?: string
+  color?: string
+  description?: string
+  removable?: boolean
+  visible?: boolean
+  order?: number
+}
+
+// Custom parameter interface extending base parameter
+export interface CustomParameter extends BaseParameter {
+  id: string
+  name: string
+  type: 'fixed' | 'equation'
+  value?: string
+  equation?: string
+}
+
 export interface NamedTableConfig {
   id: string
   name: string
@@ -21,6 +42,7 @@ export interface NamedTableConfig {
     selectedParentCategories: string[]
     selectedChildCategories: string[]
   }
+  customParameters?: CustomParameter[]
   lastUpdateTimestamp?: number
 }
 
@@ -68,7 +90,7 @@ export function useUserSettings() {
   } = useQuery<GetUserSettingsResponse>(GET_USER_SETTINGS)
 
   // Watch for remote changes
-  watch(
+  const stopSettingsWatch = watch(
     () => result.value?.activeUser?.userSettings,
     (newSettings: UserSettings | null | undefined) => {
       if (!newSettings) return
@@ -82,6 +104,42 @@ export function useUserSettings() {
       loading.value = true
       error.value = null
       await refetch()
+
+      // Wait for settings to be populated
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Timeout waiting for settings'))
+        }, 10000)
+
+        // Check immediately
+        if (result.value?.activeUser?.userSettings) {
+          clearTimeout(timeout)
+          settings.value = result.value.activeUser.userSettings
+          resolve()
+          return
+        }
+
+        // If not available immediately, set up a watcher
+        const stopWatch = watch(
+          () => result.value?.activeUser?.userSettings,
+          (newSettings) => {
+            if (newSettings) {
+              clearTimeout(timeout)
+              settings.value = newSettings
+              stopWatch()
+              resolve()
+            }
+          }
+        )
+
+        // Clean up on timeout
+        timeout.unref?.() // Optional chaining for Node.js environments
+      })
+
+      // Double check settings are populated
+      if (!settings.value) {
+        throw new Error('Failed to load settings: Settings not found')
+      }
     } catch (err) {
       error.value = err instanceof Error ? err : new Error('Failed to load settings')
       throw error.value
@@ -155,6 +213,20 @@ export function useUserSettings() {
               selectedChildCategories:
                 table.categoryFilters?.selectedChildCategories || []
             },
+            customParameters:
+              table.customParameters?.map((param) => ({
+                id: param.id,
+                name: param.name,
+                type: param.type,
+                value: param.value,
+                equation: param.equation,
+                field: param.name,
+                header: param.name,
+                category: 'Custom Parameters',
+                removable: true,
+                visible: true,
+                order: param.order
+              })) || [],
             lastUpdateTimestamp: Date.now()
           }
         }),
@@ -269,6 +341,11 @@ export function useUserSettings() {
     }
   }
 
+  // Clean up watchers on component unmount
+  const cleanup = () => {
+    stopSettingsWatch()
+  }
+
   return {
     settings,
     loading: loading.value || queryLoading.value,
@@ -276,6 +353,7 @@ export function useUserSettings() {
     loadSettings,
     saveSettings,
     createNamedTable,
-    updateNamedTable
+    updateNamedTable,
+    cleanup
   }
 }

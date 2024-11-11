@@ -1,11 +1,17 @@
-import type { ParameterDefinition } from '../../../../parameters/composables/types'
-
-export interface ColumnDef extends ParameterDefinition {
+export interface ColumnDef {
+  field: string
+  header: string
+  type: string
   visible: boolean
   removable?: boolean
   width?: number
   order: number
-  headerComponent?: any
+  headerComponent?: unknown
+  category?: string
+  description?: string
+  isFixed?: boolean
+  isCustomParameter?: boolean
+  parameterRef?: string
 }
 
 export interface ColumnGroup {
@@ -15,7 +21,7 @@ export interface ColumnGroup {
 
 export interface DragItem {
   type: 'column' | 'parameter'
-  data: ColumnDef | ParameterDefinition
+  data: ColumnDef
   sourceIndex: number
   sourceList: 'active' | 'available'
   sourceCategory?: string
@@ -36,7 +42,20 @@ export interface UseColumnsOptions {
   initialColumns: ColumnDef[]
   searchTerm?: Ref<string>
   isGrouped?: Ref<boolean>
-  sortBy?: Ref<'name' | 'category' | 'type' | 'fixed'>
+  sortBy?: Ref<SortBy>
   selectedCategories?: Ref<string[]>
   onUpdate?: (columns: ColumnDef[]) => void
+}
+
+// Type guard for ColumnDef
+export function isColumnDef(value: unknown): value is ColumnDef {
+  if (!value || typeof value !== 'object') return false
+  const col = value as Record<string, unknown>
+  return (
+    typeof col.field === 'string' &&
+    typeof col.header === 'string' &&
+    typeof col.type === 'string' &&
+    typeof col.visible === 'boolean' &&
+    typeof col.order === 'number'
+  )
 }

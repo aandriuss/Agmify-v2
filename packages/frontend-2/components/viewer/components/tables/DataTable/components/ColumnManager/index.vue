@@ -142,7 +142,8 @@ import Button from 'primevue/button'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import TabSelector from './TabSelector.vue'
 import EnhancedColumnList from './shared/EnhancedColumnList.vue'
-import type { ColumnDef, ParameterDefinition } from '../../composables/types'
+import type { ColumnDef } from '../../composables/types'
+import type { CustomParameter } from '~/composables/useUserSettings'
 import { useColumnManager } from '~/components/viewer/components/tables/DataTable/composables/columns/useColumnManager'
 
 // Props and Emits
@@ -152,8 +153,8 @@ interface Props {
   tableName: string
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-  availableParentParameters: ParameterDefinition[]
-  availableChildParameters: ParameterDefinition[]
+  availableParentParameters: CustomParameter[]
+  availableChildParameters: CustomParameter[]
   debug?: boolean
 }
 
@@ -264,15 +265,15 @@ const toggleFilterOptions = () => {
   showFilterOptions.value = !showFilterOptions.value
 }
 
-const handleAdd = async (item: ParameterDefinition | ColumnDef) => {
+const handleAdd = async (item: CustomParameter | ColumnDef) => {
   await columnManager.handleColumnOperation({
     type: 'add',
-    column: item as ParameterDefinition
+    column: item as CustomParameter
   })
   listRefreshKey.value++
 }
 
-const handleRemove = async (item: ParameterDefinition | ColumnDef) => {
+const handleRemove = async (item: CustomParameter | ColumnDef) => {
   await columnManager.handleColumnOperation({
     type: 'remove',
     column: item as ColumnDef
@@ -290,7 +291,7 @@ const handleReorder = async (fromIndex: number, toIndex: number) => {
 }
 
 const handleVisibilityChange = async (
-  item: ParameterDefinition | ColumnDef,
+  item: CustomParameter | ColumnDef,
   visible: boolean
 ) => {
   await columnManager.handleColumnOperation({
@@ -303,7 +304,7 @@ const handleVisibilityChange = async (
 
 const handleDragStart = (
   event: DragEvent,
-  item: ColumnDef | ParameterDefinition,
+  item: ColumnDef | CustomParameter,
   index: number
 ) => {
   dropState.dragging = item.field
@@ -342,7 +343,7 @@ const handleDrop = async (event: DragEvent, targetIndex?: number) => {
     await handleReorder(sourceIndex, targetIndex)
   } else {
     const sourceItem = columnManager.availableParameters.value.find(
-      (p: ParameterDefinition) => p.field === dropState.dragging
+      (p: CustomParameter) => p.field === dropState.dragging
     )
     if (sourceItem) {
       await handleAdd(sourceItem)
