@@ -4,11 +4,13 @@ import type {
   ElementData,
   TreeItemComponentModel,
   AvailableHeaders,
-  ElementsDataReturn
+  ElementsDataReturn,
+  ParameterValue
 } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 import { debug } from '../utils/debug'
+import { BASIC_PARAMETERS, getNestedValue } from '../config/parameters'
 
 interface ElementsDataOptions {
   currentTableColumns: Ref<ColumnDef[]>
@@ -44,58 +46,46 @@ export function useElementsData({
     child: new Set(['Uncategorized'])
   })
 
+  // =============================================
+  // DO NOT MODIFY: Raw Data Collection Section
+  // This section logs raw BIM data from WorldTree
+  // Note: Using any types intentionally to log raw data structure
   function processElements(nodes: TreeItemComponentModel[]): ElementData[] {
     const result: ElementData[] = []
 
-    function processNode(node: TreeItemComponentModel): void {
-      // Keep raw logging
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function processNode(node: any): void {
+      // Log raw node data
       debug.log('📦 Node:', node)
 
-      const model = (node as any).model
-      if (model?.raw) {
-        debug.log('🔍 Model:', model)
-        debug.log('📄 Raw:', model.raw)
+      if (node.model?.raw) {
+        const raw = node.model.raw
+        debug.log('🔍 Model:', node.model)
+        debug.log('📄 Raw:', raw)
 
-        const raw = model.raw
+        // Create element from raw data
         if (raw.speckle_type?.startsWith('IFC')) {
+          const parameters: Record<string, ParameterValue> = {}
+
+          // Add basic parameters
+          BASIC_PARAMETERS.forEach((param) => {
+            const value = getNestedValue(raw, param.path) || raw[param.fallback] || ''
+            if (value) {
+              parameters[param.name] = value.toString()
+            }
+          })
+
           const element: ElementData = {
             id: raw.id || '',
             type: raw.speckle_type || 'Unknown',
-            mark: raw['Identity Data']?.Mark || raw.Tag || '',
-            category: raw.Other?.Category || 'Uncategorized',
-            host: raw.Constraints?.Host || '',
-            details: []
+            mark: getNestedValue(raw, ['Identity Data', 'Mark']) || raw.Tag || '',
+            category: getNestedValue(raw, ['Other', 'Category']) || 'Uncategorized',
+            host: getNestedValue(raw, ['Constraints', 'Host']) || '',
+            parameters,
+            details: [] // Will be populated with child elements later
           }
 
-          // Add dimensions and other properties
-          const dimensions = raw.Dimensions || {}
-          const constraints = raw.Constraints || {}
-          const structural = raw.Structural || {}
-
-          element.details = [
-            { name: 'Length', value: dimensions.Length?.toString() || '' },
-            { name: 'Volume', value: dimensions.Volume?.toString() || '' },
-            {
-              name: 'Base Offset',
-              value: constraints['Base Offset']?.toString() || ''
-            },
-            { name: 'Top Offset', value: constraints['Top Offset']?.toString() || '' },
-            { name: 'Structural Usage', value: structural['Structural Usage'] || '' }
-          ]
-
-          // Add type-specific properties
-          if (raw.speckle_type === 'IFCWALL') {
-            element.details.push(
-              { name: 'Area', value: dimensions.Area?.toString() || '' },
-              { name: 'Room Bounding', value: constraints['Room Bounding'] || '' }
-            )
-          } else if (raw.speckle_type === 'IFCBEAM') {
-            element.details.push(
-              { name: 'Cut Length', value: structural['Cut Length']?.toString() || '' },
-              { name: 'Host Wall', value: constraints.Host || '' }
-            )
-          }
-
+          // Add to result array
           result.push(element)
           debug.log('✨ Created Element:', element)
         }
@@ -103,7 +93,7 @@ export function useElementsData({
 
       // Process children recursively
       if (node.children?.length) {
-        node.children.forEach((child) => processNode(child))
+        node.children.forEach((child: any) => processNode(child))
       }
     }
 
@@ -116,6 +106,9 @@ export function useElementsData({
 
     return result
   }
+  // =============================================
+  // END Raw Data Collection Section
+  // =============================================
 
   async function updateCategories(
     parentCategories: string[],
