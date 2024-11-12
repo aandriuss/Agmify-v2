@@ -85,12 +85,19 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
         ? evaluatedData.value
         : scheduleData.value
 
+    // Filter out invisible items
+    const visibleData = sourceData.filter((item) => {
+      const isVisible = '_visible' in item ? item._visible : true
+      return isVisible
+    })
+
     debug.log('🔍 SOURCE DATA SELECTION:', {
       timestamp: new Date().toISOString(),
       source: hasVisibleParameterColumns ? 'evaluatedData' : 'scheduleData',
       hasCustomParameters: customParameters.value.length > 0,
-      sourceDataLength: sourceData?.length || 0,
-      firstItem: sourceData?.[0],
+      totalCount: sourceData?.length || 0,
+      visibleCount: visibleData?.length || 0,
+      firstItem: visibleData?.[0],
       columns: {
         tableColumns: mergedTableColumns.value.length,
         detailColumns: mergedDetailColumns.value.length,
@@ -100,13 +107,13 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
       }
     })
 
-    if (!Array.isArray(sourceData)) {
-      debug.error('❌ Source data is not an array:', sourceData)
+    if (!Array.isArray(visibleData)) {
+      debug.error('❌ Source data is not an array:', visibleData)
       return []
     }
 
     // Validate each item
-    const validItems = sourceData.filter((item) => {
+    const validItems = visibleData.filter((item) => {
       const valid = isValidElementData(item)
       if (!valid) {
         debug.warn('❌ Invalid item filtered out:', {
@@ -134,9 +141,9 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
 
     debug.log('✅ Valid source data:', {
       timestamp: new Date().toISOString(),
-      totalItems: sourceData.length,
+      totalItems: visibleData.length,
       validItems: validItems.length,
-      invalidItems: sourceData.length - validItems.length,
+      invalidItems: visibleData.length - validItems.length,
       firstValidItem: validItems[0]
     })
 

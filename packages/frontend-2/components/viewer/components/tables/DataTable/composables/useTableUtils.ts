@@ -122,8 +122,8 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
   })
 
   const transformedData = validItems.map((item) => {
-    // Extract required fields
-    const { id, mark, category, type, name, host, details, ...rest } = item
+    // Extract required fields and visibility flag
+    const { id, mark, category, type, name, host, details, _visible, ...rest } = item
 
     debug.log(DebugCategories.DATA_TRANSFORM, 'Processing item', {
       timestamp: new Date().toISOString(),
@@ -135,6 +135,7 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
         type,
         name,
         host,
+        _visible,
         hasDetails: Array.isArray(details),
         detailsCount: Array.isArray(details) ? details.length : 0
       },
@@ -155,6 +156,8 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
             type: String(detail.type || ''),
             name: String(detail.name || ''),
             host: String(detail.host || ''),
+            _visible:
+              typeof detail._visible === 'boolean' ? detail._visible : undefined,
             ...detail
           }))
       : undefined
@@ -167,6 +170,7 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
       type: String(type || ''),
       name: String(name || ''),
       host: String(host || ''),
+      _visible: typeof _visible === 'boolean' ? _visible : undefined,
       ...rest
     }
 
@@ -180,18 +184,26 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
       hasDetails: Array.isArray(transformedItem.details),
       detailsCount: Array.isArray(transformedItem.details)
         ? transformedItem.details.length
-        : 0
+        : 0,
+      isVisible: transformedItem._visible
     })
 
     return transformedItem
   })
 
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Transformation complete', {
-    timestamp: new Date().toISOString(),
-    outputCount: transformedData.length,
-    firstTransformedItem: transformedData[0],
-    allTransformedItems: transformedData
+  // Filter out invisible items
+  const visibleData = transformedData.filter((item) => {
+    const isVisible = typeof item._visible === 'boolean' ? item._visible : true
+    return isVisible
   })
 
-  return transformedData
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Transformation complete', {
+    timestamp: new Date().toISOString(),
+    totalCount: transformedData.length,
+    visibleCount: visibleData.length,
+    firstTransformedItem: visibleData[0],
+    allTransformedItems: visibleData
+  })
+
+  return visibleData
 }

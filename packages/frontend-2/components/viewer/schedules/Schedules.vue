@@ -3,12 +3,12 @@
     <LayoutPanel :initial-width="400" @close="handleClose">
       <template #header>
         <ScheduleHeader
-          v-model:selected-table-id="selectedTableId"
-          v-model:table-name="tableName"
-          :tables="tablesArray"
+          v-model:selected-table-id="state.selectedTableId"
+          v-model:table-name="state.tableName"
+          :tables="state.tablesArray"
           :show-category-options="showCategoryOptions"
           @table-change="handleTableChange"
-          @save="saveTable"
+          @save="handleSaveTable"
           @manage-parameters="toggleParameterManager"
           @toggle-category-options="toggleCategoryOptions"
         />
@@ -20,32 +20,84 @@
           :error="loadingError"
           @recovery-action="handleRecoveryAction"
         />
+
         <!-- Category Filters -->
         <ScheduleCategoryFilters
           :show-category-options="showCategoryOptions"
-          :parent-categories="availableParentCategories"
-          :child-categories="availableChildCategories"
-          :selected-parent-categories="selectedParentCategories"
-          :selected-child-categories="selectedChildCategories"
+          :parent-categories="parentCategories"
+          :child-categories="childCategories"
+          :selected-parent-categories="state.selectedParentCategories"
+          :selected-child-categories="state.selectedChildCategories"
           :is-initialized="initialized"
-          @toggle-category="toggleCategory"
+          @toggle-category="handleToggleCategory"
+        />
+
+        <!-- Core Components -->
+        <ScheduleInitialization
+          ref="initComponent"
+          v-model:initialized="initialized"
+          @settings-loaded="handleSettingsLoaded"
+          @data-initialized="handleDataInitialized"
+          @error="handleError"
+        />
+
+        <ScheduleDataManagement
+          v-if="initialized"
+          ref="dataComponent"
+          :schedule-data="state.scheduleData"
+          :evaluated-data="state.evaluatedData"
+          :custom-parameters="state.customParameters"
+          :merged-table-columns="state.mergedTableColumns"
+          :merged-detail-columns="state.mergedDetailColumns"
+          :is-initialized="initialized"
+          @update:table-data="handleTableDataUpdate"
+          @error="handleError"
+        />
+
+        <ScheduleParameterHandling
+          v-if="initialized"
+          ref="parameterComponent"
+          :schedule-data="state.scheduleData"
+          :custom-parameters="state.customParameters"
+          :selected-parent-categories="state.selectedParentCategories"
+          :selected-child-categories="state.selectedChildCategories"
+          :available-headers="state.availableHeaders"
+          :is-initialized="initialized"
+          @update:parameter-columns="handleParameterColumnsUpdate"
+          @update:evaluated-data="handleEvaluatedDataUpdate"
+          @update:merged-parent-parameters="handleMergedParentParametersUpdate"
+          @update:merged-child-parameters="handleMergedChildParametersUpdate"
+          @error="handleError"
+        />
+
+        <ScheduleColumnManagement
+          v-if="initialized"
+          ref="columnComponent"
+          :current-table-columns="state.currentTableColumns"
+          :current-detail-columns="state.currentDetailColumns"
+          :parameter-columns="state.parameterColumns"
+          :is-initialized="initialized"
+          @update:merged-table-columns="handleMergedTableColumnsUpdate"
+          @update:merged-detail-columns="handleMergedDetailColumnsUpdate"
+          @column-visibility-change="handleColumnVisibilityChange"
+          @error="handleError"
         />
 
         <!-- Table Content -->
         <ScheduleTableContent
-          :selected-table-id="selectedTableId"
-          :current-table="currentTable"
+          :selected-table-id="state.selectedTableId"
+          :current-table="state.currentTable"
           :is-initialized="initialized"
-          :table-data="tableData"
-          :schedule-data="scheduleData"
-          :table-name="tableName"
-          :current-table-id="currentTableId"
-          :table-key="tableKey"
+          :table-data="state.tableData"
+          :schedule-data="state.scheduleData"
+          :table-name="state.tableName"
+          :current-table-id="state.currentTableId"
+          :table-key="state.tableKey"
           :loading-error="loadingError"
-          :merged-table-columns="mergedTableColumns"
-          :merged-detail-columns="mergedDetailColumns"
-          :merged-parent-parameters="mergedParentParameters"
-          :merged-child-parameters="mergedChildParameters"
+          :merged-table-columns="state.mergedTableColumns"
+          :merged-detail-columns="state.mergedDetailColumns"
+          :merged-parent-parameters="state.mergedParentParameters"
+          :merged-child-parameters="state.mergedChildParameters"
           @update:both-columns="handleBothColumnsUpdate"
           @table-updated="handleTableUpdate"
           @column-visibility-change="handleColumnVisibilityChange"
@@ -54,7 +106,7 @@
         <!-- Parameter Manager Modal -->
         <ScheduleParameterManagerModal
           v-model:show="showParameterManager"
-          :table-id="currentTableId"
+          :table-id="state.currentTableId"
           @update="handleParameterUpdate"
         />
       </div>
@@ -63,8 +115,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ref, reactive } from 'vue'
 import { LayoutPanel } from '@speckle/ui-components'
+import type {
+  ElementData,
+  TableConfig,
+  TableRowData,
+  ScheduleInitializationExposed,
+  ScheduleDataManagementExposed,
+  ScheduleParameterHandlingExposed,
+  ScheduleColumnManagementExposed
+} from './types'
+import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type { CustomParameter, NamedTableConfig } from '~/composables/useUserSettings'
+import { parentCategories, childCategories } from './config/categories'
 
 // Components
 import ScheduleHeader from './components/ScheduleHeader.vue'
@@ -72,26 +136,47 @@ import ScheduleCategoryFilters from './components/ScheduleCategoryFilters.vue'
 import ScheduleTableContent from './components/ScheduleTableContent.vue'
 import ScheduleErrorAlert from './components/ScheduleErrorAlert.vue'
 import ScheduleParameterManagerModal from './components/ScheduleParameterManagerModal.vue'
+import ScheduleInitialization from './components/ScheduleInitialization.vue'
+import ScheduleDataManagement from './components/ScheduleDataManagement.vue'
+import ScheduleParameterHandling from './components/ScheduleParameterHandling.vue'
+import ScheduleColumnManagement from './components/ScheduleColumnManagement.vue'
 
 // Composables
-import { useUserSettings } from '~/composables/useUserSettings'
-import { useElementsData } from './composables/useElementsData'
-import { useScheduleDataTransform } from './composables/useScheduleDataTransform'
-import { useScheduleCategories } from './composables/useScheduleCategories'
-import { useScheduleParameters } from './composables/useScheduleParameters'
-import { useScheduleTable } from './composables/useScheduleTable'
-import { useScheduleTableUpdates } from './composables/useScheduleTableUpdates'
-import { useParameterManagement } from './composables/useParameterManagement'
-import { useScheduleWatchers } from './composables/useScheduleWatchers'
-import { useMergedColumns } from './composables/useMergedColumns'
-import { useScheduleInitializationFlow } from './composables/useScheduleInitializationFlow'
-import { useColumnVisibility } from './composables/useColumnVisibility'
-import { useTableConfigConversion } from './composables/useTableConfigConversion'
 import { useScheduleUIState } from './composables/useScheduleUIState'
 import { useScheduleEmits } from './composables/useScheduleEmits'
-import { useDataOrganization } from './composables/useDataOrganization'
-import { debug } from './utils/debug'
-import type { CustomParameter } from '~/composables/useUserSettings'
+import { debug, DebugCategories } from './utils/debug'
+
+interface ProcessedHeader {
+  field: string
+  header?: string
+  category?: string
+}
+
+interface ScheduleState {
+  selectedTableId: string
+  tableName: string
+  currentTableId: string
+  tableKey: string
+  tablesArray: { id: string; name: string }[]
+  currentTable: TableConfig | null
+  scheduleData: ElementData[]
+  evaluatedData: ElementData[]
+  tableData: TableRowData[]
+  customParameters: CustomParameter[]
+  parameterColumns: ColumnDef[]
+  currentTableColumns: ColumnDef[]
+  currentDetailColumns: ColumnDef[]
+  mergedTableColumns: ColumnDef[]
+  mergedDetailColumns: ColumnDef[]
+  mergedParentParameters: CustomParameter[]
+  mergedChildParameters: CustomParameter[]
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
+  availableHeaders: {
+    parent: ProcessedHeader[]
+    child: ProcessedHeader[]
+  }
+}
 
 // Emits
 const emit = defineEmits<{
@@ -100,23 +185,51 @@ const emit = defineEmits<{
 
 const { handleClose } = useScheduleEmits({ emit })
 
-// Initialization state
+// Component refs with proper typing
+const initComponent = ref<
+  (InstanceType<typeof ScheduleInitialization> & ScheduleInitializationExposed) | null
+>(null)
+const dataComponent = ref<
+  (InstanceType<typeof ScheduleDataManagement> & ScheduleDataManagementExposed) | null
+>(null)
+const parameterComponent = ref<
+  | (InstanceType<typeof ScheduleParameterHandling> & ScheduleParameterHandlingExposed)
+  | null
+>(null)
+const columnComponent = ref<
+  | (InstanceType<typeof ScheduleColumnManagement> & ScheduleColumnManagementExposed)
+  | null
+>(null)
+
+// State
 const initialized = ref(false)
+const loadingError = ref<Error | null>(null)
 
-// User Settings
-const {
-  settings,
-  loadSettings,
-  updateNamedTable,
-  cleanup: cleanupSettings
-} = useUserSettings()
-
-// Data Organization
-const { updateRootNodes } = useDataOrganization()
-
-// Table Config Conversion
-const { convertAndUpdateTable } = useTableConfigConversion({
-  updateNamedTable
+// Initialize state with default values
+const state = reactive<ScheduleState>({
+  selectedTableId: '',
+  tableName: '',
+  currentTableId: '',
+  tableKey: Date.now().toString(),
+  tablesArray: [],
+  currentTable: null,
+  scheduleData: [],
+  evaluatedData: [],
+  tableData: [],
+  customParameters: [],
+  parameterColumns: [],
+  currentTableColumns: [],
+  currentDetailColumns: [],
+  mergedTableColumns: [],
+  mergedDetailColumns: [],
+  mergedParentParameters: [],
+  mergedChildParameters: [],
+  selectedParentCategories: [],
+  selectedChildCategories: [],
+  availableHeaders: {
+    parent: [],
+    child: []
+  }
 })
 
 // UI State
@@ -127,471 +240,323 @@ const {
   toggleParameterManager
 } = useScheduleUIState()
 
-// Initialize elements data first
-const {
-  scheduleData,
-  updateCategories: updateElementsDataCategories,
-  availableHeaders,
-  availableCategories,
-  initializeData: initElementsData,
-  stopWorldTreeWatch
-} = useElementsData({
-  currentTableColumns: ref([]),
-  currentDetailColumns: ref([]),
-  isInitialized: initialized
-})
+// Event Handlers
+function handleError(error: Error) {
+  debug.error(DebugCategories.ERROR, 'Component error:', error)
+  loadingError.value = error
+}
 
-// Initialize table with elements data
-const {
-  selectedTableId,
-  tableName,
-  selectedParentCategories,
-  selectedChildCategories,
-  tableKey,
-  loadingError,
-  currentTableId,
-  currentTable,
-  currentTableColumns,
-  currentDetailColumns,
-  tablesArray,
-  handleTableChange,
-  handleTableSelection,
-  updateCategories
-} = useScheduleTable({
-  settings,
-  updateCategories: updateElementsDataCategories,
-  isInitialized: initialized
-})
-
-// Initialize table updates
-const { handleBothColumnsUpdate, handleParameterUpdate, handleTableUpdate, saveTable } =
-  useScheduleTableUpdates({
-    settings,
-    currentTableId,
-    currentTable,
-    selectedTableId,
-    tableName,
-    selectedParentCategories,
-    selectedChildCategories,
-    currentTableColumns,
-    currentDetailColumns,
-    updateNamedTable: convertAndUpdateTable,
-    updateCategories,
-    loadSettings,
-    handleTableSelection,
-    isInitialized: initialized
+function handleSettingsLoaded(settings: {
+  namedTables: Record<string, NamedTableConfig>
+}) {
+  debug.log(DebugCategories.INITIALIZATION, 'Settings loaded event received', {
+    initComponent: !!initComponent.value,
+    hasSettings: !!settings,
+    hasNamedTables: !!settings?.namedTables,
+    rawSettings: settings,
+    rawNamedTables: settings?.namedTables
   })
 
-// Initialize category management
-const { toggleCategory, availableParentCategories, availableChildCategories } =
-  useScheduleCategories({
-    updateCategories,
-    isInitialized: initialized
-  })
-
-// Parameter Management
-const customParameters = computed<CustomParameter[]>(() => {
-  const params = currentTable.value?.customParameters || []
-  return params.map((param): CustomParameter => {
-    if (!param || typeof param !== 'object') {
-      return {
-        id: crypto.randomUUID(),
-        name: 'Unknown Parameter',
-        type: 'fixed',
-        value: '',
-        field: 'unknown',
-        header: 'Unknown Parameter',
-        category: 'Custom Parameters',
-        removable: true,
-        visible: true
-      }
-    }
-
-    const customParam = param as CustomParameter
-    return {
-      id: customParam.id || crypto.randomUUID(),
-      name: customParam.name || 'Unknown Parameter',
-      type: customParam.type || 'fixed',
-      value: customParam.value || '',
-      equation: customParam.equation,
-      field: customParam.name || 'unknown',
-      header: customParam.name || 'Unknown Parameter',
-      category: 'Custom Parameters',
-      removable: true,
-      visible: true
-    }
-  })
-})
-
-// Initialize parameter management
-const { parameterColumns, evaluatedData, updateParameterVisibility } =
-  useParameterManagement({
-    parameters: customParameters,
-    data: scheduleData,
-    isInitialized: initialized
-  })
-
-// Initialize schedule parameters
-const { mergedParentParameters, mergedChildParameters } = useScheduleParameters({
-  availableHeaders,
-  customParameters,
-  selectedParentCategories,
-  selectedChildCategories,
-  isInitialized: initialized
-})
-
-// Initialize merged columns
-const { mergedTableColumns, mergedDetailColumns } = useMergedColumns({
-  currentTableColumns: computed(() => currentTableColumns.value),
-  currentDetailColumns: computed(() => currentDetailColumns.value),
-  parameterColumns,
-  isInitialized: initialized
-})
-
-// Initialize data transform
-const { tableData } = useScheduleDataTransform({
-  scheduleData,
-  evaluatedData,
-  customParameters,
-  mergedTableColumns: computed(() => mergedTableColumns.value),
-  mergedDetailColumns: computed(() => mergedDetailColumns.value),
-  isInitialized: initialized
-})
-
-// Initialize column visibility
-const { handleColumnVisibilityChange } = useColumnVisibility({
-  updateParameterVisibility
-})
-
-// Initialize initialization flow
-const { initialize } = useScheduleInitializationFlow({
-  initializeData: async () => {
-    await initElementsData()
-  },
-  updateRootNodes,
-  waitForData: async <T>(
-    getValue: () => T | undefined | null,
-    validate: (value: T) => boolean,
-    timeout = 10000
-  ): Promise<T> => {
-    const start = Date.now()
-    let value = getValue()
-
-    while ((!value || !validate(value)) && Date.now() - start < timeout) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-      value = getValue()
-    }
-
-    if (!value || !validate(value)) {
-      throw new Error('Timeout waiting for data')
-    }
-
-    return value
-  },
-  loadSettings,
-  handleTableSelection,
-  currentTable,
-  selectedTableId,
-  currentTableId,
-  isInitialized: initialized,
-  loadingError,
-  scheduleData
-})
-
-// Store cleanup functions
-const cleanupFunctions = ref<(() => void)[]>([])
-
-// Recovery action handler
-async function handleRecoveryAction() {
   try {
-    debug.startState('recoveryAction')
-    debug.log('🔄 Starting recovery action:', {
-      timestamp: new Date().toISOString(),
-      error: loadingError.value?.message,
-      state: {
-        isInitialized: initialized.value,
-        hasCurrentTable: !!currentTable.value,
-        selectedTableId: selectedTableId.value
-      }
+    if (!settings?.namedTables) {
+      debug.warn(DebugCategories.INITIALIZATION, 'No named tables in settings')
+      state.tablesArray = []
+      return
+    }
+
+    // Map tables to array
+    const tables = Object.entries(settings.namedTables).map(([id, table]) => ({
+      id,
+      name: table.name
+    }))
+
+    // Update state
+    state.tablesArray = tables
+
+    // Select first table by default if available
+    if (tables.length > 0 && !state.selectedTableId) {
+      const firstTable = tables[0]
+      state.selectedTableId = firstTable.id
+      state.tableName = firstTable.name
+      void handleTableChange()
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'Tables processed:', {
+      count: tables.length,
+      tables,
+      rawNamedTables: settings.namedTables
     })
-
-    // Reset error state
-    loadingError.value = null
-
-    // Reset initialization state
-    initialized.value = false
-
-    // Clean up any existing watchers
-    cleanupFunctions.value.forEach((cleanup) => {
-      try {
-        cleanup()
-      } catch (cleanupErr) {
-        debug.warn('Error during cleanup:', cleanupErr)
-      }
-    })
-    cleanupFunctions.value = []
-
-    // Reload settings
-    await loadSettings()
-
-    // Run initialization again
-    await initialize()
-    debug.log('Core initialization complete')
-
-    // Only set up watchers after core initialization
-    debug.startState('watcherSetup')
-
-    // Setup watchers only after initialization
-    const { stopWatchers } = useScheduleWatchers({
-      currentTable,
-      scheduleData,
-      tableData,
-      mergedTableColumns: computed(() => mergedTableColumns.value),
-      mergedDetailColumns: computed(() => mergedDetailColumns.value),
-      customParameters,
-      parameterColumns,
-      evaluatedData,
-      availableHeaders,
-      mergedParentParameters,
-      mergedChildParameters,
-      selectedParentCategories,
-      selectedChildCategories,
-      settings,
-      tablesArray,
-      tableName,
-      selectedTableId,
-      currentTableId,
-      tableKey,
-      showCategoryOptions,
-      showParameterManager,
-      loadingError
-    })
-
-    // Store cleanup function
-    cleanupFunctions.value.push(stopWatchers)
-
-    // Setup data watcher after initialization
-    const unwatchData = watch(
-      () => scheduleData.value,
-      (newData) => {
-        debug.log('🔍 IMPORTANT RAW DATA:', {
-          timestamp: new Date().toISOString(),
-          hasData: !!newData?.length,
-          count: newData?.length,
-          firstItem: newData?.[0],
-          allItems: newData,
-          state: {
-            isInitialized: initialized.value,
-            hasTableColumns: !!currentTableColumns.value?.length,
-            hasDetailColumns: !!currentDetailColumns.value?.length
-          }
-        })
-      },
-      { immediate: true }
-    )
-
-    // Store cleanup function
-    cleanupFunctions.value.push(unwatchData)
-
-    // Store cleanup function for world tree watch
-    cleanupFunctions.value.push(stopWorldTreeWatch)
-
-    debug.log('Watchers setup complete')
-    debug.completeState('watcherSetup')
-
-    // Mark as initialized only after everything is set up
-    initialized.value = true
-    debug.log('✅ Recovery action complete:', {
-      timestamp: new Date().toISOString(),
-      state: {
-        isInitialized: initialized.value,
-        hasCurrentTable: !!currentTable.value,
-        selectedTableId: selectedTableId.value,
-        dataCount: scheduleData.value.length
-      }
-    })
-
-    debug.completeState('recoveryAction')
   } catch (err) {
-    debug.error('❌ Recovery action failed:', {
-      timestamp: new Date().toISOString(),
-      error: err,
-      state: {
-        isInitialized: initialized.value,
-        hasCurrentTable: !!currentTable.value,
-        selectedTableId: selectedTableId.value
-      }
-    })
-    loadingError.value =
-      err instanceof Error ? err : new Error('Recovery action failed')
+    debug.error(DebugCategories.ERROR, 'Failed to process settings:', err)
+    handleError(err instanceof Error ? err : new Error('Failed to process settings'))
   }
 }
 
-// Initialize and setup watchers after initialization
-onMounted(async () => {
-  try {
-    debug.startState('scheduleInitialization')
-    debug.log('🚀 Starting Schedule component initialization:', {
-      timestamp: new Date().toISOString(),
-      state: {
-        hasSettings: !!settings.value,
-        hasCurrentTable: !!currentTable.value,
-        selectedTableId: selectedTableId.value,
-        initialized: initialized.value,
-        hasScheduleData: !!scheduleData.value?.length,
-        hasTableColumns: !!currentTableColumns.value?.length,
-        hasDetailColumns: !!currentDetailColumns.value?.length
-      }
-    })
+function handleDataInitialized() {
+  debug.log(DebugCategories.INITIALIZATION, 'Data initialized')
+}
 
-    // First load settings and initialize data
-    await loadSettings()
-    debug.log('Settings loaded')
+function handleTableDataUpdate(data: TableRowData[]) {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Table data updated', {
+    count: data.length
+  })
+  state.tableData = data
+}
 
-    // Run the full initialization
-    await initialize()
-    debug.log('Core initialization complete')
+function handleParameterColumnsUpdate(columns: ColumnDef[]) {
+  debug.log(DebugCategories.PARAMETERS, 'Parameter columns updated', {
+    count: columns.length
+  })
+  state.parameterColumns = columns
+}
 
-    // Only set up watchers after core initialization
-    debug.startState('watcherSetup')
+function handleEvaluatedDataUpdate(data: ElementData[]) {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Evaluated data updated', {
+    count: data.length
+  })
+  state.evaluatedData = data
+}
 
-    // Setup watchers only after initialization
-    const { stopWatchers } = useScheduleWatchers({
-      currentTable,
-      scheduleData,
-      tableData,
-      mergedTableColumns: computed(() => mergedTableColumns.value),
-      mergedDetailColumns: computed(() => mergedDetailColumns.value),
-      customParameters,
-      parameterColumns,
-      evaluatedData,
-      availableHeaders,
-      mergedParentParameters,
-      mergedChildParameters,
-      selectedParentCategories,
-      selectedChildCategories,
-      settings,
-      tablesArray,
-      tableName,
-      selectedTableId,
-      currentTableId,
-      tableKey,
-      showCategoryOptions,
-      showParameterManager,
-      loadingError
-    })
+function handleMergedParentParametersUpdate(params: CustomParameter[]) {
+  debug.log(DebugCategories.PARAMETERS, 'Merged parent parameters updated', {
+    count: params.length
+  })
+  state.mergedParentParameters = params
+}
 
-    // Store cleanup function
-    cleanupFunctions.value.push(stopWatchers)
+function handleMergedChildParametersUpdate(params: CustomParameter[]) {
+  debug.log(DebugCategories.PARAMETERS, 'Merged child parameters updated', {
+    count: params.length
+  })
+  state.mergedChildParameters = params
+}
 
-    // Setup data watcher after initialization
-    const unwatchData = watch(
-      () => scheduleData.value,
-      (newData) => {
-        debug.log('🔍 IMPORTANT RAW DATA:', {
-          timestamp: new Date().toISOString(),
-          hasData: !!newData?.length,
-          count: newData?.length,
-          firstItem: newData?.[0],
-          allItems: newData,
-          state: {
-            isInitialized: initialized.value,
-            hasTableColumns: !!currentTableColumns.value?.length,
-            hasDetailColumns: !!currentDetailColumns.value?.length
-          }
-        })
-      },
-      { immediate: true }
+function handleMergedTableColumnsUpdate(columns: ColumnDef[]) {
+  debug.log(DebugCategories.COLUMNS, 'Merged table columns updated', {
+    count: columns.length
+  })
+  state.mergedTableColumns = columns
+}
+
+function handleMergedDetailColumnsUpdate(columns: ColumnDef[]) {
+  debug.log(DebugCategories.COLUMNS, 'Merged detail columns updated', {
+    count: columns.length
+  })
+  state.mergedDetailColumns = columns
+}
+
+function handleColumnVisibilityChange(column: ColumnDef) {
+  debug.log(DebugCategories.COLUMNS, 'Column visibility changed', {
+    column,
+    visible: column.visible
+  })
+  if (parameterComponent.value && 'field' in column) {
+    parameterComponent.value.updateParameterVisibility(
+      column.field,
+      column.visible ?? true
     )
-
-    // Store cleanup function
-    cleanupFunctions.value.push(unwatchData)
-
-    // Store cleanup function for world tree watch
-    cleanupFunctions.value.push(stopWorldTreeWatch)
-
-    debug.log('Watchers setup complete')
-    debug.completeState('watcherSetup')
-
-    // Mark as initialized only after everything is set up
-    initialized.value = true
-    debug.log('✅ Component fully initialized:', {
-      timestamp: new Date().toISOString(),
-      state: {
-        isInitialized: initialized.value,
-        hasCurrentTable: !!currentTable.value,
-        selectedTableId: selectedTableId.value,
-        dataCount: scheduleData.value?.length || 0,
-        columnCounts: {
-          table: currentTableColumns.value?.length || 0,
-          detail: currentDetailColumns.value?.length || 0,
-          merged: {
-            table: mergedTableColumns.value?.length || 0,
-            detail: mergedDetailColumns.value?.length || 0
-          }
-        },
-        categories: {
-          parent: Array.from(availableCategories.value?.parent || []),
-          child: Array.from(availableCategories.value?.child || [])
-        }
-      }
-    })
-
-    debug.completeState('scheduleInitialization')
-  } catch (err) {
-    debug.error('❌ Initialization error:', {
-      timestamp: new Date().toISOString(),
-      error: err,
-      state: {
-        isInitialized: initialized.value,
-        hasCurrentTable: !!currentTable.value,
-        selectedTableId: selectedTableId.value,
-        dataCount: scheduleData.value?.length || 0,
-        columnCounts: {
-          table: currentTableColumns.value?.length || 0,
-          detail: currentDetailColumns.value?.length || 0
-        }
-      }
-    })
-    loadingError.value = err instanceof Error ? err : new Error('Initialization failed')
-    // Clean up any watchers that might have been set up before the error
-    cleanupFunctions.value.forEach((cleanup) => {
-      try {
-        cleanup()
-      } catch (cleanupErr) {
-        debug.warn('Error during cleanup:', cleanupErr)
-      }
-    })
-    cleanupFunctions.value = []
   }
-})
+}
 
-// Cleanup on component unmount
-onUnmounted(() => {
-  debug.startState('cleanup')
-  debug.log('🧹 Cleaning up Schedule component')
+async function handleTableChange() {
+  debug.log(DebugCategories.TABLE_UPDATES, 'Table change requested', {
+    selectedId: state.selectedTableId,
+    currentTable: state.currentTable
+  })
 
-  // Clean up all watchers
-  cleanupFunctions.value.forEach((cleanup) => {
-    try {
-      cleanup()
-    } catch (err) {
-      debug.warn('Error during cleanup:', err)
+  try {
+    if (!state.selectedTableId) {
+      // Reset state for new table
+      state.selectedParentCategories = []
+      state.selectedChildCategories = []
+      state.currentTable = null
+      state.tableName = '' // Initialize empty table name for new table
+      return
+    }
+
+    // Load table settings
+    if (initComponent.value) {
+      await initComponent.value.handleTableSelection(state.selectedTableId)
+      state.currentTable = initComponent.value.currentTable.value
+      state.tableName = initComponent.value.tableName.value || '' // Ensure tableName is never undefined
+      state.currentTableId = initComponent.value.currentTableId.value
+
+      // Load saved categories
+      state.selectedParentCategories =
+        state.currentTable?.categoryFilters?.selectedParentCategories || []
+      state.selectedChildCategories =
+        state.currentTable?.categoryFilters?.selectedChildCategories || []
+
+      debug.log(DebugCategories.TABLE_UPDATES, 'Table loaded:', {
+        id: state.currentTableId,
+        name: state.tableName,
+        categories: {
+          parent: state.selectedParentCategories,
+          child: state.selectedChildCategories
+        }
+      })
+    }
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Failed to handle table change:', err)
+    handleError(err instanceof Error ? err : new Error('Failed to handle table change'))
+  }
+}
+
+async function handleSaveTable() {
+  debug.log(DebugCategories.TABLE_UPDATES, 'Save table requested', {
+    selectedId: state.selectedTableId,
+    tableName: state.tableName
+  })
+
+  try {
+    if (!state.tableName) {
+      throw new Error('Table name is required')
+    }
+
+    // Convert ParameterDefinition to CustomParameter
+    const customParameters = state.customParameters.map((param) => ({
+      id: param.field,
+      name: param.name,
+      type: 'fixed' as const,
+      field: param.field,
+      header: param.header,
+      category: param.category || 'Custom Parameters',
+      color: param.color,
+      description: param.description,
+      removable: param.removable,
+      visible: param.visible,
+      order: param.order
+    }))
+
+    const init = initComponent.value
+    if (!init) {
+      throw new Error('Initialization component not available')
+    }
+
+    const config = {
+      parentColumns: state.currentTableColumns,
+      childColumns: state.currentDetailColumns,
+      categoryFilters: {
+        selectedParentCategories: state.selectedParentCategories,
+        selectedChildCategories: state.selectedChildCategories
+      },
+      customParameters
+    }
+
+    if (state.selectedTableId) {
+      // Update existing table
+      await init.updateNamedTable(state.selectedTableId, {
+        ...config,
+        name: state.tableName
+      })
+    } else {
+      // Create new table
+      const newTableId = await init.createNamedTable(state.tableName, config)
+      state.selectedTableId = newTableId
+      state.currentTableId = newTableId
+    }
+
+    debug.log(DebugCategories.TABLE_UPDATES, 'Table saved successfully')
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Failed to save table:', err)
+    handleError(err instanceof Error ? err : new Error('Failed to save table'))
+  }
+}
+
+async function handleToggleCategory(type: 'parent' | 'child', category: string) {
+  debug.log(DebugCategories.CATEGORIES, 'Category toggle requested', {
+    type,
+    category,
+    currentState: {
+      parent: state.selectedParentCategories,
+      child: state.selectedChildCategories
     }
   })
-  cleanupFunctions.value = []
 
-  // Clean up settings
-  cleanupSettings()
+  try {
+    if (type === 'parent') {
+      const index = state.selectedParentCategories.indexOf(category)
+      if (index === -1) {
+        state.selectedParentCategories.push(category)
+      } else {
+        state.selectedParentCategories.splice(index, 1)
+      }
+    } else {
+      const index = state.selectedChildCategories.indexOf(category)
+      if (index === -1) {
+        state.selectedChildCategories.push(category)
+      } else {
+        state.selectedChildCategories.splice(index, 1)
+      }
+    }
 
-  // Reset initialization state
-  initialized.value = false
+    const init = initComponent.value as InstanceType<typeof ScheduleInitialization> &
+      ScheduleInitializationExposed
+    if (!init) return
 
-  debug.completeState('cleanup')
-})
+    await init.updateElementsDataCategories(
+      state.selectedParentCategories,
+      state.selectedChildCategories
+    )
 
-// Export functions for template use
+    debug.log(DebugCategories.CATEGORIES, 'Categories updated:', {
+      parent: state.selectedParentCategories,
+      child: state.selectedChildCategories
+    })
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Failed to toggle category:', err)
+    handleError(err instanceof Error ? err : new Error('Failed to toggle category'))
+  }
+}
+
+async function handleParameterUpdate() {
+  debug.log(DebugCategories.PARAMETERS, 'Parameter update requested')
+  try {
+    const param = parameterComponent.value as InstanceType<
+      typeof ScheduleParameterHandling
+    > &
+      ScheduleParameterHandlingExposed
+    if (!param) return
+
+    await param.updateParameterVisibility('', true) // Trigger refresh
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Failed to update parameters:', err)
+    handleError(err instanceof Error ? err : new Error('Failed to update parameters'))
+  }
+}
+
+function handleTableUpdate() {
+  debug.log(DebugCategories.TABLE_UPDATES, 'Table update requested')
+  state.tableKey = Date.now().toString()
+}
+
+function handleBothColumnsUpdate(updates: {
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+}) {
+  debug.log(DebugCategories.COLUMNS, 'Both columns update requested', updates)
+  state.currentTableColumns = updates.parentColumns
+  state.currentDetailColumns = updates.childColumns
+}
+
+async function handleRecoveryAction() {
+  debug.log(DebugCategories.ERROR, 'Recovery action requested')
+  try {
+    // Reset error state
+    loadingError.value = null
+
+    // Reload current table if any
+    if (state.selectedTableId) {
+      await handleTableChange()
+    }
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Recovery failed:', err)
+    handleError(err instanceof Error ? err : new Error('Recovery failed'))
+  }
+}
+
+// Expose necessary functions
 defineExpose({
-  handleRecoveryAction
+  handleError
 })
 </script>

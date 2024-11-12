@@ -22,7 +22,7 @@ interface UseScheduleInitializationFlowOptions {
 
 // Runtime validation function
 function isValidTableState(table: TableConfig | null): boolean {
-  if (!table) return false
+  if (!table) return true // Allow null table state for initial load
 
   const hasValidCategories =
     Array.isArray(table.categoryFilters?.selectedParentCategories) &&
@@ -58,7 +58,7 @@ export function useScheduleInitializationFlow(
   async function initialize() {
     try {
       debug.startState('initialization')
-      debug.log('🚀 Starting initialization sequence:', {
+      debug.log('Starting initialization sequence:', {
         timestamp: new Date().toISOString(),
         initialState: {
           isInitialized: isInitialized.value,
@@ -73,7 +73,7 @@ export function useScheduleInitializationFlow(
       // First load settings
       debug.startState('settings')
       await loadSettings()
-      debug.log('📚 Settings loaded:', {
+      debug.log('Settings loaded:', {
         timestamp: new Date().toISOString(),
         currentTable: {
           id: currentTable.value?.id,
@@ -90,7 +90,7 @@ export function useScheduleInitializationFlow(
       // Initialize data from viewer
       debug.startState('viewerData')
       await initializeData()
-      debug.log('🔄 Viewer data initialized')
+      debug.log('Viewer data initialized')
 
       // Wait for and validate schedule data
       await waitForData(
@@ -100,10 +100,10 @@ export function useScheduleInitializationFlow(
             debug.warn('Schedule data is not an array')
             return false
           }
-          return data.length > 0
+          return true // Allow empty array for initial load
         }
       )
-      debug.log('✅ Schedule data validated:', {
+      debug.log('Schedule data validated:', {
         count: scheduleData.value.length,
         firstItem: scheduleData.value[0]
       })
@@ -112,7 +112,7 @@ export function useScheduleInitializationFlow(
       // Handle table selection if needed
       if (!selectedTableId.value && currentTableId.value) {
         debug.startState('tableSelection')
-        debug.log('🎯 Handling table selection:', {
+        debug.log('Handling table selection:', {
           timestamp: new Date().toISOString(),
           currentId: currentTableId.value,
           currentTableCategories: currentTable.value?.categoryFilters
@@ -123,7 +123,7 @@ export function useScheduleInitializationFlow(
         // Wait for and validate table state
         await waitForData(() => currentTable.value, isValidTableState)
 
-        debug.log('✅ Table selection complete:', {
+        debug.log('Table selection complete:', {
           timestamp: new Date().toISOString(),
           selectedId: selectedTableId.value,
           currentId: currentTableId.value,
@@ -135,26 +135,28 @@ export function useScheduleInitializationFlow(
 
       // Core initialization is complete
       debug.startState('coreInitialization')
-      debug.log('🏁 Core initialization complete:', {
+      debug.log('Core initialization complete:', {
         timestamp: new Date().toISOString(),
         finalState: {
           hasCurrentTable: !!currentTable.value,
           selectedTableId: selectedTableId.value,
           dataCount: scheduleData.value.length,
-          tableConfig: {
-            name: currentTable.value?.name,
-            parentColumns: currentTable.value?.parentColumns?.length,
-            childColumns: currentTable.value?.childColumns?.length,
-            customParameters: currentTable.value?.customParameters?.length,
-            categoryFilters: currentTable.value?.categoryFilters
-          }
+          tableConfig: currentTable.value
+            ? {
+                name: currentTable.value.name,
+                parentColumns: currentTable.value.parentColumns?.length,
+                childColumns: currentTable.value.childColumns?.length,
+                customParameters: currentTable.value.customParameters?.length,
+                categoryFilters: currentTable.value.categoryFilters
+              }
+            : null
         }
       })
 
-      // Set initialization flag to true only if we have data and valid table state
-      if (scheduleData.value.length > 0 && isValidTableState(currentTable.value)) {
+      // Set initialization flag to true if we have valid table state (or no table)
+      if (isValidTableState(currentTable.value)) {
         isInitialized.value = true
-        debug.log('✅ Initialization flag set:', {
+        debug.log('Initialization flag set:', {
           timestamp: new Date().toISOString(),
           isInitialized: isInitialized.value,
           dataCount: scheduleData.value.length,
@@ -169,7 +171,7 @@ export function useScheduleInitializationFlow(
     } catch (err) {
       loadingError.value =
         err instanceof Error ? err : new Error('Failed to initialize')
-      debug.error('❌ Initialization error:', {
+      debug.error('Initialization error:', {
         timestamp: new Date().toISOString(),
         error: err,
         state: {

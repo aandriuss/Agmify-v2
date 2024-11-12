@@ -2,6 +2,7 @@ import { ref, watch } from 'vue'
 import { useMutation, useQuery } from '@vue/apollo-composable'
 import { gql } from 'graphql-tag'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/types'
+import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
 
 export interface ColumnConfig {
   field: string
@@ -61,20 +62,26 @@ interface UpdateUserSettingsResponse {
   userSettingsUpdate: boolean
 }
 
-// Define mutation with explicit variable name to match server expectation
+// Update GraphQL query to get userSettings
+const GET_USER_SETTINGS = gql`
+  query GetUserSettings {
+    activeUser {
+      userSettings
+      id
+    }
+  }
+`
+
 const UPDATE_USER_SETTINGS = gql`
   mutation UpdateUserSettings($settings: JSONObject!) {
     userSettingsUpdate(settings: $settings)
   }
 `
 
-const GET_USER_SETTINGS = gql`
-  query GetUserSettings {
-    activeUser {
-      userSettings
-    }
-  }
-`
+interface ParsedSettings {
+  namedTables?: Record<string, NamedTableConfig>
+  controlsWidth?: number
+}
 
 export function useUserSettings() {
   const settings = ref<UserSettings>({ namedTables: {} })
@@ -87,14 +94,77 @@ export function useUserSettings() {
     result,
     loading: queryLoading,
     refetch
-  } = useQuery<GetUserSettingsResponse>(GET_USER_SETTINGS)
+  } = useQuery<GetUserSettingsResponse>(GET_USER_SETTINGS, null, {
+    fetchPolicy: 'network-only' // Force network request
+  })
 
   // Watch for remote changes
   const stopSettingsWatch = watch(
     () => result.value?.activeUser?.userSettings,
-    (newSettings: UserSettings | null | undefined) => {
-      if (!newSettings) return
-      settings.value = newSettings
+    (newSettings: unknown) => {
+      debug.log(
+        DebugCategories.INITIALIZATION,
+        '[useUserSettings] Raw settings received:',
+        {
+          hasSettings: !!newSettings,
+          rawSettings: newSettings,
+          resultValue: result.value
+        }
+      )
+
+      if (!newSettings) {
+        debug.warn(
+          DebugCategories.INITIALIZATION,
+          '[useUserSettings] No settings in update, initializing with empty state'
+        )
+        settings.value = { namedTables: {} }
+        return
+      }
+
+      // Parse settings if they're a string
+      let parsedSettings: ParsedSettings
+      try {
+        parsedSettings =
+          typeof newSettings === 'string'
+            ? JSON.parse(newSettings)
+            : (newSettings as ParsedSettings)
+        debug.log(
+          DebugCategories.INITIALIZATION,
+          '[useUserSettings] Settings parsed:',
+          parsedSettings
+        )
+      } catch (err) {
+        debug.error(
+          DebugCategories.ERROR,
+          '[useUserSettings] Failed to parse settings:',
+          err
+        )
+        settings.value = { namedTables: {} }
+        return
+      }
+
+      // Validate settings structure
+      if (!parsedSettings || typeof parsedSettings !== 'object') {
+        debug.error(
+          DebugCategories.ERROR,
+          '[useUserSettings] Invalid settings format:',
+          parsedSettings
+        )
+        settings.value = { namedTables: {} }
+        return
+      }
+
+      // Ensure namedTables exists
+      const validatedSettings: UserSettings = {
+        ...parsedSettings,
+        namedTables: parsedSettings.namedTables || {}
+      }
+
+      settings.value = validatedSettings
+      debug.log(DebugCategories.INITIALIZATION, '[useUserSettings] Settings updated:', {
+        namedTablesCount: Object.keys(settings.value.namedTables).length,
+        namedTables: settings.value.namedTables
+      })
     },
     { deep: true }
   )
@@ -103,7 +173,7 @@ export function useUserSettings() {
     try {
       loading.value = true
       error.value = null
-      await refetch()
+      debug.log(DebugCategories.INITIALIZATION, '[useUserSettings] Loading settings...')
 
       // Wait for settings to be populated
       await new Promise<void>((resolve, reject) => {
@@ -112,36 +182,140 @@ export function useUserSettings() {
         }, 10000)
 
         // Check immediately
-        if (result.value?.activeUser?.userSettings) {
-          clearTimeout(timeout)
-          settings.value = result.value.activeUser.userSettings
-          resolve()
-          return
+        const currentSettings = result.value?.activeUser?.userSettings
+        if (currentSettings) {
+          debug.log(
+            DebugCategories.INITIALIZATION,
+            '[useUserSettings] Settings found immediately:',
+            {
+              rawSettings: currentSettings
+            }
+          )
+
+          try {
+            const parsedSettings: ParsedSettings =
+              typeof currentSettings === 'string'
+                ? JSON.parse(currentSettings)
+                : currentSettings
+
+            if (!parsedSettings || typeof parsedSettings !== 'object') {
+              throw new Error('Settings is not an object')
+            }
+
+            // Ensure namedTables exists
+            const validatedSettings: UserSettings = {
+              ...parsedSettings,
+              namedTables: parsedSettings.namedTables || {}
+            }
+
+            settings.value = validatedSettings
+
+            debug.log(
+              DebugCategories.INITIALIZATION,
+              '[useUserSettings] Settings loaded immediately:',
+              {
+                namedTablesCount: Object.keys(settings.value.namedTables).length,
+                namedTables: settings.value.namedTables
+              }
+            )
+
+            clearTimeout(timeout)
+            resolve()
+            return
+          } catch (err) {
+            debug.error(
+              DebugCategories.ERROR,
+              '[useUserSettings] Failed to parse immediate settings:',
+              {
+                error: err,
+                rawSettings: currentSettings
+              }
+            )
+          }
+        } else {
+          debug.log(
+            DebugCategories.INITIALIZATION,
+            '[useUserSettings] No immediate settings, fetching...'
+          )
         }
 
-        // If not available immediately, set up a watcher
-        const stopWatch = watch(
-          () => result.value?.activeUser?.userSettings,
-          (newSettings) => {
-            if (newSettings) {
+        // If not available immediately, refetch and wait for result
+        refetch()
+          .then(() => {
+            const currentSettings = result.value?.activeUser?.userSettings
+            if (!currentSettings) {
+              debug.warn(
+                DebugCategories.INITIALIZATION,
+                '[useUserSettings] No settings in refetch response, initializing with empty state'
+              )
+              settings.value = { namedTables: {} }
               clearTimeout(timeout)
-              settings.value = newSettings
-              stopWatch()
+              resolve()
+              return
+            }
+
+            try {
+              const parsedSettings: ParsedSettings =
+                typeof currentSettings === 'string'
+                  ? JSON.parse(currentSettings)
+                  : currentSettings
+
+              if (!parsedSettings || typeof parsedSettings !== 'object') {
+                throw new Error('Settings is not an object')
+              }
+
+              // Ensure namedTables exists
+              const validatedSettings: UserSettings = {
+                ...parsedSettings,
+                namedTables: parsedSettings.namedTables || {}
+              }
+
+              settings.value = validatedSettings
+
+              debug.log(
+                DebugCategories.INITIALIZATION,
+                '[useUserSettings] Settings loaded from refetch:',
+                {
+                  namedTablesCount: Object.keys(settings.value.namedTables).length,
+                  namedTables: settings.value.namedTables
+                }
+              )
+
+              clearTimeout(timeout)
+              resolve()
+            } catch (err) {
+              debug.error(
+                DebugCategories.ERROR,
+                '[useUserSettings] Failed to parse refetched settings:',
+                {
+                  error: err,
+                  rawSettings: currentSettings
+                }
+              )
+              settings.value = { namedTables: {} }
+              clearTimeout(timeout)
               resolve()
             }
-          }
-        )
+          })
+          .catch((err) => {
+            debug.error(
+              DebugCategories.ERROR,
+              '[useUserSettings] Failed to refetch settings:',
+              err
+            )
+            reject(new Error('Failed to fetch settings'))
+          })
 
         // Clean up on timeout
         timeout.unref?.() // Optional chaining for Node.js environments
       })
-
-      // Double check settings are populated
-      if (!settings.value) {
-        throw new Error('Failed to load settings: Settings not found')
-      }
     } catch (err) {
       error.value = err instanceof Error ? err : new Error('Failed to load settings')
+      debug.error(
+        DebugCategories.ERROR,
+        '[useUserSettings] Failed to load settings:',
+        err
+      )
       throw error.value
     } finally {
       loading.value = false
@@ -163,7 +337,8 @@ export function useUserSettings() {
       ) {
         const result = await updateSettingsMutation({
           settings: {
-            controlsWidth: newSettings.controlsWidth
+            controlsWidth: newSettings.controlsWidth,
+            namedTables: currentSettings.namedTables // Preserve existing tables
           }
         })
         if (result?.data?.userSettingsUpdate) {
@@ -354,6 +529,8 @@ export function useUserSettings() {
     saveSettings,
     createNamedTable,
     updateNamedTable,
-    cleanup
+    cleanup: () => {
+      stopSettingsWatch()
+    }
   }
 }

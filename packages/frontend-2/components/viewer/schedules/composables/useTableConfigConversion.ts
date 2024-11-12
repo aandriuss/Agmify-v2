@@ -1,5 +1,6 @@
 import type { TableConfig } from '../types'
-import type { NamedTableConfig } from '~/composables/useUserSettings'
+import type { NamedTableConfig, CustomParameter } from '~/composables/useUserSettings'
+import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 
 interface UseTableConfigConversionOptions {
   updateNamedTable: (
@@ -8,15 +9,30 @@ interface UseTableConfigConversionOptions {
   ) => Promise<NamedTableConfig>
 }
 
+function convertToCustomParameter(param: ParameterDefinition): CustomParameter {
+  return {
+    id: crypto.randomUUID(),
+    name: param.name,
+    type: 'fixed',
+    field: param.field,
+    header: param.header,
+    category: param.category || 'Custom Parameters',
+    removable: param.removable ?? true,
+    visible: param.visible ?? true,
+    color: param.color,
+    description: param.description
+  }
+}
+
 export function useTableConfigConversion(options: UseTableConfigConversionOptions) {
   const { updateNamedTable } = options
 
   const convertAndUpdateTable = async (
     id: string,
-    config: TableConfig
-  ): Promise<void> => {
+    config: Partial<TableConfig>
+  ): Promise<NamedTableConfig> => {
     // Convert TableConfig to NamedTableConfig
-    const namedConfig: NamedTableConfig = {
+    const namedConfig: Partial<NamedTableConfig> = {
       ...config,
       id,
       name: config.name,
@@ -26,9 +42,9 @@ export function useTableConfigConversion(options: UseTableConfigConversionOption
         selectedParentCategories: [],
         selectedChildCategories: []
       },
-      customParameters: config.customParameters || []
+      customParameters: config.customParameters?.map(convertToCustomParameter) || []
     }
-    await updateNamedTable(id, namedConfig)
+    return await updateNamedTable(id, namedConfig)
   }
 
   return {

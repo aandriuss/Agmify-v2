@@ -2,7 +2,8 @@ import { ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { TableUpdatePayload, TableConfig } from '../types'
-import { debug } from '../utils/debug'
+import { debug, DebugCategories } from '../utils/debug'
+import type { NamedTableConfig } from '~/composables/useUserSettings'
 
 interface UseScheduleTableUpdatesOptions {
   settings: { value: { namedTables?: Record<string, TableConfig> } | null }
@@ -14,7 +15,10 @@ interface UseScheduleTableUpdatesOptions {
   selectedChildCategories: { value: string[] }
   currentTableColumns: { value: ColumnDef[] }
   currentDetailColumns: { value: ColumnDef[] }
-  updateNamedTable: (id: string, config: TableConfig) => Promise<void>
+  updateNamedTable: (
+    id: string,
+    config: Partial<TableConfig>
+  ) => Promise<NamedTableConfig>
   updateCategories: (parent: string[], child: string[]) => Promise<void>
   loadSettings: () => Promise<void>
   handleTableSelection: (id: string) => Promise<void>
@@ -27,7 +31,7 @@ function validateCategoryState(
   childCategories: string[]
 ): boolean {
   if (!Array.isArray(parentCategories) || !Array.isArray(childCategories)) {
-    debug.warn('Invalid category arrays:', {
+    debug.warn(DebugCategories.VALIDATION, 'Invalid category arrays:', {
       parent: parentCategories,
       child: childCategories
     })
@@ -63,7 +67,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
     parentCategories: string[],
     childCategories: string[]
   ) {
-    debug.log('[TableUpdates] Updating category state:', {
+    debug.log(DebugCategories.CATEGORIES, 'Updating category state:', {
       timestamp: new Date().toISOString(),
       parent: parentCategories,
       child: childCategories,
@@ -82,7 +86,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
     childColumns: ColumnDef[]
   }) {
     if (isInitialized?.value === false) {
-      debug.warn('[TableUpdates] Skipping column update - not initialized')
+      debug.warn(DebugCategories.STATE, 'Skipping column update - not initialized')
       return
     }
 
@@ -94,7 +98,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
         throw new Error('Current table configuration not found')
       }
 
-      debug.log('[TableUpdates] Updating columns:', {
+      debug.log(DebugCategories.TABLE_UPDATES, 'Updating columns:', {
         timestamp: new Date().toISOString(),
         parentCount: parentColumns.length,
         childCount: childColumns.length,
@@ -104,8 +108,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
         }
       })
 
-      const updatedTableConfig: TableConfig = {
-        ...currentTableConfig,
+      const updatedTableConfig: Partial<TableConfig> = {
         parentColumns,
         childColumns,
         categoryFilters: {
@@ -122,13 +125,13 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
       )
       tableKey.value = Date.now().toString()
 
-      debug.log('[TableUpdates] Column update complete:', {
+      debug.log(DebugCategories.TABLE_UPDATES, 'Column update complete:', {
         timestamp: new Date().toISOString(),
         tableId: currentTableId.value,
         categories: updatedTableConfig.categoryFilters
       })
     } catch (err) {
-      debug.error('[TableUpdates] Column update failed:', err)
+      debug.error(DebugCategories.ERROR, 'Column update failed:', err)
       loadingError.value =
         err instanceof Error ? err : new Error('Failed to update columns')
       throw loadingError.value
@@ -137,17 +140,17 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
 
   async function handleParameterUpdate() {
     if (isInitialized?.value === false) {
-      debug.warn('[TableUpdates] Skipping parameter update - not initialized')
+      debug.warn(DebugCategories.STATE, 'Skipping parameter update - not initialized')
       return
     }
 
     try {
-      debug.log('[TableUpdates] Updating parameters')
+      debug.log(DebugCategories.PARAMETERS, 'Updating parameters')
       tableKey.value = Date.now().toString()
       await loadSettings()
       loadingError.value = null
     } catch (err) {
-      debug.error('[TableUpdates] Parameter update failed:', err)
+      debug.error(DebugCategories.ERROR, 'Parameter update failed:', err)
       loadingError.value =
         err instanceof Error ? err : new Error('Failed to update parameters')
       throw loadingError.value
@@ -156,12 +159,12 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
 
   async function handleTableUpdate(payload: TableUpdatePayload) {
     if (isInitialized?.value === false) {
-      debug.warn('[TableUpdates] Skipping table update - not initialized')
+      debug.warn(DebugCategories.STATE, 'Skipping table update - not initialized')
       return
     }
 
     try {
-      debug.log('[TableUpdates] Processing table update:', {
+      debug.log(DebugCategories.TABLE_UPDATES, 'Processing table update:', {
         timestamp: new Date().toISOString(),
         payload,
         currentState: {
@@ -181,7 +184,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
         await loadSettings()
         await handleTableSelection(payload.tableId)
 
-        debug.log('[TableUpdates] Table update complete:', {
+        debug.log(DebugCategories.TABLE_UPDATES, 'Table update complete:', {
           timestamp: new Date().toISOString(),
           tableId: payload.tableId,
           newCategories: {
@@ -191,7 +194,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
         })
       }
     } catch (err) {
-      debug.error('[TableUpdates] Table update failed:', err)
+      debug.error(DebugCategories.ERROR, 'Table update failed:', err)
       loadingError.value =
         err instanceof Error ? err : new Error('Failed to update table')
       throw loadingError.value
@@ -200,12 +203,15 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
 
   async function saveTable() {
     if (!tableName.value || isInitialized?.value === false) {
-      debug.warn('[TableUpdates] Skipping table save - not initialized or no name')
+      debug.warn(
+        DebugCategories.STATE,
+        'Skipping table save - not initialized or no name'
+      )
       return
     }
 
     try {
-      debug.log('[TableUpdates] Saving table:', {
+      debug.log(DebugCategories.TABLE_UPDATES, 'Saving table:', {
         timestamp: new Date().toISOString(),
         tableId: selectedTableId.value,
         name: tableName.value,
@@ -221,8 +227,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
           throw new Error('Table not found in current settings')
         }
 
-        const updatedTableConfig: TableConfig = {
-          ...currentTableConfig,
+        const updatedTableConfig: Partial<TableConfig> = {
           name: tableName.value,
           parentColumns: currentTableColumns.value,
           childColumns: currentDetailColumns.value,
@@ -233,7 +238,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
         }
 
         await updateNamedTable(selectedTableId.value, updatedTableConfig)
-        debug.log('[TableUpdates] Table saved successfully:', {
+        debug.log(DebugCategories.TABLE_UPDATES, 'Table saved successfully:', {
           timestamp: new Date().toISOString(),
           tableId: selectedTableId.value,
           categories: updatedTableConfig.categoryFilters
@@ -242,7 +247,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
 
       tableKey.value = Date.now().toString()
     } catch (error) {
-      debug.error('[TableUpdates] Table save failed:', error)
+      debug.error(DebugCategories.ERROR, 'Table save failed:', error)
       loadingError.value =
         error instanceof Error ? error : new Error('Failed to save table')
       throw loadingError.value
@@ -255,7 +260,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
     (newKey) => {
       if (isInitialized?.value === false) return
 
-      debug.log('[TableUpdates] Table key changed:', {
+      debug.log(DebugCategories.STATE, 'Table key changed:', {
         key: newKey,
         timestamp: new Date().toISOString()
       })
@@ -268,7 +273,7 @@ export function useScheduleTableUpdates(options: UseScheduleTableUpdatesOptions)
       if (isInitialized?.value === false) return
 
       if (error) {
-        debug.error('[TableUpdates] Loading error:', {
+        debug.error(DebugCategories.ERROR, 'Loading error:', {
           error: error.message,
           timestamp: new Date().toISOString()
         })

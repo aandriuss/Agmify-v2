@@ -1,6 +1,57 @@
 import type { Ref } from 'vue'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
+import type {
+  UserSettings,
+  NamedTableConfig,
+  CustomParameter
+} from '~/composables/useUserSettings'
+
+export interface ScheduleInitializationExposed {
+  settings: Ref<UserSettings>
+  updateNamedTable: (
+    id: string,
+    config: Partial<NamedTableConfig>
+  ) => Promise<NamedTableConfig>
+  createNamedTable: (
+    name: string,
+    config: Omit<NamedTableConfig, 'id' | 'name'>
+  ) => Promise<string>
+  scheduleData: Ref<ElementData[]>
+  updateElementsDataCategories: (parent: string[], child: string[]) => Promise<void>
+  loadingError: Ref<Error | null>
+  selectedTableId: Ref<string>
+  tableName: Ref<string>
+  currentTableId: Ref<string>
+  currentTable: Ref<NamedTableConfig | null>
+  handleTableSelection: (id: string) => Promise<void>
+  tablesArray: Ref<{ id: string; name: string }[]>
+  availableCategories: Ref<{
+    parent: Set<string>
+    child: Set<string>
+  }>
+}
+
+export interface ScheduleDataManagementExposed {
+  tableData: Ref<TableRowData[]>
+  updateRootNodes: (nodes: TreeItemComponentModel[]) => void
+}
+
+export interface ScheduleParameterHandlingExposed {
+  parameterColumns: Ref<ColumnDef[]>
+  evaluatedData: Ref<ElementData[]>
+  mergedParentParameters: Ref<CustomParameter[]>
+  mergedChildParameters: Ref<CustomParameter[]>
+  updateParameterVisibility: (field: string, visible: boolean) => Promise<void>
+}
+
+export interface ScheduleColumnManagementExposed {
+  currentTableColumns: Ref<ColumnDef[]>
+  currentDetailColumns: Ref<ColumnDef[]>
+  parameterColumns: Ref<ColumnDef[]>
+  updateMergedTableColumns: (columns: ColumnDef[]) => void
+  updateMergedDetailColumns: (columns: ColumnDef[]) => void
+}
 
 export interface BIMNodeRaw {
   id: string
@@ -64,6 +115,7 @@ export interface ElementData extends BaseElementData {
   thickness?: number
   area?: number
   parameters?: Record<string, ParameterValue>
+  _visible?: boolean
   [key: string]:
     | ParameterValue
     | ElementData[]

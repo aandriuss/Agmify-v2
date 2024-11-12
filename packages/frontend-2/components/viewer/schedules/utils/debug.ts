@@ -5,18 +5,29 @@ const prefix = '[BIM Schedule]'
 export const DebugCategories = {
   DATA: 'data',
   UI: 'ui',
-  ERROR: 'error'
+  ERROR: 'error',
+  VALIDATION: 'validation',
+  COLUMNS: 'columns',
+  DATA_TRANSFORM: 'data_transform',
+  INITIALIZATION: 'initialization',
+  STATE: 'state',
+  PARAMETERS: 'parameters',
+  CATEGORIES: 'categories',
+  TABLE_UPDATES: 'table_updates',
+  PERFORMANCE: 'performance'
 } as const
 
+export type DebugCategory = (typeof DebugCategories)[keyof typeof DebugCategories]
+
 export const debug = {
-  log: (message: string, data?: unknown) => {
-    console.log(`${prefix} ${message}`, data)
+  log: (category: DebugCategory, message: string, data?: unknown) => {
+    console.log(`${prefix} [${category}] ${message}`, data)
   },
-  warn: (message: string, data?: unknown) => {
-    console.warn(`${prefix} ${message}`, data)
+  warn: (category: DebugCategory, message: string, data?: unknown) => {
+    console.warn(`${prefix} [${category}] ${message}`, data)
   },
-  error: (message: string, data?: unknown) => {
-    console.error(`${prefix} ${message}`, data)
+  error: (category: DebugCategory, message: string, data?: unknown) => {
+    console.error(`${prefix} [${category}] ${message}`, data)
   },
   startState: (stateName: string) => {
     console.log(`${prefix} ▶️ Starting ${stateName}`)
