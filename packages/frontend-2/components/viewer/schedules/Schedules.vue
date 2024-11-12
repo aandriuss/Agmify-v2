@@ -124,10 +124,11 @@ import type {
   ScheduleInitializationExposed,
   ScheduleDataManagementExposed,
   ScheduleParameterHandlingExposed,
-  ScheduleColumnManagementExposed
+  ScheduleColumnManagementExposed,
+  NamedTableConfig
 } from './types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { CustomParameter, NamedTableConfig } from '~/composables/useUserSettings'
+import type { CustomParameter } from '~/composables/useUserSettings'
 import { parentCategories, childCategories } from './config/categories'
 
 // Components
@@ -186,26 +187,16 @@ const emit = defineEmits<{
 const { handleClose } = useScheduleEmits({ emit })
 
 // Component refs with proper typing
-const initComponent = ref<
-  (InstanceType<typeof ScheduleInitialization> & ScheduleInitializationExposed) | null
->(null)
-const dataComponent = ref<
-  (InstanceType<typeof ScheduleDataManagement> & ScheduleDataManagementExposed) | null
->(null)
-const parameterComponent = ref<
-  | (InstanceType<typeof ScheduleParameterHandling> & ScheduleParameterHandlingExposed)
-  | null
->(null)
-const columnComponent = ref<
-  | (InstanceType<typeof ScheduleColumnManagement> & ScheduleColumnManagementExposed)
-  | null
->(null)
+const initComponent = ref<ScheduleInitializationExposed | null>(null)
+const dataComponent = ref<ScheduleDataManagementExposed | null>(null)
+const parameterComponent = ref<ScheduleParameterHandlingExposed | null>(null)
+const columnComponent = ref<ScheduleColumnManagementExposed | null>(null)
 
 // State
 const initialized = ref(false)
 const loadingError = ref<Error | null>(null)
 
-// Initialize state with default values
+// Initialize state with empty arrays for selected categories
 const state = reactive<ScheduleState>({
   selectedTableId: '',
   tableName: '',
@@ -224,8 +215,8 @@ const state = reactive<ScheduleState>({
   mergedDetailColumns: [],
   mergedParentParameters: [],
   mergedChildParameters: [],
-  selectedParentCategories: [],
-  selectedChildCategories: [],
+  selectedParentCategories: [], // Initialize empty - will be loaded from PostgreSQL
+  selectedChildCategories: [], // Initialize empty - will be loaded from PostgreSQL
   availableHeaders: {
     parent: [],
     child: []
@@ -351,7 +342,7 @@ function handleColumnVisibilityChange(column: ColumnDef) {
     visible: column.visible
   })
   if (parameterComponent.value && 'field' in column) {
-    parameterComponent.value.updateParameterVisibility(
+    void parameterComponent.value.updateParameterVisibility(
       column.field,
       column.visible ?? true
     )
@@ -366,36 +357,84 @@ async function handleTableChange() {
 
   try {
     if (!state.selectedTableId) {
-      // Reset state for new table
+      // Reset to empty arrays for new table - no categories selected by default
       state.selectedParentCategories = []
       state.selectedChildCategories = []
       state.currentTable = null
-      state.tableName = '' // Initialize empty table name for new table
+      state.tableName = ''
       return
     }
 
     // Load table settings
-    if (initComponent.value) {
-      await initComponent.value.handleTableSelection(state.selectedTableId)
-      state.currentTable = initComponent.value.currentTable.value
-      state.tableName = initComponent.value.tableName.value || '' // Ensure tableName is never undefined
-      state.currentTableId = initComponent.value.currentTableId.value
+    const init = initComponent.value
+    if (!init) return
 
-      // Load saved categories
-      state.selectedParentCategories =
-        state.currentTable?.categoryFilters?.selectedParentCategories || []
-      state.selectedChildCategories =
-        state.currentTable?.categoryFilters?.selectedChildCategories || []
+    await init.handleTableSelection(state.selectedTableId)
 
-      debug.log(DebugCategories.TABLE_UPDATES, 'Table loaded:', {
-        id: state.currentTableId,
-        name: state.tableName,
-        categories: {
-          parent: state.selectedParentCategories,
-          child: state.selectedChildCategories
-        }
-      })
+    // Get current table from ref with type safety
+    const currentTableRef = init.currentTable
+    if (!currentTableRef?.value) {
+      state.currentTable = null
+      return
     }
+
+    const currentTable = currentTableRef.value
+    if (
+      !currentTable.name ||
+      !currentTable.parentColumns ||
+      !currentTable.childColumns
+    ) {
+      throw new Error('Invalid table configuration')
+    }
+
+    // Create safe table config with type assertions
+    const safeTable: TableConfig = {
+      name: currentTable.name,
+      parentColumns: currentTable.parentColumns,
+      childColumns: currentTable.childColumns,
+      categoryFilters: {
+        selectedParentCategories: [],
+        selectedChildCategories: []
+      },
+      customParameters: currentTable.customParameters || []
+    }
+
+    // Update state with safe values
+    state.currentTable = safeTable
+    state.tableName = init.tableName?.value || ''
+    state.currentTableId = init.currentTableId?.value || ''
+
+    // Load category selection state from PostgreSQL with type safety
+    const categoryFilters = currentTable.categoryFilters
+    if (categoryFilters && typeof categoryFilters === 'object') {
+      const { selectedParentCategories = [], selectedChildCategories = [] } =
+        categoryFilters
+
+      // Update state with saved selections
+      state.selectedParentCategories = Array.isArray(selectedParentCategories)
+        ? selectedParentCategories
+        : []
+      state.selectedChildCategories = Array.isArray(selectedChildCategories)
+        ? selectedChildCategories
+        : []
+
+      // Update currentTable to match
+      if (state.currentTable) {
+        state.currentTable.categoryFilters = {
+          selectedParentCategories: state.selectedParentCategories,
+          selectedChildCategories: state.selectedChildCategories
+        }
+      }
+    }
+
+    debug.log(DebugCategories.TABLE_UPDATES, 'Table loaded:', {
+      id: state.currentTableId,
+      name: state.tableName,
+      categories: {
+        parent: state.selectedParentCategories,
+        child: state.selectedChildCategories
+      }
+    })
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to handle table change:', err)
     handleError(err instanceof Error ? err : new Error('Failed to handle table change'))
@@ -445,15 +484,26 @@ async function handleSaveTable() {
 
     if (state.selectedTableId) {
       // Update existing table
-      await init.updateNamedTable(state.selectedTableId, {
+      const updatedTable = await init.updateNamedTable(state.selectedTableId, {
         ...config,
         name: state.tableName
       })
+
+      // Convert NamedTableConfig to TableConfig
+      state.currentTable = {
+        name: updatedTable.name,
+        parentColumns: updatedTable.parentColumns,
+        childColumns: updatedTable.childColumns,
+        categoryFilters: updatedTable.categoryFilters,
+        customParameters: updatedTable.customParameters
+      }
     } else {
       // Create new table
       const newTableId = await init.createNamedTable(state.tableName, config)
-      state.selectedTableId = newTableId
-      state.currentTableId = newTableId
+      if (newTableId) {
+        state.selectedTableId = newTableId
+        state.currentTableId = newTableId
+      }
     }
 
     debug.log(DebugCategories.TABLE_UPDATES, 'Table saved successfully')
@@ -474,54 +524,73 @@ async function handleToggleCategory(type: 'parent' | 'child', category: string) 
   })
 
   try {
+    // Validate inputs
+    if (!state.selectedTableId) {
+      throw new Error('No table selected')
+    }
+
+    if (!category || typeof category !== 'string') {
+      throw new Error('Invalid category')
+    }
+
+    // Create new arrays for updated selections
+    const updatedParentCategories = [...state.selectedParentCategories]
+    const updatedChildCategories = [...state.selectedChildCategories]
+
+    // Update selections
     if (type === 'parent') {
-      const index = state.selectedParentCategories.indexOf(category)
+      const index = updatedParentCategories.indexOf(category)
       if (index === -1) {
-        state.selectedParentCategories.push(category)
+        updatedParentCategories.push(category)
       } else {
-        state.selectedParentCategories.splice(index, 1)
+        updatedParentCategories.splice(index, 1)
       }
     } else {
-      const index = state.selectedChildCategories.indexOf(category)
+      const index = updatedChildCategories.indexOf(category)
       if (index === -1) {
-        state.selectedChildCategories.push(category)
+        updatedChildCategories.push(category)
       } else {
-        state.selectedChildCategories.splice(index, 1)
+        updatedChildCategories.splice(index, 1)
       }
     }
 
-    const init = initComponent.value as InstanceType<typeof ScheduleInitialization> &
-      ScheduleInitializationExposed
-    if (!init) return
+    // Get initialization component
+    const init = initComponent.value
+    if (!init) {
+      throw new Error('Initialization component not available')
+    }
 
-    await init.updateElementsDataCategories(
-      state.selectedParentCategories,
-      state.selectedChildCategories
-    )
+    // Create category filters update
+    const categoryFilters = {
+      selectedParentCategories: updatedParentCategories,
+      selectedChildCategories: updatedChildCategories
+    }
+
+    // Save to PostgreSQL first
+    await init.updateNamedTable(state.selectedTableId, {
+      categoryFilters
+    })
+
+    // Only update local state after successful save
+    state.selectedParentCategories = updatedParentCategories
+    state.selectedChildCategories = updatedChildCategories
+
+    // Update currentTable to match if it exists
+    if (state.currentTable) {
+      state.currentTable = {
+        ...state.currentTable,
+        categoryFilters
+      }
+    }
 
     debug.log(DebugCategories.CATEGORIES, 'Categories updated:', {
-      parent: state.selectedParentCategories,
-      child: state.selectedChildCategories
+      parent: updatedParentCategories,
+      child: updatedChildCategories
     })
   } catch (err) {
-    debug.error(DebugCategories.ERROR, 'Failed to toggle category:', err)
-    handleError(err instanceof Error ? err : new Error('Failed to toggle category'))
-  }
-}
-
-async function handleParameterUpdate() {
-  debug.log(DebugCategories.PARAMETERS, 'Parameter update requested')
-  try {
-    const param = parameterComponent.value as InstanceType<
-      typeof ScheduleParameterHandling
-    > &
-      ScheduleParameterHandlingExposed
-    if (!param) return
-
-    await param.updateParameterVisibility('', true) // Trigger refresh
-  } catch (err) {
-    debug.error(DebugCategories.ERROR, 'Failed to update parameters:', err)
-    handleError(err instanceof Error ? err : new Error('Failed to update parameters'))
+    const error = err instanceof Error ? err : new Error('Failed to toggle category')
+    debug.error(DebugCategories.ERROR, 'Failed to toggle category:', error)
+    handleError(error)
   }
 }
 
@@ -537,6 +606,25 @@ function handleBothColumnsUpdate(updates: {
   debug.log(DebugCategories.COLUMNS, 'Both columns update requested', updates)
   state.currentTableColumns = updates.parentColumns
   state.currentDetailColumns = updates.childColumns
+}
+
+async function handleParameterUpdate() {
+  debug.log(DebugCategories.PARAMETERS, 'Parameter update requested')
+  try {
+    const param = parameterComponent.value
+    if (!param) {
+      throw new Error('Parameter component not available')
+    }
+
+    // Trigger refresh of parameter visibility
+    await param.updateParameterVisibility('', true)
+
+    debug.log(DebugCategories.PARAMETERS, 'Parameter update completed')
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to update parameters')
+    debug.error(DebugCategories.ERROR, 'Failed to update parameters:', error)
+    handleError(error)
+  }
 }
 
 async function handleRecoveryAction() {
@@ -557,6 +645,12 @@ async function handleRecoveryAction() {
 
 // Expose necessary functions
 defineExpose({
-  handleError
+  handleError,
+  handleParameterUpdate,
+  handleRecoveryAction,
+  handleBothColumnsUpdate,
+  handleTableUpdate,
+  handleTableDataUpdate,
+  handleToggleCategory
 })
 </script>

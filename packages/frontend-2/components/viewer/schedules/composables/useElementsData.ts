@@ -5,12 +5,17 @@ import type {
   TreeItemComponentModel,
   AvailableHeaders,
   ElementsDataReturn,
-  ParameterValue
+  ParameterValue,
+  BIMNodeRaw
 } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 import { debug, DebugCategories } from '../utils/debug'
 import { BASIC_PARAMETERS, getNestedValue } from '../config/parameters'
+import {
+  parentCategories as defaultParentCategories,
+  childCategories as defaultChildCategories
+} from '../config/categories'
 
 interface ElementsDataOptions {
   currentTableColumns: Ref<ColumnDef[]>
@@ -38,58 +43,58 @@ export function useElementsData({
     child: []
   })
 
+  // Use predefined categories from config
   const availableCategories = ref<{
     parent: Set<string>
     child: Set<string>
   }>({
-    parent: new Set(['Uncategorized']),
-    child: new Set(['Uncategorized'])
+    parent: new Set(defaultParentCategories),
+    child: new Set(defaultChildCategories)
   })
 
-  // =============================================
-  // Raw Data Collection Section
   function processElements(nodes: TreeItemComponentModel[]): ElementData[] {
     const result: ElementData[] = []
-    const parentCategories = new Set(['Uncategorized'])
-    const childCategories = new Set(['Uncategorized'])
 
-    function processNode(node: any): void {
+    function processNode(node: TreeItemComponentModel): void {
+      const raw = node.rawNode?.raw as BIMNodeRaw | undefined
       debug.log(DebugCategories.DATA, 'Processing raw node:', {
         timestamp: new Date().toISOString(),
         hasRawNode: !!node.rawNode,
-        hasRaw: !!node.rawNode?.raw,
-        speckleType: node.rawNode?.raw?.speckle_type,
-        id: node.rawNode?.raw?.id,
-        mark: node.rawNode?.raw?.['Identity Data']?.Mark || node.rawNode?.raw?.Tag,
-        category: node.rawNode?.raw?.['Other']?.Category,
-        host: node.rawNode?.raw?.['Constraints']?.Host,
+        hasRaw: !!raw,
+        speckleType: raw?.speckle_type,
+        id: raw?.id,
+        mark: raw?.['Identity Data']?.Mark || raw?.Tag,
+        category: raw?.Other?.Category,
+        host: raw?.Constraints?.Host,
         childCount: node.children?.length || 0
       })
 
-      if (node.rawNode?.raw) {
-        const raw = node.rawNode.raw
-
+      if (raw) {
         // Create element from raw data
         if (raw.speckle_type?.startsWith('IFC')) {
           const parameters: Record<string, ParameterValue> = {}
 
           // Add basic parameters
           BASIC_PARAMETERS.forEach((param) => {
-            const value = getNestedValue(raw, param.path) || raw[param.fallback] || ''
+            const rawValue = getNestedValue(raw, param.path) as string | undefined
+            const value = rawValue
+              ? String(rawValue)
+              : (raw[param.fallback] as string | undefined) || ''
             if (value) {
-              parameters[param.name] = value.toString()
+              parameters[param.name] = value
             }
           })
 
-          const category = getNestedValue(raw, ['Other', 'Category']) || 'Uncategorized'
-          parentCategories.add(category)
+          const category = (raw.Other?.Category as string) || 'Uncategorized'
+          const mark =
+            (raw['Identity Data']?.Mark as string) || (raw.Tag as string) || ''
 
           const element: ElementData = {
             id: raw.id || '',
             type: raw.speckle_type || 'Unknown',
-            mark: getNestedValue(raw, ['Identity Data', 'Mark']) || raw.Tag || '',
+            mark,
             category,
-            host: getNestedValue(raw, ['Constraints', 'Host']) || '',
+            host: (raw.Constraints?.Host as string) || '',
             parameters,
             details: [] // Will be populated with child elements later
           }
@@ -107,12 +112,7 @@ export function useElementsData({
 
       // Process children recursively
       if (node.children?.length) {
-        node.children.forEach((child: any) => {
-          const childCategory =
-            child.rawNode?.raw?.['Other']?.Category || 'Uncategorized'
-          childCategories.add(childCategory)
-          processNode(child)
-        })
+        node.children.forEach((child) => processNode(child))
       }
     }
 
@@ -123,17 +123,9 @@ export function useElementsData({
     })
     nodes.forEach((node) => processNode(node))
 
-    // Update available categories
-    availableCategories.value = {
-      parent: parentCategories,
-      child: childCategories
-    }
-
     debug.log(DebugCategories.DATA, 'Processing complete:', {
       timestamp: new Date().toISOString(),
       total: result.length,
-      parentCategories: Array.from(parentCategories),
-      childCategories: Array.from(childCategories),
       elements: result.map((el) => ({
         id: el.id,
         type: el.type,
@@ -150,65 +142,61 @@ export function useElementsData({
     parentCategories: string[],
     childCategories: string[]
   ): Promise<void> {
-    debug.log(DebugCategories.CATEGORIES, 'Updating categories:', {
+    debug.log(DebugCategories.CATEGORIES, 'Updating category visibility:', {
       timestamp: new Date().toISOString(),
-      parentCategories,
-      childCategories,
-      currentDataCount: scheduleData.value.length,
-      availableParentCategories: Array.from(availableCategories.value.parent),
-      availableChildCategories: Array.from(availableCategories.value.child)
+      selectedParent: parentCategories,
+      selectedChild: childCategories,
+      currentDataCount: scheduleData.value.length
     })
 
+    // Update visibility based on selected categories
+    // Don't reload data, just update visibility flags
     scheduleData.value = scheduleData.value.map((item) => ({
       ...item,
+      _visible: parentCategories.includes(item.category),
       details:
-        item.details?.filter(
-          (child) =>
-            childCategories.length === 0 || childCategories.includes(child.category)
-        ) || [],
-      _visible:
-        parentCategories.length === 0 || parentCategories.includes(item.category)
+        item.details?.filter((child) => childCategories.includes(child.category)) || []
     }))
 
-    debug.log(DebugCategories.CATEGORIES, 'Categories updated:', {
+    debug.log(DebugCategories.CATEGORIES, 'Category visibility updated:', {
       timestamp: new Date().toISOString(),
       visibleItems: scheduleData.value.filter((item) => item._visible).length,
       totalItems: scheduleData.value.length,
-      itemsWithDetails: scheduleData.value.filter((item) => item.details?.length > 0)
-        .length
+      itemsWithDetails: scheduleData.value.filter(
+        (item) => (item.details?.length ?? 0) > 0
+      ).length
     })
 
     await nextTick()
   }
 
+  // Only watch worldTree for initial data load
   const stopWorldTreeWatch = watch(
     () => worldTree.value as WorldTreeNode | undefined,
     async (newWorldTree) => {
-      debug.log(DebugCategories.DATA, 'World tree updated:', {
-        timestamp: new Date().toISOString(),
-        hasTree: !!newWorldTree,
-        hasRoot: !!newWorldTree?._root,
-        initialized: isInitialized?.value,
-        rootType: newWorldTree?._root?.type,
-        childCount: newWorldTree?._root?.children?.length || 0
-      })
+      // Only process if we don't have data yet
+      if (scheduleData.value.length === 0 && newWorldTree?._root?.children) {
+        debug.log(DebugCategories.DATA, 'Initial world tree data load:', {
+          timestamp: new Date().toISOString(),
+          hasTree: !!newWorldTree,
+          hasRoot: !!newWorldTree?._root,
+          initialized: isInitialized?.value,
+          rootType: newWorldTree?._root?.type,
+          childCount: newWorldTree?._root?.children?.length || 0
+        })
 
-      if (!isInitialized?.value || !newWorldTree?._root?.children) return
-
-      const children = newWorldTree._root.children
-      const processedData = processElements(children)
-      scheduleData.value = processedData
-      debug.log(DebugCategories.DATA, 'Schedule data updated:', {
-        timestamp: new Date().toISOString(),
-        count: scheduleData.value.length,
-        categories: Array.from(
-          new Set(scheduleData.value.map((item) => item.category))
-        ),
-        itemsWithParameters: scheduleData.value.filter(
-          (item) => Object.keys(item.parameters || {}).length > 0
-        ).length
-      })
-      await nextTick()
+        const children = newWorldTree._root.children
+        const processedData = processElements(children)
+        scheduleData.value = processedData
+        debug.log(DebugCategories.DATA, 'Initial schedule data loaded:', {
+          timestamp: new Date().toISOString(),
+          count: scheduleData.value.length,
+          itemsWithParameters: scheduleData.value.filter(
+            (item) => Object.keys(item.parameters || {}).length > 0
+          ).length
+        })
+        await nextTick()
+      }
     },
     { deep: true }
   )
@@ -237,29 +225,28 @@ export function useElementsData({
       return
     }
 
-    const children = tree._root.children
-    debug.log(DebugCategories.DATA, 'World tree found:', {
-      timestamp: new Date().toISOString(),
-      rootType: tree._root.type,
-      childCount: children.length,
-      firstChildType: children[0]?.rawNode?.raw?.speckle_type
-    })
+    // Only load initial data if we don't have any
+    if (scheduleData.value.length === 0) {
+      const children = tree._root.children
+      debug.log(DebugCategories.DATA, 'World tree found:', {
+        timestamp: new Date().toISOString(),
+        rootType: tree._root.type,
+        childCount: children.length,
+        firstChildType: children[0]?.rawNode?.raw?.speckle_type
+      })
 
-    const processedData = processElements(children)
-    scheduleData.value = processedData
-    debug.log(DebugCategories.DATA, 'Initial schedule data:', {
-      timestamp: new Date().toISOString(),
-      count: scheduleData.value.length,
-      categories: {
-        parent: Array.from(availableCategories.value.parent),
-        child: Array.from(availableCategories.value.child)
-      },
-      itemsWithParameters: scheduleData.value.filter(
-        (item) => Object.keys(item.parameters || {}).length > 0
-      ).length,
-      firstItem: scheduleData.value[0]
-    })
-    await nextTick()
+      const processedData = processElements(children)
+      scheduleData.value = processedData
+      debug.log(DebugCategories.DATA, 'Initial schedule data:', {
+        timestamp: new Date().toISOString(),
+        count: scheduleData.value.length,
+        itemsWithParameters: scheduleData.value.filter(
+          (item) => Object.keys(item.parameters || {}).length > 0
+        ).length,
+        firstItem: scheduleData.value[0]
+      })
+      await nextTick()
+    }
   }
 
   return {

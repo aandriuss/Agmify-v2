@@ -83,10 +83,50 @@ interface ParsedSettings {
   controlsWidth?: number
 }
 
+function isValidParsedSettings(value: unknown): value is ParsedSettings {
+  if (!value || typeof value !== 'object') return false
+  const settings = value as Record<string, unknown>
+  if (
+    settings.controlsWidth !== undefined &&
+    typeof settings.controlsWidth !== 'number'
+  )
+    return false
+  if (settings.namedTables !== undefined && typeof settings.namedTables !== 'object')
+    return false
+  return true
+}
+
+function isJsonString(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  try {
+    JSON.parse(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function parseSettings(rawSettings: unknown): ParsedSettings {
+  let parsed: unknown
+
+  if (isJsonString(rawSettings)) {
+    parsed = JSON.parse(rawSettings)
+  } else {
+    parsed = rawSettings
+  }
+
+  if (!isValidParsedSettings(parsed)) {
+    throw new Error('Invalid settings format')
+  }
+  return parsed
+}
+
 export function useUserSettings() {
   const settings = ref<UserSettings>({ namedTables: {} })
   const loading = ref(false)
   const error = ref<Error | null>(null)
+  const isUpdating = ref(false)
+  const lastUpdateTime = ref(0)
 
   const { mutate: updateSettingsMutation } =
     useMutation<UpdateUserSettingsResponse>(UPDATE_USER_SETTINGS)
@@ -95,85 +135,130 @@ export function useUserSettings() {
     loading: queryLoading,
     refetch
   } = useQuery<GetUserSettingsResponse>(GET_USER_SETTINGS, null, {
-    fetchPolicy: 'network-only' // Force network request
+    fetchPolicy: 'network-only'
   })
 
-  // Watch for remote changes
+  // Watch for remote changes, but only if we're not currently updating
   const stopSettingsWatch = watch(
     () => result.value?.activeUser?.userSettings,
     (newSettings: unknown) => {
-      debug.log(
-        DebugCategories.INITIALIZATION,
-        '[useUserSettings] Raw settings received:',
-        {
-          hasSettings: !!newSettings,
-          rawSettings: newSettings,
-          resultValue: result.value
-        }
-      )
+      // Skip if we're updating or if this is a response to our own update
+      const timeSinceLastUpdate = Date.now() - lastUpdateTime.value
+      if (isUpdating.value || timeSinceLastUpdate < 1000) {
+        debug.log(
+          DebugCategories.INITIALIZATION,
+          'Skipping settings update during local change',
+          { isUpdating: isUpdating.value, timeSinceLastUpdate }
+        )
+        return
+      }
+
+      debug.log(DebugCategories.INITIALIZATION, 'Raw settings received', {
+        hasSettings: !!newSettings,
+        rawSettings: newSettings,
+        resultValue: result.value
+      })
 
       if (!newSettings) {
         debug.warn(
           DebugCategories.INITIALIZATION,
-          '[useUserSettings] No settings in update, initializing with empty state'
+          'No settings in update, initializing with empty state'
         )
         settings.value = { namedTables: {} }
         return
       }
 
-      // Parse settings if they're a string
-      let parsedSettings: ParsedSettings
       try {
-        parsedSettings =
-          typeof newSettings === 'string'
-            ? JSON.parse(newSettings)
-            : (newSettings as ParsedSettings)
-        debug.log(
-          DebugCategories.INITIALIZATION,
-          '[useUserSettings] Settings parsed:',
-          parsedSettings
-        )
+        const parsedSettings = parseSettings(newSettings)
+        debug.log(DebugCategories.INITIALIZATION, 'Settings parsed', parsedSettings)
+
+        // Ensure namedTables exists
+        const validatedSettings: UserSettings = {
+          ...parsedSettings,
+          namedTables: parsedSettings.namedTables || {}
+        }
+
+        settings.value = validatedSettings
+        debug.log(DebugCategories.INITIALIZATION, 'Settings updated', {
+          namedTablesCount: Object.keys(settings.value.namedTables).length,
+          namedTables: settings.value.namedTables
+        })
       } catch (err) {
-        debug.error(
-          DebugCategories.ERROR,
-          '[useUserSettings] Failed to parse settings:',
-          err
-        )
+        debug.error(DebugCategories.ERROR, 'Failed to parse settings', err)
         settings.value = { namedTables: {} }
-        return
       }
-
-      // Validate settings structure
-      if (!parsedSettings || typeof parsedSettings !== 'object') {
-        debug.error(
-          DebugCategories.ERROR,
-          '[useUserSettings] Invalid settings format:',
-          parsedSettings
-        )
-        settings.value = { namedTables: {} }
-        return
-      }
-
-      // Ensure namedTables exists
-      const validatedSettings: UserSettings = {
-        ...parsedSettings,
-        namedTables: parsedSettings.namedTables || {}
-      }
-
-      settings.value = validatedSettings
-      debug.log(DebugCategories.INITIALIZATION, '[useUserSettings] Settings updated:', {
-        namedTablesCount: Object.keys(settings.value.namedTables).length,
-        namedTables: settings.value.namedTables
-      })
     },
     { deep: true }
   )
+
+  const updateNamedTable = async (
+    tableId: string,
+    updates: Partial<NamedTableConfig>
+  ): Promise<NamedTableConfig> => {
+    try {
+      loading.value = true
+      error.value = null
+      isUpdating.value = true // Set flag to prevent watch from triggering
+
+      const currentSettings = settings.value
+      const existingTable = currentSettings.namedTables[tableId]
+
+      if (!existingTable) {
+        throw new Error('Table not found')
+      }
+
+      // Create updated table config
+      const updatedTable: NamedTableConfig = {
+        ...existingTable,
+        ...updates,
+        // If categoryFilters are provided, use them directly without merging
+        categoryFilters: updates.categoryFilters ?? existingTable.categoryFilters,
+        id: tableId,
+        lastUpdateTimestamp: Date.now()
+      }
+
+      // Create updated settings without merging namedTables
+      const updatedSettings: UserSettings = {
+        ...currentSettings,
+        namedTables: {
+          ...currentSettings.namedTables,
+          [tableId]: updatedTable
+        }
+      }
+
+      // Update local state first
+      settings.value = updatedSettings
+
+      // Record update time
+      lastUpdateTime.value = Date.now()
+
+      // Send the mutation with the updated settings
+      const result = await updateSettingsMutation({
+        settings: updatedSettings
+      })
+
+      if (!result?.data?.userSettingsUpdate) {
+        throw new Error('Failed to save table updates')
+      }
+
+      return updatedTable
+    } catch (err) {
+      error.value = err instanceof Error ? err : new Error('Failed to update table')
+      throw error.value
+    } finally {
+      loading.value = false
+      // Keep isUpdating true for a short while to ensure we don't process the response
+      setTimeout(() => {
+        isUpdating.value = false
+      }, 1000)
+    }
+  }
 
   const loadSettings = async (): Promise<void> => {
     try {
       loading.value = true
       error.value = null
-      debug.log(DebugCategories.INITIALIZATION, '[useUserSettings] Loading settings...')
+      debug.log(DebugCategories.INITIALIZATION, 'Loading settings...')
 
       // Wait for settings to be populated
       await new Promise<void>((resolve, reject) => {
@@ -184,23 +269,12 @@ export function useUserSettings() {
         // Check immediately
         const currentSettings = result.value?.activeUser?.userSettings
         if (currentSettings) {
-          debug.log(
-            DebugCategories.INITIALIZATION,
-            '[useUserSettings] Settings found immediately:',
-            {
-              rawSettings: currentSettings
-            }
-          )
+          debug.log(DebugCategories.INITIALIZATION, 'Settings found immediately', {
+            rawSettings: currentSettings
+          })
 
           try {
-            const parsedSettings: ParsedSettings =
-              typeof currentSettings === 'string'
-                ? JSON.parse(currentSettings)
-                : currentSettings
-
-            if (!parsedSettings || typeof parsedSettings !== 'object') {
-              throw new Error('Settings is not an object')
-            }
+            const parsedSettings = parseSettings(currentSettings)
 
             // Ensure namedTables exists
             const validatedSettings: UserSettings = {
@@ -210,43 +284,35 @@ export function useUserSettings() {
 
             settings.value = validatedSettings
 
-            debug.log(
-              DebugCategories.INITIALIZATION,
-              '[useUserSettings] Settings loaded immediately:',
-              {
-                namedTablesCount: Object.keys(settings.value.namedTables).length,
-                namedTables: settings.value.namedTables
-              }
-            )
+            debug.log(DebugCategories.INITIALIZATION, 'Settings loaded immediately', {
+              namedTablesCount: Object.keys(settings.value.namedTables).length,
+              namedTables: settings.value.namedTables
+            })
 
             clearTimeout(timeout)
             resolve()
             return
           } catch (err) {
-            debug.error(
-              DebugCategories.ERROR,
-              '[useUserSettings] Failed to parse immediate settings:',
-              {
-                error: err,
-                rawSettings: currentSettings
-              }
-            )
+            debug.error(DebugCategories.ERROR, 'Failed to parse immediate settings', {
+              error: err,
+              rawSettings: currentSettings
+            })
           }
         } else {
           debug.log(
             DebugCategories.INITIALIZATION,
-            '[useUserSettings] No immediate settings, fetching...'
+            'No immediate settings, fetching...'
           )
         }
 
         // If not available immediately, refetch and wait for result
         refetch()
           .then(() => {
-            const currentSettings = result.value?.activeUser?.userSettings
+            const currentSettings = result.value?.activeUser?.userSettings ?? null
             if (!currentSettings) {
               debug.warn(
                 DebugCategories.INITIALIZATION,
-                '[useUserSettings] No settings in refetch response, initializing with empty state'
+                'No settings in refetch response, initializing with empty state'
               )
               settings.value = { namedTables: {} }
               clearTimeout(timeout)
@@ -255,14 +321,7 @@ export function useUserSettings() {
             }
 
             try {
-              const parsedSettings: ParsedSettings =
-                typeof currentSettings === 'string'
-                  ? JSON.parse(currentSettings)
-                  : currentSettings
-
-              if (!parsedSettings || typeof parsedSettings !== 'object') {
-                throw new Error('Settings is not an object')
-              }
+              const parsedSettings = parseSettings(currentSettings)
 
               // Ensure namedTables exists
               const validatedSettings: UserSettings = {
@@ -274,7 +333,7 @@ export function useUserSettings() {
 
               debug.log(
                 DebugCategories.INITIALIZATION,
-                '[useUserSettings] Settings loaded from refetch:',
+                'Settings loaded from refetch',
                 {
                   namedTablesCount: Object.keys(settings.value.namedTables).length,
                   namedTables: settings.value.namedTables
@@ -284,38 +343,26 @@ export function useUserSettings() {
               clearTimeout(timeout)
               resolve()
             } catch (err) {
-              debug.error(
-                DebugCategories.ERROR,
-                '[useUserSettings] Failed to parse refetched settings:',
-                {
-                  error: err,
-                  rawSettings: currentSettings
-                }
-              )
+              debug.error(DebugCategories.ERROR, 'Failed to parse refetched settings', {
+                error: err,
+                rawSettings: currentSettings
+              })
               settings.value = { namedTables: {} }
               clearTimeout(timeout)
               resolve()
             }
           })
           .catch((err) => {
-            debug.error(
-              DebugCategories.ERROR,
-              '[useUserSettings] Failed to refetch settings:',
-              err
-            )
+            debug.error(DebugCategories.ERROR, 'Failed to refetch settings', err)
             reject(new Error('Failed to fetch settings'))
           })
 
         // Clean up on timeout
-        timeout.unref?.() // Optional chaining for Node.js environments
+        timeout.unref?.()
       })
     } catch (err) {
       error.value = err instanceof Error ? err : new Error('Failed to load settings')
-      debug.error(
-        DebugCategories.ERROR,
-        '[useUserSettings] Failed to load settings:',
-        err
-      )
+      debug.error(DebugCategories.ERROR, 'Failed to load settings', err)
       throw error.value
     } finally {
       loading.value = false
@@ -405,10 +452,10 @@ export function useUserSettings() {
             lastUpdateTimestamp: Date.now()
           }
         }),
-        {}
+        {} as Record<string, NamedTableConfig>
       )
 
-      // Create updated settings preserving all existing data
+      // Create updated settings
       const updatedSettings = {
         ...currentSettings,
         namedTables: {
@@ -471,54 +518,6 @@ export function useUserSettings() {
     } finally {
       loading.value = false
     }
-  }
-
-  const updateNamedTable = async (
-    tableId: string,
-    updates: Partial<NamedTableConfig>
-  ): Promise<NamedTableConfig> => {
-    try {
-      loading.value = true
-      error.value = null
-
-      const currentSettings = settings.value
-      const existingTable = currentSettings.namedTables[tableId]
-
-      if (!existingTable) {
-        throw new Error('Table not found')
-      }
-
-      const updatedTable: NamedTableConfig = {
-        ...existingTable,
-        ...updates,
-        id: tableId,
-        lastUpdateTimestamp: Date.now()
-      }
-
-      const updatedSettings: UserSettings = {
-        ...currentSettings,
-        namedTables: {
-          ...currentSettings.namedTables,
-          [tableId]: updatedTable
-        }
-      }
-
-      const success = await saveSettings(updatedSettings)
-      if (!success) {
-        throw new Error('Failed to save table updates')
-      }
-      return updatedTable
-    } catch (err) {
-      error.value = err instanceof Error ? err : new Error('Failed to update table')
-      throw error.value
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // Clean up watchers on component unmount
-  const cleanup = () => {
-    stopSettingsWatch()
   }
 
   return {

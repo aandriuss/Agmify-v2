@@ -26,6 +26,7 @@ const emit = defineEmits<{
 
 // Initialization state
 const loadingError = ref<Error | null>(null)
+const isInitialLoad = ref(true)
 
 // User Settings
 const {
@@ -35,19 +36,24 @@ const {
   cleanup: cleanupSettings
 } = useUserSettings()
 
-// Watch for settings changes
+// Watch for settings changes and emit them
 const stopSettingsWatch = watch(
   () => settings.value?.namedTables,
   (newTables) => {
     if (newTables) {
-      debug.log(DebugCategories.INITIALIZATION, 'Settings updated:', {
+      debug.log(DebugCategories.INITIALIZATION, 'Settings loaded:', {
         namedTablesCount: Object.keys(newTables).length,
-        namedTables: newTables
+        isInitialLoad: isInitialLoad.value
       })
       emit('settings-loaded', { namedTables: newTables })
+
+      // Only mark initial load as complete after first load
+      if (isInitialLoad.value) {
+        isInitialLoad.value = false
+      }
     }
   },
-  { deep: true }
+  { immediate: true }
 )
 
 // Data Organization
@@ -139,43 +145,18 @@ onMounted(async () => {
     // First load settings
     await loadSettings()
 
-    // Run the full initialization
-    await initialize()
+    // Mark as initialized immediately after settings load
+    // Categories are predefined, so we don't need to wait for them
+    emit('update:initialized', true)
+    debug.log(DebugCategories.INITIALIZATION, 'Settings loaded, component initialized')
+
+    // Run the rest of initialization in background
+    void initialize()
     emit('data-initialized')
-    debug.log(DebugCategories.INITIALIZATION, 'Core initialization complete', {
-      categories: {
-        parent: Array.from(availableCategories.value.parent),
-        child: Array.from(availableCategories.value.child)
-      },
-      tables: tablesArray.value
-    })
 
     // Store cleanup functions
     cleanupFunctions.value.push(stopWorldTreeWatch)
     cleanupFunctions.value.push(stopSettingsWatch)
-
-    // Mark as initialized only if we have data and categories
-    if (
-      scheduleData.value.length > 0 &&
-      availableCategories.value.parent.size > 0 &&
-      availableCategories.value.child.size > 0
-    ) {
-      emit('update:initialized', true)
-      debug.log(DebugCategories.INITIALIZATION, 'Component fully initialized', {
-        dataCount: scheduleData.value.length,
-        categories: {
-          parent: Array.from(availableCategories.value.parent),
-          child: Array.from(availableCategories.value.child)
-        },
-        tables: tablesArray.value
-      })
-    } else {
-      debug.warn(DebugCategories.INITIALIZATION, 'Missing required data:', {
-        hasData: scheduleData.value.length > 0,
-        hasParentCategories: availableCategories.value.parent.size > 0,
-        hasChildCategories: availableCategories.value.child.size > 0
-      })
-    }
 
     debug.completeState('scheduleInitialization')
   } catch (err) {
@@ -226,7 +207,7 @@ onUnmounted(() => {
   debug.completeState('cleanup')
 })
 
-// Expose necessary functions and state
+// Expose necessary functions
 defineExpose({
   settings,
   updateNamedTable,

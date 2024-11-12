@@ -1,10 +1,10 @@
-import { computed, ref, watch } from 'vue'
-import type { TableConfig } from '../types'
+import { computed, ref, type Ref } from 'vue'
 import { debug, DebugCategories } from '../utils/debug'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
+import { useScheduleCategories } from './useScheduleCategories'
 
 interface UseScheduleTableOptions {
-  settings: { value: { namedTables?: Record<string, TableConfig> } | null }
+  settings: { value: { namedTables?: Record<string, NamedTableConfig> } | null }
   updateCategories: (
     parentCategories: string[],
     childCategories: string[]
@@ -13,42 +13,7 @@ interface UseScheduleTableOptions {
     id: string,
     config: Partial<NamedTableConfig>
   ) => Promise<NamedTableConfig>
-  isInitialized?: { value: boolean }
-}
-
-// Validation function for category state
-function validateCategoryState(
-  parentCategories: string[],
-  childCategories: string[]
-): boolean {
-  if (!Array.isArray(parentCategories) || !Array.isArray(childCategories)) {
-    debug.warn(DebugCategories.VALIDATION, 'Invalid category arrays:', {
-      parent: parentCategories,
-      child: childCategories
-    })
-    return false
-  }
-
-  const allParentValid = parentCategories.every(
-    (cat) => typeof cat === 'string' && cat.length > 0
-  )
-  const allChildValid = childCategories.every(
-    (cat) => typeof cat === 'string' && cat.length > 0
-  )
-
-  if (!allParentValid || !allChildValid) {
-    debug.warn(DebugCategories.VALIDATION, 'Invalid category values:', {
-      invalidParent: parentCategories.filter(
-        (cat) => typeof cat !== 'string' || !cat.length
-      ),
-      invalidChild: childCategories.filter(
-        (cat) => typeof cat !== 'string' || !cat.length
-      )
-    })
-    return false
-  }
-
-  return true
+  isInitialized?: Ref<boolean>
 }
 
 export function useScheduleTable(options: UseScheduleTableOptions) {
@@ -61,6 +26,9 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
 
   debug.log(DebugCategories.INITIALIZATION, 'Initializing table management:', {
     hasSettings: !!settings.value,
+    hasNamedTables: !!settings.value?.namedTables,
+    namedTablesCount: Object.keys(settings.value?.namedTables || {}).length,
+    namedTables: settings.value?.namedTables,
     isInitialized: isInitialized?.value,
     timestamp: new Date().toISOString()
   })
@@ -68,10 +36,55 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
   // State
   const selectedTableId = ref('')
   const tableName = ref('')
-  const selectedParentCategories = ref<string[]>([])
-  const selectedChildCategories = ref<string[]>([])
   const tableKey = ref(Date.now().toString())
   const loadingError = ref<Error | null>(null)
+
+  // Use schedule categories composable for category management
+  const {
+    selectedParentCategories,
+    selectedChildCategories,
+    setCategories,
+    toggleCategory
+  } = useScheduleCategories({
+    updateCategories: async (parent, child) => {
+      debug.log(DebugCategories.CATEGORIES, 'Saving category selections:', {
+        parent,
+        child,
+        selectedTableId: selectedTableId.value
+      })
+
+      try {
+        // First update elements data
+        await updateElementsData(parent, child)
+
+        // Then save to PostgreSQL if we have a selected table
+        if (selectedTableId.value) {
+          const currentTableConfig =
+            settings.value?.namedTables?.[selectedTableId.value]
+          if (currentTableConfig) {
+            // Create a new table config with only the updated category filters
+            const updatedConfig: Partial<NamedTableConfig> = {
+              categoryFilters: {
+                selectedParentCategories: parent,
+                selectedChildCategories: child
+              }
+            }
+
+            // Save to PostgreSQL
+            await updateNamedTable(selectedTableId.value, updatedConfig)
+            debug.log(
+              DebugCategories.CATEGORIES,
+              'Category selections saved to PostgreSQL'
+            )
+          }
+        }
+      } catch (err) {
+        debug.error(DebugCategories.ERROR, 'Failed to save category selections:', err)
+        throw err
+      }
+    },
+    isInitialized
+  })
 
   // Computed
   const currentTableId = computed(() => selectedTableId.value)
@@ -91,32 +104,8 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     return table
   })
 
-  // Watch for settings changes to update categories
-  watch(
-    () => settings.value?.namedTables?.[currentTableId.value]?.categoryFilters,
-    (newFilters) => {
-      debug.log(DebugCategories.CATEGORIES, 'Category filters changed in settings:', {
-        filters: newFilters,
-        isInitialized: isInitialized?.value,
-        timestamp: new Date().toISOString()
-      })
-
-      if (newFilters && currentTableId.value) {
-        // Update categories from settings
-        selectedParentCategories.value = newFilters.selectedParentCategories || []
-        selectedChildCategories.value = newFilters.selectedChildCategories || []
-
-        debug.log(DebugCategories.CATEGORIES, 'Updated categories from settings:', {
-          parent: selectedParentCategories.value,
-          child: selectedChildCategories.value
-        })
-      }
-    },
-    { deep: true }
-  )
-
   // Methods
-  async function handleTableChange() {
+  function handleTableChange() {
     debug.log(DebugCategories.TABLE_UPDATES, 'Table change triggered:', {
       selectedId: selectedTableId.value,
       isInitialized: isInitialized?.value,
@@ -129,45 +118,25 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
         if (selectedTable) {
           tableName.value = selectedTable.name
 
-          // Get categories from table config or use empty arrays
-          const parentCategories =
+          // Load saved category selections from PostgreSQL
+          const savedParentCategories =
             selectedTable.categoryFilters?.selectedParentCategories || []
-          const childCategories =
+          const savedChildCategories =
             selectedTable.categoryFilters?.selectedChildCategories || []
 
-          // Validate categories before updating
-          if (!validateCategoryState(parentCategories, childCategories)) {
-            throw new Error('Invalid category state in table config')
-          }
+          // Update category selections (local state only)
+          setCategories(savedParentCategories, savedChildCategories)
 
-          selectedParentCategories.value = parentCategories
-          selectedChildCategories.value = childCategories
-
-          debug.log(
-            DebugCategories.CATEGORIES,
-            'Loading categories from selected table:',
-            {
-              parent: selectedParentCategories.value,
-              child: selectedChildCategories.value
-            }
-          )
-
-          // Update categories regardless of initialization state
-          await updateElementsData(
-            selectedParentCategories.value,
-            selectedChildCategories.value
-          )
-
-          debug.log(DebugCategories.CATEGORIES, 'Categories updated in elements data')
+          debug.log(DebugCategories.CATEGORIES, 'Loaded category selections:', {
+            parent: savedParentCategories,
+            child: savedChildCategories
+          })
 
           tableKey.value = Date.now().toString()
         }
       } else {
-        // Reset state for new table
-        tableName.value = ''
-        selectedParentCategories.value = []
-        selectedChildCategories.value = []
-        await updateElementsData([], [])
+        // Reset to empty selections for new table
+        setCategories([], [])
       }
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Table change error:', err)
@@ -177,7 +146,7 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     }
   }
 
-  async function handleTableSelection(tableId: string) {
+  function handleTableSelection(tableId: string) {
     debug.log(DebugCategories.TABLE_UPDATES, 'Table selection:', {
       tableId,
       isInitialized: isInitialized?.value,
@@ -188,45 +157,34 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
       selectedTableId.value = tableId
       if (!tableId) {
         tableName.value = ''
-        selectedParentCategories.value = []
-        selectedChildCategories.value = []
-        await updateElementsData([], [])
-        debug.log(DebugCategories.STATE, 'Reset state for new table')
+        // Reset to empty selections
+        setCategories([], [])
+        debug.log(DebugCategories.STATE, 'Reset to empty selections')
       } else {
         const selectedTable = settings.value?.namedTables?.[tableId]
         if (selectedTable) {
           tableName.value = selectedTable.name
-          // Get categories from table config or use empty arrays
-          const parentCategories =
+
+          // Load saved category selections from PostgreSQL
+          const savedParentCategories =
             selectedTable.categoryFilters?.selectedParentCategories || []
-          const childCategories =
+          const savedChildCategories =
             selectedTable.categoryFilters?.selectedChildCategories || []
 
-          // Validate categories before updating
-          if (!validateCategoryState(parentCategories, childCategories)) {
-            throw new Error('Invalid category state in table config')
-          }
+          // Update category selections (local state only)
+          setCategories(savedParentCategories, savedChildCategories)
 
-          selectedParentCategories.value = parentCategories
-          selectedChildCategories.value = childCategories
-
-          debug.log(
-            DebugCategories.CATEGORIES,
-            'Loaded categories from selected table:',
-            {
-              parent: selectedParentCategories.value,
-              child: selectedChildCategories.value
-            }
-          )
-
-          await updateElementsData(parentCategories, childCategories)
+          debug.log(DebugCategories.CATEGORIES, 'Loaded category selections:', {
+            parent: savedParentCategories,
+            child: savedChildCategories
+          })
         }
       }
 
       debug.log(DebugCategories.STATE, 'Selection complete:', {
         selectedId: selectedTableId.value,
         tableName: tableName.value,
-        categories: {
+        selections: {
           parent: selectedParentCategories.value,
           child: selectedChildCategories.value
         }
@@ -239,53 +197,19 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     }
   }
 
-  async function updateCategories(
-    parentCategories: string[],
-    childCategories: string[]
-  ) {
-    debug.log(DebugCategories.CATEGORIES, 'Updating categories:', {
-      parent: parentCategories,
-      child: childCategories,
-      currentTableId: currentTableId.value,
-      timestamp: new Date().toISOString()
+  // Computed for tables array
+  const tablesArray = computed(() => {
+    const tables = settings.value?.namedTables || {}
+    const result = Object.entries(tables).map(([id, table]) => ({
+      id,
+      name: table.name
+    }))
+    debug.log(DebugCategories.STATE, 'Tables array updated:', {
+      count: result.length,
+      tables: result
     })
-
-    try {
-      // Validate categories before updating
-      if (!validateCategoryState(parentCategories, childCategories)) {
-        throw new Error('Invalid category state')
-      }
-
-      // First update the data
-      await updateElementsData(parentCategories, childCategories)
-
-      debug.log(DebugCategories.CATEGORIES, 'Elements data updated')
-
-      // Then update the current table's category filters if we have a selected table
-      if (currentTableId.value) {
-        const currentTableConfig = settings.value?.namedTables?.[currentTableId.value]
-        if (currentTableConfig) {
-          const updatedTableConfig: Partial<NamedTableConfig> = {
-            categoryFilters: {
-              selectedParentCategories: parentCategories,
-              selectedChildCategories: childCategories
-            }
-          }
-
-          // Save to PostgreSQL
-          await updateNamedTable(currentTableId.value, updatedTableConfig)
-          debug.log(DebugCategories.CATEGORIES, 'Categories saved to database')
-        }
-      }
-
-      debug.log(DebugCategories.CATEGORIES, 'Categories update complete')
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Update error:', err)
-      loadingError.value =
-        err instanceof Error ? err : new Error('Failed to update categories')
-      throw loadingError.value
-    }
-  }
+    return result
+  })
 
   return {
     selectedTableId,
@@ -298,14 +222,9 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     currentTable,
     currentTableColumns: computed(() => currentTable.value?.parentColumns || []),
     currentDetailColumns: computed(() => currentTable.value?.childColumns || []),
-    tablesArray: computed(() =>
-      Object.entries(settings.value?.namedTables || {}).map(([id, table]) => ({
-        id,
-        name: table.name
-      }))
-    ),
+    tablesArray,
     handleTableChange,
     handleTableSelection,
-    updateCategories
+    toggleCategory
   }
 }
