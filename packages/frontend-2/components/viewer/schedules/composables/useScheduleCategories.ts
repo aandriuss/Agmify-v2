@@ -36,14 +36,30 @@ function validateCategories(categories: string[]): boolean {
 }
 
 export function useScheduleCategories(options: UseScheduleCategoriesOptions) {
-  const { updateCategories } = options
+  const { updateCategories, isInitialized } = options
 
   // Initialize with empty selections - will be loaded from PostgreSQL
   const selectedParentCategories = ref<string[]>([])
   const selectedChildCategories = ref<string[]>([])
   const loadingError = ref<Error | null>(null)
+  const isUpdating = ref(false)
 
   async function toggleCategory(type: 'parent' | 'child', category: string) {
+    // Guard against updates before initialization
+    if (!isInitialized?.value) {
+      debug.warn(
+        DebugCategories.INITIALIZATION,
+        'Attempted category toggle before initialization'
+      )
+      return
+    }
+
+    // Prevent concurrent updates
+    if (isUpdating.value) {
+      debug.warn(DebugCategories.STATE, 'Category update already in progress')
+      return
+    }
+
     debug.log(DebugCategories.CATEGORIES, 'Toggle requested:', {
       type,
       category,
@@ -54,6 +70,8 @@ export function useScheduleCategories(options: UseScheduleCategoriesOptions) {
     })
 
     try {
+      isUpdating.value = true
+
       // Validate category before proceeding
       if (!category || typeof category !== 'string') {
         throw new Error('Invalid category value')
@@ -65,10 +83,8 @@ export function useScheduleCategories(options: UseScheduleCategoriesOptions) {
       if (type === 'parent') {
         const index = selectedParentCategories.value.indexOf(category)
         if (index === -1) {
-          // Adding a category
           updatedParentCategories = [...selectedParentCategories.value, category]
         } else {
-          // Removing a category
           updatedParentCategories = selectedParentCategories.value.filter(
             (cat) => cat !== category
           )
@@ -76,10 +92,8 @@ export function useScheduleCategories(options: UseScheduleCategoriesOptions) {
       } else {
         const index = selectedChildCategories.value.indexOf(category)
         if (index === -1) {
-          // Adding a category
           updatedChildCategories = [...selectedChildCategories.value, category]
         } else {
-          // Removing a category
           updatedChildCategories = selectedChildCategories.value.filter(
             (cat) => cat !== category
           )
@@ -117,11 +131,21 @@ export function useScheduleCategories(options: UseScheduleCategoriesOptions) {
       loadingError.value =
         err instanceof Error ? err : new Error('Failed to toggle category')
       throw loadingError.value
+    } finally {
+      isUpdating.value = false
     }
   }
 
   // Reset categories to empty state
   function resetCategories() {
+    if (!isInitialized?.value) {
+      debug.warn(
+        DebugCategories.INITIALIZATION,
+        'Attempted reset before initialization'
+      )
+      return
+    }
+
     debug.log(DebugCategories.CATEGORIES, 'Resetting categories to empty state')
     selectedParentCategories.value = []
     selectedChildCategories.value = []
@@ -129,6 +153,14 @@ export function useScheduleCategories(options: UseScheduleCategoriesOptions) {
 
   // Set categories with validation (used when loading from PostgreSQL)
   function setCategories(parent: string[], child: string[]) {
+    if (!isInitialized?.value) {
+      debug.warn(
+        DebugCategories.INITIALIZATION,
+        'Attempted to set categories before initialization'
+      )
+      return
+    }
+
     debug.log(DebugCategories.CATEGORIES, 'Setting categories from PostgreSQL:', {
       parent,
       child
@@ -156,6 +188,7 @@ export function useScheduleCategories(options: UseScheduleCategoriesOptions) {
     selectedParentCategories,
     selectedChildCategories,
     loadingError,
+    isUpdating,
     toggleCategory,
     resetCategories,
     setCategories,

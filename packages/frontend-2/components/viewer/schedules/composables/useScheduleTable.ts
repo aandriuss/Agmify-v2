@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import { debug, DebugCategories } from '../utils/debug'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 import { useScheduleCategories } from './useScheduleCategories'
@@ -38,13 +38,16 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
   const tableName = ref('')
   const tableKey = ref(Date.now().toString())
   const loadingError = ref<Error | null>(null)
+  const isLoading = ref(false)
+  const isTableUpdatePending = ref(false)
 
   // Use schedule categories composable for category management
   const {
     selectedParentCategories,
     selectedChildCategories,
     setCategories,
-    toggleCategory
+    toggleCategory,
+    isUpdating: isCategoryUpdatePending
   } = useScheduleCategories({
     updateCategories: async (parent, child) => {
       debug.log(DebugCategories.CATEGORIES, 'Saving category selections:', {
@@ -62,6 +65,7 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
           const currentTableConfig =
             settings.value?.namedTables?.[selectedTableId.value]
           if (currentTableConfig) {
+            isTableUpdatePending.value = true
             // Create a new table config with only the updated category filters
             const updatedConfig: Partial<NamedTableConfig> = {
               categoryFilters: {
@@ -81,6 +85,8 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
       } catch (err) {
         debug.error(DebugCategories.ERROR, 'Failed to save category selections:', err)
         throw err
+      } finally {
+        isTableUpdatePending.value = false
       }
     },
     isInitialized
@@ -90,7 +96,12 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
   const currentTableId = computed(() => selectedTableId.value)
 
   const currentTable = computed(() => {
-    const table = settings.value?.namedTables?.[currentTableId.value]
+    if (!settings.value?.namedTables) {
+      debug.log(DebugCategories.STATE, 'Settings not available')
+      return null
+    }
+
+    const table = settings.value.namedTables[currentTableId.value]
     if (!table) {
       debug.log(DebugCategories.STATE, 'No table selected')
       return null
@@ -104,8 +115,39 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     return table
   })
 
+  // Watch for settings changes to ensure state consistency
+  watch(
+    () => settings.value?.namedTables,
+    (newTables) => {
+      if (!newTables || !selectedTableId.value) return
+
+      const selectedTable = newTables[selectedTableId.value]
+      if (selectedTable) {
+        tableName.value = selectedTable.name
+      }
+    },
+    { deep: true }
+  )
+
   // Methods
-  async function handleTableChange() {
+  function handleTableChange() {
+    if (!isInitialized?.value) {
+      debug.warn(
+        DebugCategories.INITIALIZATION,
+        'Attempted table change before initialization'
+      )
+      return
+    }
+
+    if (
+      isLoading.value ||
+      isTableUpdatePending.value ||
+      isCategoryUpdatePending.value
+    ) {
+      debug.warn(DebugCategories.STATE, 'Update already in progress')
+      return
+    }
+
     debug.log(DebugCategories.TABLE_UPDATES, 'Table change triggered:', {
       selectedId: selectedTableId.value,
       isInitialized: isInitialized?.value,
@@ -113,40 +155,31 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     })
 
     try {
+      isLoading.value = true
+
       if (selectedTableId.value) {
-        // Wait for settings to be updated
-        const maxAttempts = 10
-        let attempts = 0
-        let selectedTable = settings.value?.namedTables?.[selectedTableId.value]
-
-        while (!selectedTable && attempts < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 100))
-          selectedTable = settings.value?.namedTables?.[selectedTableId.value]
-          attempts++
+        const selectedTable = settings.value?.namedTables?.[selectedTableId.value]
+        if (!selectedTable) {
+          throw new Error('Selected table not found in settings')
         }
 
-        if (selectedTable) {
-          tableName.value = selectedTable.name
+        tableName.value = selectedTable.name
 
-          // Load saved category selections from PostgreSQL
-          const savedParentCategories =
-            selectedTable.categoryFilters?.selectedParentCategories || []
-          const savedChildCategories =
-            selectedTable.categoryFilters?.selectedChildCategories || []
+        // Load saved category selections from PostgreSQL
+        const savedParentCategories =
+          selectedTable.categoryFilters?.selectedParentCategories || []
+        const savedChildCategories =
+          selectedTable.categoryFilters?.selectedChildCategories || []
 
-          // Update category selections (local state only)
-          setCategories(savedParentCategories, savedChildCategories)
+        // Update category selections (local state only)
+        setCategories(savedParentCategories, savedChildCategories)
 
-          debug.log(DebugCategories.CATEGORIES, 'Loaded category selections:', {
-            parent: savedParentCategories,
-            child: savedChildCategories
-          })
+        debug.log(DebugCategories.CATEGORIES, 'Loaded category selections:', {
+          parent: savedParentCategories,
+          child: savedChildCategories
+        })
 
-          tableKey.value = Date.now().toString()
-        } else {
-          debug.error(DebugCategories.ERROR, 'Failed to load table after waiting')
-          throw new Error('Failed to load table data')
-        }
+        tableKey.value = Date.now().toString()
       } else {
         // Reset to empty selections for new table
         setCategories([], [])
@@ -156,10 +189,29 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
       loadingError.value =
         err instanceof Error ? err : new Error('Failed to handle table change')
       throw loadingError.value
+    } finally {
+      isLoading.value = false
     }
   }
 
   async function handleTableSelection(tableId: string) {
+    if (!isInitialized?.value) {
+      debug.warn(
+        DebugCategories.INITIALIZATION,
+        'Attempted table selection before initialization'
+      )
+      return
+    }
+
+    if (
+      isLoading.value ||
+      isTableUpdatePending.value ||
+      isCategoryUpdatePending.value
+    ) {
+      debug.warn(DebugCategories.STATE, 'Update already in progress')
+      return
+    }
+
     debug.log(DebugCategories.TABLE_UPDATES, 'Table selection:', {
       tableId,
       isInitialized: isInitialized?.value,
@@ -167,44 +219,39 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     })
 
     try {
+      isLoading.value = true
+
+      // Wait for any pending settings updates
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
       selectedTableId.value = tableId
+
       if (!tableId) {
         tableName.value = ''
         // Reset to empty selections
         setCategories([], [])
         debug.log(DebugCategories.STATE, 'Reset to empty selections')
       } else {
-        // Wait for settings to be updated
-        const maxAttempts = 10
-        let attempts = 0
-        let selectedTable = settings.value?.namedTables?.[tableId]
-
-        while (!selectedTable && attempts < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 100))
-          selectedTable = settings.value?.namedTables?.[tableId]
-          attempts++
+        const selectedTable = settings.value?.namedTables?.[tableId]
+        if (!selectedTable) {
+          throw new Error('Selected table not found in settings')
         }
 
-        if (selectedTable) {
-          tableName.value = selectedTable.name
+        tableName.value = selectedTable.name
 
-          // Load saved category selections from PostgreSQL
-          const savedParentCategories =
-            selectedTable.categoryFilters?.selectedParentCategories || []
-          const savedChildCategories =
-            selectedTable.categoryFilters?.selectedChildCategories || []
+        // Load saved category selections from PostgreSQL
+        const savedParentCategories =
+          selectedTable.categoryFilters?.selectedParentCategories || []
+        const savedChildCategories =
+          selectedTable.categoryFilters?.selectedChildCategories || []
 
-          // Update category selections (local state only)
-          setCategories(savedParentCategories, savedChildCategories)
+        // Update category selections (local state only)
+        setCategories(savedParentCategories, savedChildCategories)
 
-          debug.log(DebugCategories.CATEGORIES, 'Loaded category selections:', {
-            parent: savedParentCategories,
-            child: savedChildCategories
-          })
-        } else {
-          debug.error(DebugCategories.ERROR, 'Failed to load table after waiting')
-          throw new Error('Failed to load table data')
-        }
+        debug.log(DebugCategories.CATEGORIES, 'Loaded category selections:', {
+          parent: savedParentCategories,
+          child: savedChildCategories
+        })
       }
 
       debug.log(DebugCategories.STATE, 'Selection complete:', {
@@ -220,6 +267,8 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
       loadingError.value =
         err instanceof Error ? err : new Error('Failed to handle table selection')
       throw loadingError.value
+    } finally {
+      isLoading.value = false
     }
   }
 
@@ -244,6 +293,9 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     selectedChildCategories,
     tableKey,
     loadingError,
+    isLoading,
+    isTableUpdatePending,
+    isCategoryUpdatePending,
     currentTableId,
     currentTable,
     currentTableColumns: computed(() => currentTable.value?.parentColumns || []),

@@ -356,6 +356,15 @@ async function handleTableChange() {
   })
 
   try {
+    // Check initialization state first
+    if (!initialized.value) {
+      debug.warn(
+        DebugCategories.INITIALIZATION,
+        'Attempted table change before initialization'
+      )
+      return
+    }
+
     if (!state.selectedTableId) {
       // Reset to empty arrays for new table - no categories selected by default
       state.selectedParentCategories = []
@@ -378,46 +387,52 @@ async function handleTableChange() {
       return
     }
 
-    const currentTable = currentTableRef.value
+    const namedTable = currentTableRef.value
+
+    // Validate required fields
     if (
-      !currentTable.name ||
-      !currentTable.parentColumns ||
-      !currentTable.childColumns
+      !namedTable.name ||
+      !Array.isArray(namedTable.parentColumns) ||
+      !Array.isArray(namedTable.childColumns)
     ) {
       throw new Error('Invalid table configuration')
     }
 
-    // Load category selection state from PostgreSQL with type safety
-    const categoryFilters = currentTable.categoryFilters
-    const { selectedParentCategories = [], selectedChildCategories = [] } =
-      categoryFilters && typeof categoryFilters === 'object'
-        ? categoryFilters
-        : { selectedParentCategories: [], selectedChildCategories: [] }
+    // Type guard for category filters
+    const categoryFilters = namedTable.categoryFilters
+    const selectedParentCategories = Array.isArray(
+      categoryFilters?.selectedParentCategories
+    )
+      ? categoryFilters.selectedParentCategories
+      : []
+    const selectedChildCategories = Array.isArray(
+      categoryFilters?.selectedChildCategories
+    )
+      ? categoryFilters.selectedChildCategories
+      : []
 
-    // Create safe table config with type assertions
+    // Create safe table config
     const safeTable: TableConfig = {
-      name: currentTable.name,
-      parentColumns: currentTable.parentColumns,
-      childColumns: currentTable.childColumns,
+      name: namedTable.name,
+      parentColumns: namedTable.parentColumns,
+      childColumns: namedTable.childColumns,
       categoryFilters: {
-        selectedParentCategories: Array.isArray(selectedParentCategories)
-          ? selectedParentCategories
-          : [],
-        selectedChildCategories: Array.isArray(selectedChildCategories)
-          ? selectedChildCategories
-          : []
+        selectedParentCategories,
+        selectedChildCategories
       },
-      customParameters: currentTable.customParameters || []
+      customParameters: Array.isArray(namedTable.customParameters)
+        ? namedTable.customParameters
+        : []
     }
 
     // Update state with safe values
     state.currentTable = safeTable
-    state.tableName = init.tableName?.value || ''
-    state.currentTableId = init.currentTableId?.value || ''
+    state.tableName = init.tableName?.value ?? ''
+    state.currentTableId = init.currentTableId?.value ?? ''
 
     // Update category state
-    state.selectedParentCategories = safeTable.categoryFilters.selectedParentCategories
-    state.selectedChildCategories = safeTable.categoryFilters.selectedChildCategories
+    state.selectedParentCategories = selectedParentCategories
+    state.selectedChildCategories = selectedChildCategories
 
     debug.log(DebugCategories.TABLE_UPDATES, 'Table loaded:', {
       id: state.currentTableId,
@@ -441,6 +456,15 @@ async function handleSaveTable() {
   })
 
   try {
+    // Check initialization state first
+    if (!initialized.value) {
+      debug.warn(
+        DebugCategories.INITIALIZATION,
+        'Attempted to save table before initialization'
+      )
+      return
+    }
+
     if (!state.tableName) {
       throw new Error('Table name is required')
     }
@@ -550,6 +574,15 @@ function handleToggleCategory(type: 'parent' | 'child', category: string) {
   })
 
   try {
+    // Check initialization state first
+    if (!initialized.value) {
+      debug.warn(
+        DebugCategories.INITIALIZATION,
+        'Attempted to toggle category before initialization'
+      )
+      return
+    }
+
     // Validate inputs
     if (!state.selectedTableId) {
       throw new Error('No table selected')

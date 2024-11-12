@@ -22,8 +22,70 @@ interface UseScheduleInitializationFlowOptions {
 
 // Runtime validation function
 function isValidTableState(table: TableConfig | null): boolean {
-  if (!table) return true // Allow null table state for initial load
-  return true // Always valid since we have predefined categories
+  debug.log(DebugCategories.VALIDATION, 'Validating table state', {
+    hasTable: !!table,
+    name: table?.name,
+    hasParentColumns: !!table?.parentColumns,
+    hasChildColumns: !!table?.childColumns,
+    hasCategoryFilters: !!table?.categoryFilters
+  })
+
+  if (!table) {
+    debug.log(DebugCategories.VALIDATION, 'Table is null')
+    return false
+  }
+
+  // Validate required fields
+  if (!table.name) {
+    debug.log(DebugCategories.VALIDATION, 'Table name is missing')
+    return false
+  }
+
+  // Validate arrays exist
+  if (!Array.isArray(table.parentColumns)) {
+    debug.log(DebugCategories.VALIDATION, 'Parent columns is not an array')
+    return false
+  }
+
+  if (!Array.isArray(table.childColumns)) {
+    debug.log(DebugCategories.VALIDATION, 'Child columns is not an array')
+    return false
+  }
+
+  // Validate category filters
+  if (!table.categoryFilters || typeof table.categoryFilters !== 'object') {
+    debug.log(DebugCategories.VALIDATION, 'Category filters is invalid')
+    return false
+  }
+
+  const { selectedParentCategories, selectedChildCategories } = table.categoryFilters
+
+  if (!Array.isArray(selectedParentCategories)) {
+    debug.log(DebugCategories.VALIDATION, 'Selected parent categories is not an array')
+    return false
+  }
+
+  if (!Array.isArray(selectedChildCategories)) {
+    debug.log(DebugCategories.VALIDATION, 'Selected child categories is not an array')
+    return false
+  }
+
+  // Validate custom parameters if present
+  if (table.customParameters && !Array.isArray(table.customParameters)) {
+    debug.log(DebugCategories.VALIDATION, 'Custom parameters is not an array')
+    return false
+  }
+
+  debug.log(DebugCategories.VALIDATION, 'Table validation passed', {
+    name: table.name,
+    parentColumnsCount: table.parentColumns.length,
+    childColumnsCount: table.childColumns.length,
+    parentCategoriesCount: selectedParentCategories.length,
+    childCategoriesCount: selectedChildCategories.length,
+    customParametersCount: table.customParameters?.length || 0
+  })
+
+  return true
 }
 
 export function useScheduleInitializationFlow(
@@ -44,6 +106,9 @@ export function useScheduleInitializationFlow(
 
   async function initialize() {
     try {
+      // Reset initialization state
+      isInitialized.value = false
+
       debug.startState('initialization')
       debug.log(DebugCategories.INITIALIZATION, 'Starting initialization sequence', {
         timestamp: new Date().toISOString(),
@@ -71,14 +136,6 @@ export function useScheduleInitializationFlow(
         selectedTableId: selectedTableId.value
       })
       debug.completeState('settings')
-
-      // Set initialization flag to true after settings load
-      // Categories are predefined, so we don't need to wait for them
-      isInitialized.value = true
-      debug.log(
-        DebugCategories.INITIALIZATION,
-        'Settings loaded, component initialized'
-      )
 
       // Initialize data from viewer
       debug.startState('viewerData')
@@ -143,6 +200,9 @@ export function useScheduleInitializationFlow(
         }
       })
 
+      // Set initialization flag only after all data is ready
+      isInitialized.value = true
+
       debug.completeState('coreInitialization')
       debug.completeState('initialization')
     } catch (err) {
@@ -165,6 +225,7 @@ export function useScheduleInitializationFlow(
   }
 
   return {
-    initialize
+    initialize,
+    isValidTableState
   }
 }
