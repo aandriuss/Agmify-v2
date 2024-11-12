@@ -1,6 +1,6 @@
 import type { ColumnDef } from './columns/types'
 import type { TableRowData } from '~/components/viewer/schedules/types'
-import { debug } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
 
 export function safeJSONClone<T>(obj: T): T {
   const jsonString = JSON.stringify(obj)
@@ -19,11 +19,13 @@ export function validateData(
 
     const invalidItems = data.filter((item) => !isTableRowData(item))
     if (invalidItems.length > 0) {
-      debug.warn('Invalid data items found:', invalidItems)
+      debug.warn(DebugCategories.VALIDATION, 'Invalid data items found', invalidItems)
       throw new Error(`Invalid data items found: ${invalidItems.length} items`)
     }
 
-    debug.log('Data validation passed:', data.length, 'items')
+    debug.log(DebugCategories.VALIDATION, 'Data validation passed', {
+      count: data.length
+    })
     return true
   } catch (error) {
     handleError(error as Error)
@@ -55,7 +57,7 @@ export function isTableRowData(item: unknown): item is TableRowData {
   })
 
   if (!hasRequiredFields) {
-    debug.warn('Missing required fields:', {
+    debug.warn(DebugCategories.VALIDATION, 'Missing required fields', {
       item,
       missingFields: requiredFields.filter((field) => {
         const value = record[field]
@@ -84,19 +86,18 @@ export function updateLocalColumns(
       order: typeof col.order === 'number' ? col.order : 0 // Ensure order is always set
     }))
 
-    debug.log('Updating local columns:', columns)
+    debug.log(DebugCategories.COLUMNS, 'Updating local columns', columns)
     debug.logColumnVisibility(columns)
 
     updateFn(sortColumnsByOrder(columns))
   } catch (error) {
-    debug.error('Error updating local columns:', error)
+    debug.error(DebugCategories.ERROR, 'Error updating local columns', error)
     throw error
   }
 }
 
 export function transformToTableRowData(data: unknown[]): TableRowData[] {
-  // eslint-disable-next-line no-console
-  console.log('🔍 IMPORTANT DATA TRANSFORMATION INPUT:', {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Starting data transformation', {
     timestamp: new Date().toISOString(),
     inputCount: data?.length,
     isArray: Array.isArray(data),
@@ -105,7 +106,7 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
   })
 
   if (!Array.isArray(data)) {
-    debug.warn('Invalid data format:', data)
+    debug.warn(DebugCategories.VALIDATION, 'Invalid data format', data)
     return []
   }
 
@@ -113,8 +114,7 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
     (item): item is Record<string, unknown> => item !== null && typeof item === 'object'
   )
 
-  // eslint-disable-next-line no-console
-  console.log('🔍 IMPORTANT VALID ITEMS:', {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Valid items filtered', {
     timestamp: new Date().toISOString(),
     validCount: validItems.length,
     firstValidItem: validItems[0],
@@ -125,9 +125,7 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
     // Extract required fields
     const { id, mark, category, type, name, host, details, ...rest } = item
 
-    // Log item details before transformation
-    // eslint-disable-next-line no-console
-    console.log('🔍 IMPORTANT ITEM DETAILS:', {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Processing item', {
       timestamp: new Date().toISOString(),
       raw: item,
       extractedFields: {
@@ -176,9 +174,7 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
       transformedItem.details = transformedDetails
     }
 
-    // Log transformed item
-    // eslint-disable-next-line no-console
-    console.log('🔍 IMPORTANT TRANSFORMED ITEM:', {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Item transformed', {
       timestamp: new Date().toISOString(),
       transformedItem,
       hasDetails: Array.isArray(transformedItem.details),
@@ -190,9 +186,7 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
     return transformedItem
   })
 
-  // Log final transformed data
-  // eslint-disable-next-line no-console
-  console.log('🔍 IMPORTANT TRANSFORMATION RESULT:', {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Transformation complete', {
     timestamp: new Date().toISOString(),
     outputCount: transformedData.length,
     firstTransformedItem: transformedData[0],

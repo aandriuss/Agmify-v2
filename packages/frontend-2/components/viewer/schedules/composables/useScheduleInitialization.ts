@@ -1,153 +1,40 @@
 import { ref } from 'vue'
 import type { TreeItemComponentModel } from '../types'
 import { debug } from '../utils/debug'
+import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 
 export function useScheduleInitialization() {
   const loadingError = ref<Error | null>(null)
+  const {
+    metadata: { worldTree }
+  } = useInjectedViewer()
 
-  function initializeData(): TreeItemComponentModel[] {
+  async function initializeData(): Promise<void> {
     try {
-      debug.startState('mockDataInit')
+      debug.startState('dataInit')
       debug.log('Starting data initialization')
 
-      // Mock data matching our column structure
-      const mockData: TreeItemComponentModel[] = [
-        {
-          rawNode: {
-            raw: {
-              id: '1',
-              type: 'Wall',
-              mark: 'W1',
-              category: 'Walls',
-              name: 'Wall 1',
-              width: 200,
-              height: 3000,
-              thickness: 200,
-              area: 15,
-              length: 5000,
-              host: '',
-              comment: 'Main wall - load bearing',
-              parameters: {
-                'Fire Rating': '2HR',
-                'Assembly Code': 'C1010'
-              }
-            }
-          },
-          children: [
-            {
-              rawNode: {
-                raw: {
-                  id: '2',
-                  type: 'Door',
-                  mark: 'D1',
-                  category: 'Doors',
-                  name: 'Door 1',
-                  width: 900,
-                  height: 2100,
-                  thickness: 50,
-                  area: 1.89,
-                  length: 900,
-                  host: 'W1',
-                  comment: 'Entry door - fire rated',
-                  parameters: {
-                    'Fire Rating': '90min',
-                    'Hardware Set': 'HS-01'
-                  }
-                }
-              },
-              children: []
-            },
-            {
-              rawNode: {
-                raw: {
-                  id: '3',
-                  type: 'Window',
-                  mark: 'Win1',
-                  category: 'Windows',
-                  name: 'Window 1',
-                  width: 1200,
-                  height: 1500,
-                  thickness: 100,
-                  area: 1.8,
-                  length: 1200,
-                  host: 'W1',
-                  comment: 'Double glazed window',
-                  parameters: {
-                    'U-Value': '1.4',
-                    'Frame Type': 'Aluminum'
-                  }
-                }
-              },
-              children: []
-            }
-          ]
-        },
-        {
-          rawNode: {
-            raw: {
-              id: '4',
-              type: 'Floor',
-              mark: 'F1',
-              category: 'Floors',
-              name: 'Floor 1',
-              width: 5000,
-              height: 300,
-              thickness: 300,
-              area: 25,
-              length: 5000,
-              host: '',
-              comment: 'Concrete slab',
-              parameters: {
-                'Fire Rating': '3HR',
-                'Load Capacity': '500kg/m2'
-              }
-            }
-          },
-          children: [
-            {
-              rawNode: {
-                raw: {
-                  id: '5',
-                  type: 'Lighting',
-                  mark: 'L1',
-                  category: 'Lighting Fixtures',
-                  name: 'Light 1',
-                  width: 600,
-                  height: 100,
-                  thickness: 100,
-                  area: 0.36,
-                  length: 600,
-                  host: 'F1',
-                  comment: 'LED Panel',
-                  parameters: {
-                    Wattage: '40W',
-                    'Color Temperature': '4000K'
-                  }
-                }
-              },
-              children: []
-            }
-          ]
-        }
-      ]
+      // Wait for WorldTree to be available
+      let retryCount = 0
+      while (!worldTree.value?._root?.children && retryCount < 50) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        retryCount++
+        debug.log('⏳ Waiting for WorldTree...', { retryCount })
+      }
 
-      debug.log('Mock data created:', {
-        nodesCount: mockData.length,
-        firstNode: mockData[0],
-        firstNodeChildren: mockData[0].children,
-        firstChild: mockData[0].children?.[0],
-        allNodes: mockData,
-        categories: new Set(mockData.map((node) => node.rawNode.raw.category)),
-        childCategories: new Set(
-          mockData
-            .flatMap((node) => node.children || [])
-            .filter((child) => child?.rawNode?.raw?.category)
-            .map((child) => child.rawNode.raw.category)
-        )
+      const tree = worldTree.value
+      if (!tree?._root?.children) {
+        debug.error('No WorldTree data available')
+        throw new Error('No WorldTree data available')
+      }
+
+      debug.log('🌳 WorldTree data ready:', {
+        rootType: tree._root.type,
+        childCount: tree._root.children.length,
+        firstChild: tree._root.children[0]
       })
 
-      debug.completeState('mockDataInit')
-      return mockData
+      debug.completeState('dataInit')
     } catch (err) {
       loadingError.value =
         err instanceof Error ? err : new Error('Failed to initialize data')

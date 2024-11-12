@@ -19,15 +19,28 @@ interface UseScheduleDataTransformOptions {
 const isValidElementData = (item: unknown): item is ElementData => {
   if (!item || typeof item !== 'object') return false
   const record = item as Record<string, unknown>
+
+  // Required fields
   const hasId = 'id' in record && typeof record.id === 'string'
   const hasMark = 'mark' in record && typeof record.mark === 'string'
   const hasCategory = 'category' in record && typeof record.category === 'string'
   const hasType = 'type' in record && typeof record.type === 'string'
-  const hasName = 'name' in record && typeof record.name === 'string'
-  const hasHost = 'host' in record && typeof record.host === 'string'
   const hasDetails = 'details' in record && Array.isArray(record.details)
+
+  // Optional fields
+  const hasValidName =
+    !('name' in record) || record.name === null || typeof record.name === 'string'
+  const hasValidHost =
+    !('host' in record) || record.host === null || typeof record.host === 'string'
+
   const isValid =
-    hasId && hasMark && hasCategory && hasType && hasName && hasHost && hasDetails
+    hasId &&
+    hasMark &&
+    hasCategory &&
+    hasType &&
+    hasDetails &&
+    hasValidName &&
+    hasValidHost
 
   if (!isValid) {
     debug.warn('❌ Invalid element data:', {
@@ -38,9 +51,9 @@ const isValidElementData = (item: unknown): item is ElementData => {
         hasMark,
         hasCategory,
         hasType,
-        hasName,
-        hasHost,
-        hasDetails
+        hasDetails,
+        hasValidName,
+        hasValidHost
       },
       keys: Object.keys(record)
     })
@@ -104,13 +117,15 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
             hasMark: item && typeof item === 'object' && 'mark' in item,
             hasCategory: item && typeof item === 'object' && 'category' in item,
             hasType: item && typeof item === 'object' && 'type' in item,
-            hasName: item && typeof item === 'object' && 'name' in item,
-            hasHost: item && typeof item === 'object' && 'host' in item,
             hasDetails:
               item &&
               typeof item === 'object' &&
               'details' in item &&
-              Array.isArray(item.details)
+              Array.isArray(item.details),
+            hasValidName:
+              !('name' in item) || item.name === null || typeof item.name === 'string',
+            hasValidHost:
+              !('host' in item) || item.host === null || typeof item.host === 'string'
           }
         })
       }

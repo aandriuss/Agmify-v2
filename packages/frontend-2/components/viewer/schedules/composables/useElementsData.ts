@@ -47,21 +47,26 @@ export function useElementsData({
   })
 
   // =============================================
-  // DO NOT MODIFY: Raw Data Collection Section
-  // This section logs raw BIM data from WorldTree
-  // Note: Using any types intentionally to log raw data structure
+  // Raw Data Collection Section
   function processElements(nodes: TreeItemComponentModel[]): ElementData[] {
     const result: ElementData[] = []
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function processNode(node: any): void {
-      // Log raw node data
-      debug.log('📦 Node:', node)
+      // Log raw node data for debugging
+      console.log('🔍 IMPORTANT RAW NODE:', {
+        timestamp: new Date().toISOString(),
+        hasModel: !!node.model,
+        hasRaw: !!node.model?.raw,
+        speckleType: node.model?.raw?.speckle_type,
+        id: node.model?.raw?.id,
+        mark: node.model?.raw?.['Identity Data']?.Mark || node.model?.raw?.Tag,
+        category: node.model?.raw?.['Other']?.Category,
+        host: node.model?.raw?.['Constraints']?.Host,
+        childCount: node.children?.length || 0
+      })
 
       if (node.model?.raw) {
         const raw = node.model.raw
-        debug.log('🔍 Model:', node.model)
-        debug.log('📄 Raw:', raw)
 
         // Create element from raw data
         if (raw.speckle_type?.startsWith('IFC')) {
@@ -87,7 +92,12 @@ export function useElementsData({
 
           // Add to result array
           result.push(element)
-          debug.log('✨ Created Element:', element)
+          console.log('🔍 IMPORTANT PROCESSED ELEMENT:', {
+            timestamp: new Date().toISOString(),
+            element,
+            parameters: Object.keys(parameters),
+            hasRequiredFields: !!(element.id && element.mark && element.category)
+          })
         }
       }
 
@@ -97,23 +107,38 @@ export function useElementsData({
       }
     }
 
-    debug.log('🌳 Starting Node Processing')
+    console.log('🔍 IMPORTANT STARTING NODE PROCESSING:', {
+      timestamp: new Date().toISOString(),
+      nodeCount: nodes.length,
+      firstNodeType: nodes[0]?.model?.raw?.speckle_type
+    })
     nodes.forEach((node) => processNode(node))
-    debug.log('✅ Finished Processing:', {
+    console.log('🔍 IMPORTANT PROCESSING COMPLETE:', {
+      timestamp: new Date().toISOString(),
       total: result.length,
-      elements: result
+      elements: result.map((el) => ({
+        id: el.id,
+        type: el.type,
+        mark: el.mark,
+        category: el.category,
+        parameterCount: Object.keys(el.parameters).length
+      }))
     })
 
     return result
   }
-  // =============================================
-  // END Raw Data Collection Section
-  // =============================================
 
   async function updateCategories(
     parentCategories: string[],
     childCategories: string[]
   ): Promise<void> {
+    console.log('🔍 IMPORTANT UPDATING CATEGORIES:', {
+      timestamp: new Date().toISOString(),
+      parentCategories,
+      childCategories,
+      currentDataCount: scheduleData.value.length
+    })
+
     scheduleData.value = scheduleData.value.map((item) => ({
       ...item,
       details:
@@ -124,13 +149,23 @@ export function useElementsData({
       _visible:
         parentCategories.length === 0 || parentCategories.includes(item.category)
     }))
+
+    console.log('🔍 IMPORTANT CATEGORIES UPDATED:', {
+      timestamp: new Date().toISOString(),
+      visibleItems: scheduleData.value.filter((item) => item._visible).length,
+      totalItems: scheduleData.value.length,
+      itemsWithDetails: scheduleData.value.filter((item) => item.details.length > 0)
+        .length
+    })
+
     await nextTick()
   }
 
   const stopWorldTreeWatch = watch(
     () => worldTree.value as WorldTreeNode | undefined,
     async (newWorldTree) => {
-      debug.log('🌳 WorldTree Update:', {
+      console.log('🔍 IMPORTANT WORLD TREE UPDATE:', {
+        timestamp: new Date().toISOString(),
         hasTree: !!newWorldTree,
         hasRoot: !!newWorldTree?._root,
         initialized: isInitialized?.value,
@@ -143,9 +178,15 @@ export function useElementsData({
       const children = newWorldTree._root.children
       const processedData = processElements(children)
       scheduleData.value = processedData
-      debug.log('📊 Schedule Data Updated:', {
+      console.log('🔍 IMPORTANT SCHEDULE DATA UPDATED:', {
+        timestamp: new Date().toISOString(),
         count: scheduleData.value.length,
-        items: scheduleData.value
+        categories: Array.from(
+          new Set(scheduleData.value.map((item) => item.category))
+        ),
+        itemsWithParameters: scheduleData.value.filter(
+          (item) => Object.keys(item.parameters).length > 0
+        ).length
       })
       await nextTick()
     },
@@ -153,33 +194,47 @@ export function useElementsData({
   )
 
   async function initializeData(): Promise<void> {
-    debug.log('🚀 Starting initialization')
+    console.log('🔍 IMPORTANT STARTING INITIALIZATION')
 
     // Wait for WorldTree to be available
     let retryCount = 0
     while (!worldTree.value?._root?.children && retryCount < 50) {
       await new Promise((resolve) => setTimeout(resolve, 100))
       retryCount++
-      debug.log('⏳ Waiting for WorldTree...', { retryCount })
+      if (retryCount % 10 === 0) {
+        console.log('🔍 IMPORTANT WAITING FOR WORLD TREE:', {
+          timestamp: new Date().toISOString(),
+          retryCount,
+          hasTree: !!worldTree.value,
+          hasRoot: !!worldTree.value?._root
+        })
+      }
     }
 
     const tree = worldTree.value as WorldTreeNode | undefined
     if (!tree?._root?.children) {
-      debug.warn('❌ No WorldTree data available')
+      console.warn('❌ No WorldTree data available')
       return
     }
 
     const children = tree._root.children
-    debug.log('🌳 Found WorldTree:', {
+    console.log('🔍 IMPORTANT WORLD TREE FOUND:', {
+      timestamp: new Date().toISOString(),
       rootType: tree._root.type,
-      childCount: children.length
+      childCount: children.length,
+      firstChildType: children[0]?.model?.raw?.speckle_type
     })
 
     const processedData = processElements(children)
     scheduleData.value = processedData
-    debug.log('📊 Initial Schedule Data:', {
+    console.log('🔍 IMPORTANT INITIAL SCHEDULE DATA:', {
+      timestamp: new Date().toISOString(),
       count: scheduleData.value.length,
-      items: scheduleData.value
+      categories: Array.from(new Set(scheduleData.value.map((item) => item.category))),
+      itemsWithParameters: scheduleData.value.filter(
+        (item) => Object.keys(item.parameters).length > 0
+      ).length,
+      firstItem: scheduleData.value[0]
     })
     await nextTick()
   }
