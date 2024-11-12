@@ -105,7 +105,7 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
   })
 
   // Methods
-  function handleTableChange() {
+  async function handleTableChange() {
     debug.log(DebugCategories.TABLE_UPDATES, 'Table change triggered:', {
       selectedId: selectedTableId.value,
       isInitialized: isInitialized?.value,
@@ -114,7 +114,17 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
 
     try {
       if (selectedTableId.value) {
-        const selectedTable = settings.value?.namedTables?.[selectedTableId.value]
+        // Wait for settings to be updated
+        const maxAttempts = 10
+        let attempts = 0
+        let selectedTable = settings.value?.namedTables?.[selectedTableId.value]
+
+        while (!selectedTable && attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+          selectedTable = settings.value?.namedTables?.[selectedTableId.value]
+          attempts++
+        }
+
         if (selectedTable) {
           tableName.value = selectedTable.name
 
@@ -133,6 +143,9 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
           })
 
           tableKey.value = Date.now().toString()
+        } else {
+          debug.error(DebugCategories.ERROR, 'Failed to load table after waiting')
+          throw new Error('Failed to load table data')
         }
       } else {
         // Reset to empty selections for new table
@@ -146,7 +159,7 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     }
   }
 
-  function handleTableSelection(tableId: string) {
+  async function handleTableSelection(tableId: string) {
     debug.log(DebugCategories.TABLE_UPDATES, 'Table selection:', {
       tableId,
       isInitialized: isInitialized?.value,
@@ -161,7 +174,17 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
         setCategories([], [])
         debug.log(DebugCategories.STATE, 'Reset to empty selections')
       } else {
-        const selectedTable = settings.value?.namedTables?.[tableId]
+        // Wait for settings to be updated
+        const maxAttempts = 10
+        let attempts = 0
+        let selectedTable = settings.value?.namedTables?.[tableId]
+
+        while (!selectedTable && attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+          selectedTable = settings.value?.namedTables?.[tableId]
+          attempts++
+        }
+
         if (selectedTable) {
           tableName.value = selectedTable.name
 
@@ -178,6 +201,9 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
             parent: savedParentCategories,
             child: savedChildCategories
           })
+        } else {
+          debug.error(DebugCategories.ERROR, 'Failed to load table after waiting')
+          throw new Error('Failed to load table data')
         }
       }
 

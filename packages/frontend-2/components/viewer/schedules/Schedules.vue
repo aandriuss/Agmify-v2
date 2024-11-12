@@ -387,14 +387,25 @@ async function handleTableChange() {
       throw new Error('Invalid table configuration')
     }
 
+    // Load category selection state from PostgreSQL with type safety
+    const categoryFilters = currentTable.categoryFilters
+    const { selectedParentCategories = [], selectedChildCategories = [] } =
+      categoryFilters && typeof categoryFilters === 'object'
+        ? categoryFilters
+        : { selectedParentCategories: [], selectedChildCategories: [] }
+
     // Create safe table config with type assertions
     const safeTable: TableConfig = {
       name: currentTable.name,
       parentColumns: currentTable.parentColumns,
       childColumns: currentTable.childColumns,
       categoryFilters: {
-        selectedParentCategories: [],
-        selectedChildCategories: []
+        selectedParentCategories: Array.isArray(selectedParentCategories)
+          ? selectedParentCategories
+          : [],
+        selectedChildCategories: Array.isArray(selectedChildCategories)
+          ? selectedChildCategories
+          : []
       },
       customParameters: currentTable.customParameters || []
     }
@@ -404,28 +415,9 @@ async function handleTableChange() {
     state.tableName = init.tableName?.value || ''
     state.currentTableId = init.currentTableId?.value || ''
 
-    // Load category selection state from PostgreSQL with type safety
-    const categoryFilters = currentTable.categoryFilters
-    if (categoryFilters && typeof categoryFilters === 'object') {
-      const { selectedParentCategories = [], selectedChildCategories = [] } =
-        categoryFilters
-
-      // Update state with saved selections
-      state.selectedParentCategories = Array.isArray(selectedParentCategories)
-        ? selectedParentCategories
-        : []
-      state.selectedChildCategories = Array.isArray(selectedChildCategories)
-        ? selectedChildCategories
-        : []
-
-      // Update currentTable to match
-      if (state.currentTable) {
-        state.currentTable.categoryFilters = {
-          selectedParentCategories: state.selectedParentCategories,
-          selectedChildCategories: state.selectedChildCategories
-        }
-      }
-    }
+    // Update category state
+    state.selectedParentCategories = safeTable.categoryFilters.selectedParentCategories
+    state.selectedChildCategories = safeTable.categoryFilters.selectedChildCategories
 
     debug.log(DebugCategories.TABLE_UPDATES, 'Table loaded:', {
       id: state.currentTableId,
@@ -444,7 +436,8 @@ async function handleTableChange() {
 async function handleSaveTable() {
   debug.log(DebugCategories.TABLE_UPDATES, 'Save table requested', {
     selectedId: state.selectedTableId,
-    tableName: state.tableName
+    tableName: state.tableName,
+    currentTable: state.currentTable
   })
 
   try {
@@ -452,68 +445,101 @@ async function handleSaveTable() {
       throw new Error('Table name is required')
     }
 
-    // Convert ParameterDefinition to CustomParameter
-    const customParameters = state.customParameters.map((param) => ({
-      id: param.field,
-      name: param.name,
-      type: 'fixed' as const,
-      field: param.field,
-      header: param.header,
-      category: param.category || 'Custom Parameters',
-      color: param.color,
-      description: param.description,
-      removable: param.removable,
-      visible: param.visible,
-      order: param.order
-    }))
-
     const init = initComponent.value
     if (!init) {
       throw new Error('Initialization component not available')
     }
 
-    const config = {
+    // For new tables, create an initial table config
+    if (!state.selectedTableId) {
+      const config = {
+        name: state.tableName,
+        parentColumns: [],
+        childColumns: [],
+        categoryFilters: {
+          selectedParentCategories: state.selectedParentCategories,
+          selectedChildCategories: state.selectedChildCategories
+        },
+        customParameters: []
+      }
+
+      // Create new table
+      const newTableId = await init.createNamedTable(state.tableName, config)
+      if (newTableId) {
+        state.selectedTableId = newTableId
+        state.currentTableId = newTableId
+        state.currentTable = config
+      }
+      return
+    }
+
+    // For existing tables, ensure we have current table data
+    if (!state.currentTable) {
+      // Try to load table data first
+      await handleTableChange()
+    }
+
+    // Create base config with current state
+    const baseConfig = {
+      name: state.tableName,
       parentColumns: state.currentTableColumns,
       childColumns: state.currentDetailColumns,
       categoryFilters: {
         selectedParentCategories: state.selectedParentCategories,
         selectedChildCategories: state.selectedChildCategories
       },
-      customParameters
+      customParameters: state.customParameters.map((param) => ({
+        id: param.field,
+        name: param.name,
+        type: 'fixed' as const,
+        field: param.field,
+        header: param.header,
+        category: param.category || 'Custom Parameters',
+        color: param.color,
+        description: param.description,
+        removable: param.removable,
+        visible: param.visible,
+        order: param.order
+      }))
     }
 
-    if (state.selectedTableId) {
-      // Update existing table
-      const updatedTable = await init.updateNamedTable(state.selectedTableId, {
-        ...config,
-        name: state.tableName
-      })
+    // Merge with existing table data if available
+    const config = state.currentTable
+      ? {
+          ...state.currentTable,
+          ...baseConfig
+        }
+      : baseConfig
 
-      // Convert NamedTableConfig to TableConfig
-      state.currentTable = {
-        name: updatedTable.name,
-        parentColumns: updatedTable.parentColumns,
-        childColumns: updatedTable.childColumns,
-        categoryFilters: updatedTable.categoryFilters,
-        customParameters: updatedTable.customParameters
-      }
-    } else {
-      // Create new table
-      const newTableId = await init.createNamedTable(state.tableName, config)
-      if (newTableId) {
-        state.selectedTableId = newTableId
-        state.currentTableId = newTableId
-      }
+    // Update existing table
+    const updatedTable = await init.updateNamedTable(state.selectedTableId, config)
+
+    // Convert NamedTableConfig to TableConfig and update state
+    state.currentTable = {
+      name: updatedTable.name,
+      parentColumns: updatedTable.parentColumns,
+      childColumns: updatedTable.childColumns,
+      categoryFilters: updatedTable.categoryFilters,
+      customParameters: updatedTable.customParameters
     }
 
-    debug.log(DebugCategories.TABLE_UPDATES, 'Table saved successfully')
+    // Force UI refresh
+    state.tableKey = Date.now().toString()
+
+    // Trigger table reload to ensure we have latest data
+    await handleTableChange()
+
+    debug.log(DebugCategories.TABLE_UPDATES, 'Table saved successfully', {
+      config,
+      currentTable: state.currentTable
+    })
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to save table:', err)
     handleError(err instanceof Error ? err : new Error('Failed to save table'))
   }
 }
 
-async function handleToggleCategory(type: 'parent' | 'child', category: string) {
+function handleToggleCategory(type: 'parent' | 'child', category: string) {
   debug.log(DebugCategories.CATEGORIES, 'Category toggle requested', {
     type,
     category,
@@ -554,24 +580,7 @@ async function handleToggleCategory(type: 'parent' | 'child', category: string) 
       }
     }
 
-    // Get initialization component
-    const init = initComponent.value
-    if (!init) {
-      throw new Error('Initialization component not available')
-    }
-
-    // Create category filters update
-    const categoryFilters = {
-      selectedParentCategories: updatedParentCategories,
-      selectedChildCategories: updatedChildCategories
-    }
-
-    // Save to PostgreSQL first
-    await init.updateNamedTable(state.selectedTableId, {
-      categoryFilters
-    })
-
-    // Only update local state after successful save
+    // Update local state immediately for responsive UI
     state.selectedParentCategories = updatedParentCategories
     state.selectedChildCategories = updatedChildCategories
 
@@ -579,9 +588,26 @@ async function handleToggleCategory(type: 'parent' | 'child', category: string) 
     if (state.currentTable) {
       state.currentTable = {
         ...state.currentTable,
-        categoryFilters
+        categoryFilters: {
+          selectedParentCategories: updatedParentCategories,
+          selectedChildCategories: updatedChildCategories
+        }
       }
     }
+
+    // Get initialization component
+    const init = initComponent.value
+    if (!init) {
+      throw new Error('Initialization component not available')
+    }
+
+    // Save to PostgreSQL in background
+    void init.updateNamedTable(state.selectedTableId, {
+      categoryFilters: {
+        selectedParentCategories: updatedParentCategories,
+        selectedChildCategories: updatedChildCategories
+      }
+    })
 
     debug.log(DebugCategories.CATEGORIES, 'Categories updated:', {
       parent: updatedParentCategories,

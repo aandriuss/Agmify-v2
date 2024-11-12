@@ -15,8 +15,8 @@
               size="sm"
               :icon-left="
                 selectedParentCategories.includes(category)
-                  ? CheckCircleIcon
-                  : CheckCircleIconOutlined
+                  ? CheckCircleIconSolid
+                  : CheckCircleIconOutline
               "
               text
               @click="handleCategoryToggle('parent', category)"
@@ -38,8 +38,8 @@
               size="sm"
               :icon-left="
                 selectedChildCategories.includes(category)
-                  ? CheckCircleIcon
-                  : CheckCircleIconOutlined
+                  ? CheckCircleIconSolid
+                  : CheckCircleIconOutline
               "
               text
               @click="handleCategoryToggle('child', category)"
@@ -55,10 +55,8 @@
 
 <script setup lang="ts">
 import { FormButton } from '@speckle/ui-components'
-import {
-  CheckCircleIcon,
-  CheckCircleIcon as CheckCircleIconOutlined
-} from '@heroicons/vue/24/solid'
+import { CheckCircleIcon as CheckCircleIconSolid } from '@heroicons/vue/24/solid'
+import { CheckCircleIcon as CheckCircleIconOutline } from '@heroicons/vue/24/outline'
 import { debug, DebugCategories } from '../utils/debug'
 
 const props = defineProps<{

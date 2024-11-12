@@ -127,6 +127,7 @@ export function useUserSettings() {
   const error = ref<Error | null>(null)
   const isUpdating = ref(false)
   const lastUpdateTime = ref(0)
+  const updateQueue = ref<(() => Promise<void>)[]>([])
 
   const { mutate: updateSettingsMutation } =
     useMutation<UpdateUserSettingsResponse>(UPDATE_USER_SETTINGS)
@@ -144,7 +145,7 @@ export function useUserSettings() {
     (newSettings: unknown) => {
       // Skip if we're updating or if this is a response to our own update
       const timeSinceLastUpdate = Date.now() - lastUpdateTime.value
-      if (isUpdating.value || timeSinceLastUpdate < 1000) {
+      if (isUpdating.value || timeSinceLastUpdate < 500) {
         debug.log(
           DebugCategories.INITIALIZATION,
           'Skipping settings update during local change',
@@ -191,67 +192,92 @@ export function useUserSettings() {
     { deep: true }
   )
 
+  // Process update queue
+  async function processUpdateQueue() {
+    if (updateQueue.value.length === 0) return
+
+    const update = updateQueue.value[0]
+    try {
+      await update()
+      updateQueue.value.shift() // Remove processed update
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to process update', err)
+    }
+
+    // Process next update if any
+    if (updateQueue.value.length > 0) {
+      setTimeout(processUpdateQueue, 500)
+    }
+  }
+
   const updateNamedTable = async (
     tableId: string,
     updates: Partial<NamedTableConfig>
   ): Promise<NamedTableConfig> => {
-    try {
-      loading.value = true
-      error.value = null
-      isUpdating.value = true // Set flag to prevent watch from triggering
+    return new Promise((resolve, reject) => {
+      const update = async () => {
+        try {
+          loading.value = true
+          error.value = null
+          isUpdating.value = true
 
-      const currentSettings = settings.value
-      const existingTable = currentSettings.namedTables[tableId]
+          const currentSettings = settings.value
+          const existingTable = currentSettings.namedTables[tableId]
 
-      if (!existingTable) {
-        throw new Error('Table not found')
-      }
+          if (!existingTable) {
+            throw new Error('Table not found')
+          }
 
-      // Create updated table config
-      const updatedTable: NamedTableConfig = {
-        ...existingTable,
-        ...updates,
-        // If categoryFilters are provided, use them directly without merging
-        categoryFilters: updates.categoryFilters ?? existingTable.categoryFilters,
-        id: tableId,
-        lastUpdateTimestamp: Date.now()
-      }
+          // Create updated table config
+          const updatedTable: NamedTableConfig = {
+            ...existingTable,
+            ...updates,
+            // If categoryFilters are provided, use them directly without merging
+            categoryFilters: updates.categoryFilters ?? existingTable.categoryFilters,
+            id: tableId,
+            lastUpdateTimestamp: Date.now()
+          }
 
-      // Create updated settings without merging namedTables
-      const updatedSettings: UserSettings = {
-        ...currentSettings,
-        namedTables: {
-          ...currentSettings.namedTables,
-          [tableId]: updatedTable
+          // Create updated settings without merging namedTables
+          const updatedSettings: UserSettings = {
+            ...currentSettings,
+            namedTables: {
+              ...currentSettings.namedTables,
+              [tableId]: updatedTable
+            }
+          }
+
+          // Update local state first
+          settings.value = updatedSettings
+
+          // Record update time
+          lastUpdateTime.value = Date.now()
+
+          // Send the mutation with the updated settings
+          const result = await updateSettingsMutation({
+            settings: updatedSettings
+          })
+
+          if (!result?.data?.userSettingsUpdate) {
+            throw new Error('Failed to save table updates')
+          }
+
+          resolve(updatedTable)
+        } catch (err) {
+          error.value = err instanceof Error ? err : new Error('Failed to update table')
+          reject(error.value)
+        } finally {
+          loading.value = false
+          isUpdating.value = false
         }
       }
 
-      // Update local state first
-      settings.value = updatedSettings
-
-      // Record update time
-      lastUpdateTime.value = Date.now()
-
-      // Send the mutation with the updated settings
-      const result = await updateSettingsMutation({
-        settings: updatedSettings
-      })
-
-      if (!result?.data?.userSettingsUpdate) {
-        throw new Error('Failed to save table updates')
+      // Add update to queue and process if not already processing
+      updateQueue.value.push(update)
+      if (updateQueue.value.length === 1) {
+        void processUpdateQueue()
       }
-
-      return updatedTable
-    } catch (err) {
-      error.value = err instanceof Error ? err : new Error('Failed to update table')
-      throw error.value
-    } finally {
-      loading.value = false
-      // Keep isUpdating true for a short while to ensure we don't process the response
-      setTimeout(() => {
-        isUpdating.value = false
-      }, 1000)
-    }
+    })
   }
 
   const loadSettings = async (): Promise<void> => {
