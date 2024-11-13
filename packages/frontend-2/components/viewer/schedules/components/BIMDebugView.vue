@@ -58,20 +58,25 @@ interface RawBIMData {
   raw: Record<string, unknown>
 }
 
+interface RawNode {
+  id?: string
+  speckle_type?: string
+  [key: string]: unknown
+}
+
 const { scheduleData } = useElementsData({
-  currentTableColumns: ref([]),
-  currentDetailColumns: ref([])
+  _currentTableColumns: ref([]),
+  _currentDetailColumns: ref([])
 })
 
 // Raw elements from scheduleData
 const rawElements = computed<RawBIMData[]>(() => {
   return scheduleData.value.map((element) => {
-    // @ts-expect-error Raw data is attached by useElementsData
-    const raw = element._raw || {}
+    const raw = (element as unknown as { _raw?: RawNode })?._raw || {}
     return {
-      id: raw.id || 'unknown',
-      type: raw.speckle_type || 'unknown',
-      raw
+      id: raw.id?.toString() || 'unknown',
+      type: raw.speckle_type?.toString() || 'unknown',
+      raw: raw as Record<string, unknown>
     }
   })
 })

@@ -3,7 +3,7 @@ import type { Ref, ComputedRef } from 'vue'
 import type { ElementData, TableConfig, AvailableHeaders } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { debug } from '../utils/debug'
+import { debug, DebugCategories } from '../utils/debug'
 
 interface UseScheduleWatchersOptions {
   currentTable: Ref<TableConfig | null>
@@ -58,41 +58,11 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
   const stopWatchers = watchEffect((onCleanup) => {
     debug.startState('watcherSetup')
 
-    // Watch for category state synchronization
-    const unwatchCategorySync = watchEffect(() => {
-      const currentTableConfig = settings.value?.namedTables?.[selectedTableId.value]
-      const settingsParentCategories =
-        currentTableConfig?.categoryFilters?.selectedParentCategories || []
-      const settingsChildCategories =
-        currentTableConfig?.categoryFilters?.selectedChildCategories || []
-
-      // Log any discrepancies between local state and settings
-      if (
-        JSON.stringify(settingsParentCategories) !==
-          JSON.stringify(selectedParentCategories.value) ||
-        JSON.stringify(settingsChildCategories) !==
-          JSON.stringify(selectedChildCategories.value)
-      ) {
-        debug.warn('🔍 CATEGORY STATE MISMATCH:', {
-          timestamp: new Date().toISOString(),
-          local: {
-            parent: selectedParentCategories.value,
-            child: selectedChildCategories.value
-          },
-          settings: {
-            parent: settingsParentCategories,
-            child: settingsChildCategories
-          }
-        })
-      }
-    })
-
-    // Enhanced category watchers
+    // Enhanced category watchers - only for logging
     const unwatchParentCategories = watch(
       () => selectedParentCategories.value,
       (newCategories, oldCategories) => {
-        debug.log('🔍 PARENT CATEGORIES UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.CATEGORIES, 'Parent categories update:', {
           count: newCategories.length,
           categories: newCategories,
           changes: {
@@ -112,8 +82,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchChildCategories = watch(
       () => selectedChildCategories.value,
       (newCategories, oldCategories) => {
-        debug.log('🔍 CHILD CATEGORIES UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.CATEGORIES, 'Child categories update:', {
           count: newCategories.length,
           categories: newCategories,
           changes: {
@@ -130,12 +99,11 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
       { deep: true }
     )
 
-    // Watch for table changes that affect categories
+    // Watch for table changes that affect categories - only for logging
     const unwatchTableCategories = watch(
       () => currentTable.value?.categoryFilters,
       (newFilters) => {
-        debug.log('🔍 TABLE CATEGORY FILTERS UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.CATEGORIES, 'Table category filters update:', {
           filters: newFilters,
           state: {
             tableId: selectedTableId.value,
@@ -154,8 +122,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchScheduleData = watch(
       () => scheduleData.value,
       (newData) => {
-        debug.log('🔍 SCHEDULE DATA UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.DATA, 'Schedule data update:', {
           count: newData.length,
           hasData: newData.length > 0,
           firstItem: newData[0],
@@ -169,8 +136,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchTableData = watch(
       () => tableData.value,
       (newData) => {
-        debug.log('🔍 TABLE DATA UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.DATA, 'Table data update:', {
           count: newData.length,
           hasData: newData.length > 0,
           firstItem: newData[0],
@@ -184,8 +150,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchTableColumns = watch(
       () => mergedTableColumns.value,
       (newColumns) => {
-        debug.log('🔍 TABLE COLUMNS UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.COLUMNS, 'Table columns update:', {
           totalColumns: newColumns.length,
           visibleColumns: newColumns.filter((col) => col.visible).length,
           columns: newColumns.map((col) => ({
@@ -202,8 +167,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchDetailColumns = watch(
       () => mergedDetailColumns.value,
       (newColumns) => {
-        debug.log('🔍 DETAIL COLUMNS UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.COLUMNS, 'Detail columns update:', {
           totalColumns: newColumns.length,
           visibleColumns: newColumns.filter((col) => col.visible).length,
           columns: newColumns.map((col) => ({
@@ -221,8 +185,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchCustomParameters = watch(
       () => customParameters.value,
       (newParams) => {
-        debug.log('🔍 CUSTOM PARAMETERS UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.PARAMETERS, 'Custom parameters update:', {
           count: newParams.length,
           parameters: newParams.map((param) => ({
             name: param.name,
@@ -238,8 +201,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchParameterColumns = watch(
       () => parameterColumns.value,
       (newColumns) => {
-        debug.log('🔍 PARAMETER COLUMNS UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.PARAMETERS, 'Parameter columns update:', {
           totalColumns: newColumns.length,
           visibleColumns: newColumns.filter((col) => col.visible).length,
           columns: newColumns.map((col) => ({
@@ -257,8 +219,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchEvaluatedData = watch(
       () => evaluatedData.value,
       (newData) => {
-        debug.log('🔍 EVALUATED DATA UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.DATA_TRANSFORM, 'Evaluated data update:', {
           count: newData.length,
           hasData: newData.length > 0,
           firstItem: newData[0],
@@ -272,8 +233,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchCurrentTable = watch(
       () => currentTable.value,
       (newTable) => {
-        debug.log('🔍 CURRENT TABLE UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.STATE, 'Current table update:', {
           hasTable: !!newTable,
           id: newTable?.id,
           name: newTable?.name,
@@ -288,8 +248,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchSelectedTableId = watch(
       () => selectedTableId.value,
       (newId) => {
-        debug.log('🔍 SELECTED TABLE ID UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.STATE, 'Selected table ID update:', {
           id: newId
         })
       }
@@ -299,8 +258,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchTableName = watch(
       () => tableName.value,
       (newName) => {
-        debug.log('🔍 TABLE NAME UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.STATE, 'Table name update:', {
           name: newName
         })
       }
@@ -311,8 +269,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
       () => loadingError.value,
       (error) => {
         if (error) {
-          debug.error('🔥 LOADING ERROR:', {
-            timestamp: new Date().toISOString(),
+          debug.error(DebugCategories.ERROR, 'Loading error:', {
             error,
             message: error.message,
             stack: error.stack
@@ -325,9 +282,12 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchCategoryOptions = watch(
       () => showCategoryOptions.value,
       (show) => {
-        debug.log('🔍 CATEGORY OPTIONS VISIBILITY:', {
-          timestamp: new Date().toISOString(),
-          visible: show
+        debug.log(DebugCategories.UI, 'Category options visibility:', {
+          visible: show,
+          state: {
+            selectedParent: selectedParentCategories.value,
+            selectedChild: selectedChildCategories.value
+          }
         })
       }
     )
@@ -335,8 +295,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchParameterManager = watch(
       () => showParameterManager.value,
       (show) => {
-        debug.log('🔍 PARAMETER MANAGER VISIBILITY:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.UI, 'Parameter manager visibility:', {
           visible: show
         })
       }
@@ -346,8 +305,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchSettings = watch(
       () => settings.value,
       (newSettings) => {
-        debug.log('🔍 SETTINGS UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.STATE, 'Settings update:', {
           hasSettings: !!newSettings,
           tableCount: Object.keys(newSettings?.namedTables || {}).length,
           tables: Object.entries(newSettings?.namedTables || {}).map(([id, table]) => ({
@@ -366,8 +324,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchTableKey = watch(
       () => tableKey.value,
       (newKey) => {
-        debug.log('🔍 TABLE KEY UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.STATE, 'Table key update:', {
           key: newKey
         })
       }
@@ -377,8 +334,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchAvailableHeaders = watch(
       () => availableHeaders.value,
       (newHeaders) => {
-        debug.log('🔍 AVAILABLE HEADERS UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.COLUMNS, 'Available headers update:', {
           parentHeaders: {
             count: newHeaders.parent.length,
             headers: newHeaders.parent
@@ -396,8 +352,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchMergedParentParameters = watch(
       () => mergedParentParameters.value,
       (newParams) => {
-        debug.log('🔍 MERGED PARENT PARAMETERS UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.PARAMETERS, 'Merged parent parameters update:', {
           count: newParams.length,
           parameters: newParams.map((param) => ({
             name: param.name,
@@ -413,8 +368,7 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
     const unwatchMergedChildParameters = watch(
       () => mergedChildParameters.value,
       (newParams) => {
-        debug.log('🔍 MERGED CHILD PARAMETERS UPDATE:', {
-          timestamp: new Date().toISOString(),
+        debug.log(DebugCategories.PARAMETERS, 'Merged child parameters update:', {
           count: newParams.length,
           parameters: newParams.map((param) => ({
             name: param.name,
@@ -429,9 +383,11 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
 
     // Cleanup function to stop all watchers
     onCleanup(() => {
-      debug.log('🧹 CLEANING UP WATCHERS')
-      unwatchCategorySync()
+      debug.log(DebugCategories.STATE, 'Cleaning up watchers')
+      unwatchParentCategories()
+      unwatchChildCategories()
       unwatchTableCategories()
+      unwatchCategoryOptions()
       unwatchScheduleData()
       unwatchTableData()
       unwatchTableColumns()
@@ -439,13 +395,10 @@ export function useScheduleWatchers(options: UseScheduleWatchersOptions) {
       unwatchCustomParameters()
       unwatchParameterColumns()
       unwatchEvaluatedData()
-      unwatchParentCategories()
-      unwatchChildCategories()
       unwatchCurrentTable()
       unwatchSelectedTableId()
       unwatchTableName()
       unwatchLoadingError()
-      unwatchCategoryOptions()
       unwatchParameterManager()
       unwatchSettings()
       unwatchTableKey()

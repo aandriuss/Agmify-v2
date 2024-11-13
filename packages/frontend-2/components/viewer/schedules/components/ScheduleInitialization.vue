@@ -12,10 +12,7 @@ import { useDataOrganization } from '../composables/useDataOrganization'
 import { debug, DebugCategories } from '../utils/debug'
 import { useScheduleTable } from '../composables/useScheduleTable'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
-
-const props = defineProps<{
-  initialized: boolean
-}>()
+import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
 const emit = defineEmits<{
   'update:initialized': [value: boolean]
@@ -33,6 +30,7 @@ const {
   settings,
   loadSettings,
   updateNamedTable,
+  createNamedTable: createTable,
   cleanup: cleanupSettings
 } = useUserSettings()
 
@@ -67,9 +65,8 @@ const {
   initializeData: initElementsData,
   stopWorldTreeWatch
 } = useElementsData({
-  currentTableColumns: ref([]),
-  currentDetailColumns: ref([]),
-  isInitialized: ref(props.initialized)
+  _currentTableColumns: ref([]),
+  _currentDetailColumns: ref([])
 })
 
 // Initialize table management
@@ -84,7 +81,19 @@ const {
   settings,
   updateCategories: updateElementsDataCategories,
   updateNamedTable,
-  isInitialized: ref(props.initialized)
+  handleError: (err: unknown) => {
+    const errorToSet = err instanceof Error ? err : new Error(String(err))
+    loadingError.value = errorToSet
+    emit('error', errorToSet)
+  },
+  updateCurrentColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => {
+    // No-op in initialization component since it doesn't manage columns
+    debug.log(
+      DebugCategories.COLUMNS,
+      'Column update ignored in initialization component',
+      { tableColumns, detailColumns }
+    )
+  }
 })
 
 // Initialize initialization flow
@@ -123,7 +132,6 @@ const { initialize } = useScheduleInitializationFlow({
   currentTable,
   selectedTableId,
   currentTableId,
-  isInitialized: ref(props.initialized),
   loadingError,
   scheduleData
 })
@@ -144,14 +152,18 @@ onMounted(async () => {
 
     // First load settings
     await loadSettings()
+    debug.log(DebugCategories.INITIALIZATION, 'Settings loaded')
 
-    // Mark as initialized immediately after settings load
-    // Categories are predefined, so we don't need to wait for them
+    // Initialize data and wait for world tree
+    await initElementsData()
+    debug.log(DebugCategories.INITIALIZATION, 'Elements data initialized')
+
+    // Run the initialization flow
+    await initialize()
+    debug.log(DebugCategories.INITIALIZATION, 'Initialization flow complete')
+
+    // Mark as initialized and emit
     emit('update:initialized', true)
-    debug.log(DebugCategories.INITIALIZATION, 'Settings loaded, component initialized')
-
-    // Run the rest of initialization in background
-    void initialize()
     emit('data-initialized')
 
     // Store cleanup functions
@@ -207,10 +219,23 @@ onUnmounted(() => {
   debug.completeState('cleanup')
 })
 
+// Create a new named table
+async function createNamedTable(
+  name: string,
+  config: Omit<NamedTableConfig, 'id' | 'name'>
+) {
+  debug.log(DebugCategories.TABLE_UPDATES, 'Creating new named table:', {
+    name,
+    config
+  })
+  return createTable(name, config)
+}
+
 // Expose necessary functions
 defineExpose({
   settings,
   updateNamedTable,
+  createNamedTable,
   scheduleData,
   updateElementsDataCategories,
   loadingError,

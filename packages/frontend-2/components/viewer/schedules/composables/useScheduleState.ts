@@ -5,10 +5,6 @@ import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/
 import type { CustomParameter } from '~/composables/useUserSettings'
 
 interface ScheduleState {
-  selectedTableId: string
-  tableName: string
-  currentTableId: string
-  tableKey: string
   tablesArray: { id: string; name: string }[]
   currentTable: TableConfig | null
   scheduleData: ElementData[]
@@ -22,8 +18,6 @@ interface ScheduleState {
   mergedDetailColumns: ColumnDef[]
   mergedParentParameters: CustomParameter[]
   mergedChildParameters: CustomParameter[]
-  selectedParentCategories: string[]
-  selectedChildCategories: string[]
   availableHeaders: {
     parent: ProcessedHeader[]
     child: ProcessedHeader[]
@@ -36,10 +30,6 @@ export function useScheduleState() {
 
   // Initialize state with empty arrays
   const state = reactive<ScheduleState>({
-    selectedTableId: '',
-    tableName: '',
-    currentTableId: '',
-    tableKey: Date.now().toString(),
     tablesArray: [],
     currentTable: null,
     scheduleData: [],
@@ -53,8 +43,6 @@ export function useScheduleState() {
     mergedDetailColumns: [],
     mergedParentParameters: [],
     mergedChildParameters: [],
-    selectedParentCategories: [],
-    selectedChildCategories: [],
     availableHeaders: {
       parent: [],
       child: []
@@ -64,10 +52,6 @@ export function useScheduleState() {
   function resetState() {
     debug.log(DebugCategories.STATE, 'Resetting schedule state')
 
-    state.selectedTableId = ''
-    state.tableName = ''
-    state.currentTableId = ''
-    state.tableKey = Date.now().toString()
     state.tablesArray = []
     state.currentTable = null
     state.scheduleData = []
@@ -81,8 +65,6 @@ export function useScheduleState() {
     state.mergedDetailColumns = []
     state.mergedParentParameters = []
     state.mergedChildParameters = []
-    state.selectedParentCategories = []
-    state.selectedChildCategories = []
     state.availableHeaders = {
       parent: [],
       child: []

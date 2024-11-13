@@ -1,4 +1,4 @@
-import type { Ref } from 'vue'
+import type { Ref, ComponentPublicInstance } from 'vue'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import type {
@@ -7,7 +7,26 @@ import type {
   CustomParameter
 } from '~/composables/useUserSettings'
 
-export interface ScheduleInitializationExposed {
+// Component emit events
+interface ScheduleInitializationEmits {
+  (event: 'error', error: Error): void
+  (event: 'update:initialized', value: boolean): void
+  (
+    event: 'settings-loaded',
+    settings: { namedTables: Record<string, NamedTableConfig> }
+  ): void
+  (event: 'data-initialized'): void
+}
+
+// Component props
+interface ScheduleInitializationProps {
+  initialized: boolean
+}
+
+// Component instance type
+export interface ScheduleInitializationInstance
+  extends ComponentPublicInstance<ScheduleInitializationProps> {
+  $emit: ScheduleInitializationEmits
   settings: Ref<UserSettings>
   updateNamedTable: (
     id: string,

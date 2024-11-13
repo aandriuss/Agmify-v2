@@ -29,7 +29,7 @@
         text
         size="sm"
         color="primary"
-        :disabled="!tableName"
+        :disabled="!tableName || (!selectedTableId && !hasChanges)"
         @click="emit('save')"
       >
         {{ selectedTableId ? 'Update' : 'Save New' }}
@@ -69,6 +69,7 @@ defineProps<{
   tableName: string
   tables: { id: string; name: string }[]
   showCategoryOptions: boolean
+  hasChanges?: boolean
 }>()
 
 const emit = defineEmits<{

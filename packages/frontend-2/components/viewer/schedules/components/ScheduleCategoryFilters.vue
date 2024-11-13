@@ -9,10 +9,13 @@
         <span class="text-body-xs text-foreground font-medium mb-2 block">
           Host Categories
         </span>
-        <div class="max-h-[200px] overflow-y-auto">
-          <div v-for="category in parentCategories" :key="category">
+        <div class="max-h-200 overflow-y-auto">
+          <div v-for="category in parentCategories" :key="category" class="mb-1">
             <FormButton
               size="sm"
+              :variant="
+                selectedParentCategories.includes(category) ? 'primary' : 'secondary'
+              "
               :icon-left="
                 selectedParentCategories.includes(category)
                   ? CheckCircleIconSolid
@@ -32,10 +35,13 @@
         <span class="text-body-xs text-foreground font-medium mb-2 block">
           Child Categories
         </span>
-        <div class="max-h-[200px] overflow-y-auto">
-          <div v-for="category in childCategories" :key="category">
+        <div class="max-h-200 overflow-y-auto">
+          <div v-for="category in childCategories" :key="category" class="mb-1">
             <FormButton
               size="sm"
+              :variant="
+                selectedChildCategories.includes(category) ? 'primary' : 'secondary'
+              "
               :icon-left="
                 selectedChildCategories.includes(category)
                   ? CheckCircleIconSolid
@@ -65,7 +71,7 @@ const props = defineProps<{
   childCategories: string[]
   selectedParentCategories: string[]
   selectedChildCategories: string[]
-  isInitialized: boolean
+  isUpdating: boolean
 }>()
 
 const emit = defineEmits<{
@@ -73,17 +79,96 @@ const emit = defineEmits<{
 }>()
 
 function handleCategoryToggle(type: 'parent' | 'child', category: string) {
-  debug.log(DebugCategories.CATEGORIES, 'Toggle requested', {
+  debug.log(DebugCategories.CATEGORIES, 'Category toggle requested', {
     type,
     category,
     currentState: {
-      selectedParent: props.selectedParentCategories,
-      selectedChild: props.selectedChildCategories
+      parent: props.selectedParentCategories,
+      child: props.selectedChildCategories
     }
   })
 
   emit('toggle-category', type, category)
-
-  debug.log(DebugCategories.CATEGORIES, 'Toggle event emitted')
 }
 </script>
+
+<style scoped>
+.max-h-200 {
+  max-height: 200px;
+}
+
+.overflow-y-auto {
+  overflow-y: auto;
+}
+
+.mb-1 {
+  margin-bottom: 0.25rem;
+}
+
+.sticky {
+  position: sticky;
+}
+
+.top-10 {
+  top: 2.5rem;
+}
+
+.px-2 {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.py-2 {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.border-b-2 {
+  border-bottom-width: 2px;
+}
+
+.border-primary-muted {
+  border-color: var(--color-primary-muted);
+}
+
+.bg-foundation {
+  background-color: var(--color-foundation);
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-row {
+  flex-direction: row;
+}
+
+.flex-1 {
+  flex: 1 1 0%;
+}
+
+.mr-4 {
+  margin-right: 1rem;
+}
+
+.text-body-xs {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.text-foreground {
+  color: var(--color-foreground);
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+.mb-2 {
+  margin-bottom: 0.5rem;
+}
+
+.block {
+  display: block;
+}
+</style>

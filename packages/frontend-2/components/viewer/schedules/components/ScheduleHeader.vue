@@ -6,6 +6,7 @@
       :table-name="tableName"
       :tables="tables"
       :show-category-options="showCategoryOptions"
+      :has-changes="hasChanges"
       @update:selected-table-id="handleSelectedTableIdUpdate"
       @update:table-name="handleTableNameUpdate"
       @table-change="handleTableChange"
@@ -24,6 +25,7 @@ interface Props {
   tableName: string
   tables: { id: string; name: string }[]
   showCategoryOptions: boolean
+  hasChanges?: boolean
 }
 
 defineProps<Props>()

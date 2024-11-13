@@ -1,7 +1,26 @@
 import { ref } from 'vue'
 import type { TreeItemComponentModel } from '../types'
-import { debug } from '../utils/debug'
+import { debug, DebugCategories } from '../utils/debug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
+
+// Validation function for world tree nodes
+function isValidWorldTreeNode(node: TreeItemComponentModel): boolean {
+  const hasRawNode = !!node.rawNode
+  const hasRaw = !!node.rawNode?.raw
+  const hasSpeckleType = typeof node.rawNode?.raw?.speckle_type === 'string'
+  const hasCategory = typeof node.rawNode?.raw?.Other?.Category === 'string'
+
+  debug.log(DebugCategories.VALIDATION, 'Validating world tree node:', {
+    hasRawNode,
+    hasRaw,
+    hasSpeckleType,
+    hasCategory,
+    speckleType: node.rawNode?.raw?.speckle_type,
+    category: node.rawNode?.raw?.Other?.Category
+  })
+
+  return hasRawNode && hasRaw && hasSpeckleType && hasCategory
+}
 
 export function useScheduleInitialization() {
   const loadingError = ref<Error | null>(null)
@@ -12,33 +31,55 @@ export function useScheduleInitialization() {
   async function initializeData(): Promise<void> {
     try {
       debug.startState('dataInit')
-      debug.log('Starting data initialization')
+      debug.log(DebugCategories.INITIALIZATION, 'Starting data initialization')
 
       // Wait for WorldTree to be available
       let retryCount = 0
       while (!worldTree.value?._root?.children && retryCount < 50) {
         await new Promise((resolve) => setTimeout(resolve, 100))
         retryCount++
-        debug.log('⏳ Waiting for WorldTree...', { retryCount })
+        if (retryCount % 10 === 0) {
+          debug.log(DebugCategories.INITIALIZATION, '⏳ Waiting for WorldTree...', {
+            retryCount,
+            hasTree: !!worldTree.value,
+            hasRoot: !!worldTree.value?._root
+          })
+        }
       }
 
       const tree = worldTree.value
       if (!tree?._root?.children) {
-        debug.error('No WorldTree data available')
+        debug.error(DebugCategories.ERROR, 'No WorldTree data available')
         throw new Error('No WorldTree data available')
       }
 
-      debug.log('🌳 WorldTree data ready:', {
+      // Validate world tree data
+      const validNodes = tree._root.children.filter(isValidWorldTreeNode)
+      if (validNodes.length === 0) {
+        debug.error(DebugCategories.ERROR, 'No valid nodes in WorldTree', {
+          totalNodes: tree._root.children.length,
+          firstNode: tree._root.children[0],
+          firstNodeRaw: tree._root.children[0]?.rawNode?.raw
+        })
+        throw new Error('No valid nodes in WorldTree')
+      }
+
+      debug.log(DebugCategories.INITIALIZATION, '🌳 WorldTree data validated:', {
         rootType: tree._root.type,
-        childCount: tree._root.children.length,
-        firstChild: tree._root.children[0]
+        totalNodes: tree._root.children.length,
+        validNodes: validNodes.length,
+        categories: validNodes.map((node) => node.rawNode?.raw?.Other?.Category),
+        firstValidNode: {
+          type: validNodes[0].rawNode?.raw?.speckle_type,
+          category: validNodes[0].rawNode?.raw?.Other?.Category
+        }
       })
 
       debug.completeState('dataInit')
     } catch (err) {
       loadingError.value =
         err instanceof Error ? err : new Error('Failed to initialize data')
-      debug.error('Initialization error:', err)
+      debug.error(DebugCategories.ERROR, 'Initialization error:', err)
       throw loadingError.value
     }
   }
@@ -60,7 +101,7 @@ export function useScheduleInitialization() {
 
       // Log progress every second
       if (attempts % 10 === 0) {
-        debug.log('Waiting for data:', {
+        debug.log(DebugCategories.INITIALIZATION, 'Waiting for data:', {
           hasValue: !!value,
           isValid: value ? validate(value) : false,
           elapsed: Date.now() - start,
@@ -72,7 +113,7 @@ export function useScheduleInitialization() {
 
       // If we have a value but it's invalid, log details
       if (value && !validate(value)) {
-        debug.warn('Invalid data received:', {
+        debug.warn(DebugCategories.VALIDATION, 'Invalid data received:', {
           value:
             typeof value === 'object'
               ? JSON.stringify(value, null, 2).slice(0, 200) + '...'
@@ -83,7 +124,7 @@ export function useScheduleInitialization() {
     }
 
     if (!value || !validate(value)) {
-      debug.error('Data wait timeout:', {
+      debug.error(DebugCategories.ERROR, 'Data wait timeout:', {
         hasValue: !!value,
         isValid: value ? validate(value) : false,
         elapsed: Date.now() - start,
@@ -97,7 +138,7 @@ export function useScheduleInitialization() {
       throw error
     }
 
-    debug.log('Data ready:', {
+    debug.log(DebugCategories.INITIALIZATION, 'Data ready:', {
       elapsed: Date.now() - start,
       attempts,
       dataType: typeof value,
