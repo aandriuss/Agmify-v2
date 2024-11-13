@@ -1,11 +1,11 @@
 import { ref, watch } from 'vue'
 import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
-import type { NamedTableConfig, UserSettings } from './types'
 import { useSettingsGraphQL } from './useSettingsGraphQL'
-import { useTableOperations } from './useTableOperations'
-import { parseSettings, validateAndNormalizeSettings } from './useSettingsValidation'
+import { useUpdateQueue } from './useUpdateQueue'
+import { isUserSettings } from './types/scheduleTypes'
+import type { UserSettings } from './types/scheduleTypes'
 
-export function useSettings() {
+export function useSettingsState() {
   const settings = ref<UserSettings>({ namedTables: {} })
   const loading = ref(false)
   const error = ref<Error | null>(null)
@@ -13,79 +13,7 @@ export function useSettings() {
   const lastUpdateTime = ref(0)
 
   const { result, queryLoading, fetchSettings, updateSettings } = useSettingsGraphQL()
-
-  const tableOperations = useTableOperations({
-    updateNamedTable: async (id, config) => {
-      const currentSettings = settings.value
-      const existingTable = currentSettings.namedTables[id]
-
-      if (!existingTable) {
-        throw new Error('Table not found')
-      }
-
-      // Create updated table config
-      const updatedTable: NamedTableConfig = {
-        ...existingTable,
-        ...config,
-        id,
-        lastUpdateTimestamp: Date.now()
-      }
-
-      // Create updated settings
-      const updatedSettings: UserSettings = {
-        ...currentSettings,
-        namedTables: {
-          ...currentSettings.namedTables,
-          [id]: updatedTable
-        }
-      }
-
-      // Update local state first
-      settings.value = updatedSettings
-
-      // Record update time
-      lastUpdateTime.value = Date.now()
-
-      // Send to server
-      const success = await updateSettings(updatedSettings)
-      if (!success) {
-        throw new Error('Failed to save table updates')
-      }
-
-      return updatedTable
-    },
-    createNamedTable: async (name, config) => {
-      const tableId = `table-${Date.now()}`
-      const newTable: NamedTableConfig = {
-        id: tableId,
-        name,
-        ...config,
-        lastUpdateTimestamp: Date.now()
-      }
-
-      const updatedSettings: UserSettings = {
-        ...settings.value,
-        namedTables: {
-          ...settings.value.namedTables,
-          [tableId]: newTable
-        }
-      }
-
-      // Update local state first
-      settings.value = updatedSettings
-
-      // Record update time
-      lastUpdateTime.value = Date.now()
-
-      // Send to server
-      const success = await updateSettings(updatedSettings)
-      if (!success) {
-        throw new Error('Failed to create table')
-      }
-
-      return tableId
-    }
-  })
+  const { queueUpdate } = useUpdateQueue()
 
   // Watch for remote changes
   watch(
@@ -117,9 +45,20 @@ export function useSettings() {
       }
 
       try {
-        const parsedSettings = parseSettings(newSettings)
-        const validatedSettings = validateAndNormalizeSettings(parsedSettings)
-        settings.value = validatedSettings
+        // Parse and validate settings
+        const parsedSettings =
+          typeof newSettings === 'string'
+            ? (JSON.parse(newSettings) as unknown)
+            : newSettings
+
+        if (!isUserSettings(parsedSettings)) {
+          throw new Error('Invalid settings format')
+        }
+
+        settings.value = {
+          ...parsedSettings,
+          namedTables: parsedSettings.namedTables || {}
+        }
 
         debug.log(DebugCategories.INITIALIZATION, 'Settings updated', {
           namedTablesCount: Object.keys(settings.value.namedTables).length,
@@ -139,14 +78,15 @@ export function useSettings() {
       error.value = null
 
       const rawSettings = await fetchSettings()
-      if (!rawSettings) {
+      if (!rawSettings || !isUserSettings(rawSettings)) {
         settings.value = { namedTables: {} }
         return
       }
 
-      const parsedSettings = parseSettings(rawSettings)
-      const validatedSettings = validateAndNormalizeSettings(parsedSettings)
-      settings.value = validatedSettings
+      settings.value = {
+        ...rawSettings,
+        namedTables: rawSettings.namedTables || {}
+      }
 
       debug.log(DebugCategories.INITIALIZATION, 'Settings loaded', {
         namedTablesCount: Object.keys(settings.value.namedTables).length,
@@ -161,11 +101,38 @@ export function useSettings() {
     }
   }
 
+  async function saveSettings(newSettings: UserSettings): Promise<boolean> {
+    return queueUpdate(async () => {
+      try {
+        loading.value = true
+        error.value = null
+        isUpdating.value = true
+
+        // Record update time before sending to avoid race conditions
+        lastUpdateTime.value = Date.now()
+
+        const success = await updateSettings(newSettings)
+        if (success) {
+          settings.value = newSettings
+        }
+        return success
+      } catch (err) {
+        error.value = err instanceof Error ? err : new Error('Failed to save settings')
+        throw error.value
+      } finally {
+        loading.value = false
+        isUpdating.value = false
+      }
+    })
+  }
+
   return {
     settings,
     loading: loading.value || queryLoading.value,
     error,
+    isUpdating,
+    lastUpdateTime,
     loadSettings,
-    ...tableOperations
+    saveSettings
   }
 }

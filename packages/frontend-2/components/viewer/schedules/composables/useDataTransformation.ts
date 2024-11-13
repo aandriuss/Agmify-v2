@@ -48,21 +48,76 @@ export function useDataTransformation(options: DataTransformationOptions) {
     return evaluatedElement
   }
 
-  function filterByCategories(data: ElementData[]): ElementData[] {
-    return data.filter((element) => {
-      const isParentMatch =
+  function filterAndOrganizeData(data: ElementData[]): ElementData[] {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Filtering and organizing data', {
+      selectedParentCategories: state.selectedParentCategories,
+      selectedChildCategories: state.selectedChildCategories,
+      inputDataCount: data.length
+    })
+
+    // Step 1: Filter elements by selected categories
+    const filteredElements = data.filter((element) => {
+      const isParentCategory =
         state.selectedParentCategories.length === 0 ||
         state.selectedParentCategories.includes(element.category)
-
-      const hasMatchingChildren =
-        element.details?.some(
-          (child) =>
-            state.selectedChildCategories.length === 0 ||
-            state.selectedChildCategories.includes(child.category)
-        ) ?? false
-
-      return isParentMatch && (hasMatchingChildren || !element.details?.length)
+      const isChildCategory =
+        state.selectedChildCategories.length === 0 ||
+        state.selectedChildCategories.includes(element.category)
+      return isParentCategory || isChildCategory
     })
+
+    // Step 2: Separate parents and children based on selected categories
+    const parents = filteredElements.filter(
+      (element) =>
+        state.selectedParentCategories.length === 0 ||
+        state.selectedParentCategories.includes(element.category)
+    )
+
+    const children = filteredElements.filter(
+      (element) =>
+        state.selectedChildCategories.length === 0 ||
+        state.selectedChildCategories.includes(element.category)
+    )
+
+    // Step 3: Create a map of parent marks for quick lookup
+    const parentMarkMap = new Map<string, ElementData>()
+    parents.forEach((parent) => {
+      if (parent.mark) {
+        parentMarkMap.set(parent.mark, parent)
+      }
+    })
+
+    // Step 4: Organize children under their parents
+    const organizedParents = parents.map((parent) => ({
+      ...parent,
+      details: children.filter((child) => child.host === parent.mark)
+    }))
+
+    // Step 5: Collect orphaned children (those without matching parents)
+    const orphanedChildren = children.filter(
+      (child) => !child.host || !parentMarkMap.has(child.host)
+    )
+
+    // Step 6: If there are orphaned children, create an "Ungrouped" parent
+    if (orphanedChildren.length > 0) {
+      organizedParents.push({
+        id: 'ungrouped',
+        mark: 'Ungrouped',
+        category: 'Ungrouped',
+        type: 'Ungrouped',
+        details: orphanedChildren
+      })
+    }
+
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Data organization complete', {
+      totalParents: organizedParents.length,
+      totalChildren: children.length,
+      orphanedChildren: orphanedChildren.length,
+      firstParent: organizedParents[0],
+      firstChild: children[0]
+    })
+
+    return organizedParents
   }
 
   function transformToTableRows(data: ElementData[]): TableRowData[] {
@@ -105,11 +160,11 @@ export function useDataTransformation(options: DataTransformationOptions) {
         return evaluatedElement
       })
 
-      // Step 2: Filter by selected categories
-      const filteredData = filterByCategories(evaluatedData)
+      // Step 2: Filter and organize data
+      const organizedData = filterAndOrganizeData(evaluatedData)
 
       // Step 3: Transform to table rows
-      const tableRows = transformToTableRows(filteredData)
+      const tableRows = transformToTableRows(organizedData)
 
       // Update state
       updateEvaluatedData(evaluatedData)
@@ -117,7 +172,7 @@ export function useDataTransformation(options: DataTransformationOptions) {
 
       debug.log(DebugCategories.DATA_TRANSFORM, 'Data processing complete', {
         evaluatedCount: evaluatedData.length,
-        filteredCount: filteredData.length,
+        organizedCount: organizedData.length,
         tableRowsCount: tableRows.length
       })
     } catch (err) {
@@ -159,7 +214,7 @@ export function useDataTransformation(options: DataTransformationOptions) {
     processData,
     updateVisibility,
     evaluateCustomParameters,
-    filterByCategories,
+    filterAndOrganizeData,
     transformToTableRows
   }
 }

@@ -142,7 +142,7 @@ import { useScheduleInitializationFlow } from './composables/useScheduleInitiali
 import { useScheduleWatchers } from './composables/useScheduleWatchers'
 import { useScheduleUIState } from './composables/useScheduleUIState'
 import { useScheduleEmits } from './composables/useScheduleEmits'
-import { useSettings } from '~/composables/settings/useSettings'
+import { useUserSettings } from '~/composables/useUserSettings'
 import { useScheduleTable } from './composables/useScheduleTable'
 import { parentCategories, childCategories } from './config/categories'
 
@@ -192,7 +192,7 @@ const {
   updateCurrentColumns
 } = useScheduleState()
 
-const { loadSettings, settings } = useSettings()
+const { loadSettings, settings } = useUserSettings()
 
 const { initializeData, waitForData } = useScheduleInitialization()
 
