@@ -1,13 +1,47 @@
 import { ref } from 'vue'
-import type { TreeItemComponentModel } from '../types'
+import type { TreeItemComponentModel, BIMNodeRaw } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 
-interface WorldTreeNode {
-  _root?: {
-    type?: string
-    children?: TreeItemComponentModel[]
+interface NodeModel {
+  raw?: BIMNodeRaw
+  children?: NodeModel[]
+  atomic?: boolean
+  id?: string
+  speckle_type?: string
+  type?: string
+}
+
+interface TreeNode {
+  model: NodeModel
+  children?: TreeNode[]
+}
+
+// Helper function to traverse tree and collect valid nodes
+function collectValidNodes(node: TreeNode): TreeItemComponentModel[] {
+  const validNodes: TreeItemComponentModel[] = []
+
+  // Helper function to recursively traverse the tree
+  function traverse(currentNode: TreeNode) {
+    // Convert TreeNode to TreeItemComponentModel
+    if (currentNode.model?.raw) {
+      const treeItem: TreeItemComponentModel = {
+        rawNode: { raw: currentNode.model.raw },
+        children: []
+      }
+      validNodes.push(treeItem)
+    }
+
+    // Recursively check children
+    if (currentNode.children && currentNode.children.length > 0) {
+      for (const child of currentNode.children) {
+        traverse(child)
+      }
+    }
   }
+
+  traverse(node)
+  return validNodes
 }
 
 // Validation function for world tree nodes - simplified
@@ -49,29 +83,6 @@ function isValidWorldTreeNode(node: TreeItemComponentModel): boolean {
   return isValid
 }
 
-// Helper function to traverse tree and collect valid nodes
-function collectValidNodes(node: TreeItemComponentModel): TreeItemComponentModel[] {
-  const validNodes: TreeItemComponentModel[] = []
-
-  // Helper function to recursively traverse the tree
-  function traverse(currentNode: TreeItemComponentModel) {
-    // Always include the node if it has basic valid structure
-    if (currentNode.rawNode?.raw) {
-      validNodes.push(currentNode)
-    }
-
-    // Recursively check children
-    if (currentNode.children && currentNode.children.length > 0) {
-      for (const child of currentNode.children) {
-        traverse(child)
-      }
-    }
-  }
-
-  traverse(node)
-  return validNodes
-}
-
 export function useScheduleInitialization() {
   const loadingError = ref<Error | null>(null)
   const {
@@ -83,50 +94,52 @@ export function useScheduleInitialization() {
       debug.startState('dataInit')
       debug.log(DebugCategories.INITIALIZATION, 'Starting data initialization')
 
-      // Wait for WorldTree to be available
+      // Wait for WorldTree to be available and get its root
       let retryCount = 0
-      while (!worldTree.value?._root?.children && retryCount < 50) {
-        await new Promise((resolve) => setTimeout(resolve, 100))
-        retryCount++
-        if (retryCount % 10 === 0) {
-          debug.log(DebugCategories.INITIALIZATION, '⏳ Waiting for WorldTree...', {
-            retryCount,
-            hasTree: !!worldTree.value,
-            hasRoot: !!worldTree.value?._root,
-            metadata: worldTree.value
-          })
+      let root: TreeNode | null = null
+
+      while (!root && retryCount < 50) {
+        // Access worldTree's internal data safely
+        const treeData = worldTree.value as unknown as { _tree?: { root: TreeNode } }
+        root = treeData?._tree?.root || null
+
+        if (!root) {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+          retryCount++
+          if (retryCount % 10 === 0) {
+            debug.log(DebugCategories.INITIALIZATION, '⏳ Waiting for WorldTree...', {
+              retryCount,
+              hasTree: !!worldTree.value,
+              hasRoot: !!root,
+              metadata: worldTree.value
+            })
+          }
         }
       }
 
-      const tree = worldTree.value as WorldTreeNode | undefined
-      if (!tree?._root?.children) {
+      if (!root) {
         debug.error(DebugCategories.ERROR, 'No WorldTree data available', {
-          tree,
           metadata: worldTree.value
         })
         throw new Error('No WorldTree data available')
       }
 
-      const children = tree._root.children
-
       // Log raw tree data for debugging
       debug.log(DebugCategories.DATA, 'Raw WorldTree data:', {
-        rootType: tree._root.type,
-        childCount: children.length,
-        firstChild: children[0]?.rawNode?.raw,
-        structure: children.map((node: TreeItemComponentModel) => ({
-          id: node.rawNode?.raw?.id,
-          type: node.rawNode?.raw?.type,
-          speckleType: node.rawNode?.raw?.speckle_type,
-          category: node.rawNode?.raw?.Other?.Category,
+        rootType: root.model?.type,
+        childCount: root.children?.length || 0,
+        firstChild: root.children?.[0]?.model?.raw,
+        structure: root.children?.map((node: TreeNode) => ({
+          id: node.model?.raw?.id,
+          type: node.model?.raw?.type,
+          speckleType: node.model?.raw?.speckle_type,
+          category: node.model?.raw?.Other?.Category,
           childCount: node.children?.length
         }))
       })
 
       // Collect all nodes by traversing the tree
-      const allNodes = children.reduce((acc, child) => {
-        return acc.concat(collectValidNodes(child))
-      }, [] as TreeItemComponentModel[])
+      const allNodes = collectValidNodes(root)
 
       // Filter to valid nodes
       const validNodes = allNodes.filter(isValidWorldTreeNode)
@@ -157,7 +170,7 @@ export function useScheduleInitialization() {
       }
 
       debug.log(DebugCategories.INITIALIZATION, '🌳 WorldTree data processed:', {
-        rootType: tree._root.type,
+        rootType: root.model?.type,
         totalNodes: allNodes.length,
         validNodes: validNodes.length,
         categories: [

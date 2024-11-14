@@ -1,4 +1,4 @@
-import { ref, computed, watch, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import type { ElementData, ProcessedHeader, ParameterValue } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { debug, DebugCategories } from '../utils/debug'
@@ -104,44 +104,42 @@ export function useElementParameters({
   const parameterColumns = ref<ColumnDef[]>([])
 
   // Process elements and extract parameter values
-  const processedElements = computed(() => {
-    return filteredElements.map((element) => {
-      const processedElement = { ...element }
+  const processedElements = filteredElements.map((element) => {
+    const processedElement = { ...element }
 
-      // Process parent parameters
-      if (element.parameters) {
-        availableHeaders.value.parent.forEach((header) => {
-          const value = getParameterValue(element.parameters, header.field)
-          if (value !== undefined) {
-            processedElement.parameters = {
-              ...processedElement.parameters,
-              [header.field]: value
-            }
+    // Process parent parameters
+    if (element.parameters) {
+      availableHeaders.value.parent.forEach((header) => {
+        const value = getParameterValue(element.parameters, header.field)
+        if (value !== undefined) {
+          processedElement.parameters = {
+            ...processedElement.parameters,
+            [header.field]: value
           }
-        })
-      }
+        }
+      })
+    }
 
-      // Process child parameters
-      if (element.details) {
-        processedElement.details = element.details.map((child) => {
-          const processedChild = { ...child }
-          if (child.parameters) {
-            availableHeaders.value.child.forEach((header) => {
-              const value = getParameterValue(child.parameters, header.field)
-              if (value !== undefined) {
-                processedChild.parameters = {
-                  ...processedChild.parameters,
-                  [header.field]: value
-                }
+    // Process child parameters
+    if (element.details) {
+      processedElement.details = element.details.map((child) => {
+        const processedChild = { ...child }
+        if (child.parameters) {
+          availableHeaders.value.child.forEach((header) => {
+            const value = getParameterValue(child.parameters, header.field)
+            if (value !== undefined) {
+              processedChild.parameters = {
+                ...processedChild.parameters,
+                [header.field]: value
               }
-            })
-          }
-          return processedChild
-        })
-      }
+            }
+          })
+        }
+        return processedChild
+      })
+    }
 
-      return processedElement
-    })
+    return processedElement
   })
 
   // Update parameter visibility
@@ -155,34 +153,33 @@ export function useElementParameters({
     }
   }
 
-  // Watch for changes in filtered elements to update parameters
-  const stopParameterWatch = watch(
-    () => filteredElements,
-    (newElements) => {
-      const headers = discoverParameters(newElements)
-      availableHeaders.value = headers
+  // Initialize headers and columns
+  const headers = discoverParameters(filteredElements)
+  availableHeaders.value = headers
 
-      // Create columns for discovered parameters
-      parameterColumns.value = [
-        ...headers.parent.map((header, index) => createColumnDef(header, index)),
-        ...headers.child.map((header, index) =>
-          createColumnDef(header, headers.parent.length + index)
-        )
-      ]
+  // Create columns for discovered parameters
+  parameterColumns.value = [
+    ...headers.parent.map((header, index) => createColumnDef(header, index)),
+    ...headers.child.map((header, index) =>
+      createColumnDef(header, headers.parent.length + index)
+    )
+  ]
 
-      debug.log(DebugCategories.PARAMETERS, 'Parameters updated', {
-        parentHeaders: headers.parent.length,
-        childHeaders: headers.child.length,
-        columns: parameterColumns.value.length
-      })
-    },
-    { deep: true, immediate: true }
-  )
+  debug.log(DebugCategories.PARAMETERS, 'Parameters updated', {
+    parentHeaders: headers.parent.length,
+    childHeaders: headers.child.length,
+    columns: parameterColumns.value.length
+  })
+
+  // No need for watch since we're just processing
+  const stopParameterWatch = () => {
+    // Nothing to clean up
+  }
 
   return {
     parameterColumns,
     availableHeaders,
-    processedElements: processedElements.value,
+    processedElements,
     updateParameterVisibility,
     stopParameterWatch
   }

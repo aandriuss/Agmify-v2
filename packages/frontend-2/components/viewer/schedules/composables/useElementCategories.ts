@@ -1,4 +1,4 @@
-import { ref, computed, watch, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import type { ElementData } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 import { parentCategories, childCategories } from '../config/categories'
@@ -6,6 +6,8 @@ import { matchesCategory } from '../config/categoryMapping'
 
 interface UseElementCategoriesOptions {
   allElements: ElementData[]
+  selectedParent?: string[]
+  selectedChild?: string[]
 }
 
 interface UseElementCategoriesReturn {
@@ -21,80 +23,69 @@ interface UseElementCategoriesReturn {
 }
 
 export function useElementCategories({
-  allElements
+  allElements,
+  selectedParent = [],
+  selectedChild = []
 }: UseElementCategoriesOptions): UseElementCategoriesReturn {
   // Category state
-  const selectedParentCategories = ref<string[]>([])
-  const selectedChildCategories = ref<string[]>([])
+  const selectedParentCategories = ref<string[]>(selectedParent)
+  const selectedChildCategories = ref<string[]>(selectedChild)
 
-  // Available categories based on actual data
-  const availableParentCategories = computed(() => {
-    const categories = new Set<string>()
-    allElements.forEach((element) => {
-      parentCategories.forEach((category) => {
-        if (matchesCategory(element.type || '', category)) {
-          categories.add(category)
-        }
-      })
-    })
-    return categories
-  })
+  // Get available categories from elements
+  const availableParentCategories = new Set<string>()
+  const availableChildCategories = new Set<string>()
 
-  const availableChildCategories = computed(() => {
-    const categories = new Set<string>()
-    allElements.forEach((element) => {
-      if (element.details) {
-        element.details.forEach((child) => {
-          childCategories.forEach((category) => {
-            if (matchesCategory(child.type || '', category)) {
-              categories.add(category)
-            }
-          })
-        })
+  // Process parent categories
+  allElements.forEach((element) => {
+    parentCategories.forEach((category) => {
+      if (matchesCategory(element.type || '', category)) {
+        availableParentCategories.add(category)
       }
     })
-    return categories
   })
 
-  // Filtered elements based on selected categories
-  const filteredElements = computed<ElementData[]>(() => {
-    // If no categories selected, return all elements
-    if (
-      selectedParentCategories.value.length === 0 &&
-      selectedChildCategories.value.length === 0
-    ) {
-      return allElements
+  // Process child categories
+  allElements.forEach((element) => {
+    if (element.details) {
+      element.details.forEach((child) => {
+        childCategories.forEach((category) => {
+          if (matchesCategory(child.type || '', category)) {
+            availableChildCategories.add(category)
+          }
+        })
+      })
     }
+  })
 
-    return allElements.reduce<ElementData[]>((acc, element) => {
-      const isParentVisible =
-        selectedParentCategories.value.length === 0 ||
-        selectedParentCategories.value.some((category) =>
-          matchesCategory(element.type || '', category)
-        )
-
-      const visibleDetails = (element.details || []).filter(
-        (child) =>
-          selectedChildCategories.value.length === 0 ||
-          selectedChildCategories.value.some((category) =>
-            matchesCategory(child.type || '', category)
-          )
+  // Filter elements based on selected categories
+  const filteredElements = allElements.reduce<ElementData[]>((acc, element) => {
+    const isParentVisible =
+      selectedParentCategories.value.length === 0 ||
+      selectedParentCategories.value.some((category) =>
+        matchesCategory(element.type || '', category)
       )
 
-      if (!isParentVisible && visibleDetails.length === 0) {
-        return acc
-      }
+    const visibleDetails = (element.details || []).filter(
+      (child) =>
+        selectedChildCategories.value.length === 0 ||
+        selectedChildCategories.value.some((category) =>
+          matchesCategory(child.type || '', category)
+        )
+    )
 
-      const filteredElement: ElementData = {
-        ...element,
-        details: visibleDetails,
-        _visible: true
-      }
-
-      acc.push(filteredElement)
+    if (!isParentVisible && visibleDetails.length === 0) {
       return acc
-    }, [])
-  })
+    }
+
+    const filteredElement: ElementData = {
+      ...element,
+      details: visibleDetails,
+      _visible: true
+    }
+
+    acc.push(filteredElement)
+    return acc
+  }, [])
 
   // Category toggle functions
   function toggleParentCategory(category: string) {
@@ -109,8 +100,7 @@ export function useElementCategories({
 
     debug.log(DebugCategories.CATEGORIES, 'Parent category toggled', {
       category,
-      selectedParentCategories: selectedParentCategories.value,
-      filteredCount: filteredElements.value.length
+      selectedParentCategories: selectedParentCategories.value
     })
   }
 
@@ -126,8 +116,7 @@ export function useElementCategories({
 
     debug.log(DebugCategories.CATEGORIES, 'Child category toggled', {
       category,
-      selectedChildCategories: selectedChildCategories.value,
-      filteredCount: filteredElements.value.length
+      selectedChildCategories: selectedChildCategories.value
     })
   }
 
@@ -137,24 +126,17 @@ export function useElementCategories({
     debug.log(DebugCategories.CATEGORIES, 'Categories reset')
   }
 
-  // Watch for changes in allElements to update available categories
-  const stopCategoryWatch = watch(
-    () => allElements,
-    () => {
-      debug.log(DebugCategories.CATEGORIES, 'Available categories updated', {
-        parentCategories: [...availableParentCategories.value],
-        childCategories: [...availableChildCategories.value]
-      })
-    },
-    { deep: true }
-  )
+  // No need for watch since we're just filtering
+  const stopCategoryWatch = () => {
+    // Nothing to clean up
+  }
 
   return {
-    filteredElements: filteredElements.value,
+    filteredElements,
     selectedParentCategories,
     selectedChildCategories,
-    availableParentCategories: availableParentCategories.value,
-    availableChildCategories: availableChildCategories.value,
+    availableParentCategories,
+    availableChildCategories,
     toggleParentCategory,
     toggleChildCategory,
     resetCategories,

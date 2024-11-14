@@ -45,51 +45,56 @@ export function useElementsData({
     stopWorldTreeWatch
   } = useBIMElements()
 
-  const {
-    filteredElements,
-    availableParentCategories,
-    availableChildCategories,
-    toggleParentCategory,
-    toggleChildCategory,
-    resetCategories,
-    stopCategoryWatch
-  } = useElementCategories({
-    allElements: allElements.value
-  })
+  // Create refs for data pipeline
+  const filteredElementsRef = ref<ElementData[]>([])
+  const processedElementsRef = ref<ElementData[]>([])
 
-  const {
-    parameterColumns,
-    availableHeaders: paramHeaders,
-    processedElements,
-    updateParameterVisibility,
-    stopParameterWatch
-  } = useElementParameters({
-    filteredElements
-  })
-
-  // Computed state for UI
-  const scheduleData = ref<ElementData[]>(processedElements)
+  // Initialize parameter state
+  const parameterColumns = ref<ColumnDef[]>([])
   const availableHeaders = ref<AvailableHeaders>({
-    parent: paramHeaders.value.parent,
-    child: paramHeaders.value.child
+    parent: [],
+    child: []
   })
 
-  // Watch for changes in processedElements to update scheduleData
-  const stopProcessedElementsWatch = watch(
-    () => processedElements,
-    (newElements) => {
-      scheduleData.value = newElements
-    },
-    { immediate: true }
-  )
+  // Process data pipeline
+  function processDataPipeline() {
+    if (!allElements.value) return
 
-  // Watch for changes in parameter headers
-  const stopHeadersWatch = watch(
-    () => paramHeaders.value,
-    (newHeaders) => {
-      availableHeaders.value = newHeaders
+    // Step 1: Filter elements
+    const { filteredElements } = useElementCategories({
+      allElements: allElements.value,
+      selectedParent: selectedParentCategories.value,
+      selectedChild: selectedChildCategories.value
+    })
+    filteredElementsRef.value = filteredElements
+
+    // Step 2: Process filtered elements
+    const {
+      processedElements,
+      parameterColumns: newColumns,
+      availableHeaders: newHeaders
+    } = useElementParameters({
+      filteredElements: filteredElementsRef.value
+    })
+
+    processedElementsRef.value = processedElements
+    parameterColumns.value = newColumns.value
+    availableHeaders.value = newHeaders.value
+
+    debug.log(DebugCategories.DATA, 'Data pipeline updated', {
+      sourceElements: allElements.value.length,
+      filteredElements: filteredElements.length,
+      processedElements: processedElements.length
+    })
+  }
+
+  // Watch for changes in source data or categories
+  watch(
+    [allElements, selectedParentCategories, selectedChildCategories],
+    () => {
+      processDataPipeline()
     },
-    { immediate: true }
+    { immediate: true, deep: true }
   )
 
   // Category update handler
@@ -99,42 +104,44 @@ export function useElementsData({
   ): Promise<void> {
     try {
       processingState.value.isUpdatingCategories = true
+      processingState.value.error = null
 
       debug.log(DebugCategories.DATA, 'Updating categories', {
+        parentCategories,
+        childCategories,
+        currentElements: allElements.value?.length || 0
+      })
+
+      if (!allElements.value?.length) {
+        debug.warn(
+          DebugCategories.VALIDATION,
+          'No elements available for categorization'
+        )
+        return
+      }
+
+      // Update selected categories
+      selectedParentCategories.value = parentCategories
+      selectedChildCategories.value = childCategories
+
+      // Process pipeline with new categories
+      processDataPipeline()
+
+      debug.log(DebugCategories.DATA, 'Categories updated', {
+        filteredCount: filteredElementsRef.value.length,
+        processedCount: processedElementsRef.value.length,
+        visibleColumns: parameterColumns.value.filter((col) => col.visible).length,
         parentCategories,
         childCategories
       })
 
-      // Reset current categories
-      resetCategories()
-
-      // Add new categories one by one and wait for each update
-      for (const category of parentCategories) {
-        await Promise.resolve(toggleParentCategory(category))
-      }
-      for (const category of childCategories) {
-        await Promise.resolve(toggleChildCategory(category))
-      }
-
-      // Update parameter visibility based on category changes
-      if (parameterColumns.value) {
-        parameterColumns.value.forEach((column: ColumnDef) => {
-          updateParameterVisibility(column.field, column.visible)
-        })
-      }
-
-      const visibleColumnCount = parameterColumns.value
-        ? parameterColumns.value.filter((col: ColumnDef) => col.visible).length
-        : 0
-
-      debug.log(DebugCategories.DATA, 'Categories updated', {
-        filteredCount: filteredElements.length,
-        processedCount: processedElements.length,
-        visibleColumns: visibleColumnCount
-      })
+      // Simulate async operation for UI feedback
+      await new Promise((resolve) => setTimeout(resolve, 0))
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error updating categories:', error)
-      throw error
+      processingState.value.error =
+        error instanceof Error ? error : new Error('Failed to update categories')
+      throw processingState.value.error
     } finally {
       processingState.value.isUpdatingCategories = false
     }
@@ -144,6 +151,7 @@ export function useElementsData({
   async function initializeData(): Promise<void> {
     try {
       processingState.value.isInitializing = true
+      processingState.value.error = null
 
       debug.log(DebugCategories.INITIALIZATION, 'Starting data initialization')
 
@@ -161,47 +169,57 @@ export function useElementsData({
         )
       }
 
-      const columnCount = parameterColumns.value ? parameterColumns.value.length : 0
-
       debug.log(DebugCategories.INITIALIZATION, 'Data initialization complete', {
-        allElements: allElements.value.length,
-        filteredElements: filteredElements.length,
-        processedElements: processedElements.length,
-        columns: columnCount
+        allElements: allElements.value?.length || 0,
+        filteredElements: filteredElementsRef.value.length,
+        processedElements: processedElementsRef.value.length,
+        columns: parameterColumns.value.length,
+        selectedParentCategories: selectedParentCategories.value,
+        selectedChildCategories: selectedChildCategories.value
       })
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error initializing data:', error)
       processingState.value.error =
         error instanceof Error ? error : new Error('Failed to initialize data')
-      throw error
+      throw processingState.value.error
     } finally {
       processingState.value.isInitializing = false
     }
   }
 
-  // Extend stopWorldTreeWatch to cleanup all watchers
-  const originalStopWorldTreeWatch = stopWorldTreeWatch
-  const enhancedStopWorldTreeWatch = () => {
-    stopProcessedElementsWatch()
-    stopCategoryWatch()
-    stopParameterWatch()
-    stopHeadersWatch()
-    originalStopWorldTreeWatch()
-  }
+  // Create refs for debug views
+  const parentElements = ref<ElementData[]>([])
+  const childElements = ref<ElementData[]>([])
+  const matchedElements = ref<ElementData[]>([])
+  const orphanedElements = ref<ElementData[]>([])
+
+  // Update debug refs when filtered elements change
+  watch(
+    () => filteredElementsRef.value,
+    (elements) => {
+      parentElements.value = elements.filter((el: ElementData) => !el.host)
+      childElements.value = elements.filter((el: ElementData) => el.host)
+      matchedElements.value = elements.filter((el: ElementData) => el.details?.length)
+      orphanedElements.value = elements.filter(
+        (el: ElementData) => el.host && !el.details?.length
+      )
+    },
+    { immediate: true }
+  )
 
   return {
     // Core data
-    scheduleData,
+    scheduleData: processedElementsRef,
     availableHeaders,
     availableCategories: computed(() => ({
-      parent: new Set(Array.from(availableParentCategories)),
-      child: new Set(Array.from(availableChildCategories))
+      parent: new Set(selectedParentCategories.value),
+      child: new Set(selectedChildCategories.value)
     })),
 
     // Actions
     updateCategories,
     initializeData,
-    stopWorldTreeWatch: enhancedStopWorldTreeWatch,
+    stopWorldTreeWatch,
 
     // State
     isLoading,
@@ -214,13 +232,9 @@ export function useElementsData({
 
     // Debug properties
     rawElements: allElements,
-    parentElements: computed(() => filteredElements.filter((el) => !el.host)),
-    childElements: computed(() => filteredElements.filter((el) => el.host)),
-    matchedElements: computed(() =>
-      filteredElements.filter((el) => el.details?.length)
-    ),
-    orphanedElements: computed(() =>
-      filteredElements.filter((el) => el.host && !el.details?.length)
-    )
+    parentElements,
+    childElements,
+    matchedElements,
+    orphanedElements
   }
 }
