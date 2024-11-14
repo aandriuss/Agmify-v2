@@ -135,6 +135,7 @@ const emit = defineEmits<{
   'table-updated': [payload: TableUpdatePayload]
   'column-visibility-change': [column: ColumnDef]
 }>()
+
 // Helper functions for debug panel
 function getUniqueCategories(data: ElementData[]): string[] {
   return [...new Set(data.map((item) => item.category))]
@@ -150,9 +151,9 @@ function getUniqueChildCategories(data: ElementData[]): string[] {
   return [...categories]
 }
 
-// Computed states
+// Computed states - simplified
 const hasValidData = computed(() => {
-  const isValid = Array.isArray(props.tableData) && props.tableData.length > 0
+  const isValid = Array.isArray(props.tableData)
   debug.log(DebugCategories.VALIDATION, 'Data validation:', {
     timestamp: new Date().toISOString(),
     isValid,
@@ -165,12 +166,8 @@ const hasValidData = computed(() => {
 })
 
 const hasValidTable = computed(() => {
-  const isValid = !!(
-    props.isInitialized &&
-    props.selectedTableId &&
-    props.currentTable &&
-    props.mergedTableColumns.length > 0
-  )
+  // Only require initialization and valid columns
+  const isValid = props.isInitialized && Array.isArray(props.mergedTableColumns)
   debug.log(DebugCategories.VALIDATION, 'Table validation:', {
     timestamp: new Date().toISOString(),
     isValid,
@@ -189,6 +186,7 @@ const noCategoriesSelected = computed(() => {
 })
 
 const canShowTable = computed(() => {
+  // Simplified conditions - just need basic initialization
   const canShow = hasValidTable.value && hasValidData.value
   debug.log(DebugCategories.STATE, 'Table display state:', {
     timestamp: new Date().toISOString(),
@@ -211,34 +209,26 @@ const canShowTable = computed(() => {
 })
 
 const isLoading = computed(() => {
-  const loading = !props.isInitialized || !hasValidTable.value || !hasValidData.value
-  return loading
+  // Only consider basic initialization
+  return !props.isInitialized
 })
 
 const loadingMessage = computed(() => {
   if (!props.isInitialized) return 'Initializing...'
-  if (!props.selectedTableId) return 'Waiting for table selection...'
-  if (!props.currentTable) return 'Loading table configuration...'
-  if (!props.mergedTableColumns.length) return 'Loading columns...'
-  if (!hasValidData.value) return 'Loading data...'
+  if (!props.selectedTableId) return 'Select a table or create a new one'
+  if (!props.currentTable) return 'Loading table...'
   return 'Preparing table...'
 })
 
 const loadingDetail = computed(() => {
   if (!props.isInitialized) {
-    return 'Setting up data structures and loading configurations...'
+    return 'Setting up data structures...'
   }
   if (!props.selectedTableId) {
-    return 'Please select or create a table to continue'
+    return 'Choose an existing table or create a new one'
   }
   if (!props.currentTable) {
-    return 'Loading table settings and parameters...'
-  }
-  if (!props.mergedTableColumns.length) {
-    return 'Preparing column configurations...'
-  }
-  if (!hasValidData.value) {
-    return 'Processing BIM element data...'
+    return 'Loading table settings...'
   }
   return 'Almost ready...'
 })

@@ -1,11 +1,12 @@
-import type { Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import type { ScheduleInitializationInstance, ElementData } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { UserSettings } from '~/composables/useUserSettings'
-import { useElementsData } from './useElementsData'
 import { useNamedTableOperations } from './useNamedTableOperations'
 import { useScheduleTable } from './useScheduleTable'
-import { computed, ref } from 'vue'
+import { useBIMElements } from './useBIMElements'
+import { useElementCategories } from './useElementCategories'
+import { useElementParameters } from './useElementParameters'
 import { debug, DebugCategories } from '../utils/debug'
 
 interface ScheduleState {
@@ -34,6 +35,17 @@ export function useScheduleSetup({
     initComponent,
     handleError
   })
+
+  // Initialize BIM elements handling
+  const {
+    allElements,
+    rawWorldTree,
+    rawTreeNodes,
+    isLoading: isLoadingElements,
+    hasError: hasElementError,
+    initializeElements,
+    stopWorldTreeWatch
+  } = useBIMElements()
 
   // Initialize table management with table operations
   const {
@@ -75,43 +87,61 @@ export function useScheduleSetup({
     updateCurrentColumns: (columns: ColumnDef[]) => updateCurrentColumns(columns, [])
   })
 
-  // Initialize elements data with category refs
-  const {
-    scheduleData: elementsDataRaw,
-    availableHeaders: availableHeadersRaw,
-    rawElements: debugRawElementsRaw,
-    parentElements: debugParentElementsRaw,
-    childElements: debugChildElementsRaw,
-    matchedElements: debugMatchedElementsRaw,
-    orphanedElements: debugOrphanedElementsRaw,
-    initializeData: initializeElementsData,
-    stopWorldTreeWatch
-  } = useElementsData({
-    _currentTableColumns: computed(() => state.currentTableColumns),
-    _currentDetailColumns: computed(() => state.currentDetailColumns),
-    selectedParentCategories,
-    selectedChildCategories
+  // Initialize category filtering
+  const { filteredElements, availableParentCategories, availableChildCategories } =
+    useElementCategories({
+      allElements: allElements.value
+    })
+
+  // Initialize parameter processing
+  const { availableHeaders, processedElements } = useElementParameters({
+    filteredElements
   })
 
-  // Wrap raw values in refs
-  const elementsData = ref(elementsDataRaw)
-  const availableHeaders = ref(availableHeadersRaw)
-  const debugRawElements = ref(debugRawElementsRaw)
-  const debugParentElements = ref(debugParentElementsRaw)
-  const debugChildElements = ref(debugChildElementsRaw)
-  const debugMatchedElements = ref(debugMatchedElementsRaw)
-  const debugOrphanedElements = ref(debugOrphanedElementsRaw)
+  // Update state with processed data
+  state.scheduleData = processedElements
+
+  // Debug elements as refs
+  const debugRawElements = ref<ElementData[]>([])
+  const debugParentElements = ref<ElementData[]>([])
+  const debugChildElements = ref<ElementData[]>([])
+  const debugMatchedElements = ref<ElementData[]>([])
+  const debugOrphanedElements = ref<ElementData[]>([])
+
+  // Update debug refs when filtered elements change
+  watch(
+    [allElements, filteredElements],
+    ([newAllElements, newFilteredElements]) => {
+      debugRawElements.value = newAllElements
+      debugParentElements.value = newFilteredElements.filter((el) => !el.host)
+      debugChildElements.value = newFilteredElements.filter((el) => el.host)
+      debugMatchedElements.value = newFilteredElements.filter(
+        (el) => el.details?.length
+      )
+      debugOrphanedElements.value = newFilteredElements.filter(
+        (el) => el.host && !el.details?.length
+      )
+
+      debug.log(DebugCategories.DATA, 'Debug elements updated', {
+        rawCount: debugRawElements.value.length,
+        parentCount: debugParentElements.value.length,
+        childCount: debugChildElements.value.length,
+        matchedCount: debugMatchedElements.value.length,
+        orphanedCount: debugOrphanedElements.value.length
+      })
+    },
+    { immediate: true }
+  )
 
   return {
     // Elements data
-    elementsData,
+    elementsData: computed(() => processedElements),
     availableHeaders,
-    debugRawElements,
-    debugParentElements,
-    debugChildElements,
-    debugMatchedElements,
-    debugOrphanedElements,
-    initializeElementsData,
+    availableCategories: computed(() => ({
+      parent: new Set(Array.from(availableParentCategories)),
+      child: new Set(Array.from(availableChildCategories))
+    })),
+    initializeElementsData: initializeElements,
     stopWorldTreeWatch,
 
     // Categories
@@ -130,6 +160,19 @@ export function useScheduleSetup({
     currentTableId,
     currentTable,
     tableKey,
-    tablesArray
+    tablesArray,
+
+    // Loading states
+    isLoading: computed(() => isLoadingElements.value || isUpdating.value),
+    hasError: computed(() => hasElementError.value),
+
+    // Debug data
+    rawWorldTree,
+    rawTreeNodes,
+    debugRawElements,
+    debugParentElements,
+    debugChildElements,
+    debugMatchedElements,
+    debugOrphanedElements
   }
 }

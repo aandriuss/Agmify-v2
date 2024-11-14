@@ -46,36 +46,19 @@ export function useScheduleInitializationFlow(
   function validateInitialState() {
     debug.log(DebugCategories.VALIDATION, 'Validating initial state')
 
-    // Check settings
-    if (!currentTable.value && selectedTableId.value) {
-      debug.warn(DebugCategories.VALIDATION, 'Selected table ID without table data', {
-        selectedId: selectedTableId.value
-      })
-      return false
-    }
-
-    // Check schedule data - empty data is valid when no categories are selected
-    const hasCategories =
-      selectedParentCategories.value.length > 0 ||
-      selectedChildCategories.value.length > 0
-    if (hasCategories && !Array.isArray(scheduleData.value)) {
-      debug.warn(DebugCategories.VALIDATION, 'Invalid schedule data format', {
-        type: typeof scheduleData.value,
-        value: scheduleData.value
-      })
-      return false
-    }
+    // Basic validation - just ensure we have root nodes
+    const isValid = Array.isArray(rootNodes.value) && rootNodes.value.length > 0
 
     debug.log(DebugCategories.VALIDATION, 'Initial state validation complete', {
+      hasRootNodes: isValid,
       hasTable: !!currentTable.value,
       selectedId: selectedTableId.value,
       dataCount: scheduleData.value.length,
-      hasCategories,
       parentCategories: selectedParentCategories.value,
       childCategories: selectedChildCategories.value
     })
 
-    return true
+    return isValid
   }
 
   async function initialize() {
@@ -103,45 +86,34 @@ export function useScheduleInitializationFlow(
         nodeCount: nodes.length
       })
 
-      // Only wait for schedule data if categories are selected
-      const hasCategories =
-        selectedParentCategories.value.length > 0 ||
-        selectedChildCategories.value.length > 0
-      if (hasCategories) {
-        await waitForData(
-          () => scheduleData.value,
-          (data) => Array.isArray(data) && data.length > 0,
-          10000
-        )
-      }
-
-      // If we have a selected table, load it
+      // If we have a selected table, try to load it
       if (selectedTableId.value) {
-        debug.log(DebugCategories.INITIALIZATION, 'Loading selected table:', {
-          id: selectedTableId.value
-        })
+        try {
+          debug.log(DebugCategories.INITIALIZATION, 'Loading selected table:', {
+            id: selectedTableId.value
+          })
 
-        // Handle table selection and wait for it to complete
-        await handleTableSelection(selectedTableId.value)
+          // Handle table selection
+          await handleTableSelection(selectedTableId.value)
 
-        // Wait for table to be loaded
-        const loadedTable = await waitForData(
-          () => currentTable.value,
-          (table) => !!table && !!table.categoryFilters,
-          10000
-        )
-
-        debug.log(DebugCategories.INITIALIZATION, 'Table loaded:', {
-          id: currentTableId.value,
-          name: loadedTable.name,
-          categories: loadedTable.categoryFilters
-        })
+          debug.log(DebugCategories.INITIALIZATION, 'Table loaded:', {
+            id: currentTableId.value,
+            name: currentTable.value?.name,
+            categories: currentTable.value?.categoryFilters
+          })
+        } catch (err) {
+          // Just log the error but don't fail initialization
+          debug.warn(DebugCategories.INITIALIZATION, 'Failed to load table:', err)
+        }
       }
 
       // Validate the initialized state
       const isValid = validateInitialState()
       if (!isValid) {
-        throw new Error('Invalid state after initialization')
+        debug.warn(DebugCategories.VALIDATION, 'Invalid state after initialization', {
+          rootNodes: rootNodes.value,
+          scheduleData: scheduleData.value
+        })
       }
 
       // Mark as initialized if we have the ref
@@ -157,7 +129,9 @@ export function useScheduleInitializationFlow(
         hasTable: !!currentTable.value,
         selectedId: selectedTableId.value,
         dataCount: scheduleData.value.length,
-        hasCategories,
+        hasCategories:
+          selectedParentCategories.value.length > 0 ||
+          selectedChildCategories.value.length > 0,
         parentCategories: selectedParentCategories.value,
         childCategories: selectedChildCategories.value
       })

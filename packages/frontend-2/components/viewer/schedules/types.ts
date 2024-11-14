@@ -97,23 +97,15 @@ export interface BIMNodeConstraints {
 }
 
 export interface BIMNodeRaw {
-  id: string | number // Allow both string and number for id
+  id: string | number
   type?: string
   Name?: string
   Mark?: string
-  mark?: string
   speckleType?: string
-  'Identity Data'?: {
-    Mark?: string
-    [key: string]: unknown
-  }
-  Constraints?: BIMNodeConstraints
-  Dimensions?: {
-    length?: number
-    height?: number
-    width?: number
-    thickness?: number
-    area?: number
+  Tag?: string
+  'Identity Data'?: Record<string, unknown>
+  Constraints?: {
+    Host?: string | number
     [key: string]: unknown
   }
   Other?: {

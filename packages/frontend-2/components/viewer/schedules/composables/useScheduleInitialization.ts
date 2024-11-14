@@ -10,7 +10,7 @@ interface WorldTreeNode {
   }
 }
 
-// Validation function for world tree nodes
+// Validation function for world tree nodes - simplified
 function isValidWorldTreeNode(node: TreeItemComponentModel): boolean {
   const hasRawNode = !!node.rawNode
   const hasRaw = !!node.rawNode?.raw
@@ -33,7 +33,7 @@ function isValidWorldTreeNode(node: TreeItemComponentModel): boolean {
     host: node.rawNode?.raw?.Constraints?.Host
   })
 
-  // Node is valid if it has raw data and at least an ID
+  // Node is valid if it has raw data and an ID
   const isValid = hasRawNode && hasRaw && hasId
   if (!isValid) {
     debug.warn(DebugCategories.VALIDATION, 'Invalid node:', {
@@ -47,6 +47,29 @@ function isValidWorldTreeNode(node: TreeItemComponentModel): boolean {
   }
 
   return isValid
+}
+
+// Helper function to traverse tree and collect valid nodes
+function collectValidNodes(node: TreeItemComponentModel): TreeItemComponentModel[] {
+  const validNodes: TreeItemComponentModel[] = []
+
+  // Helper function to recursively traverse the tree
+  function traverse(currentNode: TreeItemComponentModel) {
+    // Always include the node if it has basic valid structure
+    if (currentNode.rawNode?.raw) {
+      validNodes.push(currentNode)
+    }
+
+    // Recursively check children
+    if (currentNode.children && currentNode.children.length > 0) {
+      for (const child of currentNode.children) {
+        traverse(child)
+      }
+    }
+  }
+
+  traverse(node)
+  return validNodes
 }
 
 export function useScheduleInitialization() {
@@ -91,43 +114,51 @@ export function useScheduleInitialization() {
         rootType: tree._root.type,
         childCount: children.length,
         firstChild: children[0]?.rawNode?.raw,
-        allChildren: children.map((node: TreeItemComponentModel) => ({
-          raw: node.rawNode?.raw,
-          childCount: node.children?.length,
-          validation: {
-            hasRawNode: !!node.rawNode,
-            hasRaw: !!node.rawNode?.raw,
-            hasId:
-              typeof node.rawNode?.raw?.id === 'string' ||
-              typeof node.rawNode?.raw?.id === 'number'
-          }
+        structure: children.map((node: TreeItemComponentModel) => ({
+          id: node.rawNode?.raw?.id,
+          type: node.rawNode?.raw?.type,
+          speckleType: node.rawNode?.raw?.speckle_type,
+          category: node.rawNode?.raw?.Other?.Category,
+          childCount: node.children?.length
         }))
       })
 
-      // Validate world tree data
-      const validNodes = children.filter(isValidWorldTreeNode)
+      // Collect all nodes by traversing the tree
+      const allNodes = children.reduce((acc, child) => {
+        return acc.concat(collectValidNodes(child))
+      }, [] as TreeItemComponentModel[])
+
+      // Filter to valid nodes
+      const validNodes = allNodes.filter(isValidWorldTreeNode)
+
+      debug.log(DebugCategories.DATA, 'Node collection results:', {
+        totalNodes: allNodes.length,
+        validNodes: validNodes.length,
+        invalidNodes: allNodes.length - validNodes.length,
+        nodeTypes: [...new Set(allNodes.map((n) => n.rawNode?.raw?.type))],
+        speckleTypes: [...new Set(allNodes.map((n) => n.rawNode?.raw?.speckle_type))],
+        categories: [...new Set(allNodes.map((n) => n.rawNode?.raw?.Other?.Category))]
+      })
+
       if (validNodes.length === 0) {
-        debug.error(DebugCategories.ERROR, 'No valid nodes in WorldTree', {
-          totalNodes: children.length,
-          firstNode: children[0],
-          firstNodeRaw: children[0]?.rawNode?.raw,
-          allNodes: children.map((node: TreeItemComponentModel) => ({
+        debug.error(DebugCategories.ERROR, 'No valid nodes found', {
+          totalNodes: allNodes.length,
+          sampleNodes: allNodes.slice(0, 3).map((node) => ({
             raw: node.rawNode?.raw,
             validation: {
               hasRawNode: !!node.rawNode,
               hasRaw: !!node.rawNode?.raw,
-              hasId:
-                typeof node.rawNode?.raw?.id === 'string' ||
-                typeof node.rawNode?.raw?.id === 'number'
+              hasId: typeof node.rawNode?.raw?.id !== 'undefined'
             }
           }))
         })
-        throw new Error('No valid nodes in WorldTree')
+        // Don't throw error, just log warning
+        debug.warn(DebugCategories.VALIDATION, 'No valid nodes, but continuing')
       }
 
-      debug.log(DebugCategories.INITIALIZATION, '🌳 WorldTree data validated:', {
+      debug.log(DebugCategories.INITIALIZATION, '🌳 WorldTree data processed:', {
         rootType: tree._root.type,
-        totalNodes: children.length,
+        totalNodes: allNodes.length,
         validNodes: validNodes.length,
         categories: [
           ...new Set(
@@ -136,16 +167,11 @@ export function useScheduleInitialization() {
             )
           )
         ],
-        firstValidNode: validNodes[0] && {
-          type: validNodes[0].rawNode?.raw?.speckle_type,
-          category: validNodes[0].rawNode?.raw?.Other?.Category,
-          id: validNodes[0].rawNode?.raw?.id,
-          mark:
-            validNodes[0].rawNode?.raw?.['Identity Data']?.Mark ||
-            validNodes[0].rawNode?.raw?.Tag ||
-            validNodes[0].rawNode?.raw?.Mark,
-          host: validNodes[0].rawNode?.raw?.Constraints?.Host
-        }
+        nodeSample: validNodes.slice(0, 3).map((node) => ({
+          type: node.rawNode?.raw?.speckle_type,
+          category: node.rawNode?.raw?.Other?.Category,
+          id: node.rawNode?.raw?.id
+        }))
       })
 
       debug.completeState('dataInit')
@@ -179,19 +205,7 @@ export function useScheduleInitialization() {
           isValid: value ? validate(value) : false,
           elapsed: Date.now() - start,
           attempts,
-          remainingTime: timeout - (Date.now() - start),
-          currentValue: value ? JSON.stringify(value).slice(0, 200) + '...' : 'null'
-        })
-      }
-
-      // If we have a value but it's invalid, log details
-      if (value && !validate(value)) {
-        debug.warn(DebugCategories.VALIDATION, 'Invalid data received:', {
-          value:
-            typeof value === 'object'
-              ? JSON.stringify(value, null, 2).slice(0, 200) + '...'
-              : value,
-          validationResult: validate(value)
+          remainingTime: timeout - (Date.now() - start)
         })
       }
     }
@@ -201,8 +215,7 @@ export function useScheduleInitialization() {
         hasValue: !!value,
         isValid: value ? validate(value) : false,
         elapsed: Date.now() - start,
-        attempts,
-        value: value ? JSON.stringify(value, null, 2).slice(0, 200) + '...' : 'null'
+        attempts
       })
 
       const error = new Error('Timeout waiting for data')
@@ -216,8 +229,7 @@ export function useScheduleInitialization() {
       attempts,
       dataType: typeof value,
       isArray: Array.isArray(value),
-      length: Array.isArray(value) ? value.length : null,
-      value: JSON.stringify(value).slice(0, 200) + '...'
+      length: Array.isArray(value) ? value.length : null
     })
 
     debug.completeState('dataWait')

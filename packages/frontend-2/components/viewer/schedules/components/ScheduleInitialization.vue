@@ -6,12 +6,12 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useUserSettings } from '~/composables/useUserSettings'
-import { useElementsData } from '../composables/useElementsData'
 import { useScheduleInitializationFlow } from '../composables/useScheduleInitializationFlow'
 import { useDataOrganization } from '../composables/useDataOrganization'
 import { debug, DebugCategories } from '../utils/debug'
 import { useScheduleTable } from '../composables/useScheduleTable'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
+import { useElementsData } from '../composables/useElementsData'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
@@ -66,7 +66,7 @@ const stopSettingsWatch = watch(
 // Data Organization
 const { rootNodes, updateRootNodes } = useDataOrganization()
 
-// Initialize elements data with default columns
+// Initialize elements data handling
 const {
   scheduleData,
   availableCategories,
@@ -298,6 +298,11 @@ defineExpose({
   tablesArray,
   availableCategories,
   selectedParentCategories,
-  selectedChildCategories
+  selectedChildCategories,
+  handleError: (err: unknown) => {
+    const errorToSet = err instanceof Error ? err : new Error(String(err))
+    loadingError.value = errorToSet
+    emit('error', errorToSet)
+  }
 })
 </script>
