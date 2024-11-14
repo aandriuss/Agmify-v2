@@ -56,6 +56,7 @@
       :detail-columns="mergedDetailColumns"
       :available-parent-parameters="mergedParentParameters"
       :available-child-parameters="mergedChildParameters"
+      :loading="isLoadingAdditionalData"
       @update:both-columns="handleBothColumnsUpdate"
       @table-updated="handleTableUpdate"
       @column-visibility-change="handleColumnVisibilityChange"
@@ -105,7 +106,12 @@
 import { computed, ref } from 'vue'
 import DataTable from '~/components/viewer/components/tables/DataTable/index.vue'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { ElementData, TableConfig, TableUpdatePayload } from '../types'
+import type {
+  ElementData,
+  TableConfig,
+  TableUpdatePayload,
+  TableRowData
+} from '../types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import { debug, DebugCategories } from '../utils/debug'
 
@@ -113,7 +119,7 @@ interface Props {
   selectedTableId: string
   currentTable: TableConfig | null
   isInitialized: boolean
-  tableData: ElementData[]
+  tableData: TableRowData[] // Changed from ElementData[] to TableRowData[]
   scheduleData: ElementData[]
   tableName: string
   currentTableId: string
@@ -151,61 +157,41 @@ function getUniqueChildCategories(data: ElementData[]): string[] {
   return [...categories]
 }
 
-// Computed states - simplified
-const hasValidData = computed(() => {
-  const isValid = Array.isArray(props.tableData)
-  debug.log(DebugCategories.VALIDATION, 'Data validation:', {
-    timestamp: new Date().toISOString(),
-    isValid,
-    tableDataLength: props.tableData?.length || 0,
-    scheduleDataLength: props.scheduleData?.length || 0,
-    firstTableItem: props.tableData?.[0],
-    firstScheduleItem: props.scheduleData?.[0]
-  })
-  return isValid
+// Modified computed states for progressive loading
+const hasMinimalColumns = computed(() => {
+  const essentialFields = ['mark', 'category']
+  return essentialFields.every((field) =>
+    props.mergedTableColumns.some((col) => col.field === field && col.visible)
+  )
 })
 
-const hasValidTable = computed(() => {
-  // Only require initialization and valid columns
-  const isValid = props.isInitialized && Array.isArray(props.mergedTableColumns)
-  debug.log(DebugCategories.VALIDATION, 'Table validation:', {
+const hasMinimalData = computed(() => {
+  return Array.isArray(props.tableData) && props.tableData.length > 0
+})
+
+const isLoadingAdditionalData = computed(() => {
+  // True if we have basic data but not all columns are loaded
+  return hasMinimalData.value && props.mergedTableColumns.some((col) => !col.visible)
+})
+
+const canShowTable = computed(() => {
+  // Show table if we have minimal columns and data
+  const canShow = hasMinimalColumns.value && hasMinimalData.value
+
+  debug.log(DebugCategories.STATE, 'Table display state:', {
     timestamp: new Date().toISOString(),
-    isValid,
-    isInitialized: props.isInitialized,
-    hasSelectedTableId: !!props.selectedTableId,
-    hasCurrentTable: !!props.currentTable,
-    columnCount: props.mergedTableColumns.length,
-    tableName: props.tableName,
-    tableId: props.currentTableId
+    canShow,
+    hasMinimalColumns: hasMinimalColumns.value,
+    hasMinimalData: hasMinimalData.value,
+    columnsCount: props.mergedTableColumns.length,
+    dataCount: props.tableData.length
   })
-  return isValid
+
+  return canShow
 })
 
 const noCategoriesSelected = computed(() => {
   return props.scheduleData.length === 0 && !props.loadingError && !isLoading.value
-})
-
-const canShowTable = computed(() => {
-  // Simplified conditions - just need basic initialization
-  const canShow = hasValidTable.value && hasValidData.value
-  debug.log(DebugCategories.STATE, 'Table display state:', {
-    timestamp: new Date().toISOString(),
-    canShow,
-    hasValidTable: hasValidTable.value,
-    hasValidData: hasValidData.value,
-    data: {
-      tableDataLength: props.tableData.length,
-      scheduleDataLength: props.scheduleData.length,
-      columnCount: props.mergedTableColumns.length,
-      detailColumnCount: props.mergedDetailColumns.length
-    },
-    table: {
-      id: props.currentTableId,
-      name: props.tableName,
-      selectedId: props.selectedTableId
-    }
-  })
-  return canShow
 })
 
 const isLoading = computed(() => {
@@ -254,10 +240,11 @@ const debugState = computed(() => {
         selectedId: props.selectedTableId
       },
       validation: {
-        hasValidTable: hasValidTable.value,
-        hasValidData: hasValidData.value,
+        hasMinimalColumns: hasMinimalColumns.value,
+        hasMinimalData: hasMinimalData.value,
         canShowTable: canShowTable.value,
-        isLoading: isLoading.value
+        isLoading: isLoading.value,
+        isLoadingAdditionalData: isLoadingAdditionalData.value
       },
       timestamp: new Date().toISOString()
     },

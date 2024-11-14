@@ -3,17 +3,19 @@ import type {
   ElementsDataReturn,
   AvailableHeaders,
   ElementData,
-  ProcessingState
+  ProcessingState,
+  TableRowData
 } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { debug, DebugCategories } from '../utils/debug'
 import { useBIMElements } from './useBIMElements'
-import { useElementCategories } from './useElementCategories'
-import { useElementParameters } from './useElementParameters'
+import { filterElements } from './useElementCategories'
+import { processParameters } from './useElementParameters'
+import { defaultColumns } from '../config/defaultColumns'
 
 /**
  * Coordinates BIM element data handling between specialized composables.
- * Acts as a facade for useBIMElements, useElementCategories, and useElementParameters.
+ * Acts as a facade for useBIMElements, filterElements, and processParameters.
  */
 export function useElementsData({
   _currentTableColumns,
@@ -31,6 +33,7 @@ export function useElementsData({
     isInitializing: false,
     isProcessingElements: false,
     isUpdatingCategories: false,
+    isProcessingFullData: false,
     error: null
   })
 
@@ -48,53 +51,180 @@ export function useElementsData({
   // Create refs for data pipeline
   const filteredElementsRef = ref<ElementData[]>([])
   const processedElementsRef = ref<ElementData[]>([])
-
-  // Initialize parameter state
-  const parameterColumns = ref<ColumnDef[]>([])
-  const availableHeaders = ref<AvailableHeaders>({
+  const tableDataRef = ref<TableRowData[]>([])
+  const parameterColumnsRef = ref<ColumnDef[]>([])
+  const availableHeadersRef = ref<AvailableHeaders>({
     parent: [],
     child: []
   })
 
-  // Process data pipeline
-  function processDataPipeline() {
-    if (!allElements.value) return
+  // Transform ElementData to TableRowData
+  function transformToTableData(elements: ElementData[]): TableRowData[] {
+    return elements.map((element) => {
+      const rowData: TableRowData = {
+        id: element.id,
+        mark: element.mark,
+        category: element.category,
+        type: element.type,
+        details: element.details || [],
+        _visible: true
+      }
 
-    // Step 1: Filter elements
-    const { filteredElements } = useElementCategories({
-      allElements: allElements.value,
-      selectedParent: selectedParentCategories.value,
-      selectedChild: selectedChildCategories.value
-    })
-    filteredElementsRef.value = filteredElements
+      // Add parameter values as direct properties
+      if (element.parameters) {
+        Object.entries(element.parameters).forEach(([key, value]) => {
+          rowData[key] = value
+        })
+      }
 
-    // Step 2: Process filtered elements
-    const {
-      processedElements,
-      parameterColumns: newColumns,
-      availableHeaders: newHeaders
-    } = useElementParameters({
-      filteredElements: filteredElementsRef.value
-    })
-
-    processedElementsRef.value = processedElements
-    parameterColumns.value = newColumns.value
-    availableHeaders.value = newHeaders.value
-
-    debug.log(DebugCategories.DATA, 'Data pipeline updated', {
-      sourceElements: allElements.value.length,
-      filteredElements: filteredElements.length,
-      processedElements: processedElements.length
+      return rowData
     })
   }
 
-  // Watch for changes in source data or categories
+  // Process essential data first
+  function processEssentialData() {
+    if (!allElements.value) {
+      debug.warn(DebugCategories.DATA, 'No elements available for processing')
+      return
+    }
+
+    try {
+      // Step 1: Filter elements with essential fields only
+      const { filteredElements } = filterElements({
+        allElements: allElements.value,
+        selectedParent: selectedParentCategories.value,
+        selectedChild: selectedChildCategories.value,
+        essentialFieldsOnly: true
+      })
+      filteredElementsRef.value = filteredElements
+
+      // Step 2: Process essential fields only
+      const { processedElements, parameterColumns, availableHeaders } =
+        processParameters({
+          filteredElements: filteredElementsRef.value,
+          essentialFieldsOnly: true
+        })
+
+      processedElementsRef.value = processedElements
+      parameterColumnsRef.value = [
+        ...defaultColumns,
+        ...parameterColumns.filter(
+          (col) => !defaultColumns.find((d) => d.field === col.field)
+        )
+      ]
+      availableHeadersRef.value = availableHeaders
+
+      // Step 3: Transform to table data
+      tableDataRef.value = transformToTableData(processedElements)
+
+      debug.log(DebugCategories.DATA, 'Essential data processed', {
+        sourceElements: allElements.value.length,
+        filteredElements: filteredElements.length,
+        processedElements: processedElements.length,
+        tableRows: tableDataRef.value.length,
+        parameterColumns: parameterColumnsRef.value.length
+      })
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error processing essential data:', error)
+      processingState.value.error =
+        error instanceof Error ? error : new Error('Failed to process essential data')
+      throw processingState.value.error
+    }
+  }
+
+  // Process full data pipeline
+  function processFullData() {
+    if (!allElements.value) return
+
+    try {
+      processingState.value.isProcessingFullData = true
+
+      // Step 1: Full filter
+      const { filteredElements } = filterElements({
+        allElements: allElements.value,
+        selectedParent: selectedParentCategories.value,
+        selectedChild: selectedChildCategories.value
+      })
+      filteredElementsRef.value = filteredElements
+
+      // Step 2: Full processing
+      const { processedElements, parameterColumns, availableHeaders } =
+        processParameters({
+          filteredElements: filteredElementsRef.value
+        })
+
+      processedElementsRef.value = processedElements
+      parameterColumnsRef.value = [
+        ...defaultColumns,
+        ...parameterColumns.filter(
+          (col) => !defaultColumns.find((d) => d.field === col.field)
+        )
+      ]
+      availableHeadersRef.value = availableHeaders
+
+      // Step 3: Transform to table data
+      tableDataRef.value = transformToTableData(processedElements)
+
+      debug.log(DebugCategories.DATA, 'Full data pipeline complete', {
+        sourceElements: allElements.value.length,
+        filteredElements: filteredElements.length,
+        processedElements: processedElements.length,
+        tableRows: tableDataRef.value.length,
+        parameterColumns: parameterColumnsRef.value.length,
+        availableHeaders: {
+          parent: availableHeaders.parent.length,
+          child: availableHeaders.child.length
+        }
+      })
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error processing full data:', error)
+      processingState.value.error =
+        error instanceof Error ? error : new Error('Failed to process full data')
+    } finally {
+      processingState.value.isProcessingFullData = false
+    }
+  }
+
+  // Process data pipeline progressively
+  function processDataPipeline() {
+    if (!allElements.value) {
+      debug.warn(DebugCategories.DATA, 'No elements available for processing')
+      return
+    }
+
+    try {
+      // Process essential data immediately
+      processEssentialData()
+
+      // Queue full processing
+      queueMicrotask(() => {
+        processFullData()
+      })
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error in data pipeline:', error)
+      processingState.value.error =
+        error instanceof Error ? error : new Error('Failed to process data pipeline')
+      throw processingState.value.error
+    }
+  }
+
+  // Watch for changes in source data
   watch(
-    [allElements, selectedParentCategories, selectedChildCategories],
+    () => allElements.value,
     () => {
       processDataPipeline()
     },
-    { immediate: true, deep: true }
+    { immediate: true }
+  )
+
+  // Watch for category changes
+  watch(
+    [selectedParentCategories, selectedChildCategories],
+    () => {
+      if (!allElements.value) return
+      processDataPipeline()
+    },
+    { immediate: true }
   )
 
   // Category update handler
@@ -124,19 +254,28 @@ export function useElementsData({
       selectedParentCategories.value = parentCategories
       selectedChildCategories.value = childCategories
 
-      // Process pipeline with new categories
-      processDataPipeline()
+      // Process essential data first
+      await new Promise<void>((resolve) => {
+        processEssentialData()
+        resolve()
+      })
+
+      // Process full data
+      await new Promise<void>((resolve) => {
+        queueMicrotask(() => {
+          processFullData()
+          resolve()
+        })
+      })
 
       debug.log(DebugCategories.DATA, 'Categories updated', {
         filteredCount: filteredElementsRef.value.length,
         processedCount: processedElementsRef.value.length,
-        visibleColumns: parameterColumns.value.filter((col) => col.visible).length,
+        tableRows: tableDataRef.value.length,
+        visibleColumns: parameterColumnsRef.value.filter((col) => col.visible).length,
         parentCategories,
         childCategories
       })
-
-      // Simulate async operation for UI feedback
-      await new Promise((resolve) => setTimeout(resolve, 0))
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error updating categories:', error)
       processingState.value.error =
@@ -173,7 +312,8 @@ export function useElementsData({
         allElements: allElements.value?.length || 0,
         filteredElements: filteredElementsRef.value.length,
         processedElements: processedElementsRef.value.length,
-        columns: parameterColumns.value.length,
+        tableRows: tableDataRef.value.length,
+        columns: parameterColumnsRef.value.length,
         selectedParentCategories: selectedParentCategories.value,
         selectedChildCategories: selectedChildCategories.value
       })
@@ -197,12 +337,28 @@ export function useElementsData({
   watch(
     () => filteredElementsRef.value,
     (elements) => {
-      parentElements.value = elements.filter((el: ElementData) => !el.host)
-      childElements.value = elements.filter((el: ElementData) => el.host)
-      matchedElements.value = elements.filter((el: ElementData) => el.details?.length)
-      orphanedElements.value = elements.filter(
-        (el: ElementData) => el.host && !el.details?.length
-      )
+      if (!elements?.length) {
+        parentElements.value = []
+        childElements.value = []
+        matchedElements.value = []
+        orphanedElements.value = []
+        return
+      }
+
+      const filterElements = (predicate: (el: ElementData) => boolean) =>
+        elements.filter(predicate)
+
+      parentElements.value = filterElements((el) => !el.host)
+      childElements.value = filterElements((el) => !!el.host)
+      matchedElements.value = filterElements((el) => !!el.details?.length)
+      orphanedElements.value = filterElements((el) => !!el.host && !el.details?.length)
+
+      debug.log(DebugCategories.DATA, 'Debug elements updated', {
+        parentCount: parentElements.value.length,
+        childCount: childElements.value.length,
+        matchedCount: matchedElements.value.length,
+        orphanedCount: orphanedElements.value.length
+      })
     },
     { immediate: true }
   )
@@ -210,7 +366,8 @@ export function useElementsData({
   return {
     // Core data
     scheduleData: processedElementsRef,
-    availableHeaders,
+    tableData: tableDataRef,
+    availableHeaders: availableHeadersRef,
     availableCategories: computed(() => ({
       parent: new Set(selectedParentCategories.value),
       child: new Set(selectedChildCategories.value)

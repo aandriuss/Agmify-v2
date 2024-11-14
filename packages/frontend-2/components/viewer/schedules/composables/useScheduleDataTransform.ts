@@ -1,4 +1,4 @@
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type { ElementData, TableRowData } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
@@ -17,60 +17,43 @@ interface UseScheduleDataTransformOptions {
   isInitialized?: Ref<boolean>
 }
 
-// Type guard to ensure we have valid ElementData
-const isValidElementData = (item: unknown): item is ElementData => {
+// Modified validation to support progressive loading
+const isValidElementData = (
+  item: unknown,
+  requiredFields: string[] = ['id', 'mark', 'category']
+): item is ElementData => {
   if (!item || typeof item !== 'object') return false
   const record = item as Record<string, unknown>
 
-  // Required fields
-  const hasId = 'id' in record && typeof record.id === 'string'
-  const hasMark = 'mark' in record && typeof record.mark === 'string'
-  const hasCategory = 'category' in record && typeof record.category === 'string'
-  const hasType = 'type' in record && typeof record.type === 'string'
+  // Check only required fields
+  const hasRequiredFields = requiredFields.every((field) => {
+    const value = record[field]
+    return value !== undefined && value !== null
+  })
 
-  // Optional fields
-  const hasValidName =
-    !('name' in record) || record.name === null || typeof record.name === 'string'
-  const hasValidHost =
-    !('host' in record) || record.host === null || typeof record.host === 'string'
-  const hasValidDetails = !('details' in record) || Array.isArray(record.details)
-
-  const isValid =
-    hasId &&
-    hasMark &&
-    hasCategory &&
-    hasType &&
-    hasValidName &&
-    hasValidHost &&
-    hasValidDetails
-
-  if (!isValid) {
-    debug.warn(DebugCategories.VALIDATION, 'Invalid element data:', {
+  if (!hasRequiredFields) {
+    debug.warn(DebugCategories.VALIDATION, 'Missing required fields:', {
       timestamp: new Date().toISOString(),
       value: record,
-      validation: {
-        hasId,
-        hasMark,
-        hasCategory,
-        hasType,
-        hasValidName,
-        hasValidHost,
-        hasValidDetails
-      },
-      keys: Object.keys(record)
+      requiredFields,
+      missingFields: requiredFields.filter((field) => {
+        const value = record[field]
+        return value === undefined || value === null
+      })
     })
   }
-  return isValid
+
+  return hasRequiredFields
 }
 
 export function useScheduleDataTransform(options: UseScheduleDataTransformOptions) {
-  const {
-    scheduleData,
-    evaluatedData,
-    customParameters,
-    mergedTableColumns,
-    mergedDetailColumns
-  } = options
+  const { scheduleData, evaluatedData, mergedTableColumns, mergedDetailColumns } =
+    options
+
+  // Track transformation state
+  const isTransformingData = ref(false)
+  const hasFullTransform = ref(false)
+  const transformedData = ref<TableRowData[]>([])
 
   // Use filtered data directly from scheduleData or evaluatedData
   const filteredData = computed(() => {
@@ -84,44 +67,93 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
       validation: {
         hasData: sourceData.length > 0,
         firstItemValid: sourceData[0] && isValidElementData(sourceData[0]),
-        allItemsValid: sourceData.every(isValidElementData)
+        allItemsValid: sourceData.every((item) =>
+          isValidElementData(item, ['id', 'mark', 'category'])
+        )
       }
     })
 
     return sourceData
   })
 
-  // Transform filtered data to table format
-  const tableData = computed<TableRowData[]>(() => {
-    debug.startState('computeTableData')
+  // Transform data progressively
+  function transformData() {
+    if (isTransformingData.value || filteredData.value.length === 0) return
 
-    const data = filteredData.value
-    if (data.length === 0) {
-      debug.warn(DebugCategories.VALIDATION, 'No data to transform')
+    try {
+      isTransformingData.value = true
+      debug.startState('transformData')
+
+      // First pass: Transform essential fields
+      const basicTransform = filteredData.value.map((item) => ({
+        id: item.id,
+        mark: item.mark,
+        category: item.category,
+        type: item.type
+      }))
+
+      transformedData.value = basicTransform as TableRowData[]
+
+      // Second pass: Full transformation
+      queueMicrotask(() => {
+        try {
+          const fullTransform = transformToTableRowData(filteredData.value)
+          transformedData.value = fullTransform
+          hasFullTransform.value = true
+
+          debug.log(DebugCategories.DATA_TRANSFORM, 'Full transformation complete:', {
+            timestamp: new Date().toISOString(),
+            inputCount: filteredData.value.length,
+            outputCount: fullTransform.length,
+            withDetails: fullTransform.filter(
+              (item) => Array.isArray(item.details) && item.details.length > 0
+            ).length
+          })
+        } catch (error) {
+          debug.error(DebugCategories.ERROR, 'Error in full transformation:', error)
+        } finally {
+          isTransformingData.value = false
+        }
+      })
+
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Basic transformation complete:', {
+        timestamp: new Date().toISOString(),
+        count: basicTransform.length,
+        fields: Object.keys(basicTransform[0] || {})
+      })
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error transforming data:', error)
+      isTransformingData.value = false
+    }
+  }
+
+  // Computed table data with progressive loading
+  const tableData = computed<TableRowData[]>(() => {
+    if (transformedData.value.length === 0) {
+      debug.warn(DebugCategories.VALIDATION, 'No transformed data available')
       return []
     }
 
-    // Transform to table format
-    const transformedData = transformToTableRowData(data)
-
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Data transformation complete:', {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Returning table data:', {
       timestamp: new Date().toISOString(),
-      inputCount: data.length,
-      outputCount: transformedData.length,
-      firstResult: transformedData[0],
-      withDetails: transformedData.filter(
-        (item) => Array.isArray(item.details) && item.details.length > 0
-      ).length,
-      validation: {
-        hasData: transformedData.length > 0,
-        firstItemValid: transformedData[0] && isValidElementData(transformedData[0]),
-        allItemsValid: transformedData.every(isValidElementData)
-      }
+      count: transformedData.value.length,
+      isFullTransform: hasFullTransform.value,
+      firstItem: transformedData.value[0],
+      availableFields: Object.keys(transformedData.value[0] || {})
     })
 
-    debug.completeState('computeTableData')
-    return transformedData
+    return transformedData.value
   })
+
+  // Watch for data changes
+  watch(
+    [filteredData, mergedTableColumns, mergedDetailColumns],
+    () => {
+      hasFullTransform.value = false
+      transformData()
+    },
+    { immediate: true }
+  )
 
   // Debug watchers
   watch(
@@ -130,49 +162,13 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
       debug.log(DebugCategories.DATA_TRANSFORM, 'Table data changed:', {
         timestamp: new Date().toISOString(),
         count: newData.length,
-        firstItem: newData[0],
+        isFullTransform: hasFullTransform.value,
         validation: {
           hasData: newData.length > 0,
           firstItemValid: newData[0] && isValidElementData(newData[0]),
-          allItemsValid: newData.every(isValidElementData)
-        },
-        columns: mergedTableColumns.value.map((col) => ({
-          field: col.field,
-          visible: col.visible,
-          isCustom: 'isCustomParameter' in col
-        }))
-      })
-    },
-    { immediate: true }
-  )
-
-  watch(
-    [
-      () => scheduleData.value,
-      () => evaluatedData.value,
-      () => customParameters.value,
-      () => mergedTableColumns.value,
-      () => mergedDetailColumns.value
-    ],
-    ([newScheduleData, newEvaluatedData, newParams, newTableCols, newDetailCols]) => {
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Dependencies changed:', {
-        timestamp: new Date().toISOString(),
-        scheduleData: {
-          count: newScheduleData.length,
-          valid: newScheduleData.every(isValidElementData)
-        },
-        evaluatedData: {
-          count: newEvaluatedData.length,
-          valid: newEvaluatedData.every(isValidElementData)
-        },
-        parameters: {
-          count: newParams.length
-        },
-        columns: {
-          table: newTableCols.length,
-          detail: newDetailCols.length,
-          visibleTable: newTableCols.filter((col) => col.visible).length,
-          visibleDetail: newDetailCols.filter((col) => col.visible).length
+          allItemsValid: newData.every((item) =>
+            isValidElementData(item, ['id', 'mark', 'category'])
+          )
         }
       })
     },
@@ -182,6 +178,8 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
   return {
     tableData,
     isValidElementData,
-    filteredData
+    filteredData,
+    isTransformingData,
+    hasFullTransform
   }
 }

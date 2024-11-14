@@ -1,9 +1,10 @@
+import { watch } from 'vue'
 import { debug, DebugCategories } from '../utils/debug'
 import type { ComputedRef } from 'vue'
 import type { ElementData, TableRowData } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { convertToString } from '../utils/dataConversion'
+import { processDataPipeline } from '../utils/dataPipeline'
 
 interface DataTransformationOptions {
   state: {
@@ -31,132 +32,6 @@ export function useDataTransformation(options: DataTransformationOptions) {
     selectedChildCategories
   } = options
 
-  function evaluateCustomParameters(element: ElementData): ElementData {
-    const evaluatedElement = { ...element }
-
-    state.customParameters.forEach((param) => {
-      if (!param.visible) return
-
-      try {
-        if (param.type === 'fixed') {
-          evaluatedElement[param.field] = convertToString(param.value)
-        } else if (param.type === 'equation' && param.equation) {
-          // Here you would evaluate the equation using the element's data
-          // This is a placeholder for equation evaluation logic
-          evaluatedElement[param.field] = 'Equation result'
-        }
-      } catch (err) {
-        debug.warn(DebugCategories.DATA_TRANSFORM, 'Failed to evaluate parameter', {
-          parameter: param,
-          element,
-          error: err
-        })
-      }
-    })
-
-    return evaluatedElement
-  }
-
-  function filterAndOrganizeData(data: ElementData[]): ElementData[] {
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Filtering and organizing data', {
-      selectedParentCategories: selectedParentCategories.value,
-      selectedChildCategories: selectedChildCategories.value,
-      inputDataCount: data.length
-    })
-
-    // Step 1: Filter elements by selected categories
-    const filteredElements = data.filter((element) => {
-      const isParentCategory =
-        selectedParentCategories.value.length === 0 ||
-        selectedParentCategories.value.includes(element.category)
-      const isChildCategory =
-        selectedChildCategories.value.length === 0 ||
-        selectedChildCategories.value.includes(element.category)
-      return isParentCategory || isChildCategory
-    })
-
-    // Step 2: Separate parents and children based on selected categories
-    const parents = filteredElements.filter(
-      (element) =>
-        selectedParentCategories.value.length === 0 ||
-        selectedParentCategories.value.includes(element.category)
-    )
-
-    const children = filteredElements.filter(
-      (element) =>
-        selectedChildCategories.value.length === 0 ||
-        selectedChildCategories.value.includes(element.category)
-    )
-
-    // Step 3: Create a map of parent marks for quick lookup
-    const parentMarkMap = new Map<string, ElementData>()
-    parents.forEach((parent) => {
-      if (parent.mark) {
-        parentMarkMap.set(parent.mark, parent)
-      }
-    })
-
-    // Step 4: Organize children under their parents
-    const organizedParents = parents.map((parent) => ({
-      ...parent,
-      details: children.filter((child) => child.host === parent.mark)
-    }))
-
-    // Step 5: Collect orphaned children (those without matching parents)
-    const orphanedChildren = children.filter(
-      (child) => !child.host || !parentMarkMap.has(child.host)
-    )
-
-    // Step 6: If there are orphaned children, create an "Ungrouped" parent
-    if (orphanedChildren.length > 0) {
-      organizedParents.push({
-        id: 'ungrouped',
-        mark: 'Ungrouped',
-        category: 'Ungrouped',
-        type: 'Ungrouped',
-        details: orphanedChildren,
-        _visible: true
-      })
-    }
-
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Data organization complete', {
-      totalParents: organizedParents.length,
-      totalChildren: children.length,
-      orphanedChildren: orphanedChildren.length,
-      firstParent: organizedParents[0],
-      firstChild: children[0]
-    })
-
-    return organizedParents
-  }
-
-  function transformToTableRows(data: ElementData[]): TableRowData[] {
-    return data.map((element) => {
-      const row: TableRowData = {
-        ...element,
-        _visible: true,
-        details: element.details?.map((detail) => ({
-          ...detail,
-          _visible: true
-        }))
-      }
-
-      // Add custom parameter values
-      state.customParameters.forEach((param) => {
-        if (param.visible) {
-          if (row[param.field] === undefined) {
-            row[param.field] = null
-          } else {
-            // Convert existing values to string using our centralized utility
-            row[param.field] = convertToString(row[param.field])
-          }
-        }
-      })
-
-      return row
-    })
-  }
-
   function processData() {
     debug.log(DebugCategories.DATA_TRANSFORM, 'Processing schedule data', {
       dataCount: state.scheduleData.length,
@@ -166,31 +41,20 @@ export function useDataTransformation(options: DataTransformationOptions) {
     })
 
     try {
-      // Step 1: Evaluate custom parameters
-      const evaluatedData = state.scheduleData.map((element) => {
-        const evaluatedElement = evaluateCustomParameters(element)
-        if (element.details) {
-          evaluatedElement.details = element.details.map((child) =>
-            evaluateCustomParameters(child)
-          )
-        }
-        return evaluatedElement
+      // Process data through pipeline
+      const result = processDataPipeline({
+        allElements: state.scheduleData,
+        selectedParent: selectedParentCategories.value,
+        selectedChild: selectedChildCategories.value
       })
 
-      // Step 2: Filter and organize data
-      const organizedData = filterAndOrganizeData(evaluatedData)
-
-      // Step 3: Transform to table rows
-      const tableRows = transformToTableRows(organizedData)
-
       // Update state
-      updateEvaluatedData(evaluatedData)
-      updateTableData(tableRows)
+      updateEvaluatedData(result.processedElements)
+      updateTableData(result.tableData)
 
       debug.log(DebugCategories.DATA_TRANSFORM, 'Data processing complete', {
-        evaluatedCount: evaluatedData.length,
-        organizedCount: organizedData.length,
-        tableRowsCount: tableRows.length
+        evaluatedCount: result.processedElements.length,
+        tableRows: result.tableData.length
       })
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to process data:', err)
@@ -227,11 +91,59 @@ export function useDataTransformation(options: DataTransformationOptions) {
     }
   }
 
+  // Add watch for scheduleData changes
+  watch(
+    () => state.scheduleData,
+    (newData) => {
+      if (newData.length > 0) {
+        debug.log(
+          DebugCategories.DATA_TRANSFORM,
+          'Schedule data changed, processing...',
+          {
+            dataCount: newData.length
+          }
+        )
+        processData()
+      }
+    },
+    { immediate: true }
+  )
+
+  // Add watch for category changes
+  watch(
+    [selectedParentCategories, selectedChildCategories],
+    () => {
+      if (state.scheduleData.length > 0) {
+        debug.log(DebugCategories.DATA_TRANSFORM, 'Categories changed, processing...', {
+          parentCategories: selectedParentCategories.value,
+          childCategories: selectedChildCategories.value
+        })
+        processData()
+      }
+    },
+    { immediate: true }
+  )
+
+  // Add watch for custom parameters
+  watch(
+    () => state.customParameters,
+    () => {
+      if (state.scheduleData.length > 0) {
+        debug.log(
+          DebugCategories.DATA_TRANSFORM,
+          'Custom parameters changed, processing...',
+          {
+            parameterCount: state.customParameters.length
+          }
+        )
+        processData()
+      }
+    },
+    { immediate: true, deep: true }
+  )
+
   return {
     processData,
-    updateVisibility,
-    evaluateCustomParameters,
-    filterAndOrganizeData,
-    transformToTableRows
+    updateVisibility
   }
 }

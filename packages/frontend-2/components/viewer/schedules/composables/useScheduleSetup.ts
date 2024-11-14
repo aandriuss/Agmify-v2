@@ -1,18 +1,22 @@
-import { computed, ref, watch, type Ref } from 'vue'
-import type { ScheduleInitializationInstance, ElementData } from '../types'
+import { computed, watch, type Ref } from 'vue'
+import type {
+  ScheduleInitializationInstance,
+  ElementData,
+  TableRowData
+} from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { UserSettings } from '~/composables/useUserSettings'
 import { useNamedTableOperations } from './useNamedTableOperations'
 import { useScheduleTable } from './useScheduleTable'
 import { useBIMElements } from './useBIMElements'
-import { useElementCategories } from './useElementCategories'
-import { useElementParameters } from './useElementParameters'
+import { useScheduleState } from './useScheduleState'
 import { debug, DebugCategories } from '../utils/debug'
 
 interface ScheduleState {
   currentTableColumns: ColumnDef[]
   currentDetailColumns: ColumnDef[]
   scheduleData: ElementData[]
+  tableData: TableRowData[] // Added this line
 }
 
 interface UseScheduleSetupOptions {
@@ -87,59 +91,48 @@ export function useScheduleSetup({
     updateCurrentColumns: (columns: ColumnDef[]) => updateCurrentColumns(columns, [])
   })
 
-  // Initialize category filtering
-  const { filteredElements, availableParentCategories, availableChildCategories } =
-    useElementCategories({
-      allElements: allElements.value
-    })
-
-  // Initialize parameter processing
-  const { availableHeaders, processedElements } = useElementParameters({
-    filteredElements
+  // Initialize schedule state management
+  const {
+    state: scheduleState,
+    isProcessing,
+    hasError,
+    parentElements,
+    childElements,
+    matchedElements,
+    orphanedElements
+  } = useScheduleState({
+    allElements,
+    selectedParentCategories,
+    selectedChildCategories
   })
 
-  // Update state with processed data
-  state.scheduleData = processedElements
-
-  // Debug elements as refs
-  const debugRawElements = ref<ElementData[]>([])
-  const debugParentElements = ref<ElementData[]>([])
-  const debugChildElements = ref<ElementData[]>([])
-  const debugMatchedElements = ref<ElementData[]>([])
-  const debugOrphanedElements = ref<ElementData[]>([])
-
-  // Update debug refs when filtered elements change
+  // Update parent state with schedule state
   watch(
-    [allElements, filteredElements],
-    ([newAllElements, newFilteredElements]) => {
-      debugRawElements.value = newAllElements
-      debugParentElements.value = newFilteredElements.filter((el) => !el.host)
-      debugChildElements.value = newFilteredElements.filter((el) => el.host)
-      debugMatchedElements.value = newFilteredElements.filter(
-        (el) => el.details?.length
-      )
-      debugOrphanedElements.value = newFilteredElements.filter(
-        (el) => el.host && !el.details?.length
-      )
+    () => scheduleState,
+    (newState) => {
+      state.scheduleData = newState.scheduleData
+      state.tableData = newState.tableData // Added this line
+      state.currentTableColumns = newState.currentTableColumns
+      state.currentDetailColumns = newState.currentDetailColumns
 
-      debug.log(DebugCategories.DATA, 'Debug elements updated', {
-        rawCount: debugRawElements.value.length,
-        parentCount: debugParentElements.value.length,
-        childCount: debugChildElements.value.length,
-        matchedCount: debugMatchedElements.value.length,
-        orphanedCount: debugOrphanedElements.value.length
+      debug.log(DebugCategories.STATE, 'Schedule state updated', {
+        scheduleDataCount: state.scheduleData.length,
+        tableDataCount: state.tableData.length,
+        tableColumns: state.currentTableColumns.length,
+        detailColumns: state.currentDetailColumns.length
       })
     },
-    { immediate: true }
+    { immediate: true, deep: true }
   )
 
   return {
     // Elements data
-    elementsData: computed(() => processedElements),
-    availableHeaders,
+    elementsData: computed(() => scheduleState.scheduleData),
+    tableData: computed(() => scheduleState.tableData), // Added this line
+    availableHeaders: computed(() => scheduleState.availableHeaders),
     availableCategories: computed(() => ({
-      parent: new Set(Array.from(availableParentCategories)),
-      child: new Set(Array.from(availableChildCategories))
+      parent: new Set(selectedParentCategories.value),
+      child: new Set(selectedChildCategories.value)
     })),
     initializeElementsData: initializeElements,
     stopWorldTreeWatch,
@@ -163,16 +156,18 @@ export function useScheduleSetup({
     tablesArray,
 
     // Loading states
-    isLoading: computed(() => isLoadingElements.value || isUpdating.value),
-    hasError: computed(() => hasElementError.value),
+    isLoading: computed(
+      () => isLoadingElements.value || isUpdating.value || isProcessing.value
+    ),
+    hasError: computed(() => hasElementError.value || hasError.value),
 
     // Debug data
     rawWorldTree,
     rawTreeNodes,
-    debugRawElements,
-    debugParentElements,
-    debugChildElements,
-    debugMatchedElements,
-    debugOrphanedElements
+    debugRawElements: allElements,
+    debugParentElements: parentElements,
+    debugChildElements: childElements,
+    debugMatchedElements: matchedElements,
+    debugOrphanedElements: orphanedElements
   }
 }

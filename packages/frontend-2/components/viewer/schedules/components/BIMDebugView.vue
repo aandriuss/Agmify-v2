@@ -3,8 +3,8 @@
     <!-- Raw Data Section -->
     <div class="debug-section">
       <h3>1. Raw BIM Data</h3>
-      <div v-if="rawElements.value.length" class="data-list">
-        <div v-for="element in rawElements.value" :key="element.id" class="data-item">
+      <div v-if="rawElementsValue.length" class="data-list">
+        <div v-for="element in rawElementsValue" :key="element.id" class="data-item">
           <div class="item-header">
             <span class="type">{{ element.type }}</span>
             <span class="id">{{ element.id }}</span>
@@ -24,11 +24,11 @@
     <div class="debug-section">
       <h3>2. Filtered by Categories</h3>
       <div class="filters-info">
-        <div>Parent Categories: {{ selectedParentCategories.join(', ') || 'All' }}</div>
-        <div>Child Categories: {{ selectedChildCategories.join(', ') || 'All' }}</div>
+        <div>Parent Categories: {{ parentCategories.join(', ') || 'All' }}</div>
+        <div>Child Categories: {{ childCategories.join(', ') || 'All' }}</div>
       </div>
-      <div v-if="rawElements.value.length" class="data-list">
-        <div v-for="element in rawElements.value" :key="element.id" class="data-item">
+      <div v-if="rawElementsValue.length" class="data-list">
+        <div v-for="element in rawElementsValue" :key="element.id" class="data-item">
           <div class="item-header">
             <span class="type">{{ element.type }}</span>
             <span class="mark">{{ element.mark }}</span>
@@ -47,10 +47,10 @@
       <h3>3. Parents and Children</h3>
       <div class="split-view">
         <div class="split-section">
-          <h4>Parents ({{ parentElements.value.length }})</h4>
-          <div v-if="parentElements.value.length" class="data-list">
+          <h4>Parents ({{ parentElementsValue.length }})</h4>
+          <div v-if="parentElementsValue.length" class="data-list">
             <div
-              v-for="element in parentElements.value"
+              v-for="element in parentElementsValue"
               :key="element.id"
               class="data-item"
             >
@@ -66,10 +66,10 @@
           <div v-else class="no-data">No parent elements</div>
         </div>
         <div class="split-section">
-          <h4>Children ({{ childElements.value.length }})</h4>
-          <div v-if="childElements.value.length" class="data-list">
+          <h4>Children ({{ childElementsValue.length }})</h4>
+          <div v-if="childElementsValue.length" class="data-list">
             <div
-              v-for="element in childElements.value"
+              v-for="element in childElementsValue"
               :key="element.id"
               class="data-item"
             >
@@ -91,9 +91,9 @@
     <!-- Matched Data Section -->
     <div class="debug-section">
       <h3>4. Matched Parents and Children</h3>
-      <div v-if="matchedElements.value.length" class="data-list">
+      <div v-if="matchedElementsValue.length" class="data-list">
         <div
-          v-for="element in matchedElements.value"
+          v-for="element in matchedElementsValue"
           :key="element.id"
           class="data-item"
         >
@@ -125,11 +125,11 @@
     <div class="debug-section">
       <h3>Data Stats</h3>
       <div class="stats">
-        <div>Raw Elements: {{ rawElements.value.length }}</div>
-        <div>Parent Elements: {{ parentElements.value.length }}</div>
-        <div>Child Elements: {{ childElements.value.length }}</div>
-        <div>Matched Elements: {{ matchedElements.value.length }}</div>
-        <div>Orphaned Elements: {{ orphanedElements.value.length }}</div>
+        <div>Raw Elements: {{ rawElementsValue.length }}</div>
+        <div>Parent Elements: {{ parentElementsValue.length }}</div>
+        <div>Child Elements: {{ childElementsValue.length }}</div>
+        <div>Matched Elements: {{ matchedElementsValue.length }}</div>
+        <div>Orphaned Elements: {{ orphanedElementsValue.length }}</div>
         <div>Elements with Parameters: {{ elementsWithParameters }}</div>
         <div>Elements with Details: {{ elementsWithDetails }}</div>
         <div>Parent Categories: {{ uniqueParentCategories.join(', ') }}</div>
@@ -144,38 +144,85 @@ import { computed } from 'vue'
 import type { Ref } from 'vue'
 import type { ElementData } from '../types'
 
+type MaybeRef<T> = T | Ref<T>
+
 interface Props {
-  selectedParentCategories: string[]
-  selectedChildCategories: string[]
-  rawElements: Ref<ElementData[]>
-  parentElements: Ref<ElementData[]>
-  childElements: Ref<ElementData[]>
-  matchedElements: Ref<ElementData[]>
-  orphanedElements: Ref<ElementData[]>
+  selectedParentCategories: string[] | Ref<string[]>
+  selectedChildCategories: string[] | Ref<string[]>
+  rawElements: MaybeRef<ElementData[] | null>
+  parentElements: MaybeRef<ElementData[]>
+  childElements: MaybeRef<ElementData[]>
+  matchedElements: MaybeRef<ElementData[]>
+  orphanedElements: MaybeRef<ElementData[]>
 }
 
 const props = defineProps<Props>()
 
+// Normalize category arrays to handle both ref and non-ref values
+const parentCategories = computed(() => {
+  return 'value' in props.selectedParentCategories
+    ? props.selectedParentCategories.value
+    : props.selectedParentCategories
+})
+
+const childCategories = computed(() => {
+  return 'value' in props.selectedChildCategories
+    ? props.selectedChildCategories.value
+    : props.selectedChildCategories
+})
+
+// Normalize element arrays to handle both ref and non-ref values
+const rawElementsValue = computed(() => {
+  if (!props.rawElements) return []
+  return 'value' in props.rawElements
+    ? props.rawElements.value || []
+    : props.rawElements
+})
+
+const parentElementsValue = computed(() => {
+  return 'value' in props.parentElements
+    ? props.parentElements.value
+    : props.parentElements
+})
+
+const childElementsValue = computed(() => {
+  return 'value' in props.childElements
+    ? props.childElements.value
+    : props.childElements
+})
+
+const matchedElementsValue = computed(() => {
+  return 'value' in props.matchedElements
+    ? props.matchedElements.value
+    : props.matchedElements
+})
+
+const orphanedElementsValue = computed(() => {
+  return 'value' in props.orphanedElements
+    ? props.orphanedElements.value
+    : props.orphanedElements
+})
+
 // Stats
 const elementsWithParameters = computed(
   () =>
-    props.rawElements.value.filter(
+    rawElementsValue.value.filter(
       (el: ElementData) => Object.keys(el.parameters || {}).length > 0
     ).length
 )
 
 const elementsWithDetails = computed(
   () =>
-    props.rawElements.value.filter((el: ElementData) => (el.details?.length ?? 0) > 0)
+    rawElementsValue.value.filter((el: ElementData) => (el.details?.length ?? 0) > 0)
       .length
 )
 
 const uniqueParentCategories = computed(() => [
-  ...new Set(props.parentElements.value.map((el: ElementData) => el.category))
+  ...new Set(parentElementsValue.value.map((el: ElementData) => el.category))
 ])
 
 const uniqueChildCategories = computed(() => [
-  ...new Set(props.childElements.value.map((el: ElementData) => el.category))
+  ...new Set(childElementsValue.value.map((el: ElementData) => el.category))
 ])
 </script>
 

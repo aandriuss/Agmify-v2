@@ -291,17 +291,12 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
 }
 
 function logDebugInfo() {
-  const parents = state.scheduleData.filter((el) => !el.host)
-  const children = state.scheduleData.filter((el) => el.host)
-  const matched = state.scheduleData.filter((el) => el.details?.length)
-  const orphaned = state.scheduleData.filter((el) => el.host && !el.details?.length)
-
   debug.log(DebugCategories.INITIALIZATION, 'BIM Schedule Debug Info', {
-    allElements: state.scheduleData,
-    parents,
-    children,
-    matched,
-    orphaned
+    allElements: debugRawElements.value,
+    parents: debugParentElements.value,
+    children: debugChildElements.value,
+    matched: debugMatchedElements.value,
+    orphaned: debugOrphanedElements.value
   })
 }
 

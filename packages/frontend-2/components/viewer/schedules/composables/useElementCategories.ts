@@ -1,36 +1,30 @@
-import { ref, type Ref } from 'vue'
 import type { ElementData } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 import { parentCategories, childCategories } from '../config/categories'
 import { matchesCategory } from '../config/categoryMapping'
 
-interface UseElementCategoriesOptions {
+interface FilterElementsOptions {
   allElements: ElementData[]
-  selectedParent?: string[]
-  selectedChild?: string[]
+  selectedParent: string[]
+  selectedChild: string[]
+  essentialFieldsOnly?: boolean
 }
 
-interface UseElementCategoriesReturn {
+interface FilterElementsResult {
   filteredElements: ElementData[]
-  selectedParentCategories: Ref<string[]>
-  selectedChildCategories: Ref<string[]>
   availableParentCategories: Set<string>
   availableChildCategories: Set<string>
-  toggleParentCategory: (category: string) => void
-  toggleChildCategory: (category: string) => void
-  resetCategories: () => void
-  stopCategoryWatch: () => void
 }
 
-export function useElementCategories({
+/**
+ * Pure function to filter elements based on categories
+ */
+export function filterElements({
   allElements,
   selectedParent = [],
-  selectedChild = []
-}: UseElementCategoriesOptions): UseElementCategoriesReturn {
-  // Category state
-  const selectedParentCategories = ref<string[]>(selectedParent)
-  const selectedChildCategories = ref<string[]>(selectedChild)
-
+  selectedChild = [],
+  essentialFieldsOnly = false
+}: FilterElementsOptions): FilterElementsResult {
   // Get available categories from elements
   const availableParentCategories = new Set<string>()
   const availableChildCategories = new Set<string>()
@@ -60,86 +54,57 @@ export function useElementCategories({
   // Filter elements based on selected categories
   const filteredElements = allElements.reduce<ElementData[]>((acc, element) => {
     const isParentVisible =
-      selectedParentCategories.value.length === 0 ||
-      selectedParentCategories.value.some((category) =>
-        matchesCategory(element.type || '', category)
-      )
+      selectedParent.length === 0 ||
+      selectedParent.some((category) => matchesCategory(element.type || '', category))
 
     const visibleDetails = (element.details || []).filter(
       (child) =>
-        selectedChildCategories.value.length === 0 ||
-        selectedChildCategories.value.some((category) =>
-          matchesCategory(child.type || '', category)
-        )
+        selectedChild.length === 0 ||
+        selectedChild.some((category) => matchesCategory(child.type || '', category))
     )
 
     if (!isParentVisible && visibleDetails.length === 0) {
       return acc
     }
 
-    const filteredElement: ElementData = {
-      ...element,
-      details: visibleDetails,
-      _visible: true
-    }
+    // When essentialFieldsOnly is true, only include necessary fields
+    const filteredElement: ElementData = essentialFieldsOnly
+      ? {
+          id: element.id,
+          mark: element.mark,
+          category: element.category,
+          type: element.type,
+          details: visibleDetails.map((child) => ({
+            id: child.id,
+            mark: child.mark,
+            category: child.category,
+            type: child.type
+          })),
+          _visible: true
+        }
+      : {
+          ...element,
+          details: visibleDetails,
+          _visible: true
+        }
 
     acc.push(filteredElement)
     return acc
   }, [])
 
-  // Category toggle functions
-  function toggleParentCategory(category: string) {
-    const index = selectedParentCategories.value.indexOf(category)
-    if (index === -1) {
-      selectedParentCategories.value = [...selectedParentCategories.value, category]
-    } else {
-      selectedParentCategories.value = selectedParentCategories.value.filter(
-        (cat) => cat !== category
-      )
-    }
-
-    debug.log(DebugCategories.CATEGORIES, 'Parent category toggled', {
-      category,
-      selectedParentCategories: selectedParentCategories.value
-    })
-  }
-
-  function toggleChildCategory(category: string) {
-    const index = selectedChildCategories.value.indexOf(category)
-    if (index === -1) {
-      selectedChildCategories.value = [...selectedChildCategories.value, category]
-    } else {
-      selectedChildCategories.value = selectedChildCategories.value.filter(
-        (cat) => cat !== category
-      )
-    }
-
-    debug.log(DebugCategories.CATEGORIES, 'Child category toggled', {
-      category,
-      selectedChildCategories: selectedChildCategories.value
-    })
-  }
-
-  function resetCategories() {
-    selectedParentCategories.value = []
-    selectedChildCategories.value = []
-    debug.log(DebugCategories.CATEGORIES, 'Categories reset')
-  }
-
-  // No need for watch since we're just filtering
-  const stopCategoryWatch = () => {
-    // Nothing to clean up
-  }
+  debug.log(DebugCategories.CATEGORIES, 'Elements filtered', {
+    totalElements: allElements.length,
+    filteredCount: filteredElements.length,
+    selectedParent,
+    selectedChild,
+    essentialFieldsOnly,
+    availableParent: Array.from(availableParentCategories),
+    availableChild: Array.from(availableChildCategories)
+  })
 
   return {
     filteredElements,
-    selectedParentCategories,
-    selectedChildCategories,
     availableParentCategories,
-    availableChildCategories,
-    toggleParentCategory,
-    toggleChildCategory,
-    resetCategories,
-    stopCategoryWatch
+    availableChildCategories
   }
 }

@@ -13,7 +13,7 @@ export type ParameterValue = string | number | boolean | null
 export type ParameterValueType = 'string' | 'number' | 'boolean'
 
 // Component emit events
-type ScheduleInitializationEmits = {
+type _ScheduleInitializationEmits = {
   (e: 'error', error: Error): void
   (e: 'update:initialized', value: boolean): void
   (
@@ -59,7 +59,22 @@ export interface ProcessingState {
   isInitializing: boolean
   isProcessingElements: boolean
   isUpdatingCategories: boolean
+  isProcessingFullData: boolean
   error: Error | null
+}
+
+// Options for element categories
+export interface UseElementCategoriesOptions {
+  allElements: ElementData[]
+  selectedParent: string[]
+  selectedChild: string[]
+  essentialFieldsOnly?: boolean
+}
+
+// Options for element parameters
+export interface UseElementParametersOptions {
+  filteredElements: ElementData[]
+  essentialFieldsOnly?: boolean
 }
 
 // World tree types
@@ -219,25 +234,32 @@ export interface ElementsDataOptions {
 }
 
 export interface ElementsDataReturn {
+  // Core data
   scheduleData: Ref<ElementData[]>
+  tableData: Ref<TableRowData[]> // Added this line
   availableHeaders: Ref<AvailableHeaders>
   availableCategories: Ref<{
     parent: Set<string>
     child: Set<string>
   }>
+
+  // Actions
   updateCategories: (
     parentCategories: string[],
     childCategories: string[]
   ) => Promise<void>
   initializeData: () => Promise<void>
   stopWorldTreeWatch: () => void
-  // Processing state
+
+  // State
   isLoading: Ref<boolean>
   hasError: Ref<boolean>
   processingState: Ref<ProcessingState>
+
   // Raw data for debugging
   rawWorldTree: Ref<WorldTreeNode | null>
   rawTreeNodes: Ref<TreeItemComponentModel[]>
+
   // Debug properties
   rawElements: Ref<ElementData[]>
   parentElements: Ref<ElementData[]>

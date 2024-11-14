@@ -1,22 +1,44 @@
-import { ref, type Ref } from 'vue'
-import type { ElementData, ProcessedHeader, ParameterValue } from '../types'
+import type {
+  ElementData,
+  ProcessedHeader,
+  ParameterValue,
+  UseElementParametersOptions
+} from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { debug, DebugCategories } from '../utils/debug'
 
-interface UseElementParametersOptions {
-  filteredElements: ElementData[]
-}
-
-interface UseElementParametersReturn {
-  parameterColumns: Ref<ColumnDef[]>
-  availableHeaders: Ref<{
+interface ProcessParametersResult {
+  processedElements: ElementData[]
+  parameterColumns: ColumnDef[]
+  availableHeaders: {
     parent: ProcessedHeader[]
     child: ProcessedHeader[]
-  }>
-  processedElements: ElementData[]
-  updateParameterVisibility: (field: string, visible: boolean) => void
-  stopParameterWatch: () => void
+  }
 }
+
+// Essential columns that are always included
+const essentialColumns: ColumnDef[] = [
+  {
+    field: 'mark',
+    header: 'Mark',
+    type: 'string',
+    category: 'essential',
+    description: 'Element mark',
+    visible: true,
+    order: 0,
+    removable: false
+  },
+  {
+    field: 'category',
+    header: 'Category',
+    type: 'string',
+    category: 'essential',
+    description: 'Element category',
+    visible: true,
+    order: 1,
+    removable: false
+  }
+]
 
 function getParameterValue(
   parameters: Record<string, ParameterValue> | undefined,
@@ -90,18 +112,42 @@ function createColumnDef(header: ProcessedHeader, index: number): ColumnDef {
   }
 }
 
-export function useElementParameters({
-  filteredElements
-}: UseElementParametersOptions): UseElementParametersReturn {
-  const availableHeaders = ref<{
-    parent: ProcessedHeader[]
-    child: ProcessedHeader[]
-  }>({
-    parent: [],
-    child: []
-  })
+/**
+ * Pure function to process elements and extract parameters
+ */
+export function processParameters({
+  filteredElements,
+  essentialFieldsOnly = false
+}: UseElementParametersOptions): ProcessParametersResult {
+  if (essentialFieldsOnly) {
+    debug.log(DebugCategories.PARAMETERS, 'Processing essential fields only', {
+      elementCount: filteredElements.length,
+      essentialColumns: essentialColumns.length
+    })
 
-  const parameterColumns = ref<ColumnDef[]>([])
+    return {
+      processedElements: filteredElements,
+      parameterColumns: essentialColumns,
+      availableHeaders: {
+        parent: [],
+        child: []
+      }
+    }
+  }
+
+  // Discover available parameters
+  const headers = discoverParameters(filteredElements)
+
+  // Create columns for discovered parameters
+  const parameterColumns = [
+    ...essentialColumns,
+    ...headers.parent.map((header, index) =>
+      createColumnDef(header, essentialColumns.length + index)
+    ),
+    ...headers.child.map((header, index) =>
+      createColumnDef(header, essentialColumns.length + headers.parent.length + index)
+    )
+  ]
 
   // Process elements and extract parameter values
   const processedElements = filteredElements.map((element) => {
@@ -109,7 +155,7 @@ export function useElementParameters({
 
     // Process parent parameters
     if (element.parameters) {
-      availableHeaders.value.parent.forEach((header) => {
+      headers.parent.forEach((header) => {
         const value = getParameterValue(element.parameters, header.field)
         if (value !== undefined) {
           processedElement.parameters = {
@@ -125,7 +171,7 @@ export function useElementParameters({
       processedElement.details = element.details.map((child) => {
         const processedChild = { ...child }
         if (child.parameters) {
-          availableHeaders.value.child.forEach((header) => {
+          headers.child.forEach((header) => {
             const value = getParameterValue(child.parameters, header.field)
             if (value !== undefined) {
               processedChild.parameters = {
@@ -142,45 +188,17 @@ export function useElementParameters({
     return processedElement
   })
 
-  // Update parameter visibility
-  function updateParameterVisibility(field: string, visible: boolean) {
-    const columnIndex = parameterColumns.value.findIndex((col) => col.field === field)
-    if (columnIndex !== -1) {
-      parameterColumns.value[columnIndex] = {
-        ...parameterColumns.value[columnIndex],
-        visible
-      }
-    }
-  }
-
-  // Initialize headers and columns
-  const headers = discoverParameters(filteredElements)
-  availableHeaders.value = headers
-
-  // Create columns for discovered parameters
-  parameterColumns.value = [
-    ...headers.parent.map((header, index) => createColumnDef(header, index)),
-    ...headers.child.map((header, index) =>
-      createColumnDef(header, headers.parent.length + index)
-    )
-  ]
-
-  debug.log(DebugCategories.PARAMETERS, 'Parameters updated', {
+  debug.log(DebugCategories.PARAMETERS, 'Parameters processed', {
+    elementCount: filteredElements.length,
     parentHeaders: headers.parent.length,
     childHeaders: headers.child.length,
-    columns: parameterColumns.value.length
+    columns: parameterColumns.length,
+    essentialColumns: essentialColumns.length
   })
 
-  // No need for watch since we're just processing
-  const stopParameterWatch = () => {
-    // Nothing to clean up
-  }
-
   return {
-    parameterColumns,
-    availableHeaders,
     processedElements,
-    updateParameterVisibility,
-    stopParameterWatch
+    parameterColumns,
+    availableHeaders: headers
   }
 }
