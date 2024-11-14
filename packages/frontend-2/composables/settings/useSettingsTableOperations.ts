@@ -1,5 +1,6 @@
 import type { NamedTableConfig } from './types/scheduleTypes'
 import { useTableOperations } from './useTableOperations'
+import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
 
 interface UseSettingsTableOperationsOptions {
   settings: { value: { namedTables: Record<string, NamedTableConfig> } }
@@ -28,6 +29,11 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
           lastUpdateTimestamp: Date.now()
         }
 
+        debug.log(DebugCategories.TABLE_UPDATES, 'Updating table in settings', {
+          id,
+          config: updatedTable
+        })
+
         const updatedSettings = {
           ...currentSettings,
           namedTables: {
@@ -41,6 +47,9 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
           throw new Error('Failed to update table')
         }
 
+        // Force settings update
+        settings.value = updatedSettings
+
         return updatedTable
       },
       createNamedTable: async (name, config) => {
@@ -51,6 +60,11 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
           ...config,
           lastUpdateTimestamp: Date.now()
         }
+
+        debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table in settings', {
+          id: tableId,
+          config: newTable
+        })
 
         const updatedSettings = {
           ...settings.value,
@@ -65,6 +79,9 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
           throw new Error('Failed to create table')
         }
 
+        // Force settings update
+        settings.value = updatedSettings
+
         return tableId
       }
     })
@@ -75,14 +92,22 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
     updateTableCategories,
     updateTableColumns,
     updateNamedTable: async (id: string, config: Partial<NamedTableConfig>) => {
+      debug.log(DebugCategories.TABLE_UPDATES, 'Named table update requested', {
+        id,
+        config
+      })
       return updateTable(id, config)
     },
     createNamedTable: async (
       name: string,
       config: Omit<NamedTableConfig, 'id' | 'name'>
     ): Promise<NamedTableConfig> => {
+      debug.log(DebugCategories.TABLE_UPDATES, 'Named table creation requested', {
+        name,
+        config
+      })
       const result = await createTable(name, config)
-      return result.config // Return just the config part
+      return result.config
     }
   }
 }

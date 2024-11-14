@@ -30,7 +30,7 @@
         size="sm"
         color="primary"
         :disabled="!tableName || (!selectedTableId && !hasChanges)"
-        @click="emit('save')"
+        @click="handleSave"
       >
         {{ selectedTableId ? 'Update' : 'Save New' }}
       </FormButton>
@@ -63,8 +63,9 @@
 <script setup lang="ts">
 import { FormButton } from '@speckle/ui-components'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
+import { nextTick } from 'vue'
 
-defineProps<{
+const props = defineProps<{
   selectedTableId: string
   tableName: string
   tables: { id: string; name: string }[]
@@ -81,14 +82,25 @@ const emit = defineEmits<{
   'toggle-category-options': []
 }>()
 
-function handleTableChange(event: Event) {
+async function handleTableChange(event: Event) {
   const target = event.target as HTMLSelectElement
   emit('update:selectedTableId', target.value)
+  // Wait for the selectedTableId to be updated before emitting table-change
+  await nextTick()
   emit('table-change')
 }
 
 function handleNameChange(event: Event) {
   const target = event.target as HTMLInputElement
   emit('update:tableName', target.value)
+}
+
+async function handleSave() {
+  emit('save')
+  // If this is a new table, wait for the save to complete before emitting table-change
+  if (!props.selectedTableId) {
+    await nextTick()
+    emit('table-change')
+  }
 }
 </script>

@@ -2,7 +2,6 @@ import { debug, DebugCategories } from '../utils/debug'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { TableConfig, ScheduleInitializationInstance } from '../types'
 import type { Ref } from 'vue'
-import type { NamedTableConfig } from '~/composables/useUserSettings'
 import { toNamedTableConfig, toTableConfig } from '../utils/tableConfigConversion'
 
 interface ScheduleEventsOptions {
@@ -54,18 +53,18 @@ export function useScheduleEvents(options: ScheduleEventsOptions) {
       // Create new table or update existing one
       if (!state.selectedTableId) {
         // Create new table with current category selections
-        const newTableId = await initComponent.value?.createNamedTable(
+        const newTable = await initComponent.value?.createNamedTable(
           state.tableName,
           config
         )
-        if (newTableId) {
-          state.selectedTableId = newTableId
-          state.currentTable = config as TableConfig
+        if (newTable) {
+          state.selectedTableId = newTable.id
+          state.currentTable = toTableConfig(newTable)
           debug.log(
             DebugCategories.TABLE_UPDATES,
             'New table created with categories',
             {
-              id: newTableId,
+              id: newTable.id,
               categories: config.categoryFilters
             }
           )
@@ -79,18 +78,13 @@ export function useScheduleEvents(options: ScheduleEventsOptions) {
         }
 
         const namedConfig = toNamedTableConfig(updatedConfig, state.selectedTableId)
-        const updatedTable = await initComponent.value?.updateNamedTable(
-          state.selectedTableId,
-          namedConfig
-        )
+        await initComponent.value?.updateNamedTable(state.selectedTableId, namedConfig)
 
-        if (updatedTable) {
-          state.currentTable = toTableConfig(updatedTable)
-          debug.log(DebugCategories.TABLE_UPDATES, 'Table updated with categories', {
-            id: state.selectedTableId,
-            categories: updatedTable.categoryFilters
-          })
-        }
+        state.currentTable = updatedConfig as TableConfig
+        debug.log(DebugCategories.TABLE_UPDATES, 'Table updated with categories', {
+          id: state.selectedTableId,
+          categories: namedConfig.categoryFilters
+        })
       }
     } catch (err) {
       handleError(err instanceof Error ? err : new Error('Failed to save table'))

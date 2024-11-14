@@ -363,11 +363,13 @@ export function useScheduleTable(
           throw new Error('createNamedTable function not provided')
         }
         const newTable = await createNamedTable(tableName.value, config)
-        selectedTableId.value = newTable.id
         debug.log(DebugCategories.TABLE_UPDATES, 'New table created', {
           id: newTable.id,
           config
         })
+        // Update selectedTableId and trigger table change
+        selectedTableId.value = newTable.id
+        await handleTableChange()
       } else {
         // Update existing table
         await updateNamedTable(selectedTableId.value, config)

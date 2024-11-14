@@ -35,13 +35,8 @@ export function useNamedTableOperations({
   ) => {
     try {
       if (initComponent.value) {
-        const result = await initComponent.value.createNamedTable(name, config)
-        return {
-          id: result,
-          name,
-          ...config,
-          lastUpdateTimestamp: Date.now()
-        }
+        const newTable = await initComponent.value.createNamedTable(name, config)
+        return newTable
       }
       throw new Error('Initialization component not available')
     } catch (err) {

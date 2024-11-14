@@ -30,14 +30,13 @@ interface ScheduleInitializationProps {
 
 // Component instance type
 export interface ScheduleInitializationInstance
-  extends Omit<ComponentPublicInstance<ScheduleInitializationProps>, '$emit'> {
-  $emit: ScheduleInitializationEmits
-  settings: Ref<UserSettings>
+  extends ComponentPublicInstance<ScheduleInitializationProps> {
+  settings: UserSettings
   updateNamedTable: (id: string, config: Partial<NamedTableConfig>) => Promise<void>
   createNamedTable: (
     name: string,
     config: Omit<NamedTableConfig, 'id' | 'name'>
-  ) => Promise<string>
+  ) => Promise<NamedTableConfig>
   scheduleData: Ref<ElementData[]>
   updateElementsDataCategories: (parent: string[], child: string[]) => Promise<void>
   loadingError: Ref<Error | null>
