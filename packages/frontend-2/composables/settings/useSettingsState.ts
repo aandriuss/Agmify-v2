@@ -114,6 +114,8 @@ export function useSettingsState() {
         const success = await updateSettings(newSettings)
         if (success) {
           settings.value = newSettings
+          // Refetch settings to ensure we have the latest state
+          await loadSettings()
         }
         return success
       } catch (err) {

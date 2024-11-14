@@ -62,6 +62,8 @@ export function useScheduleSetup({
 
         if (initComponent.value) {
           await initComponent.value.updateElementsDataCategories(parent, child)
+          // Force re-render after category update
+          tableKey.value = Date.now().toString()
         }
       } catch (err) {
         handleError(err)
@@ -91,8 +93,8 @@ export function useScheduleSetup({
     selectedChildCategories
   })
 
-  // Wrap raw values in refs with proper typing
-  const elementsData = ref<ElementData[]>(elementsDataRaw)
+  // Wrap raw values in refs
+  const elementsData = ref(elementsDataRaw)
   const availableHeaders = ref(availableHeadersRaw)
   const debugRawElements = ref(debugRawElementsRaw)
   const debugParentElements = ref(debugParentElementsRaw)

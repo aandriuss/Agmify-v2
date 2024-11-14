@@ -1,8 +1,9 @@
-import { computed, ref, type Ref, type ComputedRef } from 'vue'
+import { computed, ref, watch, type Ref, type ComputedRef } from 'vue'
 import { debug, DebugCategories } from '../utils/debug'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
+import { useUpdateQueue } from '~/composables/settings/useUpdateQueue'
 
 interface UseScheduleTableOptions {
   settings: { value: { namedTables?: Record<string, NamedTableConfig> } | null }
@@ -56,6 +57,8 @@ export function useScheduleTable(
     updateCurrentColumns
   } = options
 
+  const { clearQueue } = useUpdateQueue()
+
   // State
   const selectedTableId = ref<string>('')
   const tableName = ref<string>('')
@@ -74,6 +77,48 @@ export function useScheduleTable(
   // Original state for tracking changes
   const originalParentCategories = ref<string[]>([])
   const originalChildCategories = ref<string[]>([])
+
+  // Watch for settings changes
+  watch(
+    () => settings.value?.namedTables?.[selectedTableId.value],
+    (newTable) => {
+      if (!newTable || !selectedTableId.value) return
+
+      // Update category state from settings
+      const savedParentCategories =
+        newTable.categoryFilters?.selectedParentCategories || []
+      const savedChildCategories =
+        newTable.categoryFilters?.selectedChildCategories || []
+
+      // Only update if different from current state
+      if (
+        JSON.stringify(savedParentCategories) !==
+          JSON.stringify(selectedParentCategories.value) ||
+        JSON.stringify(savedChildCategories) !==
+          JSON.stringify(selectedChildCategories.value)
+      ) {
+        debug.log(
+          DebugCategories.CATEGORIES,
+          'Settings changed, updating categories:',
+          {
+            parent: savedParentCategories,
+            child: savedChildCategories
+          }
+        )
+
+        selectedParentCategories.value = [...savedParentCategories]
+        selectedChildCategories.value = [...savedChildCategories]
+        originalParentCategories.value = [...savedParentCategories]
+        originalChildCategories.value = [...savedChildCategories]
+
+        // Update elements data with new categories
+        updateElementsData(savedParentCategories, savedChildCategories).catch(
+          handleError
+        )
+      }
+    },
+    { deep: true }
+  )
 
   // Computed
   const currentTableId = computed<string>(() => selectedTableId.value)
@@ -168,7 +213,7 @@ export function useScheduleTable(
     }
   }
 
-  function handleTableChange() {
+  async function handleTableChange() {
     if (isLoading.value || isTableUpdatePending.value) {
       debug.warn(DebugCategories.STATE, 'Update already in progress')
       return
@@ -181,6 +226,7 @@ export function useScheduleTable(
 
     try {
       isLoading.value = true
+      clearQueue() // Clear any pending updates
 
       if (selectedTableId.value) {
         const selectedTable = settings.value?.namedTables?.[selectedTableId.value]
@@ -235,9 +281,7 @@ export function useScheduleTable(
         originalChildCategories.value = [...savedChildCategories]
 
         // Update elements data with loaded categories
-        updateElementsData(savedParentCategories, savedChildCategories).catch(
-          handleError
-        )
+        await updateElementsData(savedParentCategories, savedChildCategories)
 
         debug.log(DebugCategories.CATEGORIES, 'Category selections loaded successfully')
 
@@ -254,7 +298,7 @@ export function useScheduleTable(
         originalParentCategories.value = []
         originalChildCategories.value = []
         // Update elements data with empty categories
-        updateElementsData([], []).catch(handleError)
+        await updateElementsData([], [])
         debug.log(DebugCategories.CATEGORIES, 'Reset to defaults - no table selected')
       }
     } catch (err) {
@@ -298,6 +342,7 @@ export function useScheduleTable(
       }
 
       isTableUpdatePending.value = true
+      clearQueue() // Clear any pending updates
 
       // Create initial config with current category selections and columns
       const config = {
@@ -341,6 +386,9 @@ export function useScheduleTable(
         selectedParentCategories.value,
         selectedChildCategories.value
       )
+
+      // Force table key update to trigger re-render
+      tableKey.value = Date.now().toString()
     } catch (err) {
       handleError(err)
     } finally {
