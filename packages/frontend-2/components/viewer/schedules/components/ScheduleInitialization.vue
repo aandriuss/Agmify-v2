@@ -11,6 +11,7 @@ import { useScheduleInitializationFlow } from '../composables/useScheduleInitial
 import { useDataOrganization } from '../composables/useDataOrganization'
 import { debug, DebugCategories } from '../utils/debug'
 import { useScheduleTable } from '../composables/useScheduleTable'
+import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
@@ -24,6 +25,14 @@ const emit = defineEmits<{
 // Initialization state
 const loadingError = ref<Error | null>(null)
 const isInitialLoad = ref(true)
+
+// Column state - initialize with defaults
+const currentTableColumns = ref<ColumnDef[]>(defaultColumns)
+const currentDetailColumns = ref<ColumnDef[]>(defaultDetailColumns)
+
+// Category state
+const selectedParentCategories = ref<string[]>([])
+const selectedChildCategories = ref<string[]>([])
 
 // User Settings
 const {
@@ -55,9 +64,9 @@ const stopSettingsWatch = watch(
 )
 
 // Data Organization
-const { updateRootNodes } = useDataOrganization()
+const { rootNodes, updateRootNodes } = useDataOrganization()
 
-// Initialize elements data
+// Initialize elements data with default columns
 const {
   scheduleData,
   availableCategories,
@@ -65,8 +74,10 @@ const {
   initializeData: initElementsData,
   stopWorldTreeWatch
 } = useElementsData({
-  _currentTableColumns: ref([]),
-  _currentDetailColumns: ref([])
+  _currentTableColumns: currentTableColumns,
+  _currentDetailColumns: currentDetailColumns,
+  selectedParentCategories,
+  selectedChildCategories
 })
 
 // Initialize table management
@@ -87,14 +98,58 @@ const {
     emit('error', errorToSet)
   },
   updateCurrentColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => {
-    // No-op in initialization component since it doesn't manage columns
-    debug.log(
-      DebugCategories.COLUMNS,
-      'Column update ignored in initialization component',
-      { tableColumns, detailColumns }
-    )
+    debug.log(DebugCategories.COLUMNS, 'Updating current columns', {
+      tableColumnsCount: tableColumns.length,
+      detailColumnsCount: detailColumns.length,
+      usingDefaults: {
+        table: tableColumns === defaultColumns,
+        detail: detailColumns === defaultDetailColumns
+      }
+    })
+    currentTableColumns.value = tableColumns
+    currentDetailColumns.value = detailColumns
   }
 })
+
+// Watch for table changes to update columns
+watch(
+  () => currentTable.value,
+  (newTable) => {
+    if (newTable) {
+      debug.log(DebugCategories.COLUMNS, 'Table changed, updating columns', {
+        tableId: newTable.id,
+        parentColumnsCount: newTable.parentColumns?.length || 0,
+        childColumnsCount: newTable.childColumns?.length || 0
+      })
+
+      // Use default columns if PostgreSQL has empty arrays
+      const parentColumns = newTable.parentColumns?.length
+        ? newTable.parentColumns
+        : defaultColumns
+      const childColumns = newTable.childColumns?.length
+        ? newTable.childColumns
+        : defaultDetailColumns
+
+      currentTableColumns.value = parentColumns
+      currentDetailColumns.value = childColumns
+
+      // Update categories if table has them
+      if (newTable.categoryFilters) {
+        selectedParentCategories.value =
+          newTable.categoryFilters.selectedParentCategories || []
+        selectedChildCategories.value =
+          newTable.categoryFilters.selectedChildCategories || []
+      }
+    } else {
+      debug.log(DebugCategories.COLUMNS, 'No table selected, using default columns')
+      currentTableColumns.value = defaultColumns
+      currentDetailColumns.value = defaultDetailColumns
+      selectedParentCategories.value = []
+      selectedChildCategories.value = []
+    }
+  },
+  { immediate: true }
+)
 
 // Initialize initialization flow
 const { initialize } = useScheduleInitializationFlow({
@@ -133,7 +188,11 @@ const { initialize } = useScheduleInitializationFlow({
   selectedTableId,
   currentTableId,
   loadingError,
-  scheduleData
+  scheduleData,
+  rootNodes,
+  isInitialized: ref(false),
+  selectedParentCategories,
+  selectedChildCategories
 })
 
 // Store cleanup functions
@@ -149,14 +208,6 @@ onMounted(async () => {
         hasSettings: !!settings.value
       }
     })
-
-    // First load settings
-    await loadSettings()
-    debug.log(DebugCategories.INITIALIZATION, 'Settings loaded')
-
-    // Initialize data and wait for world tree
-    await initElementsData()
-    debug.log(DebugCategories.INITIALIZATION, 'Elements data initialized')
 
     // Run the initialization flow
     await initialize()
@@ -245,6 +296,8 @@ defineExpose({
   currentTable,
   handleTableSelection,
   tablesArray,
-  availableCategories
+  availableCategories,
+  selectedParentCategories,
+  selectedChildCategories
 })
 </script>

@@ -1,7 +1,8 @@
 import { ref, computed } from 'vue'
 import type { BIMNode } from '../types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { debug } from '../utils/debug'
+import { debug, DebugCategories } from '../utils/debug'
+import { convertToString } from '../utils/dataConversion'
 
 export interface EvaluationContext {
   node: BIMNode
@@ -37,14 +38,14 @@ export function useCustomParameters() {
       visible: true
     }
     customParameters.value.push(newParameter)
-    debug.log('Added custom parameter:', newParameter)
+    debug.log(DebugCategories.PARAMETERS, 'Added custom parameter', newParameter)
   }
 
   function removeParameter(id: string) {
     const index = customParameters.value.findIndex((p) => p.id === id)
     if (index !== -1) {
       const removed = customParameters.value.splice(index, 1)
-      debug.log('Removed custom parameter:', removed[0])
+      debug.log(DebugCategories.PARAMETERS, 'Removed custom parameter', removed[0])
     }
   }
 
@@ -57,7 +58,7 @@ export function useCustomParameters() {
         updates.header = updates.name
       }
       Object.assign(parameter, updates)
-      debug.log('Updated custom parameter:', {
+      debug.log(DebugCategories.PARAMETERS, 'Updated custom parameter', {
         id,
         updates,
         parameter
@@ -93,14 +94,14 @@ export function useCustomParameters() {
         context: EvalContextType
       ) => number
       const result = fn(evalContext)
-      debug.log('Evaluated equation:', {
+      debug.log(DebugCategories.PARAMETERS, 'Evaluated equation', {
         equation,
         result,
         context: evalContext
       })
       return result
     } catch (error) {
-      debug.error('Error evaluating equation:', {
+      debug.error(DebugCategories.ERROR, 'Error evaluating equation', {
         equation,
         error: error instanceof Error ? error.message : 'Unknown error',
         context
@@ -114,9 +115,14 @@ export function useCustomParameters() {
     context: EvaluationContext
   ): unknown {
     if (parameter.type === 'fixed') {
-      return parameter.value || ''
+      return convertToString(parameter.value)
     }
-    return parameter.value ? evaluateEquation(parameter.value, context) : null
+
+    if (!parameter.value) return null
+
+    const result = evaluateEquation(parameter.value, context)
+    // Convert equation result to string if it's not null
+    return result !== null ? convertToString(result) : null
   }
 
   const parameters = computed(() => customParameters.value)

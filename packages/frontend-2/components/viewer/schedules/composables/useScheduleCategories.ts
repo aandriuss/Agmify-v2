@@ -10,6 +10,8 @@ interface UseScheduleCategoriesOptions {
     parentCategories: string[],
     childCategories: string[]
   ) => Promise<void>
+  selectedParentCategories?: Ref<string[]>
+  selectedChildCategories?: Ref<string[]>
 }
 
 export interface UseScheduleCategoriesReturn {
@@ -19,7 +21,6 @@ export interface UseScheduleCategoriesReturn {
   error: Ref<Error | null>
   toggleCategory: (type: 'parent' | 'child', category: string) => void
   loadCategories: (parent: string[], child: string[]) => void
-  saveCategories: () => Promise<void>
   availableParentCategories: string[]
   availableChildCategories: string[]
 }
@@ -29,9 +30,9 @@ export function useScheduleCategories(
 ): UseScheduleCategoriesReturn {
   const { updateCategories } = options
 
-  // State
-  const selectedParentCategories = ref<string[]>([])
-  const selectedChildCategories = ref<string[]>([])
+  // Use provided refs or create new ones
+  const selectedParentCategories = options.selectedParentCategories || ref<string[]>([])
+  const selectedChildCategories = options.selectedChildCategories || ref<string[]>([])
   const isUpdating = ref(false)
   const error = ref<Error | null>(null)
 
@@ -45,6 +46,7 @@ export function useScheduleCategories(
       }
     })
 
+    // Update local state only - persistence happens in useScheduleTable
     if (type === 'parent') {
       const index = selectedParentCategories.value.indexOf(category)
       if (index === -1) {
@@ -86,34 +88,6 @@ export function useScheduleCategories(
     })
   }
 
-  async function saveCategories() {
-    if (isUpdating.value) {
-      debug.warn(DebugCategories.STATE, 'Category update already in progress')
-      return
-    }
-
-    try {
-      isUpdating.value = true
-      error.value = null
-
-      await updateCategories(
-        selectedParentCategories.value,
-        selectedChildCategories.value
-      )
-
-      debug.log(DebugCategories.CATEGORIES, 'Categories saved:', {
-        parent: selectedParentCategories.value,
-        child: selectedChildCategories.value
-      })
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to save categories:', err)
-      error.value = err instanceof Error ? err : new Error('Failed to save categories')
-      throw error.value
-    } finally {
-      isUpdating.value = false
-    }
-  }
-
   return {
     selectedParentCategories,
     selectedChildCategories,
@@ -121,7 +95,6 @@ export function useScheduleCategories(
     error,
     toggleCategory,
     loadCategories,
-    saveCategories,
     availableParentCategories: defaultParentCategories,
     availableChildCategories: defaultChildCategories
   }

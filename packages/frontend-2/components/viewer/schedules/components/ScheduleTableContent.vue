@@ -80,6 +80,14 @@
         </span>
       </div>
     </div>
+    <div v-else-if="noCategoriesSelected" class="p-4 text-center text-gray-500">
+      <div class="flex flex-col items-center gap-2">
+        <span class="font-medium">Please select categories to view data</span>
+        <span class="text-sm text-gray-400">
+          Use the category filters to select which elements to display
+        </span>
+      </div>
+    </div>
     <div v-else class="p-4 text-center text-gray-500">
       <div class="flex flex-col items-center gap-2">
         <span class="font-medium">
@@ -99,7 +107,7 @@ import DataTable from '~/components/viewer/components/tables/DataTable/index.vue
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { ElementData, TableConfig, TableUpdatePayload } from '../types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { debug } from '../utils/debug'
+import { debug, DebugCategories } from '../utils/debug'
 
 interface Props {
   selectedTableId: string
@@ -127,7 +135,6 @@ const emit = defineEmits<{
   'table-updated': [payload: TableUpdatePayload]
   'column-visibility-change': [column: ColumnDef]
 }>()
-
 // Helper functions for debug panel
 function getUniqueCategories(data: ElementData[]): string[] {
   return [...new Set(data.map((item) => item.category))]
@@ -146,7 +153,7 @@ function getUniqueChildCategories(data: ElementData[]): string[] {
 // Computed states
 const hasValidData = computed(() => {
   const isValid = Array.isArray(props.tableData) && props.tableData.length > 0
-  debug.log('🔍 DATA VALIDATION:', {
+  debug.log(DebugCategories.VALIDATION, 'Data validation:', {
     timestamp: new Date().toISOString(),
     isValid,
     tableDataLength: props.tableData?.length || 0,
@@ -164,7 +171,7 @@ const hasValidTable = computed(() => {
     props.currentTable &&
     props.mergedTableColumns.length > 0
   )
-  debug.log('🔍 TABLE VALIDATION:', {
+  debug.log(DebugCategories.VALIDATION, 'Table validation:', {
     timestamp: new Date().toISOString(),
     isValid,
     isInitialized: props.isInitialized,
@@ -177,9 +184,13 @@ const hasValidTable = computed(() => {
   return isValid
 })
 
+const noCategoriesSelected = computed(() => {
+  return props.scheduleData.length === 0 && !props.loadingError && !isLoading.value
+})
+
 const canShowTable = computed(() => {
   const canShow = hasValidTable.value && hasValidData.value
-  debug.log('🔍 TABLE DISPLAY STATE:', {
+  debug.log(DebugCategories.STATE, 'Table display state:', {
     timestamp: new Date().toISOString(),
     canShow,
     hasValidTable: hasValidTable.value,
@@ -270,7 +281,7 @@ const handleBothColumnsUpdate = (updates: {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
 }) => {
-  debug.log('🔄 COLUMN UPDATE:', {
+  debug.log(DebugCategories.TABLE_UPDATES, 'Column update:', {
     timestamp: new Date().toISOString(),
     updates: {
       parentColumnsCount: updates.parentColumns.length,
@@ -285,7 +296,7 @@ const handleBothColumnsUpdate = (updates: {
 }
 
 const handleTableUpdate = (payload: TableUpdatePayload) => {
-  debug.log('🔄 TABLE UPDATE:', {
+  debug.log(DebugCategories.TABLE_UPDATES, 'Table update:', {
     timestamp: new Date().toISOString(),
     payload,
     currentTable: {
@@ -297,7 +308,7 @@ const handleTableUpdate = (payload: TableUpdatePayload) => {
 }
 
 const handleColumnVisibilityChange = (column: ColumnDef) => {
-  debug.log('🔄 COLUMN VISIBILITY CHANGE:', {
+  debug.log(DebugCategories.COLUMNS, 'Column visibility change:', {
     timestamp: new Date().toISOString(),
     column: {
       field: column.field,

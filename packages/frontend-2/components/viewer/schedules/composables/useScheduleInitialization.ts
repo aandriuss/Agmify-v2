@@ -3,23 +3,50 @@ import type { TreeItemComponentModel } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 
+interface WorldTreeNode {
+  _root?: {
+    type?: string
+    children?: TreeItemComponentModel[]
+  }
+}
+
 // Validation function for world tree nodes
 function isValidWorldTreeNode(node: TreeItemComponentModel): boolean {
   const hasRawNode = !!node.rawNode
   const hasRaw = !!node.rawNode?.raw
-  const hasSpeckleType = typeof node.rawNode?.raw?.speckle_type === 'string'
-  const hasCategory = typeof node.rawNode?.raw?.Other?.Category === 'string'
+  const hasId =
+    typeof node.rawNode?.raw?.id === 'string' ||
+    typeof node.rawNode?.raw?.id === 'number'
 
+  // Log detailed validation info for debugging
   debug.log(DebugCategories.VALIDATION, 'Validating world tree node:', {
     hasRawNode,
     hasRaw,
-    hasSpeckleType,
-    hasCategory,
+    hasId,
+    raw: node.rawNode?.raw,
     speckleType: node.rawNode?.raw?.speckle_type,
-    category: node.rawNode?.raw?.Other?.Category
+    category: node.rawNode?.raw?.Other?.Category,
+    mark:
+      node.rawNode?.raw?.['Identity Data']?.Mark ||
+      node.rawNode?.raw?.Tag ||
+      node.rawNode?.raw?.Mark,
+    host: node.rawNode?.raw?.Constraints?.Host
   })
 
-  return hasRawNode && hasRaw && hasSpeckleType && hasCategory
+  // Node is valid if it has raw data and at least an ID
+  const isValid = hasRawNode && hasRaw && hasId
+  if (!isValid) {
+    debug.warn(DebugCategories.VALIDATION, 'Invalid node:', {
+      raw: node.rawNode?.raw,
+      reason: {
+        noRawNode: !hasRawNode,
+        noRaw: !hasRaw,
+        noId: !hasId
+      }
+    })
+  }
+
+  return isValid
 }
 
 export function useScheduleInitialization() {
@@ -42,36 +69,82 @@ export function useScheduleInitialization() {
           debug.log(DebugCategories.INITIALIZATION, '⏳ Waiting for WorldTree...', {
             retryCount,
             hasTree: !!worldTree.value,
-            hasRoot: !!worldTree.value?._root
+            hasRoot: !!worldTree.value?._root,
+            metadata: worldTree.value
           })
         }
       }
 
-      const tree = worldTree.value
+      const tree = worldTree.value as WorldTreeNode | undefined
       if (!tree?._root?.children) {
-        debug.error(DebugCategories.ERROR, 'No WorldTree data available')
+        debug.error(DebugCategories.ERROR, 'No WorldTree data available', {
+          tree,
+          metadata: worldTree.value
+        })
         throw new Error('No WorldTree data available')
       }
 
+      const children = tree._root.children
+
+      // Log raw tree data for debugging
+      debug.log(DebugCategories.DATA, 'Raw WorldTree data:', {
+        rootType: tree._root.type,
+        childCount: children.length,
+        firstChild: children[0]?.rawNode?.raw,
+        allChildren: children.map((node: TreeItemComponentModel) => ({
+          raw: node.rawNode?.raw,
+          childCount: node.children?.length,
+          validation: {
+            hasRawNode: !!node.rawNode,
+            hasRaw: !!node.rawNode?.raw,
+            hasId:
+              typeof node.rawNode?.raw?.id === 'string' ||
+              typeof node.rawNode?.raw?.id === 'number'
+          }
+        }))
+      })
+
       // Validate world tree data
-      const validNodes = tree._root.children.filter(isValidWorldTreeNode)
+      const validNodes = children.filter(isValidWorldTreeNode)
       if (validNodes.length === 0) {
         debug.error(DebugCategories.ERROR, 'No valid nodes in WorldTree', {
-          totalNodes: tree._root.children.length,
-          firstNode: tree._root.children[0],
-          firstNodeRaw: tree._root.children[0]?.rawNode?.raw
+          totalNodes: children.length,
+          firstNode: children[0],
+          firstNodeRaw: children[0]?.rawNode?.raw,
+          allNodes: children.map((node: TreeItemComponentModel) => ({
+            raw: node.rawNode?.raw,
+            validation: {
+              hasRawNode: !!node.rawNode,
+              hasRaw: !!node.rawNode?.raw,
+              hasId:
+                typeof node.rawNode?.raw?.id === 'string' ||
+                typeof node.rawNode?.raw?.id === 'number'
+            }
+          }))
         })
         throw new Error('No valid nodes in WorldTree')
       }
 
       debug.log(DebugCategories.INITIALIZATION, '🌳 WorldTree data validated:', {
         rootType: tree._root.type,
-        totalNodes: tree._root.children.length,
+        totalNodes: children.length,
         validNodes: validNodes.length,
-        categories: validNodes.map((node) => node.rawNode?.raw?.Other?.Category),
-        firstValidNode: {
+        categories: [
+          ...new Set(
+            validNodes.map(
+              (node: TreeItemComponentModel) => node.rawNode?.raw?.Other?.Category
+            )
+          )
+        ],
+        firstValidNode: validNodes[0] && {
           type: validNodes[0].rawNode?.raw?.speckle_type,
-          category: validNodes[0].rawNode?.raw?.Other?.Category
+          category: validNodes[0].rawNode?.raw?.Other?.Category,
+          id: validNodes[0].rawNode?.raw?.id,
+          mark:
+            validNodes[0].rawNode?.raw?.['Identity Data']?.Mark ||
+            validNodes[0].rawNode?.raw?.Tag ||
+            validNodes[0].rawNode?.raw?.Mark,
+          host: validNodes[0].rawNode?.raw?.Constraints?.Host
         }
       })
 

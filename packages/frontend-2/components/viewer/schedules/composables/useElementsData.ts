@@ -1,164 +1,397 @@
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, shallowRef, computed } from 'vue'
 import type { Ref } from 'vue'
 import type {
   ElementData,
   TreeItemComponentModel,
-  AvailableHeaders,
   ElementsDataReturn,
   ParameterValue,
-  BIMNodeRaw
+  BIMNodeRaw,
+  ProcessingState,
+  WorldTreeNode,
+  BIMNode
 } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 import { debug, DebugCategories } from '../utils/debug'
-import { BASIC_PARAMETERS, getNestedValue } from '../config/parameters'
+import { getNestedValue } from '../config/parameters'
+import { useParameterDiscovery } from './useParameterDiscovery'
 import {
   parentCategories as defaultParentCategories,
   childCategories as defaultChildCategories
 } from '../config/categories'
+import {
+  isValidTreeItemComponentModel,
+  isValidWorldTreeNode,
+  isValidArray,
+  ValidationError
+} from '../utils/validation'
+import { convertToString } from '../utils/dataConversion'
 
 interface ElementsDataOptions {
   _currentTableColumns: Ref<ColumnDef[]>
   _currentDetailColumns: Ref<ColumnDef[]>
+  selectedParentCategories: Ref<string[]>
+  selectedChildCategories: Ref<string[]>
 }
 
-interface WorldTreeNode {
-  _root?: {
+// Define the expected structure of incoming nodes
+interface IncomingNode {
+  model?: {
+    id?: string | number
     type?: string
-    children?: TreeItemComponentModel[]
+    Name?: string
+    Mark?: string
+    speckleType?: string
+    'Identity Data'?: Record<string, unknown>
+    Constraints?: Record<string, unknown>
+    Other?: Record<string, unknown>
+    [key: string]: unknown
   }
+  children?: IncomingNode[]
+  id?: string | number
+  type?: string
+  name?: string
+  mark?: string
+  [key: string]: unknown
+}
+
+function getParameterValue(value: unknown): ParameterValue {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return value
+  if (typeof value === 'boolean') return value
+  return null
+}
+
+function createEmptyParameters(columns: ColumnDef[]): Record<string, ParameterValue> {
+  return Object.fromEntries(
+    columns
+      .filter(
+        (column): column is ColumnDef & { field: string } =>
+          typeof column?.field === 'string' && column.field.length > 0
+      )
+      .map((column) => [column.field, null as ParameterValue])
+  )
+}
+
+function createEmptyElement(
+  id: string,
+  type: string,
+  mark: string,
+  category: string,
+  host: string,
+  parameters: Record<string, ParameterValue>
+): ElementData {
+  return {
+    id,
+    type,
+    mark,
+    category,
+    host,
+    parameters,
+    details: [],
+    _visible: true
+  }
+}
+
+function transformToTreeItemComponentModel(node: IncomingNode): TreeItemComponentModel {
+  // If the node already has a rawNode property, return it as is
+  if ('rawNode' in node) {
+    return node as unknown as TreeItemComponentModel
+  }
+
+  // Create BIMNode structure from model or direct properties
+  const bimNode: BIMNode = {
+    raw: {
+      id: convertToString(node.model?.id || node.id || ''),
+      type: convertToString(node.model?.type || node.type || ''),
+      Name: convertToString(node.model?.Name || node.name || ''),
+      Mark: convertToString(node.model?.Mark || node.mark || ''),
+      speckleType: convertToString(node.model?.speckleType || ''),
+      'Identity Data': node.model?.['Identity Data'] || {},
+      Constraints: node.model?.Constraints || {},
+      Other: node.model?.Other || {},
+      // Include all model properties
+      ...(node.model || {}),
+      // Include direct properties if no model
+      ...(!node.model ? node : {})
+    }
+  }
+
+  // Transform children recursively if they exist
+  const children =
+    node.children?.map((child) => {
+      // Ensure child is treated as IncomingNode
+      const incomingChild = child as unknown as IncomingNode
+      return transformToTreeItemComponentModel(incomingChild)
+    }) || []
+
+  return {
+    rawNode: bimNode,
+    children
+  }
+}
+
+function getRootNode(tree: Required<WorldTreeNode>): TreeItemComponentModel | null {
+  if (!tree._root?.children?.length) {
+    debug.error(DebugCategories.DATA, 'No root node found in WorldTree', tree)
+    return null
+  }
+
+  // Cast the root node to IncomingNode type since we know its structure
+  const rootNode = tree._root.children[0] as unknown as IncomingNode
+  debug.log(DebugCategories.DATA, 'Found root node', rootNode)
+
+  // Transform the root node into our expected format
+  return transformToTreeItemComponentModel(rootNode)
+}
+
+function getHostValue(raw: BIMNodeRaw): string {
+  if (!raw.Constraints) return ''
+  return convertToString(raw.Constraints.Host)
+}
+
+function getFieldPath(field: string): string[] {
+  if (!field) return []
+  return field
+    .split('.')
+    .filter((part): part is string => typeof part === 'string' && part.length > 0)
 }
 
 export function useElementsData({
   _currentTableColumns,
-  _currentDetailColumns
+  _currentDetailColumns,
+  selectedParentCategories,
+  selectedChildCategories
 }: ElementsDataOptions): ElementsDataReturn {
   const {
     metadata: { worldTree }
   } = useInjectedViewer()
 
+  // Core data states
   const scheduleData = ref<ElementData[]>([])
-  const availableHeaders = ref<AvailableHeaders>({
-    parent: [],
-    child: []
-  })
-
-  // Use predefined categories from config
-  const availableCategories = ref<{
-    parent: Set<string>
-    child: Set<string>
-  }>({
-    parent: new Set(defaultParentCategories),
-    child: new Set(defaultChildCategories)
-  })
-
-  // Keep track of all processed elements
   const allElements = ref<ElementData[]>([])
 
-  function processElements(nodes: TreeItemComponentModel[]): ElementData[] {
-    const result: ElementData[] = []
-    const processedChildren: ElementData[] = []
+  // Processing state
+  const processingState = ref<ProcessingState>({
+    isInitializing: false,
+    isProcessingElements: false,
+    isUpdatingCategories: false,
+    error: null
+  })
 
-    function processNode(
-      node: TreeItemComponentModel,
-      isChild = false
-    ): ElementData | null {
-      const raw = node.rawNode?.raw as BIMNodeRaw | undefined
-      debug.log(DebugCategories.DATA, 'Processing raw node:', {
-        hasRawNode: !!node.rawNode,
-        hasRaw: !!raw,
-        speckleType: raw?.speckle_type,
-        id: raw?.id,
-        mark: raw?.['Identity Data']?.Mark || raw?.Tag,
-        category: raw?.Other?.Category,
-        host: raw?.Constraints?.Host,
-        childCount: node.children?.length || 0,
-        isChild
-      })
+  // Computed states for UI feedback
+  const isLoading = ref(false)
+  const hasError = ref(false)
 
-      if (!raw || !raw.speckle_type?.startsWith('IFC')) {
-        return null
-      }
+  // Internal category arrays
+  const internalCategories = ref({
+    parent: [] as string[],
+    child: [] as string[]
+  })
 
-      const parameters: Record<string, ParameterValue> = {}
+  // Convert arrays to Sets for external interface
+  const availableCategories = computed(() => ({
+    parent: new Set<string>(internalCategories.value.parent),
+    child: new Set<string>(internalCategories.value.child)
+  }))
 
-      // Add basic parameters
-      BASIC_PARAMETERS.forEach((param) => {
-        const rawValue = getNestedValue(raw, param.path) as string | undefined
-        const value = rawValue
-          ? String(rawValue)
-          : (raw[param.fallback] as string | undefined) || ''
-        if (value) {
-          parameters[param.name] = value
-        }
-      })
+  // Parameter discovery
+  const { availableHeaders, discoverParameters } = useParameterDiscovery({
+    selectedParentCategories,
+    selectedChildCategories
+  })
 
-      const category = (raw.Other?.Category as string) || 'Uncategorized'
-      const mark = (raw['Identity Data']?.Mark as string) || (raw.Tag as string) || ''
+  // Debug properties using shallowRef for performance
+  const debugRawElements = shallowRef<ElementData[]>([])
+  const debugParentElements = shallowRef<ElementData[]>([])
+  const debugChildElements = shallowRef<ElementData[]>([])
+  const debugMatchedElements = shallowRef<ElementData[]>([])
+  const debugOrphanedElements = shallowRef<ElementData[]>([])
+  const rawWorldTree = ref<WorldTreeNode | null>(null)
+  const rawTreeNodes = shallowRef<TreeItemComponentModel[]>([])
 
-      const element: ElementData = {
-        id: raw.id || '',
-        type: raw.speckle_type || 'Unknown',
-        mark,
-        category,
-        host: (raw.Constraints?.Host as string) || '',
-        parameters,
-        details: [], // Will be populated with child elements later
-        _visible: true // Default to visible, will be filtered by categories later
-      }
+  // Step 2: Process elements and get their parameter values
+  function processElementsWithParameters(node: TreeItemComponentModel): {
+    parents: ElementData[]
+    children: ElementData[]
+  } {
+    const parentElements: ElementData[] = []
+    const childElements: ElementData[] = []
 
-      // Store raw data for debugging
-      Object.defineProperty(element, '_raw', {
-        value: raw,
-        enumerable: false,
-        configurable: true
-      })
+    // Get active columns (parameters)
+    const activeColumns = [
+      ..._currentTableColumns.value,
+      ..._currentDetailColumns.value
+    ]
 
-      debug.log(DebugCategories.DATA, 'Processed element:', {
-        element,
-        parameters: Object.keys(parameters),
-        hasRequiredFields: !!(element.id && element.mark && element.category),
-        isChild
-      })
-
-      return element
-    }
-
-    // First pass: Process all nodes and collect children
-    nodes.forEach((node) => {
-      // Process main element
-      const element = processNode(node)
-      if (element) {
-        result.push(element)
-      }
-
-      // Process children
-      if (node.children?.length) {
-        node.children.forEach((child) => {
-          const childElement = processNode(child, true)
-          if (childElement) {
-            processedChildren.push(childElement)
-          }
-        })
-      }
+    debug.log(DebugCategories.DATA, 'Processing elements with active columns', {
+      columnsCount: activeColumns.length,
+      selectedParentCategories: selectedParentCategories.value,
+      selectedChildCategories: selectedChildCategories.value
     })
 
-    // Second pass: Match children to parents
-    processedChildren.forEach((child) => {
+    function processNode(treeNode: TreeItemComponentModel) {
+      try {
+        if (!isValidTreeItemComponentModel(treeNode, true)) {
+          debug.error(DebugCategories.VALIDATION, 'Invalid tree node', treeNode)
+          return
+        }
+
+        const raw = treeNode.rawNode?.raw as BIMNodeRaw | undefined
+        if (!raw?.id) {
+          debug.error(
+            DebugCategories.VALIDATION,
+            'Invalid raw node data',
+            treeNode.rawNode
+          )
+          return
+        }
+
+        const category =
+          convertToString(raw.Other?.Category) ||
+          convertToString(raw.type) ||
+          'Uncategorized'
+
+        // Only process if category is selected
+        if (
+          !selectedParentCategories.value.includes(category) &&
+          !selectedChildCategories.value.includes(category)
+        ) {
+          debug.log(DebugCategories.DATA, 'Skipping node - category not selected', {
+            category,
+            nodeId: raw.id
+          })
+          return
+        }
+
+        // Initialize parameters with null values for active columns only
+        const parameters = createEmptyParameters(activeColumns)
+
+        // Then fill in values from raw data only for active parameters
+        Object.keys(parameters).forEach((field) => {
+          if (typeof field === 'string') {
+            const path = getFieldPath(field)
+            if (path.length > 0) {
+              const rawValue = getNestedValue(raw, path)
+              if (rawValue !== undefined) {
+                parameters[field] = getParameterValue(rawValue)
+              }
+            }
+          }
+        })
+
+        const mark =
+          convertToString(raw['Identity Data']?.Mark) ||
+          convertToString(raw.Tag) ||
+          convertToString(raw.Mark) ||
+          raw.id.toString()
+
+        const element = createEmptyElement(
+          raw.id.toString(),
+          convertToString(raw.type) || 'Unknown',
+          mark,
+          category,
+          getHostValue(raw),
+          parameters
+        )
+
+        Object.defineProperty(element, '_raw', {
+          value: raw,
+          enumerable: false,
+          configurable: true
+        })
+
+        // Add to appropriate array based on category
+        if (selectedParentCategories.value.includes(category)) {
+          parentElements.push(element)
+          debug.log(DebugCategories.DATA, 'Added parent element', {
+            id: element.id,
+            category: element.category,
+            mark: element.mark
+          })
+        }
+        if (selectedChildCategories.value.includes(category)) {
+          childElements.push(element)
+          debug.log(DebugCategories.DATA, 'Added child element', {
+            id: element.id,
+            category: element.category,
+            mark: element.mark,
+            host: element.host
+          })
+        }
+
+        // Process children recursively
+        if (isValidArray(treeNode.children)) {
+          treeNode.children.forEach((child) => {
+            if (isValidTreeItemComponentModel(child)) {
+              processNode(child)
+            }
+          })
+        }
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          debug.error(DebugCategories.ERROR, 'Validation error:', error)
+        } else {
+          debug.error(DebugCategories.ERROR, 'Error processing node:', error)
+        }
+      }
+    }
+
+    processNode(node)
+    debug.log(DebugCategories.DATA, 'Finished processing elements', {
+      parentCount: parentElements.length,
+      childCount: childElements.length
+    })
+    return { parents: parentElements, children: childElements }
+  }
+
+  // Step 3: Nest elements by mark/host relationships
+  function nestElements(
+    parents: ElementData[],
+    children: ElementData[]
+  ): ElementData[] {
+    const result = [...parents]
+    const parentsByMark = new Map<string, ElementData>()
+    const parentsById = new Map<string, ElementData>()
+
+    debug.log(DebugCategories.DATA, 'Starting element nesting', {
+      parentCount: parents.length,
+      childCount: children.length
+    })
+
+    // Create lookup maps
+    parents.forEach((parent) => {
+      if (parent.mark) parentsByMark.set(parent.mark, parent)
+      if (parent.id) parentsById.set(parent.id, parent)
+    })
+
+    // Match children to parents
+    children.forEach((child) => {
       if (child.host) {
-        const parent = result.find((p) => p.id === child.host)
+        const parent = parentsByMark.get(child.host) || parentsById.get(child.host)
         if (parent) {
           parent.details = parent.details || []
           parent.details.push(child)
+          debug.log(DebugCategories.DATA, 'Nested child under parent', {
+            childId: child.id,
+            parentId: parent.id,
+            parentMark: parent.mark
+          })
+        } else {
+          debug.warn(DebugCategories.DATA, 'Could not find parent for child', {
+            childId: child.id,
+            hostValue: child.host
+          })
         }
       }
     })
 
-    debug.log(DebugCategories.DATA, 'Processing complete:', {
-      total: result.length,
-      parentElements: result.length,
-      childElements: processedChildren.length,
-      matchedChildren: result.reduce((acc, el) => acc + (el.details?.length || 0), 0)
+    debug.log(DebugCategories.DATA, 'Finished nesting elements', {
+      resultCount: result.length,
+      nestedChildrenCount: result.reduce(
+        (acc, parent) => acc + (parent.details?.length || 0),
+        0
+      )
     })
 
     return result
@@ -168,115 +401,188 @@ export function useElementsData({
     parentCategories: string[],
     childCategories: string[]
   ): Promise<void> {
-    debug.log(DebugCategories.CATEGORIES, 'Updating category visibility:', {
-      selectedParent: parentCategories,
-      selectedChild: childCategories,
-      currentDataCount: allElements.value.length
-    })
+    try {
+      processingState.value.isUpdatingCategories = true
 
-    // Filter elements based on selected categories
-    scheduleData.value = allElements.value
-      .map((element) => {
-        const isParentVisible = parentCategories.includes(element.category)
-        const visibleDetails =
-          element.details?.filter((child) =>
-            childCategories.includes(child.category)
-          ) || []
-
-        return {
-          ...element,
-          _visible: isParentVisible || visibleDetails.length > 0,
-          details: visibleDetails
-        }
+      debug.log(DebugCategories.DATA, 'Updating categories', {
+        parentCategories,
+        childCategories,
+        currentElementCount: allElements.value.length
       })
-      .filter((element) => element._visible)
 
-    debug.log(DebugCategories.CATEGORIES, 'Category visibility updated:', {
-      visibleItems: scheduleData.value.filter((item) => item._visible).length,
-      totalItems: scheduleData.value.length,
-      itemsWithDetails: scheduleData.value.filter(
-        (item) => (item.details?.length ?? 0) > 0
-      ).length
-    })
+      scheduleData.value = allElements.value
+        .map((element) => {
+          const isParentVisible =
+            parentCategories.length === 0 || parentCategories.includes(element.category)
+          const visibleDetails =
+            element.details?.filter(
+              (child) =>
+                childCategories.length === 0 || childCategories.includes(child.category)
+            ) || []
 
-    await nextTick()
+          return {
+            ...element,
+            _visible: isParentVisible || visibleDetails.length > 0,
+            details: visibleDetails
+          }
+        })
+        .filter((element) => element._visible)
+
+      debug.log(DebugCategories.DATA, 'Categories updated', {
+        visibleElementCount: scheduleData.value.length
+      })
+
+      await nextTick()
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error updating categories:', error)
+      throw error
+    } finally {
+      processingState.value.isUpdatingCategories = false
+    }
   }
 
   // Watch worldTree for changes
   const stopWorldTreeWatch = watch(
-    () => worldTree.value as WorldTreeNode | undefined,
+    () => worldTree.value,
     async (newWorldTree) => {
-      if (newWorldTree?._root?.children) {
-        debug.log(DebugCategories.DATA, 'World tree data updated:', {
-          hasTree: !!newWorldTree,
-          hasRoot: !!newWorldTree?._root,
-          rootType: newWorldTree?._root?.type,
-          childCount: newWorldTree?._root?.children?.length || 0
+      try {
+        if (!isValidWorldTreeNode(newWorldTree, true)) {
+          debug.error(
+            DebugCategories.VALIDATION,
+            'Invalid WorldTree data',
+            newWorldTree
+          )
+          return
+        }
+
+        const rootNode = getRootNode(newWorldTree)
+        if (!rootNode || !isValidTreeItemComponentModel(rootNode, true)) {
+          debug.error(
+            DebugCategories.VALIDATION,
+            'Invalid root node structure',
+            rootNode
+          )
+          return
+        }
+
+        rawWorldTree.value = newWorldTree
+
+        // Only proceed with parameter discovery and data processing if categories are selected
+        if (
+          selectedParentCategories.value.length === 0 &&
+          selectedChildCategories.value.length === 0
+        ) {
+          debug.log(
+            DebugCategories.DATA,
+            'No categories selected, skipping data processing'
+          )
+          allElements.value = []
+          scheduleData.value = []
+          return
+        }
+
+        // Step 1: Discover parameters based on categories
+        await discoverParameters(rootNode)
+
+        // Step 2: Process elements with active parameters
+        const { parents, children } = processElementsWithParameters(rootNode)
+
+        // Step 3: Nest elements by mark/host relationships
+        const processedElements = nestElements(parents, children)
+
+        allElements.value = processedElements
+        scheduleData.value = processedElements
+
+        debug.log(DebugCategories.DATA, 'WorldTree processing complete', {
+          processedElementCount: processedElements.length,
+          parentCount: parents.length,
+          childCount: children.length
         })
 
-        const children = newWorldTree._root.children
-        // Store all processed elements
-        allElements.value = processElements(children)
-        // Initial data is unfiltered
-        scheduleData.value = allElements.value
-        debug.log(DebugCategories.DATA, 'Schedule data updated:', {
-          count: scheduleData.value.length,
-          itemsWithParameters: scheduleData.value.filter(
-            (item) => Object.keys(item.parameters || {}).length > 0
-          ).length
-        })
         await nextTick()
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          debug.error(DebugCategories.ERROR, 'Validation error:', error)
+        } else {
+          debug.error(DebugCategories.ERROR, 'Error processing world tree:', error)
+        }
       }
     },
     { deep: true }
   )
 
   async function initializeData(): Promise<void> {
-    debug.log(DebugCategories.INITIALIZATION, 'Starting initialization')
+    try {
+      isLoading.value = true
+      processingState.value.isInitializing = true
+      processingState.value.error = null
 
-    // Wait for WorldTree to be available
-    let retryCount = 0
-    while (!worldTree.value?._root?.children && retryCount < 50) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-      retryCount++
-      if (retryCount % 10 === 0) {
-        debug.log(DebugCategories.INITIALIZATION, 'Waiting for world tree:', {
-          retryCount,
-          hasTree: !!worldTree.value,
-          hasRoot: !!worldTree.value?._root
-        })
+      debug.log(DebugCategories.INITIALIZATION, 'Starting data initialization')
+
+      // Wait for WorldTree to be available
+      let retryCount = 0
+      while (!isValidWorldTreeNode(worldTree.value) && retryCount < 50) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        retryCount++
       }
-    }
 
-    const tree = worldTree.value as WorldTreeNode | undefined
-    if (!tree?._root?.children) {
-      debug.warn(DebugCategories.ERROR, 'No WorldTree data available')
-      // Initialize with empty data
+      if (!isValidWorldTreeNode(worldTree.value, true)) {
+        throw new ValidationError('No WorldTree data available after retries')
+      }
+
+      const rootNode = getRootNode(worldTree.value)
+      if (!rootNode || !isValidTreeItemComponentModel(rootNode, true)) {
+        throw new ValidationError('Invalid WorldTree structure')
+      }
+
+      rawWorldTree.value = worldTree.value
+
+      // Only proceed with parameter discovery and data processing if categories are selected
+      if (
+        selectedParentCategories.value.length === 0 &&
+        selectedChildCategories.value.length === 0
+      ) {
+        debug.log(
+          DebugCategories.DATA,
+          'No categories selected, skipping data processing'
+        )
+        allElements.value = []
+        scheduleData.value = []
+        return
+      }
+
+      // Step 1: Discover parameters based on categories
+      await discoverParameters(rootNode)
+
+      // Step 2: Process elements with active parameters
+      const { parents, children } = processElementsWithParameters(rootNode)
+
+      // Step 3: Nest elements by mark/host relationships
+      const processedElements = nestElements(parents, children)
+
+      allElements.value = processedElements
+      scheduleData.value = processedElements
+
+      debug.log(DebugCategories.INITIALIZATION, 'Data initialization complete', {
+        elementCount: processedElements.length
+      })
+
+      await nextTick()
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error initializing data:', error)
+      processingState.value.error =
+        error instanceof Error ? error : new Error('Failed to initialize data')
+      hasError.value = true
       allElements.value = []
       scheduleData.value = []
-      return
+      throw error
+    } finally {
+      isLoading.value = false
+      processingState.value.isInitializing = false
     }
-
-    const children = tree._root.children
-    debug.log(DebugCategories.DATA, 'World tree found:', {
-      rootType: tree._root.type,
-      childCount: children.length,
-      firstChildType: children[0]?.rawNode?.raw?.speckle_type
-    })
-
-    // Store all processed elements
-    allElements.value = processElements(children)
-    // Initial data is unfiltered
-    scheduleData.value = allElements.value
-    debug.log(DebugCategories.DATA, 'Initial schedule data:', {
-      count: scheduleData.value.length,
-      itemsWithParameters: scheduleData.value.filter(
-        (item) => Object.keys(item.parameters || {}).length > 0
-      ).length,
-      firstItem: scheduleData.value[0]
-    })
-    await nextTick()
   }
+
+  // Rest of the code remains the same...
 
   return {
     scheduleData,
@@ -284,6 +590,19 @@ export function useElementsData({
     availableCategories,
     updateCategories,
     initializeData,
-    stopWorldTreeWatch: () => stopWorldTreeWatch()
+    stopWorldTreeWatch: () => stopWorldTreeWatch(),
+    // Processing state
+    isLoading,
+    hasError,
+    processingState,
+    // Raw data for debugging
+    rawWorldTree,
+    rawTreeNodes,
+    // Debug properties
+    rawElements: debugRawElements,
+    parentElements: debugParentElements,
+    childElements: debugChildElements,
+    matchedElements: debugMatchedElements,
+    orphanedElements: debugOrphanedElements
   }
 }

@@ -3,7 +3,7 @@ import type { ComputedRef, Ref } from 'vue'
 import type { ElementData, TableRowData } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { debug } from '../utils/debug'
+import { debug, DebugCategories } from '../utils/debug'
 import { transformToTableRowData } from '~/components/viewer/components/tables/DataTable/composables/useTableUtils'
 
 interface UseScheduleDataTransformOptions {
@@ -12,6 +12,8 @@ interface UseScheduleDataTransformOptions {
   customParameters: Ref<CustomParameter[]> | ComputedRef<CustomParameter[]>
   mergedTableColumns: Ref<ColumnDef[]> | ComputedRef<ColumnDef[]>
   mergedDetailColumns: Ref<ColumnDef[]> | ComputedRef<ColumnDef[]>
+  selectedParentCategories?: Ref<string[]> | ComputedRef<string[]>
+  selectedChildCategories?: Ref<string[]> | ComputedRef<string[]>
   isInitialized?: Ref<boolean>
 }
 
@@ -25,25 +27,25 @@ const isValidElementData = (item: unknown): item is ElementData => {
   const hasMark = 'mark' in record && typeof record.mark === 'string'
   const hasCategory = 'category' in record && typeof record.category === 'string'
   const hasType = 'type' in record && typeof record.type === 'string'
-  const hasDetails = 'details' in record && Array.isArray(record.details)
 
   // Optional fields
   const hasValidName =
     !('name' in record) || record.name === null || typeof record.name === 'string'
   const hasValidHost =
     !('host' in record) || record.host === null || typeof record.host === 'string'
+  const hasValidDetails = !('details' in record) || Array.isArray(record.details)
 
   const isValid =
     hasId &&
     hasMark &&
     hasCategory &&
     hasType &&
-    hasDetails &&
     hasValidName &&
-    hasValidHost
+    hasValidHost &&
+    hasValidDetails
 
   if (!isValid) {
-    debug.warn('❌ Invalid element data:', {
+    debug.warn(DebugCategories.VALIDATION, 'Invalid element data:', {
       timestamp: new Date().toISOString(),
       value: record,
       validation: {
@@ -51,9 +53,9 @@ const isValidElementData = (item: unknown): item is ElementData => {
         hasMark,
         hasCategory,
         hasType,
-        hasDetails,
         hasValidName,
-        hasValidHost
+        hasValidHost,
+        hasValidDetails
       },
       keys: Object.keys(record)
     })
@@ -70,102 +72,41 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
     mergedDetailColumns
   } = options
 
-  // Validate source data before transformation
-  const validSourceData = computed(() => {
-    // Check for visible parameter columns
-    const hasVisibleParameterColumns =
-      mergedTableColumns.value.some(
-        (col) => 'isCustomParameter' in col && col.visible
-      ) ||
-      mergedDetailColumns.value.some((col) => 'isCustomParameter' in col && col.visible)
-
-    // Select source data based on parameters
+  // Use filtered data directly from scheduleData or evaluatedData
+  const filteredData = computed(() => {
     const sourceData =
-      hasVisibleParameterColumns && customParameters.value.length > 0
-        ? evaluatedData.value
-        : scheduleData.value
+      evaluatedData.value.length > 0 ? evaluatedData.value : scheduleData.value
 
-    // Filter out invisible items
-    const visibleData = sourceData.filter((item) => {
-      const isVisible = '_visible' in item ? item._visible : true
-      return isVisible
-    })
-
-    debug.log('🔍 SOURCE DATA SELECTION:', {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Using filtered data:', {
       timestamp: new Date().toISOString(),
-      source: hasVisibleParameterColumns ? 'evaluatedData' : 'scheduleData',
-      hasCustomParameters: customParameters.value.length > 0,
-      totalCount: sourceData?.length || 0,
-      visibleCount: visibleData?.length || 0,
-      firstItem: visibleData?.[0],
-      columns: {
-        tableColumns: mergedTableColumns.value.length,
-        detailColumns: mergedDetailColumns.value.length,
-        visibleParameterColumns: mergedTableColumns.value.filter(
-          (col) => 'isCustomParameter' in col && col.visible
-        ).length
+      source: evaluatedData.value.length > 0 ? 'evaluated' : 'schedule',
+      count: sourceData.length,
+      validation: {
+        hasData: sourceData.length > 0,
+        firstItemValid: sourceData[0] && isValidElementData(sourceData[0]),
+        allItemsValid: sourceData.every(isValidElementData)
       }
     })
 
-    if (!Array.isArray(visibleData)) {
-      debug.error('❌ Source data is not an array:', visibleData)
-      return []
-    }
-
-    // Validate each item
-    const validItems = visibleData.filter((item) => {
-      const valid = isValidElementData(item)
-      if (!valid) {
-        debug.warn('❌ Invalid item filtered out:', {
-          timestamp: new Date().toISOString(),
-          item,
-          validation: {
-            hasId: item && typeof item === 'object' && 'id' in item,
-            hasMark: item && typeof item === 'object' && 'mark' in item,
-            hasCategory: item && typeof item === 'object' && 'category' in item,
-            hasType: item && typeof item === 'object' && 'type' in item,
-            hasDetails:
-              item &&
-              typeof item === 'object' &&
-              'details' in item &&
-              Array.isArray(item.details),
-            hasValidName:
-              !('name' in item) || item.name === null || typeof item.name === 'string',
-            hasValidHost:
-              !('host' in item) || item.host === null || typeof item.host === 'string'
-          }
-        })
-      }
-      return valid
-    })
-
-    debug.log('✅ Valid source data:', {
-      timestamp: new Date().toISOString(),
-      totalItems: visibleData.length,
-      validItems: validItems.length,
-      invalidItems: visibleData.length - validItems.length,
-      firstValidItem: validItems[0]
-    })
-
-    return validItems
+    return sourceData
   })
 
-  // Transform valid data to table format
+  // Transform filtered data to table format
   const tableData = computed<TableRowData[]>(() => {
     debug.startState('computeTableData')
 
-    const validData = validSourceData.value
-    if (validData.length === 0) {
-      debug.warn('No valid data to transform')
+    const data = filteredData.value
+    if (data.length === 0) {
+      debug.warn(DebugCategories.VALIDATION, 'No data to transform')
       return []
     }
 
-    // Transform data to table format
-    const transformedData = transformToTableRowData(validData)
+    // Transform to table format
+    const transformedData = transformToTableRowData(data)
 
-    debug.log('✅ Data transformation complete:', {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Data transformation complete:', {
       timestamp: new Date().toISOString(),
-      inputCount: validData.length,
+      inputCount: data.length,
       outputCount: transformedData.length,
       firstResult: transformedData[0],
       withDetails: transformedData.filter(
@@ -186,7 +127,7 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
   watch(
     () => tableData.value,
     (newData) => {
-      debug.log('🔄 Table data changed:', {
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Table data changed:', {
         timestamp: new Date().toISOString(),
         count: newData.length,
         firstItem: newData[0],
@@ -214,7 +155,7 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
       () => mergedDetailColumns.value
     ],
     ([newScheduleData, newEvaluatedData, newParams, newTableCols, newDetailCols]) => {
-      debug.log('🔄 Dependencies changed:', {
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Dependencies changed:', {
         timestamp: new Date().toISOString(),
         scheduleData: {
           count: newScheduleData.length,
@@ -240,6 +181,7 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
 
   return {
     tableData,
-    isValidElementData
+    isValidElementData,
+    filteredData
   }
 }

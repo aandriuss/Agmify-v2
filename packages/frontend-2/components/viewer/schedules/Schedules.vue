@@ -28,7 +28,7 @@
           :child-categories="childCategories"
           :selected-parent-categories="selectedParentCategories"
           :selected-child-categories="selectedChildCategories"
-          :is-updating="isTableUpdatePending"
+          :is-updating="isUpdating"
           @toggle-category="handleCategoryToggle"
         />
 
@@ -49,6 +49,8 @@
           :custom-parameters="state.customParameters"
           :merged-table-columns="state.mergedTableColumns"
           :merged-detail-columns="state.mergedDetailColumns"
+          :selected-parent-categories="selectedParentCategories"
+          :selected-child-categories="selectedChildCategories"
           :is-initialized="initialized"
           @update:table-data="handleTableDataUpdate"
           @error="handleError"
@@ -105,6 +107,17 @@
           @visibility-change="updateVisibility"
         />
 
+        <BIMDebugView
+          v-if="initialized"
+          :selected-parent-categories="selectedParentCategories"
+          :selected-child-categories="selectedChildCategories"
+          :raw-elements="debugRawElements"
+          :parent-elements="debugParentElements"
+          :child-elements="debugChildElements"
+          :matched-elements="debugMatchedElements"
+          :orphaned-elements="debugOrphanedElements"
+        />
+
         <!-- Parameter Manager Modal -->
         <ScheduleParameterManagerModal
           v-model:show="showParameterManager"
@@ -119,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { LayoutPanel } from '@speckle/ui-components'
 import { debug, DebugCategories } from './utils/debug'
 import type {
@@ -128,11 +141,13 @@ import type {
   ScheduleParameterHandlingExposed,
   ScheduleColumnManagementExposed,
   TableRowData,
-  ScheduleInitializationInstance
+  ScheduleInitializationInstance,
+  TreeItemComponentModel
 } from './types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter, NamedTableConfig } from '~/composables/useUserSettings'
-import { convertTreeItemsToElementData } from './utils/dataConversion'
+
+// Composables
 import { useScheduleState } from './composables/useScheduleState'
 import { useParameterHandling } from './composables/useParameterHandling'
 import { useColumnManagement } from './composables/useColumnManagement'
@@ -143,8 +158,8 @@ import { useScheduleWatchers } from './composables/useScheduleWatchers'
 import { useScheduleUIState } from './composables/useScheduleUIState'
 import { useScheduleEmits } from './composables/useScheduleEmits'
 import { useUserSettings } from '~/composables/useUserSettings'
-import { useScheduleTable } from './composables/useScheduleTable'
 import { parentCategories, childCategories } from './config/categories'
+import { useScheduleSetup } from './composables/useScheduleSetup'
 
 // Components
 import ScheduleErrorAlert from './components/ScheduleErrorAlert.vue'
@@ -156,6 +171,7 @@ import ScheduleDataManagement from './components/ScheduleDataManagement.vue'
 import ScheduleParameterHandling from './components/ScheduleParameterHandling.vue'
 import ScheduleColumnManagement from './components/ScheduleColumnManagement.vue'
 import ScheduleCategoryFilters from './components/ScheduleCategoryFilters.vue'
+import BIMDebugView from './components/BIMDebugView.vue'
 
 // Component refs
 const initComponent = ref<ScheduleInitializationInstance | null>(null)
@@ -169,8 +185,9 @@ const showParameterManager = ref(false)
 
 // Error handling
 function handleError(err: Error | unknown) {
-  error.value = err instanceof Error ? err : new Error(String(err))
-  debug.error(DebugCategories.ERROR, 'Schedule error:', error.value)
+  const errorValue = err instanceof Error ? err : new Error(String(err))
+  error.value = errorValue
+  debug.error(DebugCategories.ERROR, 'Schedule error:', errorValue)
 }
 
 // Emits
@@ -180,7 +197,7 @@ const emit = defineEmits<{
 
 const { handleClose } = useScheduleEmits({ emit })
 
-// Initialize composables
+// Initialize core state management
 const {
   state,
   initialized,
@@ -193,18 +210,26 @@ const {
 } = useScheduleState()
 
 const { loadSettings, settings } = useUserSettings()
-
 const { initializeData, waitForData } = useScheduleInitialization()
 
-// Initialize table management
+// Initialize schedule setup
 const {
-  handleTableChange: handleTableChangeInternal,
-  toggleCategory,
-  handleSaveTable,
-  handleBothColumnsUpdate,
-  isTableUpdatePending,
+  elementsData,
+  availableHeaders,
+  debugRawElements,
+  debugParentElements,
+  debugChildElements,
+  debugMatchedElements,
+  debugOrphanedElements,
+  initializeElementsData,
+  stopWorldTreeWatch,
   selectedParentCategories,
   selectedChildCategories,
+  isUpdating,
+  toggleCategory,
+  handleTableChangeInternal,
+  handleSaveTable,
+  handleBothColumnsUpdate,
   hasChanges,
   selectedTableId,
   tableName,
@@ -212,31 +237,26 @@ const {
   currentTable,
   tableKey,
   tablesArray
-} = useScheduleTable({
-  settings,
-  updateCategories: async (parent: string[], child: string[]) => {
-    if (initComponent.value) {
-      await initComponent.value.updateElementsDataCategories(parent, child)
-    }
-  },
-  updateNamedTable: async (id: string, config: Partial<NamedTableConfig>) => {
-    if (initComponent.value) {
-      return await initComponent.value.updateNamedTable(id, config)
-    }
-    throw new Error('Initialization component not available')
-  },
-  createNamedTable: async (
-    name: string,
-    config: Omit<NamedTableConfig, 'id' | 'name'>
-  ) => {
-    if (initComponent.value) {
-      return await initComponent.value.createNamedTable(name, config)
-    }
-    throw new Error('Initialization component not available')
-  },
+} = useScheduleSetup({
+  initComponent,
   handleError,
+  state,
+  settings,
   updateCurrentColumns
 })
+
+// Watch for changes in elementsData and update state
+watch(
+  () => elementsData.value,
+  (newData) => {
+    state.scheduleData = newData
+    state.availableHeaders = availableHeaders.value
+    logDebugInfo()
+  },
+  { immediate: true }
+)
+
+const rootNodes = ref<TreeItemComponentModel[]>([])
 
 function handleSelectedTableIdUpdate(value: string) {
   selectedTableId.value = value
@@ -257,7 +277,6 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
       }
     })
 
-    // Just update local state
     toggleCategory(type, category)
 
     debug.log(DebugCategories.CATEGORIES, 'Category toggle completed', {
@@ -271,11 +290,27 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   }
 }
 
+function logDebugInfo() {
+  const parents = state.scheduleData.filter((el) => !el.host)
+  const children = state.scheduleData.filter((el) => el.host)
+  const matched = state.scheduleData.filter((el) => el.details?.length)
+  const orphaned = state.scheduleData.filter((el) => el.host && !el.details?.length)
+
+  debug.log(DebugCategories.INITIALIZATION, 'BIM Schedule Debug Info', {
+    allElements: state.scheduleData,
+    parents,
+    children,
+    matched,
+    orphaned
+  })
+}
+
 const { initialize } = useScheduleInitializationFlow({
   initializeData,
   updateRootNodes: async (nodes) => {
-    state.scheduleData = convertTreeItemsToElementData(nodes)
-    await new Promise((resolve) => setTimeout(resolve, 0)) // Wait for Vue to update
+    rootNodes.value = nodes
+    await initializeElementsData()
+    await new Promise((resolve) => setTimeout(resolve, 0))
   },
   waitForData,
   loadSettings,
@@ -288,11 +323,23 @@ const { initialize } = useScheduleInitializationFlow({
   selectedTableId: computed(() => selectedTableId.value),
   currentTableId: computed(() => currentTableId.value),
   loadingError: error,
-  scheduleData: computed(() => state.scheduleData)
+  scheduleData: computed(() => state.scheduleData),
+  rootNodes: computed(() => rootNodes.value),
+  isInitialized: initialized,
+  selectedParentCategories,
+  selectedChildCategories
 })
 
 const { updateParameterVisibility, updateParameterOrder } = useParameterHandling({
-  state,
+  state: {
+    scheduleData: state.scheduleData,
+    customParameters: state.customParameters,
+    parameterColumns: state.parameterColumns,
+    mergedParentParameters: state.mergedParentParameters,
+    mergedChildParameters: state.mergedChildParameters
+  },
+  selectedParentCategories: computed(() => selectedParentCategories.value),
+  selectedChildCategories: computed(() => selectedChildCategories.value),
   updateParameterColumns,
   updateMergedParameters,
   handleError
@@ -306,7 +353,16 @@ const { handleColumnVisibilityChange, handleColumnOrderChange } = useColumnManag
 })
 
 const { processData, updateVisibility } = useDataTransformation({
-  state,
+  state: {
+    scheduleData: state.scheduleData,
+    evaluatedData: state.evaluatedData,
+    tableData: state.tableData,
+    customParameters: state.customParameters,
+    mergedTableColumns: state.mergedTableColumns,
+    mergedDetailColumns: state.mergedDetailColumns
+  },
+  selectedParentCategories: computed(() => selectedParentCategories.value),
+  selectedChildCategories: computed(() => selectedChildCategories.value),
   updateTableData,
   updateEvaluatedData,
   handleError
@@ -399,10 +455,8 @@ async function handleRecoveryAction() {
 // Initialize the schedule
 onMounted(async () => {
   try {
-    // Load settings first to get any saved category selections
     await loadSettings()
-
-    // Then initialize data
+    await initializeElementsData()
     await initialize()
   } catch (err) {
     handleError(err)
@@ -412,6 +466,7 @@ onMounted(async () => {
 // Clean up watchers
 onBeforeUnmount(() => {
   stopWatchers()
+  stopWorldTreeWatch()
 })
 
 // Expose necessary functions

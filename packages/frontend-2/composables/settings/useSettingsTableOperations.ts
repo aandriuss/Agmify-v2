@@ -82,7 +82,7 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
       config: Omit<NamedTableConfig, 'id' | 'name'>
     ): Promise<NamedTableConfig> => {
       const result = await createTable(name, config)
-      return result.config
+      return result.config // Return just the config part
     }
   }
 }

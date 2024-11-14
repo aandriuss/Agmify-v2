@@ -1,6 +1,6 @@
 import { debug, DebugCategories } from '../utils/debug'
 import type { ElementData, TableConfig, TreeItemComponentModel } from '../types'
-import type { Ref } from 'vue'
+import type { Ref, ComputedRef } from 'vue'
 
 interface UseScheduleInitializationFlowOptions {
   initializeData: () => Promise<void>
@@ -17,7 +17,10 @@ interface UseScheduleInitializationFlowOptions {
   currentTableId: Ref<string>
   loadingError: Ref<Error | null>
   scheduleData: Ref<ElementData[]>
+  rootNodes: Ref<TreeItemComponentModel[]> | ComputedRef<TreeItemComponentModel[]>
   isInitialized?: Ref<boolean>
+  selectedParentCategories: Ref<string[]>
+  selectedChildCategories: Ref<string[]>
 }
 
 export function useScheduleInitializationFlow(
@@ -34,10 +37,13 @@ export function useScheduleInitializationFlow(
     currentTableId,
     loadingError,
     scheduleData,
-    isInitialized
+    rootNodes,
+    isInitialized,
+    selectedParentCategories,
+    selectedChildCategories
   } = options
 
-  async function validateInitialState() {
+  function validateInitialState() {
     debug.log(DebugCategories.VALIDATION, 'Validating initial state')
 
     // Check settings
@@ -48,8 +54,11 @@ export function useScheduleInitializationFlow(
       return false
     }
 
-    // Check schedule data
-    if (!Array.isArray(scheduleData.value)) {
+    // Check schedule data - empty data is valid when no categories are selected
+    const hasCategories =
+      selectedParentCategories.value.length > 0 ||
+      selectedChildCategories.value.length > 0
+    if (hasCategories && !Array.isArray(scheduleData.value)) {
       debug.warn(DebugCategories.VALIDATION, 'Invalid schedule data format', {
         type: typeof scheduleData.value,
         value: scheduleData.value
@@ -60,7 +69,10 @@ export function useScheduleInitializationFlow(
     debug.log(DebugCategories.VALIDATION, 'Initial state validation complete', {
       hasTable: !!currentTable.value,
       selectedId: selectedTableId.value,
-      dataCount: scheduleData.value.length
+      dataCount: scheduleData.value.length,
+      hasCategories,
+      parentCategories: selectedParentCategories.value,
+      childCategories: selectedChildCategories.value
     })
 
     return true
@@ -78,18 +90,30 @@ export function useScheduleInitializationFlow(
       await initializeData()
       debug.log(DebugCategories.INITIALIZATION, 'Data initialized')
 
-      // Wait for schedule data to be available
-      const data = await waitForData(
-        () => scheduleData.value,
-        (data) => Array.isArray(data) && data.length > 0,
+      // Wait for root nodes to be available
+      const nodes = await waitForData(
+        () => rootNodes.value,
+        (nodes) => Array.isArray(nodes) && nodes.length > 0,
         10000
       )
 
-      // Update root nodes with available data
-      await updateRootNodes(data as unknown as TreeItemComponentModel[])
+      // Update root nodes
+      await updateRootNodes(nodes)
       debug.log(DebugCategories.INITIALIZATION, 'Root nodes updated', {
-        dataCount: data.length
+        nodeCount: nodes.length
       })
+
+      // Only wait for schedule data if categories are selected
+      const hasCategories =
+        selectedParentCategories.value.length > 0 ||
+        selectedChildCategories.value.length > 0
+      if (hasCategories) {
+        await waitForData(
+          () => scheduleData.value,
+          (data) => Array.isArray(data) && data.length > 0,
+          10000
+        )
+      }
 
       // If we have a selected table, load it
       if (selectedTableId.value) {
@@ -115,7 +139,7 @@ export function useScheduleInitializationFlow(
       }
 
       // Validate the initialized state
-      const isValid = await validateInitialState()
+      const isValid = validateInitialState()
       if (!isValid) {
         throw new Error('Invalid state after initialization')
       }
@@ -132,7 +156,10 @@ export function useScheduleInitializationFlow(
       debug.log(DebugCategories.INITIALIZATION, 'Initialization flow complete', {
         hasTable: !!currentTable.value,
         selectedId: selectedTableId.value,
-        dataCount: scheduleData.value.length
+        dataCount: scheduleData.value.length,
+        hasCategories,
+        parentCategories: selectedParentCategories.value,
+        childCategories: selectedChildCategories.value
       })
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Initialization flow error:', err)

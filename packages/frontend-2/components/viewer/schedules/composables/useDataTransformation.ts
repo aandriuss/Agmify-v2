@@ -1,7 +1,9 @@
 import { debug, DebugCategories } from '../utils/debug'
+import type { ComputedRef } from 'vue'
 import type { ElementData, TableRowData } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
+import { convertToString } from '../utils/dataConversion'
 
 interface DataTransformationOptions {
   state: {
@@ -9,18 +11,25 @@ interface DataTransformationOptions {
     evaluatedData: ElementData[]
     tableData: TableRowData[]
     customParameters: CustomParameter[]
-    selectedParentCategories: string[]
-    selectedChildCategories: string[]
     mergedTableColumns: ColumnDef[]
     mergedDetailColumns: ColumnDef[]
   }
+  selectedParentCategories: ComputedRef<string[]>
+  selectedChildCategories: ComputedRef<string[]>
   updateTableData: (data: TableRowData[]) => void
   updateEvaluatedData: (data: ElementData[]) => void
   handleError: (error: Error) => void
 }
 
 export function useDataTransformation(options: DataTransformationOptions) {
-  const { state, updateTableData, updateEvaluatedData, handleError } = options
+  const {
+    state,
+    updateTableData,
+    updateEvaluatedData,
+    handleError,
+    selectedParentCategories,
+    selectedChildCategories
+  } = options
 
   function evaluateCustomParameters(element: ElementData): ElementData {
     const evaluatedElement = { ...element }
@@ -30,7 +39,7 @@ export function useDataTransformation(options: DataTransformationOptions) {
 
       try {
         if (param.type === 'fixed') {
-          evaluatedElement[param.field] = param.value
+          evaluatedElement[param.field] = convertToString(param.value)
         } else if (param.type === 'equation' && param.equation) {
           // Here you would evaluate the equation using the element's data
           // This is a placeholder for equation evaluation logic
@@ -50,33 +59,33 @@ export function useDataTransformation(options: DataTransformationOptions) {
 
   function filterAndOrganizeData(data: ElementData[]): ElementData[] {
     debug.log(DebugCategories.DATA_TRANSFORM, 'Filtering and organizing data', {
-      selectedParentCategories: state.selectedParentCategories,
-      selectedChildCategories: state.selectedChildCategories,
+      selectedParentCategories: selectedParentCategories.value,
+      selectedChildCategories: selectedChildCategories.value,
       inputDataCount: data.length
     })
 
     // Step 1: Filter elements by selected categories
     const filteredElements = data.filter((element) => {
       const isParentCategory =
-        state.selectedParentCategories.length === 0 ||
-        state.selectedParentCategories.includes(element.category)
+        selectedParentCategories.value.length === 0 ||
+        selectedParentCategories.value.includes(element.category)
       const isChildCategory =
-        state.selectedChildCategories.length === 0 ||
-        state.selectedChildCategories.includes(element.category)
+        selectedChildCategories.value.length === 0 ||
+        selectedChildCategories.value.includes(element.category)
       return isParentCategory || isChildCategory
     })
 
     // Step 2: Separate parents and children based on selected categories
     const parents = filteredElements.filter(
       (element) =>
-        state.selectedParentCategories.length === 0 ||
-        state.selectedParentCategories.includes(element.category)
+        selectedParentCategories.value.length === 0 ||
+        selectedParentCategories.value.includes(element.category)
     )
 
     const children = filteredElements.filter(
       (element) =>
-        state.selectedChildCategories.length === 0 ||
-        state.selectedChildCategories.includes(element.category)
+        selectedChildCategories.value.length === 0 ||
+        selectedChildCategories.value.includes(element.category)
     )
 
     // Step 3: Create a map of parent marks for quick lookup
@@ -105,7 +114,8 @@ export function useDataTransformation(options: DataTransformationOptions) {
         mark: 'Ungrouped',
         category: 'Ungrouped',
         type: 'Ungrouped',
-        details: orphanedChildren
+        details: orphanedChildren,
+        _visible: true
       })
     }
 
@@ -133,8 +143,13 @@ export function useDataTransformation(options: DataTransformationOptions) {
 
       // Add custom parameter values
       state.customParameters.forEach((param) => {
-        if (param.visible && row[param.field] === undefined) {
-          row[param.field] = null
+        if (param.visible) {
+          if (row[param.field] === undefined) {
+            row[param.field] = null
+          } else {
+            // Convert existing values to string using our centralized utility
+            row[param.field] = convertToString(row[param.field])
+          }
         }
       })
 
@@ -145,7 +160,9 @@ export function useDataTransformation(options: DataTransformationOptions) {
   function processData() {
     debug.log(DebugCategories.DATA_TRANSFORM, 'Processing schedule data', {
       dataCount: state.scheduleData.length,
-      customParametersCount: state.customParameters.length
+      customParametersCount: state.customParameters.length,
+      selectedParentCategories: selectedParentCategories.value,
+      selectedChildCategories: selectedChildCategories.value
     })
 
     try {

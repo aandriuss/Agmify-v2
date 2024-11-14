@@ -1,11 +1,8 @@
-import { computed, ref } from 'vue'
+import { computed, ref, type Ref, type ComputedRef } from 'vue'
 import { debug, DebugCategories } from '../utils/debug'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
-import {
-  useScheduleCategories,
-  type UseScheduleCategoriesReturn
-} from './useScheduleCategories'
+import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 
 interface UseScheduleTableOptions {
   settings: { value: { namedTables?: Record<string, NamedTableConfig> } | null }
@@ -25,7 +22,31 @@ interface UseScheduleTableOptions {
   updateCurrentColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
 }
 
-export function useScheduleTable(options: UseScheduleTableOptions) {
+interface UseScheduleTableReturn {
+  selectedTableId: Ref<string>
+  tableName: Ref<string>
+  selectedParentCategories: Ref<string[]>
+  selectedChildCategories: Ref<string[]>
+  tableKey: Ref<string>
+  isLoading: Ref<boolean>
+  isTableUpdatePending: Ref<boolean>
+  hasChanges: ComputedRef<boolean>
+  currentTableId: ComputedRef<string>
+  currentTable: ComputedRef<NamedTableConfig | null>
+  tablesArray: ComputedRef<Array<{ id: string; name: string }>>
+  handleTableChange: () => void
+  handleTableSelection: (tableId: string) => void
+  handleSaveTable: () => Promise<void>
+  handleBothColumnsUpdate: (updates: {
+    parentColumns: ColumnDef[]
+    childColumns: ColumnDef[]
+  }) => void
+  toggleCategory: (type: 'parent' | 'child', category: string) => void
+}
+
+export function useScheduleTable(
+  options: UseScheduleTableOptions
+): UseScheduleTableReturn {
   const {
     settings,
     updateCategories: updateElementsData,
@@ -36,76 +57,28 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
   } = options
 
   // State
-  const selectedTableId = ref('')
-  const tableName = ref('')
-  const tableKey = ref(Date.now().toString())
-  const isLoading = ref(false)
-  const isTableUpdatePending = ref(false)
+  const selectedTableId = ref<string>('')
+  const tableName = ref<string>('')
+  const tableKey = ref<string>(Date.now().toString())
+  const isLoading = ref<boolean>(false)
+  const isTableUpdatePending = ref<boolean>(false)
+
+  // Category state
+  const selectedParentCategories = ref<string[]>([])
+  const selectedChildCategories = ref<string[]>([])
+
+  // Column state - initialize with defaults
+  const currentParentColumns = ref<ColumnDef[]>(defaultColumns)
+  const currentChildColumns = ref<ColumnDef[]>(defaultDetailColumns)
 
   // Original state for tracking changes
   const originalParentCategories = ref<string[]>([])
   const originalChildCategories = ref<string[]>([])
 
-  // Use schedule categories composable for category management
-  const {
-    selectedParentCategories,
-    selectedChildCategories,
-    isUpdating: isCategoryUpdatePending,
-    toggleCategory: toggleCategoryInternal,
-    loadCategories,
-    saveCategories
-  }: UseScheduleCategoriesReturn = useScheduleCategories({
-    updateCategories: async (parent: string[], child: string[]) => {
-      debug.log(DebugCategories.CATEGORIES, 'Saving category selections:', {
-        parent,
-        child,
-        selectedTableId: selectedTableId.value
-      })
-
-      try {
-        // Always update elements data first
-        await updateElementsData(parent, child)
-
-        // Save to PostgreSQL if we have a selected table
-        if (selectedTableId.value) {
-          const currentTableConfig =
-            settings.value?.namedTables?.[selectedTableId.value]
-          if (currentTableConfig) {
-            isTableUpdatePending.value = true
-            // Create a new table config with only the updated category filters
-            const updatedConfig: Partial<NamedTableConfig> = {
-              ...currentTableConfig,
-              categoryFilters: {
-                selectedParentCategories: parent,
-                selectedChildCategories: child
-              }
-            }
-
-            // Save to PostgreSQL
-            await updateNamedTable(selectedTableId.value, updatedConfig)
-            debug.log(
-              DebugCategories.CATEGORIES,
-              'Category selections saved to PostgreSQL'
-            )
-
-            // Update original state after successful save
-            originalParentCategories.value = [...parent]
-            originalChildCategories.value = [...child]
-          }
-        }
-      } catch (err) {
-        handleError(err)
-        throw err
-      } finally {
-        isTableUpdatePending.value = false
-      }
-    }
-  })
-
   // Computed
-  const currentTableId = computed(() => selectedTableId.value)
+  const currentTableId = computed<string>(() => selectedTableId.value)
 
-  const currentTable = computed(() => {
+  const currentTable = computed<NamedTableConfig | null>(() => {
     if (!settings.value?.namedTables) {
       debug.log(DebugCategories.STATE, 'Settings not available')
       return null
@@ -120,27 +93,80 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     debug.log(DebugCategories.STATE, 'Using existing table:', {
       id: table.id,
       name: table.name,
-      categories: table.categoryFilters
+      categories: table.categoryFilters,
+      columns: {
+        parent: table.parentColumns?.length || 0,
+        child: table.childColumns?.length || 0
+      }
     })
     return table
   })
 
   // Track changes by comparing with original state
-  const hasChanges = computed(() => {
+  const hasChanges = computed<boolean>(() => {
     const parentDiff =
       selectedParentCategories.value.length !== originalParentCategories.value.length ||
       selectedParentCategories.value.some(
-        (cat: string) => !originalParentCategories.value.includes(cat)
+        (cat) => !originalParentCategories.value.includes(cat)
       )
 
     const childDiff =
       selectedChildCategories.value.length !== originalChildCategories.value.length ||
       selectedChildCategories.value.some(
-        (cat: string) => !originalChildCategories.value.includes(cat)
+        (cat) => !originalChildCategories.value.includes(cat)
       )
 
     return parentDiff || childDiff
   })
+
+  function toggleCategory(type: 'parent' | 'child', category: string) {
+    try {
+      debug.log(DebugCategories.CATEGORIES, 'Category toggle requested', {
+        type,
+        category,
+        currentState: {
+          parent: selectedParentCategories.value,
+          child: selectedChildCategories.value
+        }
+      })
+
+      // Update local state
+      if (type === 'parent') {
+        const index = selectedParentCategories.value.indexOf(category)
+        if (index === -1) {
+          selectedParentCategories.value = [...selectedParentCategories.value, category]
+        } else {
+          selectedParentCategories.value = selectedParentCategories.value.filter(
+            (cat) => cat !== category
+          )
+        }
+      } else {
+        const index = selectedChildCategories.value.indexOf(category)
+        if (index === -1) {
+          selectedChildCategories.value = [...selectedChildCategories.value, category]
+        } else {
+          selectedChildCategories.value = selectedChildCategories.value.filter(
+            (cat) => cat !== category
+          )
+        }
+      }
+
+      // Update elements data with current categories
+      updateElementsData(
+        selectedParentCategories.value,
+        selectedChildCategories.value
+      ).catch(handleError)
+
+      debug.log(DebugCategories.CATEGORIES, 'Category toggle completed', {
+        newState: {
+          parent: selectedParentCategories.value,
+          child: selectedChildCategories.value
+        }
+      })
+    } catch (err) {
+      handleError(err)
+    }
+  }
 
   function handleTableChange() {
     if (isLoading.value || isTableUpdatePending.value) {
@@ -164,6 +190,31 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
 
         tableName.value = selectedTable.name
 
+        // Use default columns if PostgreSQL has empty arrays
+        const parentColumns = selectedTable.parentColumns?.length
+          ? selectedTable.parentColumns
+          : defaultColumns
+        const childColumns = selectedTable.childColumns?.length
+          ? selectedTable.childColumns
+          : defaultDetailColumns
+
+        debug.log(DebugCategories.COLUMNS, 'Setting columns:', {
+          parent: {
+            fromDB: selectedTable.parentColumns?.length || 0,
+            using: parentColumns.length,
+            usingDefaults: !selectedTable.parentColumns?.length
+          },
+          child: {
+            fromDB: selectedTable.childColumns?.length || 0,
+            using: childColumns.length,
+            usingDefaults: !selectedTable.childColumns?.length
+          }
+        })
+
+        currentParentColumns.value = parentColumns
+        currentChildColumns.value = childColumns
+        updateCurrentColumns(parentColumns, childColumns)
+
         // Load saved category selections from PostgreSQL
         const savedParentCategories =
           selectedTable.categoryFilters?.selectedParentCategories || []
@@ -175,24 +226,36 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
           child: savedChildCategories
         })
 
-        // Load saved categories
-        loadCategories(savedParentCategories, savedChildCategories)
+        // Update category state
+        selectedParentCategories.value = [...savedParentCategories]
+        selectedChildCategories.value = [...savedChildCategories]
 
         // Update original state
         originalParentCategories.value = [...savedParentCategories]
         originalChildCategories.value = [...savedChildCategories]
+
+        // Update elements data with loaded categories
+        updateElementsData(savedParentCategories, savedChildCategories).catch(
+          handleError
+        )
 
         debug.log(DebugCategories.CATEGORIES, 'Category selections loaded successfully')
 
         // Update table key after categories are loaded
         tableKey.value = Date.now().toString()
       } else {
-        // When no table is selected, reset categories
+        // When no table is selected (Create New), use defaults
         tableName.value = ''
-        loadCategories([], [])
+        currentParentColumns.value = defaultColumns
+        currentChildColumns.value = defaultDetailColumns
+        updateCurrentColumns(defaultColumns, defaultDetailColumns)
+        selectedParentCategories.value = []
+        selectedChildCategories.value = []
         originalParentCategories.value = []
         originalChildCategories.value = []
-        debug.log(DebugCategories.CATEGORIES, 'Categories reset - no table selected')
+        // Update elements data with empty categories
+        updateElementsData([], []).catch(handleError)
+        debug.log(DebugCategories.CATEGORIES, 'Reset to defaults - no table selected')
       }
     } catch (err) {
       handleError(err)
@@ -221,7 +284,11 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
         tableName: tableName.value,
         currentState: {
           parent: selectedParentCategories.value,
-          child: selectedChildCategories.value
+          child: selectedChildCategories.value,
+          columns: {
+            parent: currentParentColumns.value.length,
+            child: currentChildColumns.value.length
+          }
         }
       })
 
@@ -232,14 +299,14 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
 
       isTableUpdatePending.value = true
 
-      // Create initial config with current category selections
+      // Create initial config with current category selections and columns
       const config = {
         name: tableName.value,
-        parentColumns: [],
-        childColumns: [],
+        parentColumns: currentParentColumns.value,
+        childColumns: currentChildColumns.value,
         categoryFilters: {
-          selectedParentCategories: [...selectedParentCategories.value],
-          selectedChildCategories: [...selectedChildCategories.value]
+          selectedParentCategories: selectedParentCategories.value,
+          selectedChildCategories: selectedChildCategories.value
         },
         customParameters: []
       }
@@ -252,52 +319,32 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
         }
         const newTable = await createNamedTable(tableName.value, config)
         selectedTableId.value = newTable.id
-        debug.log(DebugCategories.TABLE_UPDATES, 'New table created with categories', {
+        debug.log(DebugCategories.TABLE_UPDATES, 'New table created', {
           id: newTable.id,
-          categories: config.categoryFilters
+          config
         })
       } else {
         // Update existing table
         await updateNamedTable(selectedTableId.value, config)
-        debug.log(DebugCategories.TABLE_UPDATES, 'Table updated with categories', {
+        debug.log(DebugCategories.TABLE_UPDATES, 'Table updated', {
           id: selectedTableId.value,
-          categories: config.categoryFilters
+          config
         })
       }
 
-      // Save categories and update original state
-      await saveCategories()
+      // Update original state to match current state
       originalParentCategories.value = [...selectedParentCategories.value]
       originalChildCategories.value = [...selectedChildCategories.value]
+
+      // Update elements data with current categories
+      await updateElementsData(
+        selectedParentCategories.value,
+        selectedChildCategories.value
+      )
     } catch (err) {
       handleError(err)
     } finally {
       isTableUpdatePending.value = false
-    }
-  }
-
-  function toggleCategory(type: 'parent' | 'child', category: string) {
-    try {
-      debug.log(DebugCategories.CATEGORIES, 'Category toggle requested', {
-        type,
-        category,
-        currentState: {
-          parent: selectedParentCategories.value,
-          child: selectedChildCategories.value
-        }
-      })
-
-      // Just update local state - persistence happens on save
-      toggleCategoryInternal(type, category)
-
-      debug.log(DebugCategories.CATEGORIES, 'Category toggle completed', {
-        newState: {
-          parent: selectedParentCategories.value,
-          child: selectedChildCategories.value
-        }
-      })
-    } catch (err) {
-      handleError(err)
     }
   }
 
@@ -306,11 +353,13 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     childColumns: ColumnDef[]
   }) {
     debug.log(DebugCategories.COLUMNS, 'Both columns update requested', updates)
+    currentParentColumns.value = updates.parentColumns
+    currentChildColumns.value = updates.childColumns
     updateCurrentColumns(updates.parentColumns, updates.childColumns)
   }
 
   // Computed for tables array
-  const tablesArray = computed(() => {
+  const tablesArray = computed<Array<{ id: string; name: string }>>(() => {
     const tables = settings.value?.namedTables || {}
     const result = Object.entries(tables).map(([id, table]) => ({
       id,
@@ -331,7 +380,6 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
     tableKey,
     isLoading,
     isTableUpdatePending,
-    isCategoryUpdatePending,
     hasChanges,
     currentTableId,
     currentTable,

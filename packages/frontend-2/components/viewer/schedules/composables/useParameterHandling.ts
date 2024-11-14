@@ -1,4 +1,5 @@
 import { debug, DebugCategories } from '../utils/debug'
+import type { ComputedRef } from 'vue'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { ElementData } from '../types'
@@ -7,12 +8,12 @@ interface ParameterHandlingOptions {
   state: {
     scheduleData: ElementData[]
     customParameters: CustomParameter[]
-    selectedParentCategories: string[]
-    selectedChildCategories: string[]
     parameterColumns: ColumnDef[]
     mergedParentParameters: CustomParameter[]
     mergedChildParameters: CustomParameter[]
   }
+  selectedParentCategories: ComputedRef<string[]>
+  selectedChildCategories: ComputedRef<string[]>
   updateParameterColumns: (columns: ColumnDef[]) => void
   updateMergedParameters: (
     parentParams: CustomParameter[],
@@ -22,23 +23,24 @@ interface ParameterHandlingOptions {
 }
 
 export function useParameterHandling(options: ParameterHandlingOptions) {
-  const { state, updateParameterColumns, updateMergedParameters, handleError } = options
+  const {
+    state,
+    updateParameterColumns,
+    updateMergedParameters,
+    handleError,
+    selectedParentCategories,
+    selectedChildCategories
+  } = options
 
-  async function updateParameterVisibility(field: string, visible: boolean) {
+  function updateParameterVisibility(field: string, visible: boolean) {
     debug.log(DebugCategories.PARAMETERS, 'Parameter visibility update requested', {
       field,
-      visible
+      visible,
+      selectedParentCategories: selectedParentCategories.value,
+      selectedChildCategories: selectedChildCategories.value
     })
 
     try {
-      // Update visibility in custom parameters
-      const updatedParams = state.customParameters.map((param) => {
-        if (param.field === field) {
-          return { ...param, visible }
-        }
-        return param
-      })
-
       // Update visibility in parameter columns
       const updatedColumns = state.parameterColumns.map((col) => {
         if ('field' in col && col.field === field) {
@@ -83,18 +85,12 @@ export function useParameterHandling(options: ParameterHandlingOptions) {
   function updateParameterOrder(field: string, newOrder: number) {
     debug.log(DebugCategories.PARAMETERS, 'Parameter order update requested', {
       field,
-      newOrder
+      newOrder,
+      selectedParentCategories: selectedParentCategories.value,
+      selectedChildCategories: selectedChildCategories.value
     })
 
     try {
-      // Update order in custom parameters
-      const updatedParams = state.customParameters.map((param) => {
-        if (param.field === field) {
-          return { ...param, order: newOrder }
-        }
-        return param
-      })
-
       // Update order in parameter columns
       const updatedColumns = [...state.parameterColumns].sort((a, b) => {
         if ('field' in a && 'field' in b) {

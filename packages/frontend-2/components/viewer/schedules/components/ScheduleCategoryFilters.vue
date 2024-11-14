@@ -21,6 +21,7 @@
                   ? CheckCircleIconSolid
                   : CheckCircleIconOutline
               "
+              :disabled="isUpdating"
               text
               @click="handleCategoryToggle('parent', category)"
             >
@@ -47,6 +48,7 @@
                   ? CheckCircleIconSolid
                   : CheckCircleIconOutline
               "
+              :disabled="isUpdating"
               text
               @click="handleCategoryToggle('child', category)"
             >
@@ -55,6 +57,14 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Error Alert -->
+    <div
+      v-if="error"
+      class="mt-2 p-2 bg-error-light text-error-dark rounded text-body-xs"
+    >
+      {{ error.message }}
     </div>
   </div>
 </template>
@@ -72,6 +82,7 @@ const props = defineProps<{
   selectedParentCategories: string[]
   selectedChildCategories: string[]
   isUpdating: boolean
+  error?: Error | null
 }>()
 
 const emit = defineEmits<{
@@ -79,6 +90,8 @@ const emit = defineEmits<{
 }>()
 
 function handleCategoryToggle(type: 'parent' | 'child', category: string) {
+  if (props.isUpdating) return
+
   debug.log(DebugCategories.CATEGORIES, 'Category toggle requested', {
     type,
     category,
@@ -105,6 +118,10 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   margin-bottom: 0.25rem;
 }
 
+.mb-2 {
+  margin-bottom: 0.5rem;
+}
+
 .sticky {
   position: sticky;
 }
@@ -123,6 +140,10 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   padding-bottom: 0.5rem;
 }
 
+.p-2 {
+  padding: 0.5rem;
+}
+
 .border-b-2 {
   border-bottom-width: 2px;
 }
@@ -133,6 +154,14 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
 
 .bg-foundation {
   background-color: var(--color-foundation);
+}
+
+.bg-error-light {
+  background-color: var(--color-error-light);
+}
+
+.text-error-dark {
+  color: var(--color-error-dark);
 }
 
 .flex {
@@ -164,8 +193,12 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   font-weight: 500;
 }
 
-.mb-2 {
-  margin-bottom: 0.5rem;
+.rounded {
+  border-radius: 0.25rem;
+}
+
+.mt-2 {
+  margin-top: 0.5rem;
 }
 
 .block {

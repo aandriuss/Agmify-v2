@@ -1,28 +1,47 @@
-// Predefined list of BIM parameters we want to collect
-export const BASIC_PARAMETERS = [
+import type { BIMNodeRaw } from '../types'
+import { convertToString } from '../utils/dataConversion'
+
+// Parameter definition type
+export interface BIMParameter {
+  name: string
+  path: string[]
+  fallback: keyof BIMNodeRaw
+}
+
+// Helper to safely get nested property
+export function getNestedValue(obj: BIMNodeRaw, path: string[]): string | undefined {
+  if (!obj || !path?.length) return undefined
+
+  let current: unknown = obj
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || !key) return undefined
+    current = (current as Record<string, unknown>)[key]
+  }
+
+  if (current === undefined || current === null) return undefined
+  return convertToString(current)
+}
+
+// Predefined list of BIM Active parameters we want to collect
+export const BASIC_PARAMETERS: BIMParameter[] = [
   {
     name: 'Mark',
-    path: ['Identity Data', 'Mark'] as string[],
-    fallback: 'Tag' // If Mark not found, try Tag
+    path: ['Identity Data', 'Mark'],
+    fallback: 'Tag'
   },
   {
     name: 'Category',
-    path: ['Other', 'Category'] as string[],
-    fallback: 'Uncategorized'
+    path: ['Other', 'Category'],
+    fallback: 'type'
   },
   {
     name: 'Host',
-    path: ['Constraints', 'Host'] as string[],
-    fallback: ''
+    path: ['Constraints', 'Host'],
+    fallback: 'id'
   },
   {
     name: 'ID',
-    path: ['id'] as string[],
-    fallback: ''
+    path: ['id'],
+    fallback: 'id'
   }
-]
-
-// Helper to safely get nested property
-export function getNestedValue(obj: any, path: string[]): any {
-  return path.reduce((acc, key) => (acc ? acc[key] : undefined), obj)
-}
+] as const

@@ -1,5 +1,17 @@
 import type { TreeItemComponentModel, ElementData, BIMNode } from '../types'
 
+export function convertToString(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'object') {
+    if ('id' in value && value.id) return String(value.id)
+    if ('Mark' in value && value.Mark) return String(value.Mark)
+    if ('Tag' in value && value.Tag) return String(value.Tag)
+  }
+  return ''
+}
+
 function extractElementData(node: BIMNode): ElementData {
   const raw = node.raw
   const identityData = raw['Identity Data'] || {}
@@ -7,18 +19,20 @@ function extractElementData(node: BIMNode): ElementData {
   const dimensions = raw.Dimensions || {}
   const other = raw.Other || {}
 
+  // Ensure all values are properly converted to their expected types
   return {
-    id: raw.id,
-    mark: raw.Mark || raw.mark || identityData.Mark || '',
-    category: other.Category || raw.type || '',
-    type: raw.speckle_type,
-    name: raw.Name,
-    host: constraints.Host,
-    length: dimensions.length,
-    height: dimensions.height,
-    width: dimensions.width,
-    thickness: dimensions.thickness,
-    area: dimensions.area,
+    id: convertToString(raw.id),
+    mark: convertToString(raw.Mark || raw.mark || identityData.Mark),
+    category: convertToString(other.Category || raw.type),
+    type: convertToString(raw.speckleType),
+    name: convertToString(raw.Name),
+    host: convertToString(constraints.Host),
+    length: typeof dimensions.length === 'number' ? dimensions.length : undefined,
+    height: typeof dimensions.height === 'number' ? dimensions.height : undefined,
+    width: typeof dimensions.width === 'number' ? dimensions.width : undefined,
+    thickness:
+      typeof dimensions.thickness === 'number' ? dimensions.thickness : undefined,
+    area: typeof dimensions.area === 'number' ? dimensions.area : undefined,
     parameters: {},
     _visible: true
   }

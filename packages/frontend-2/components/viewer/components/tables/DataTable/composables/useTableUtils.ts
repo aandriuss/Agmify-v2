@@ -1,6 +1,7 @@
 import type { ColumnDef } from './columns/types'
-import type { TableRowData } from '~/components/viewer/schedules/types'
+import type { TableRowData, ParameterValue } from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { convertToString } from '~/components/viewer/schedules/utils/dataConversion'
 
 export function safeJSONClone<T>(obj: T): T {
   const jsonString = JSON.stringify(obj)
@@ -49,11 +50,7 @@ export function isTableRowData(item: unknown): item is TableRowData {
 
   const hasRequiredFields = requiredFields.every((field) => {
     const value = record[field]
-    return (
-      value !== undefined &&
-      value !== null &&
-      (typeof value === 'string' || typeof value === 'number')
-    )
+    return value !== undefined && value !== null
   })
 
   if (!hasRequiredFields) {
@@ -61,11 +58,7 @@ export function isTableRowData(item: unknown): item is TableRowData {
       item,
       missingFields: requiredFields.filter((field) => {
         const value = record[field]
-        return (
-          value === undefined ||
-          value === null ||
-          (typeof value !== 'string' && typeof value !== 'number')
-        )
+        return value === undefined || value === null
       })
     })
     return false
@@ -96,6 +89,10 @@ export function updateLocalColumns(
   }
 }
 
+function createEmptyParameters(): Record<string, ParameterValue> {
+  return {} as Record<string, ParameterValue>
+}
+
 export function transformToTableRowData(data: unknown[]): TableRowData[] {
   debug.log(DebugCategories.DATA_TRANSFORM, 'Starting data transformation', {
     timestamp: new Date().toISOString(),
@@ -123,7 +120,18 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
 
   const transformedData = validItems.map((item) => {
     // Extract required fields and visibility flag
-    const { id, mark, category, type, name, host, details, _visible, ...rest } = item
+    const {
+      id,
+      mark,
+      category,
+      type,
+      name,
+      host,
+      details,
+      _visible,
+      parameters,
+      ...rest
+    } = item
 
     debug.log(DebugCategories.DATA_TRANSFORM, 'Processing item', {
       timestamp: new Date().toISOString(),
@@ -137,7 +145,8 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
         host,
         _visible,
         hasDetails: Array.isArray(details),
-        detailsCount: Array.isArray(details) ? details.length : 0
+        detailsCount: Array.isArray(details) ? details.length : 0,
+        hasParameters: parameters !== undefined
       },
       remainingFields: rest
     })
@@ -150,27 +159,31 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
               detail !== null && typeof detail === 'object'
           )
           .map((detail) => ({
-            id: String(detail.id || ''),
-            mark: String(detail.mark || ''),
-            category: String(detail.category || ''),
-            type: String(detail.type || ''),
-            name: String(detail.name || ''),
-            host: String(detail.host || ''),
-            _visible:
-              typeof detail._visible === 'boolean' ? detail._visible : undefined,
+            id: convertToString(detail.id),
+            mark: convertToString(detail.mark),
+            category: convertToString(detail.category),
+            type: convertToString(detail.type),
+            name: convertToString(detail.name),
+            host: convertToString(detail.host),
+            parameters:
+              (detail.parameters as Record<string, ParameterValue>) ||
+              createEmptyParameters(),
+            _visible: typeof detail._visible === 'boolean' ? detail._visible : true,
             ...detail
           }))
       : undefined
 
     // Construct the transformed item
     const transformedItem: TableRowData = {
-      id: String(id || ''),
-      mark: String(mark || ''),
-      category: String(category || ''),
-      type: String(type || ''),
-      name: String(name || ''),
-      host: String(host || ''),
-      _visible: typeof _visible === 'boolean' ? _visible : undefined,
+      id: convertToString(id),
+      mark: convertToString(mark),
+      category: convertToString(category),
+      type: convertToString(type),
+      name: convertToString(name),
+      host: convertToString(host),
+      parameters:
+        (parameters as Record<string, ParameterValue>) || createEmptyParameters(),
+      _visible: typeof _visible === 'boolean' ? _visible : true,
       ...rest
     }
 
@@ -191,19 +204,13 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
     return transformedItem
   })
 
-  // Filter out invisible items
-  const visibleData = transformedData.filter((item) => {
-    const isVisible = typeof item._visible === 'boolean' ? item._visible : true
-    return isVisible
-  })
-
+  // Don't filter out invisible items - let the table handle visibility
   debug.log(DebugCategories.DATA_TRANSFORM, 'Transformation complete', {
     timestamp: new Date().toISOString(),
     totalCount: transformedData.length,
-    visibleCount: visibleData.length,
-    firstTransformedItem: visibleData[0],
-    allTransformedItems: visibleData
+    firstTransformedItem: transformedData[0],
+    allTransformedItems: transformedData
   })
 
-  return visibleData
+  return transformedData
 }

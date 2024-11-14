@@ -7,15 +7,20 @@ import type {
   CustomParameter
 } from '~/composables/useUserSettings'
 
+// Value types
+export type BIMNodeValue = string | number | boolean | null | undefined
+export type ParameterValue = string | number | boolean | null
+export type ParameterValueType = 'string' | 'number' | 'boolean'
+
 // Component emit events
-interface ScheduleInitializationEmits {
-  (event: 'error', error: Error): void
-  (event: 'update:initialized', value: boolean): void
+type ScheduleInitializationEmits = {
+  (e: 'error', error: Error): void
+  (e: 'update:initialized', value: boolean): void
   (
-    event: 'settings-loaded',
+    e: 'settings-loaded',
     settings: { namedTables: Record<string, NamedTableConfig> }
   ): void
-  (event: 'data-initialized'): void
+  (e: 'data-initialized'): void
 }
 
 // Component props
@@ -25,13 +30,10 @@ interface ScheduleInitializationProps {
 
 // Component instance type
 export interface ScheduleInitializationInstance
-  extends ComponentPublicInstance<ScheduleInitializationProps> {
+  extends Omit<ComponentPublicInstance<ScheduleInitializationProps>, '$emit'> {
   $emit: ScheduleInitializationEmits
   settings: Ref<UserSettings>
-  updateNamedTable: (
-    id: string,
-    config: Partial<NamedTableConfig>
-  ) => Promise<NamedTableConfig>
+  updateNamedTable: (id: string, config: Partial<NamedTableConfig>) => Promise<void>
   createNamedTable: (
     name: string,
     config: Omit<NamedTableConfig, 'id' | 'name'>
@@ -49,6 +51,24 @@ export interface ScheduleInitializationInstance
     parent: Set<string>
     child: Set<string>
   }>
+  selectedParentCategories: Ref<string[]>
+  selectedChildCategories: Ref<string[]>
+}
+
+// Processing state interface
+export interface ProcessingState {
+  isInitializing: boolean
+  isProcessingElements: boolean
+  isUpdatingCategories: boolean
+  error: Error | null
+}
+
+// World tree types
+export interface WorldTreeNode {
+  _root?: {
+    type?: string
+    children?: TreeItemComponentModel[]
+  }
 }
 
 export interface ScheduleDataManagementExposed {
@@ -72,21 +92,23 @@ export interface ScheduleColumnManagementExposed {
   updateMergedDetailColumns: (columns: ColumnDef[]) => void
 }
 
+export interface BIMNodeConstraints {
+  Host?: string | number | { id?: string | number; Mark?: string; Tag?: string }
+  [key: string]: unknown
+}
+
 export interface BIMNodeRaw {
-  id: string
+  id: string | number // Allow both string and number for id
   type?: string
   Name?: string
   Mark?: string
   mark?: string
-  speckle_type?: string
+  speckleType?: string
   'Identity Data'?: {
     Mark?: string
     [key: string]: unknown
   }
-  Constraints?: {
-    Host?: string
-    [key: string]: unknown
-  }
+  Constraints?: BIMNodeConstraints
   Dimensions?: {
     length?: number
     height?: number
@@ -110,10 +132,6 @@ export interface TreeItemComponentModel {
   rawNode: BIMNode
   children?: TreeItemComponentModel[]
 }
-
-// Parameter value types
-export type ParameterValue = string | number | boolean | null
-export type ParameterValueType = 'string' | 'number' | 'boolean'
 
 // Base element data without optional fields
 export interface BaseElementData {
@@ -221,7 +239,20 @@ export interface ElementsDataReturn {
     childCategories: string[]
   ) => Promise<void>
   initializeData: () => Promise<void>
-  stopWorldTreeWatch: () => void // Add cleanup function
+  stopWorldTreeWatch: () => void
+  // Processing state
+  isLoading: Ref<boolean>
+  hasError: Ref<boolean>
+  processingState: Ref<ProcessingState>
+  // Raw data for debugging
+  rawWorldTree: Ref<WorldTreeNode | null>
+  rawTreeNodes: Ref<TreeItemComponentModel[]>
+  // Debug properties
+  rawElements: Ref<ElementData[]>
+  parentElements: Ref<ElementData[]>
+  childElements: Ref<ElementData[]>
+  matchedElements: Ref<ElementData[]>
+  orphanedElements: Ref<ElementData[]>
 }
 
 // Debug utility types
@@ -261,6 +292,25 @@ export function isProcessedHeader(value: unknown): value is ProcessedHeader {
     typeof header.type === 'string' &&
     typeof header.category === 'string' &&
     typeof header.description === 'string'
+  )
+}
+
+export function isBIMNodeValue(value: unknown): value is BIMNodeValue {
+  return (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    value === null ||
+    value === undefined
+  )
+}
+
+export function isValidBIMNodeRaw(node: unknown): node is BIMNodeRaw {
+  if (!node || typeof node !== 'object') return false
+  const bimNode = node as Record<string, unknown>
+  return (
+    (typeof bimNode.id === 'string' || typeof bimNode.id === 'number') &&
+    bimNode.id !== undefined
   )
 }
 
