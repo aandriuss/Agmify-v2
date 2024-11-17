@@ -23,6 +23,23 @@ composables/
 └── useScheduleFlow.ts         // State flow management
 ```
 
+### Store Architecture (Updated)
+
+```
+core/store/
+└── useScheduleStore.ts       // Central store management
+    ├── Early initialization
+    ├── Type-safe state
+    ├── Error boundaries
+    └── Loading states
+
+State Flow:
+1. Store initialization (immediate)
+2. Project ID setup
+3. Component initialization
+4. Data loading
+```
+
 ### Type System
 
 The system uses a strict type hierarchy:
@@ -34,6 +51,7 @@ The system uses a strict type hierarchy:
 
 ### State Management
 
+- Store-first initialization approach
 - Composable-based state management
 - Type-safe mutations
 - Computed ref handling with proper unwrapping
@@ -44,7 +62,8 @@ The system uses a strict type hierarchy:
 
 ```
 Schedules.vue
-├── useViewerInitialization (Core viewer state)  // New addition
+├── useScheduleStore (Store initialization)  // New primary state
+├── useViewerInitialization (Core viewer state)
 ├── useScheduleFlow (Type conversion & state flow)
 ├── useScheduleTable (Table management)
 ├── useScheduleValues (Value management)
@@ -63,6 +82,21 @@ Schedules.vue
 
 ## Design Patterns
 
+### Loading State Management (New)
+
+```typescript
+// Centralized loading state
+const isLoading = computed(() => {
+  return !initialized.value ||
+         scheduleStore.loading.value ||
+         !!setup?.value?.isUpdating
+})
+
+// Component usage
+<div v-if="isLoading">Loading...</div>
+<div v-else>Content...</div>
+```
+
 ### Type Safety
 
 - Strict type checking throughout the system
@@ -70,12 +104,12 @@ Schedules.vue
 - Type guards for data validation
 - Proper null handling
 
-### State Flow
+### State Flow (Updated)
 
 ```
-ViewerState -> BIMElements -> ScheduleSetup -> Components
-       ↑            ↑              ↑
-       └── Error ───┴── State ─────┘
+Store Initialization -> ViewerState -> BIMElements -> Components
+       ↑                    ↑              ↑
+       └── Error ──────────┴── State ─────┘
 
 NamedTableConfig -> TableConfig -> Component Props
          ↑                ↓
@@ -100,21 +134,19 @@ NamedTableConfig -> TableConfig -> Component Props
 
 ## Implementation Details
 
-### Viewer Integration
+### Store Integration (Updated)
 
 ```typescript
-// Core viewer initialization with retry mechanism
-const { isInitialized, waitForInitialization } = useViewerInitialization()
+// Early store initialization
+initializeStore(state)
 
-// Component usage
-async function initialize() {
-  try {
-    await waitForInitialization()
-    // Component-specific initialization
-  } catch (error) {
-    handleError(error)
-  }
-}
+// Type-safe state access
+const storeValues = useScheduleValues()
+
+// Loading state management
+const isLoading = computed(() => {
+  return !initialized.value || scheduleStore.loading.value
+})
 ```
 
 ### Table View Structure
@@ -136,10 +168,10 @@ const { canShowTable } = useTableView({
 </template>
 ```
 
-### State Management
+### State Management (Updated)
 
 ```typescript
-// Type-safe state management
+// Type-safe state management with early initialization
 const currentTableConfig = computed(() => tableConfig.value || null)
 
 // Parameter handling with type safety
@@ -182,8 +214,9 @@ const handleError = (err: Error | unknown) => {
 - Use type guards for runtime checks
 - Handle null cases explicitly
 
-### State Management
+### State Management (Updated)
 
+- Initialize store early
 - Use computed properties for derived state
 - Keep state immutable
 - Handle side effects properly
@@ -197,6 +230,29 @@ const handleError = (err: Error | unknown) => {
 - Clear error messages
 - Debug utilities with categories
 - Proper viewer error recovery
+
+## Current Status (New)
+
+### Working
+
+- Store initialization
+- Type safety improvements
+- Error handling
+- Data flow
+
+### In Progress
+
+- Loading state management
+- Component initialization timing
+- UI rendering
+- State transitions
+
+### Next Steps
+
+1. Debug loading state
+2. Verify component mounting
+3. Improve initialization flow
+4. Add performance monitoring
 
 ## Future Improvements
 

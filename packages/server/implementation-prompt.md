@@ -1,246 +1,172 @@
-# Schedule System Implementation Update
-
-architecture.md - Added viewer initialization chain and error handling patterns
-implementation.md - Updated current status and next steps
-instructions-to-start.md - Added step-by-step instructions
+# Schedule System Implementation - Loading State Investigation
 
 ## Current Status
 
-We've identified several critical issues in the viewer initialization chain:
+We've made significant progress in the schedule system implementation:
 
-1. Viewer State Access
+1. Store Improvements
 
-```typescript
-// Current issue
-const { viewer } = useInjectedViewer() // Fails because inject() timing
-```
+- Early store initialization implemented
+- Type-safe state access working
+- Error handling improved
+- Data flowing correctly through store
 
-2. Container Initialization
+2. Current Issue
 
-```typescript
-// Current issue
-GL_INVALID_FRAMEBUFFER_OPERATION: Framebuffer incomplete
-```
+- UI stuck in loading state despite data being available
+- Console shows correct data
+- No visible errors
+- Components not rendering
 
-3. State Management
+## Investigation Areas
 
-```typescript
-// Current issue
-Cannot destructure property 'viewer' of 'useInjectedViewerState(...)'
-```
-
-## Required Changes
-
-### 1. Viewer Container Management
+### 1. Loading State Logic
 
 ```typescript
-// New approach
-const viewerContainer = ref<HTMLElement | null>(null)
-
-// Ensure container is ready before initialization
-onMounted(() => {
-  if (!viewerContainer.value) {
-    throw new Error('Viewer container not mounted')
-  }
-  // Initialize viewer with container
+// Current implementation
+const isLoading = computed(() => {
+  return !initialized.value || scheduleStore.loading.value || !!setup?.value?.isUpdating
 })
 ```
 
-### 2. State Initialization Chain
+Need to verify:
 
-```mermaid
-graph TD
-    A[Mount Container] --> B[Setup Viewer State]
-    B --> C[Initialize Viewer]
-    C --> D[Setup Schedule System]
-    D --> E[Initialize BIM Elements]
-```
+- When does `initialized` become true?
+- Is store loading state transitioning correctly?
+- Are setup updates completing?
 
-### 3. Error Handling Improvements
+### 2. Component Lifecycle
+
+Need to track:
+
+- Component mounting order
+- Data availability timing
+- State transition triggers
+- Re-render conditions
+
+### 3. Store Integration
+
+Need to verify:
+
+- Store subscription timing
+- Reactivity chain
+- State update propagation
+- Component update triggers
+
+## Debug Plan
+
+### 1. Add State Logging
 
 ```typescript
-// Add error boundaries
-const handleError = (err: Error | unknown) => {
-  const errorValue = err instanceof Error ? err : new Error(String(err))
-  error.value = errorValue
-  debug.error(DebugCategories.ERROR, 'Schedule error:', errorValue)
-}
-
-// Add recovery mechanisms
-const handleRecovery = async () => {
-  error.value = null
-  await reinitializeViewer()
-}
+watch(
+  () => ({
+    initialized: initialized.value,
+    storeLoading: scheduleStore.loading.value,
+    setupUpdating: !!setup?.value?.isUpdating,
+    hasData: !!storeValues.scheduleData.value?.length
+  }),
+  (state) => {
+    debug.log(DebugCategories.STATE, 'State update:', state)
+  },
+  { immediate: true, deep: true }
+)
 ```
 
-## Implementation Steps
+### 2. Track Component Lifecycle
 
-### 1. Update Core Files
+```typescript
+onMounted(() => {
+  debug.log(DebugCategories.LIFECYCLE, 'Component mounted', {
+    initialized: initialized.value,
+    hasData: !!storeValues.scheduleData.value?.length,
+    isLoading: isLoading.value
+  })
+})
+```
 
-#### useViewerInitialization.ts
+### 3. Monitor Store Updates
 
-- Add container management
-- Improve error handling
-- Add retry mechanism
-- Add state validation
-
-#### useScheduleSetup.ts
-
-- Update viewer state handling
-- Add container validation
-- Improve error recovery
-- Add initialization guards
-
-#### Schedules.vue
-
-- Move viewer initialization to setup
-- Add container refs
-- Improve error boundaries
-- Add recovery UI
-
-### 2. Update Architecture
-
-#### State Flow
-
-- Ensure proper initialization order
-- Add state validation
-- Improve error recovery
-- Add state debugging
-
-#### Component Communication
-
-- Add error boundaries
-- Improve state flow
-- Add recovery mechanisms
-- Improve debugging
-
-### 3. Add Error Recovery
-
-#### Viewer Errors
-
-- Add retry mechanism
-- Add fallback states
-- Improve error messages
-- Add recovery UI
-
-#### State Errors
-
-- Add state validation
-- Add recovery mechanisms
-- Improve error handling
-- Add debugging tools
-
-## Testing Requirements
-
-### 1. Initialization Tests
-
-- Test container mounting
-- Test viewer initialization
-- Test state flow
-- Test error handling
-
-### 2. Error Recovery Tests
-
-- Test retry mechanism
-- Test state recovery
-- Test UI recovery
-- Test error boundaries
-
-### 3. Integration Tests
-
-- Test full initialization flow
-- Test error scenarios
-- Test recovery paths
-- Test state management
+```typescript
+watch(
+  () => storeValues.scheduleData.value,
+  (data) => {
+    debug.log(DebugCategories.STATE, 'Store data updated', {
+      hasData: !!data?.length,
+      isLoading: isLoading.value
+    })
+  },
+  { immediate: true }
+)
+```
 
 ## Success Criteria
 
-### 1. Initialization
+### 1. State Transitions
 
-- [ ] Container mounts successfully
-- [ ] Viewer initializes properly
-- [ ] State flows correctly
-- [ ] No timing issues
+- [ ] Loading state transitions correctly
+- [ ] Components receive data updates
+- [ ] UI renders when data is available
 
-### 2. Error Handling
+### 2. Component Behavior
 
-- [ ] Clear error messages
-- [ ] Proper recovery mechanisms
-- [ ] State consistency
-- [ ] User feedback
+- [ ] Components mount in correct order
+- [ ] Data flows properly to components
+- [ ] UI updates reactively
 
 ### 3. Performance
 
-- [ ] Fast initialization
-- [ ] Smooth recovery
-- [ ] No memory leaks
-- [ ] Good error reporting
+- [ ] No unnecessary re-renders
+- [ ] Smooth state transitions
+- [ ] Proper error handling
 
-## Documentation Updates
+## Implementation Steps
 
-### 1. Architecture
+1. Add Debug Logging
 
-- Update initialization flow
-- Document error handling
-- Add recovery patterns
-- Update state flow
+- Add state transition logging
+- Track component lifecycle
+- Monitor store updates
 
-### 2. Implementation
+2. Verify State Flow
 
-- Add container management
-- Update error handling
-- Document recovery
-- Add debugging guide
+- Check initialization timing
+- Verify loading state conditions
+- Test state transitions
 
-### 3. Testing
+3. Test Component Updates
 
-- Add test scenarios
-- Document error cases
-- Add recovery tests
-- Update integration tests
+- Monitor component mounting
+- Track data flow
+- Verify UI updates
+
+## Expected Results
+
+After investigation, we should:
+
+1. Understand why loading state persists
+2. Know when components should update
+3. Have clear path to fix the issue
+4. Be able to implement proper fix
 
 ## Next Steps
 
-1. Immediate
+### Immediate
 
-- [ ] Fix viewer injection timing
-- [ ] Add container management
-- [ ] Improve error handling
-- [ ] Add recovery UI
+1. Implement debug logging
+2. Monitor state transitions
+3. Track component lifecycle
+4. Analyze results
 
-2. Short Term
+### Short Term
 
-- [ ] Add comprehensive tests
-- [ ] Improve documentation
-- [ ] Add debugging tools
-- [ ] Enhance error reporting
+1. Fix loading state logic
+2. Improve component updates
+3. Add performance monitoring
+4. Update documentation
 
-3. Long Term
+### Long Term
 
-- [ ] Optimize performance
-- [ ] Add monitoring
-- [ ] Improve DX
-- [ ] Add analytics
-
-## Migration Guide
-
-### 1. For Developers
-
-- Update initialization code
-- Add error handling
-- Test recovery paths
-- Update documentation
-
-### 2. For Code Review
-
-- Check initialization order
-- Verify error handling
-- Test recovery paths
-- Review documentation
-
-### 3. For Testing
-
-- Add initialization tests
-- Add error tests
-- Add recovery tests
-- Update integration tests
+1. Add comprehensive testing
+2. Improve error handling
+3. Optimize performance
+4. Enhance developer experience

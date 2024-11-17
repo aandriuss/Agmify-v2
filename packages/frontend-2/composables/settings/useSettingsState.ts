@@ -4,9 +4,15 @@ import { useSettingsGraphQL } from './useSettingsGraphQL'
 import { useUpdateQueue } from './useUpdateQueue'
 import { isUserSettings } from './types/scheduleTypes'
 import type { UserSettings } from './types/scheduleTypes'
+import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
 
 export function useSettingsState() {
-  const settings = ref<UserSettings>({ namedTables: {} })
+  // Initialize with default table
+  const settings = ref<UserSettings>({
+    namedTables: {
+      [defaultTable.id]: defaultTable
+    }
+  })
   const loading = ref(false)
   const error = ref<Error | null>(null)
   const isUpdating = ref(false)
@@ -38,8 +44,13 @@ export function useSettingsState() {
       if (!newSettings) {
         debug.warn(
           DebugCategories.INITIALIZATION,
-          'No settings in update, using empty state'
+          'No settings in update, using default table'
         )
+        settings.value = {
+          namedTables: {
+            [defaultTable.id]: defaultTable
+          }
+        }
         return
       }
 
@@ -54,9 +65,22 @@ export function useSettingsState() {
           throw new Error('Invalid settings format')
         }
 
-        settings.value = {
-          ...parsedSettings,
-          namedTables: parsedSettings.namedTables || {}
+        // If no tables exist, use default table
+        if (
+          !parsedSettings.namedTables ||
+          Object.keys(parsedSettings.namedTables).length === 0
+        ) {
+          settings.value = {
+            ...parsedSettings,
+            namedTables: {
+              [defaultTable.id]: defaultTable
+            }
+          }
+        } else {
+          settings.value = {
+            ...parsedSettings,
+            namedTables: parsedSettings.namedTables
+          }
         }
 
         debug.log(DebugCategories.INITIALIZATION, 'Settings updated', {
@@ -79,22 +103,48 @@ export function useSettingsState() {
       try {
         const rawSettings = await fetchSettings()
         if (rawSettings && isUserSettings(rawSettings)) {
-          settings.value = {
-            ...rawSettings,
-            namedTables: rawSettings.namedTables || {}
+          // If no tables exist, use default table
+          if (
+            !rawSettings.namedTables ||
+            Object.keys(rawSettings.namedTables).length === 0
+          ) {
+            settings.value = {
+              ...rawSettings,
+              namedTables: {
+                [defaultTable.id]: defaultTable
+              }
+            }
+          } else {
+            settings.value = {
+              ...rawSettings,
+              namedTables: rawSettings.namedTables
+            }
           }
 
           debug.log(DebugCategories.INITIALIZATION, 'Settings loaded', {
             namedTablesCount: Object.keys(settings.value.namedTables).length,
             namedTables: settings.value.namedTables
           })
+        } else {
+          // Use default table if no valid settings
+          settings.value = {
+            namedTables: {
+              [defaultTable.id]: defaultTable
+            }
+          }
+          debug.log(DebugCategories.INITIALIZATION, 'Using default table settings')
         }
       } catch (err) {
         debug.warn(
           DebugCategories.INITIALIZATION,
-          'Failed to fetch settings, using empty state',
+          'Failed to fetch settings, using default table',
           err
         )
+        settings.value = {
+          namedTables: {
+            [defaultTable.id]: defaultTable
+          }
+        }
       }
     } finally {
       loading.value = false

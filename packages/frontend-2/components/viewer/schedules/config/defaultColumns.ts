@@ -108,8 +108,9 @@ export const defaultTable: NamedTableConfig = {
   parentColumns: defaultColumns,
   childColumns: defaultDetailColumns,
   categoryFilters: {
-    selectedParentCategories: [],
-    selectedChildCategories: []
+    // Initialize with all parent categories to show data immediately
+    selectedParentCategories: ['Walls', 'Building', 'Site', 'Base'],
+    selectedChildCategories: ['Structural Framing']
   },
   customParameters: []
 }

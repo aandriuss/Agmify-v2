@@ -11,7 +11,10 @@ import { useNamedTableOperations } from './useNamedTableOperations'
 import { useScheduleTable } from './useScheduleTable'
 import { useBIMElements } from './useBIMElements'
 import { useScheduleState } from './useScheduleState'
-import { ViewerInitializationError } from '../core/composables/useViewerInitialization'
+import {
+  useViewerInitialization,
+  ViewerInitializationError
+} from '../core/composables/useViewerInitialization'
 import store from './useScheduleStore'
 import { debug, DebugCategories } from '../utils/debug'
 
@@ -58,6 +61,9 @@ export function useScheduleSetup({
   waitForInitialization,
   viewerState
 }: UseScheduleSetupOptions) {
+  // Initialize viewer state management
+  const { isInitialized: isViewerInitialized } = useViewerInitialization()
+
   // Initialize BIM elements handling
   const {
     allElements,
@@ -263,7 +269,7 @@ export function useScheduleSetup({
         isUpdating.value ||
         isProcessing.value ||
         store.loading.value ||
-        !viewerState?.viewer?.init?.ref?.value
+        !isViewerInitialized.value // Use the full initialization state
     ),
     hasError: computed(
       () => hasElementError.value || hasError.value || store.error.value !== null
