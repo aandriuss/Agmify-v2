@@ -1,31 +1,28 @@
+import { ref, computed, type ComputedRef } from 'vue'
 import { debug, DebugCategories } from '../utils/debug'
-import type { ElementData, TableConfig, TreeItemComponentModel } from '../types'
-import type { Ref, ComputedRef } from 'vue'
+import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
+import type { ElementData, TreeItemComponentModel } from '../types'
+import type { NamedTableConfig } from '~/composables/useUserSettings'
 
-interface UseScheduleInitializationFlowOptions {
+interface InitializationFlowOptions {
   initializeData: () => Promise<void>
   updateRootNodes: (nodes: TreeItemComponentModel[]) => Promise<void>
-  waitForData: <T>(
-    getValue: () => T | undefined | null,
-    validate: (value: T) => boolean,
-    timeout?: number
-  ) => Promise<T>
+  waitForData: () => Promise<ElementData[]>
   loadSettings: () => Promise<void>
   handleTableSelection: (id: string) => Promise<void>
-  currentTable: Ref<TableConfig | null>
-  selectedTableId: Ref<string>
-  currentTableId: Ref<string>
-  loadingError: Ref<Error | null>
-  scheduleData: Ref<ElementData[]>
-  rootNodes: Ref<TreeItemComponentModel[]> | ComputedRef<TreeItemComponentModel[]>
-  isInitialized?: Ref<boolean>
-  selectedParentCategories: Ref<string[]>
-  selectedChildCategories: Ref<string[]>
+  currentTable: ComputedRef<NamedTableConfig | null>
+  selectedTableId: ComputedRef<string>
+  currentTableId: ComputedRef<string>
+  loadingError: { value: Error | null }
+  scheduleData: ComputedRef<ElementData[]>
+  rootNodes: ComputedRef<TreeItemComponentModel[]>
+  isInitialized: ComputedRef<boolean>
+  selectedParentCategories: { value: string[] }
+  selectedChildCategories: { value: string[] }
+  projectId: ComputedRef<string>
 }
 
-export function useScheduleInitializationFlow(
-  options: UseScheduleInitializationFlowOptions
-) {
+export function useScheduleInitializationFlow(options: InitializationFlowOptions) {
   const {
     initializeData,
     updateRootNodes,
@@ -40,117 +37,90 @@ export function useScheduleInitializationFlow(
     rootNodes,
     isInitialized,
     selectedParentCategories,
-    selectedChildCategories
+    selectedChildCategories,
+    projectId
   } = options
 
-  function validateInitialState() {
-    debug.log(DebugCategories.VALIDATION, 'Validating initial state')
+  const isInitializing = ref(false)
+  const viewer = useInjectedViewer()
 
-    // Basic validation - just ensure we have root nodes
-    const isValid = Array.isArray(rootNodes.value) && rootNodes.value.length > 0
+  async function waitForViewer(maxAttempts = 10, interval = 500): Promise<void> {
+    if (!viewer) {
+      throw new Error('Viewer not available')
+    }
 
-    debug.log(DebugCategories.VALIDATION, 'Initial state validation complete', {
-      hasRootNodes: isValid,
-      hasTable: !!currentTable.value,
-      selectedId: selectedTableId.value,
-      dataCount: scheduleData.value.length,
-      parentCategories: selectedParentCategories.value,
-      childCategories: selectedChildCategories.value
-    })
-
-    return isValid
+    let attempts = 0
+    while (attempts < maxAttempts) {
+      if (viewer.init.ref.value) {
+        return
+      }
+      await new Promise((resolve) => setTimeout(resolve, interval))
+      attempts++
+    }
+    throw new Error('Timeout waiting for viewer initialization')
   }
 
   async function initialize() {
-    debug.log(DebugCategories.INITIALIZATION, 'Starting initialization flow')
+    if (isInitializing.value) {
+      debug.log(DebugCategories.INITIALIZATION, 'Initialization already in progress')
+      return
+    }
 
+    isInitializing.value = true
     try {
+      debug.log(DebugCategories.INITIALIZATION, 'Starting initialization flow')
+
+      // Wait for viewer initialization first
+      await waitForViewer()
+
+      // Validate project ID
+      if (!projectId.value) {
+        throw new Error('Project ID is required but not provided')
+      }
+
       // Load settings first
       await loadSettings()
-      debug.log(DebugCategories.INITIALIZATION, 'Settings loaded')
 
-      // Initialize data
+      // Initialize core data
       await initializeData()
-      debug.log(DebugCategories.INITIALIZATION, 'Data initialized')
 
-      // Wait for root nodes to be available
-      const nodes = await waitForData(
-        () => rootNodes.value,
-        (nodes) => Array.isArray(nodes) && nodes.length > 0,
-        10000
-      )
+      // Wait for data to be available
+      const data = await waitForData()
+      if (data.length > 0) {
+        await updateRootNodes(rootNodes.value)
+      }
 
-      // Update root nodes
-      await updateRootNodes(nodes)
-      debug.log(DebugCategories.INITIALIZATION, 'Root nodes updated', {
-        nodeCount: nodes.length
-      })
-
-      // If we have a selected table, try to load it
+      // Handle table selection
       if (selectedTableId.value) {
-        try {
-          debug.log(DebugCategories.INITIALIZATION, 'Loading selected table:', {
-            id: selectedTableId.value
-          })
-
-          // Handle table selection
-          await handleTableSelection(selectedTableId.value)
-
-          debug.log(DebugCategories.INITIALIZATION, 'Table loaded:', {
-            id: currentTableId.value,
-            name: currentTable.value?.name,
-            categories: currentTable.value?.categoryFilters
-          })
-        } catch (err) {
-          // Just log the error but don't fail initialization
-          debug.warn(DebugCategories.INITIALIZATION, 'Failed to load table:', err)
-        }
-      }
-
-      // Validate the initialized state
-      const isValid = validateInitialState()
-      if (!isValid) {
-        debug.warn(DebugCategories.VALIDATION, 'Invalid state after initialization', {
-          rootNodes: rootNodes.value,
-          scheduleData: scheduleData.value
-        })
-      }
-
-      // Mark as initialized if we have the ref
-      if (isInitialized) {
-        isInitialized.value = true
-        debug.log(
-          DebugCategories.INITIALIZATION,
-          'Initialization state marked as complete'
-        )
+        await handleTableSelection(selectedTableId.value)
       }
 
       debug.log(DebugCategories.INITIALIZATION, 'Initialization flow complete', {
-        hasTable: !!currentTable.value,
-        selectedId: selectedTableId.value,
-        dataCount: scheduleData.value.length,
-        hasCategories:
-          selectedParentCategories.value.length > 0 ||
-          selectedChildCategories.value.length > 0,
-        parentCategories: selectedParentCategories.value,
-        childCategories: selectedChildCategories.value
+        projectId: projectId.value,
+        currentTable: currentTable.value,
+        selectedTableId: selectedTableId.value,
+        currentTableId: currentTableId.value,
+        scheduleData: scheduleData.value,
+        rootNodes: rootNodes.value,
+        isInitialized: isInitialized.value,
+        selectedParentCategories: selectedParentCategories.value,
+        selectedChildCategories: selectedChildCategories.value,
+        hasViewer: !!viewer?.init.ref.value
       })
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Initialization flow error:', err)
-      loadingError.value =
-        err instanceof Error ? err : new Error('Initialization failed')
-
-      // Reset initialization state on error
-      if (isInitialized) {
-        isInitialized.value = false
-      }
-
-      throw loadingError.value
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Initialization flow failed:', {
+        error,
+        hasViewer: !!viewer?.init.ref.value
+      })
+      loadingError.value = error instanceof Error ? error : new Error(String(error))
+      throw error
+    } finally {
+      isInitializing.value = false
     }
   }
 
   return {
     initialize,
-    validateInitialState
+    isInitializing: computed(() => isInitializing.value)
   }
 }

@@ -1,6 +1,5 @@
 import type { ElementData } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
-import { parentCategories, childCategories } from '../config/categories'
 import { matchesCategory } from '../config/categoryMapping'
 
 interface FilterElementsOptions {
@@ -12,12 +11,10 @@ interface FilterElementsOptions {
 
 interface FilterElementsResult {
   filteredElements: ElementData[]
-  availableParentCategories: Set<string>
-  availableChildCategories: Set<string>
 }
 
 /**
- * Pure function to filter elements based on categories
+ * Pure function to filter elements based on selected categories
  */
 export function filterElements({
   allElements,
@@ -25,72 +22,76 @@ export function filterElements({
   selectedChild = [],
   essentialFieldsOnly = false
 }: FilterElementsOptions): FilterElementsResult {
-  // Get available categories from elements
-  const availableParentCategories = new Set<string>()
-  const availableChildCategories = new Set<string>()
-
-  // Process parent categories
-  allElements.forEach((element) => {
-    parentCategories.forEach((category) => {
-      if (matchesCategory(element.type || '', category)) {
-        availableParentCategories.add(category)
-      }
-    })
+  debug.log(DebugCategories.CATEGORIES, 'Starting element filtering', {
+    totalElements: allElements.length,
+    selectedParent,
+    selectedChild,
+    essentialFieldsOnly
   })
 
-  // Process child categories
+  // Create a map of parent marks for quick lookup
+  const parentMarkMap = new Map<string, ElementData>()
   allElements.forEach((element) => {
-    if (element.details) {
-      element.details.forEach((child) => {
-        childCategories.forEach((category) => {
-          if (matchesCategory(child.type || '', category)) {
-            availableChildCategories.add(category)
-          }
-        })
-      })
+    if (element.mark) {
+      parentMarkMap.set(element.mark, element)
     }
   })
 
-  // Filter elements based on selected categories
-  const filteredElements = allElements.reduce<ElementData[]>((acc, element) => {
-    const isParentVisible =
+  // Flatten all elements and mark them based on selected categories
+  const flattenedElements = allElements.reduce<ElementData[]>((acc, element) => {
+    // Check if element matches parent or child categories
+    const isParentMatch =
       selectedParent.length === 0 ||
       selectedParent.some((category) => matchesCategory(element.type || '', category))
+    const isChildMatch =
+      selectedChild.length === 0 ||
+      selectedChild.some((category) => matchesCategory(element.type || '', category))
 
-    const visibleDetails = (element.details || []).filter(
-      (child) =>
-        selectedChild.length === 0 ||
-        selectedChild.some((category) => matchesCategory(child.type || '', category))
-    )
-
-    if (!isParentVisible && visibleDetails.length === 0) {
-      return acc
+    // Add the main element if it matches either category
+    if (isParentMatch || isChildMatch) {
+      acc.push({
+        ...element,
+        isChild: isChildMatch && !isParentMatch, // Mark as child if only matches child categories
+        _visible: true
+      })
     }
 
-    // When essentialFieldsOnly is true, only include necessary fields
-    const filteredElement: ElementData = essentialFieldsOnly
+    // Add details as separate elements if they match categories
+    element.details?.forEach((detail) => {
+      const isDetailParentMatch =
+        selectedParent.length === 0 ||
+        selectedParent.some((category) => matchesCategory(detail.type || '', category))
+      const isDetailChildMatch =
+        selectedChild.length === 0 ||
+        selectedChild.some((category) => matchesCategory(detail.type || '', category))
+
+      if (isDetailParentMatch || isDetailChildMatch) {
+        acc.push({
+          ...detail,
+          host: detail.host || element.mark, // Ensure host is set
+          isChild: isDetailChildMatch && !isDetailParentMatch,
+          _visible: true
+        })
+      }
+    })
+
+    return acc
+  }, [])
+
+  // When essentialFieldsOnly is true, only include necessary fields
+  const filteredElements = flattenedElements.map((element) =>
+    essentialFieldsOnly
       ? {
           id: element.id,
           mark: element.mark,
           category: element.category,
           type: element.type,
-          details: visibleDetails.map((child) => ({
-            id: child.id,
-            mark: child.mark,
-            category: child.category,
-            type: child.type
-          })),
+          host: element.host,
+          isChild: element.isChild,
           _visible: true
         }
-      : {
-          ...element,
-          details: visibleDetails,
-          _visible: true
-        }
-
-    acc.push(filteredElement)
-    return acc
-  }, [])
+      : element
+  )
 
   debug.log(DebugCategories.CATEGORIES, 'Elements filtered', {
     totalElements: allElements.length,
@@ -98,13 +99,12 @@ export function filterElements({
     selectedParent,
     selectedChild,
     essentialFieldsOnly,
-    availableParent: Array.from(availableParentCategories),
-    availableChild: Array.from(availableChildCategories)
+    filteredCategories: [...new Set(filteredElements.map((el) => el.category))],
+    parentCount: filteredElements.filter((el) => !el.isChild).length,
+    childCount: filteredElements.filter((el) => el.isChild).length
   })
 
   return {
-    filteredElements,
-    availableParentCategories,
-    availableChildCategories
+    filteredElements
   }
 }

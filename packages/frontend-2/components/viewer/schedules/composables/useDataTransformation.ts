@@ -1,149 +1,122 @@
-import { watch } from 'vue'
+import { computed, watch, type ComputedRef } from 'vue'
+import type { TableRowData, ParameterValue } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
-import type { ComputedRef } from 'vue'
-import type { ElementData, TableRowData } from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { CustomParameter } from '~/composables/useUserSettings'
-import { processDataPipeline } from '../utils/dataPipeline'
+import type { ElementData } from '../core/types'
 
-interface DataTransformationOptions {
+interface UseDataTransformationOptions {
   state: {
     scheduleData: ElementData[]
     evaluatedData: ElementData[]
     tableData: TableRowData[]
-    customParameters: CustomParameter[]
-    mergedTableColumns: ColumnDef[]
-    mergedDetailColumns: ColumnDef[]
+    customParameters: Record<string, unknown>
+    mergedTableColumns: unknown[]
+    mergedDetailColumns: unknown[]
   }
   selectedParentCategories: ComputedRef<string[]>
   selectedChildCategories: ComputedRef<string[]>
   updateTableData: (data: TableRowData[]) => void
-  updateEvaluatedData: (data: ElementData[]) => void
   handleError: (error: Error) => void
 }
 
-export function useDataTransformation(options: DataTransformationOptions) {
-  const {
-    state,
-    updateTableData,
-    updateEvaluatedData,
-    handleError,
-    selectedParentCategories,
-    selectedChildCategories
-  } = options
+/**
+ * Creates a display row with proper type conversion
+ */
+function createDisplayRow(element: ElementData): TableRowData {
+  const parameters = element.parameters as Record<string, ParameterValue>
+  return {
+    id: element.id,
+    mark: element.id, // Use id as mark since it's required
+    category: element.category,
+    type: '',
+    parameters,
+    _visible: true,
+    details: undefined,
+    data: {}
+  }
+}
 
-  function processData() {
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Processing schedule data', {
-      dataCount: state.scheduleData.length,
-      customParametersCount: state.customParameters.length,
-      selectedParentCategories: selectedParentCategories.value,
-      selectedChildCategories: selectedChildCategories.value
-    })
+/**
+ * Handles the final transformation into display-ready table rows.
+ * This is the last step in the pipeline, after parameter processing.
+ */
+export function useDataTransformation({
+  state,
+  selectedParentCategories,
+  selectedChildCategories,
+  updateTableData,
+  handleError
+}: UseDataTransformationOptions) {
+  // Transform evaluated elements into display rows
+  const transformedData = computed<TableRowData[]>(() => {
+    const elements = state.evaluatedData
+    return elements.map(createDisplayRow)
+  })
 
+  // Watch for changes that require display update
+  watch(
+    [() => state.evaluatedData, selectedParentCategories, selectedChildCategories],
+    async () => {
+      await processData()
+    },
+    { deep: true }
+  )
+
+  /**
+   * Process data through the transformation pipeline
+   */
+  async function processData(): Promise<void> {
     try {
-      // Process data through pipeline
-      const result = processDataPipeline({
-        allElements: state.scheduleData,
-        selectedParent: selectedParentCategories.value,
-        selectedChild: selectedChildCategories.value
-      })
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Processing data...')
 
-      // Update state
-      updateEvaluatedData(result.processedElements)
-      updateTableData(result.tableData)
+      // Simulate async processing
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      const displayData = transformedData.value.map((row) => ({ ...row }))
+      updateTableData(displayData)
 
       debug.log(DebugCategories.DATA_TRANSFORM, 'Data processing complete', {
-        evaluatedCount: result.processedElements.length,
-        tableRows: result.tableData.length
+        evaluatedCount: state.evaluatedData.length,
+        displayCount: displayData.length,
+        parentCategories: selectedParentCategories.value.length,
+        childCategories: selectedChildCategories.value.length
       })
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to process data:', err)
-      handleError(err instanceof Error ? err : new Error('Failed to process data'))
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      handleError(err)
+      debug.error(DebugCategories.ERROR, 'Data processing failed:', err)
+      throw err
     }
   }
 
-  function updateVisibility(elementId: string, visible: boolean) {
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Updating element visibility', {
-      elementId,
-      visible
-    })
-
+  /**
+   * Update visibility state for a display row
+   */
+  async function updateVisibility(id: string, visible: boolean): Promise<void> {
     try {
-      const updatedData = state.tableData.map((row) => {
-        if (row.id === elementId) {
-          return { ...row, _visible: visible }
-        }
-        if (row.details) {
-          return {
-            ...row,
-            details: row.details.map((detail) =>
-              detail.id === elementId ? { ...detail, _visible: visible } : detail
-            )
-          }
-        }
-        return row
-      })
+      // Simulate async processing
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      const updatedData = state.tableData.map((row: TableRowData) =>
+        row.id === id ? { ...row, _visible: visible } : row
+      )
 
       updateTableData(updatedData)
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to update visibility:', err)
-      handleError(err instanceof Error ? err : new Error('Failed to update visibility'))
+
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Visibility updated', {
+        id,
+        visible
+      })
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      handleError(err)
+      debug.error(DebugCategories.ERROR, 'Visibility update failed:', err)
+      throw err
     }
   }
-
-  // Add watch for scheduleData changes
-  watch(
-    () => state.scheduleData,
-    (newData) => {
-      if (newData.length > 0) {
-        debug.log(
-          DebugCategories.DATA_TRANSFORM,
-          'Schedule data changed, processing...',
-          {
-            dataCount: newData.length
-          }
-        )
-        processData()
-      }
-    },
-    { immediate: true }
-  )
-
-  // Add watch for category changes
-  watch(
-    [selectedParentCategories, selectedChildCategories],
-    () => {
-      if (state.scheduleData.length > 0) {
-        debug.log(DebugCategories.DATA_TRANSFORM, 'Categories changed, processing...', {
-          parentCategories: selectedParentCategories.value,
-          childCategories: selectedChildCategories.value
-        })
-        processData()
-      }
-    },
-    { immediate: true }
-  )
-
-  // Add watch for custom parameters
-  watch(
-    () => state.customParameters,
-    () => {
-      if (state.scheduleData.length > 0) {
-        debug.log(
-          DebugCategories.DATA_TRANSFORM,
-          'Custom parameters changed, processing...',
-          {
-            parameterCount: state.customParameters.length
-          }
-        )
-        processData()
-      }
-    },
-    { immediate: true, deep: true }
-  )
 
   return {
     processData,
-    updateVisibility
+    updateVisibility,
+    transformedData
   }
 }

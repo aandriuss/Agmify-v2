@@ -1,33 +1,41 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import type {
   ElementsDataReturn,
-  AvailableHeaders,
   ElementData,
   ProcessingState,
-  TableRowData
+  TableRowData,
+  ParameterValue,
+  ProcessedHeader,
+  AvailableHeaders
 } from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { debug, DebugCategories } from '../utils/debug'
 import { useBIMElements } from './useBIMElements'
 import { filterElements } from './useElementCategories'
 import { processParameters } from './useElementParameters'
 import { defaultColumns } from '../config/defaultColumns'
+import store from './useScheduleStore'
+import type { ViewerState } from './useScheduleSetup'
+
+/**
+ * Creates a mutable copy of an array with type safety
+ */
+function toMutable<T>(arr: readonly T[] | T[]): T[] {
+  return Array.isArray(arr) ? [...arr] : []
+}
 
 /**
  * Coordinates BIM element data handling between specialized composables.
  * Acts as a facade for useBIMElements, filterElements, and processParameters.
  */
 export function useElementsData({
-  _currentTableColumns,
-  _currentDetailColumns,
   selectedParentCategories,
-  selectedChildCategories
+  selectedChildCategories,
+  viewerState
 }: {
-  _currentTableColumns: Ref<ColumnDef[]>
-  _currentDetailColumns: Ref<ColumnDef[]>
   selectedParentCategories: Ref<string[]>
   selectedChildCategories: Ref<string[]>
-}): ElementsDataReturn {
+  viewerState: ViewerState
+}): ElementsDataReturn & { filteredElements: Ref<ElementData[]> } {
   // Initialize processing state
   const processingState = ref<ProcessingState>({
     isInitializing: false,
@@ -46,17 +54,53 @@ export function useElementsData({
     hasError,
     initializeElements,
     stopWorldTreeWatch
-  } = useBIMElements()
+  } = useBIMElements(viewerState)
 
-  // Create refs for data pipeline
+  // Create refs for data
   const filteredElementsRef = ref<ElementData[]>([])
-  const processedElementsRef = ref<ElementData[]>([])
+  const scheduleDataRef = ref<ElementData[]>([])
   const tableDataRef = ref<TableRowData[]>([])
-  const parameterColumnsRef = ref<ColumnDef[]>([])
   const availableHeadersRef = ref<AvailableHeaders>({
-    parent: [],
-    child: []
+    parent: [] as ProcessedHeader[],
+    child: [] as ProcessedHeader[]
   })
+
+  // Update filtered elements when source data or categories change
+  watch(
+    [allElements, selectedParentCategories, selectedChildCategories],
+    () => {
+      if (!allElements.value) {
+        filteredElementsRef.value = []
+        return
+      }
+
+      const { filteredElements } = filterElements({
+        allElements: toMutable(allElements.value),
+        selectedParent: selectedParentCategories.value,
+        selectedChild: selectedChildCategories.value
+      })
+
+      filteredElementsRef.value = toMutable(filteredElements)
+    },
+    { immediate: true }
+  )
+
+  // Watch store data changes
+  watch(
+    () => store.scheduleData.value,
+    (newData) => {
+      scheduleDataRef.value = toMutable(newData)
+    },
+    { immediate: true }
+  )
+
+  watch(
+    () => store.tableData.value,
+    (newData) => {
+      tableDataRef.value = toMutable(newData)
+    },
+    { immediate: true }
+  )
 
   // Transform ElementData to TableRowData
   function transformToTableData(elements: ElementData[]): TableRowData[] {
@@ -65,15 +109,18 @@ export function useElementsData({
         id: element.id,
         mark: element.mark,
         category: element.category,
-        type: element.type,
-        details: element.details || [],
-        _visible: true
+        type: element.type || '',
+        details: element.details ? toMutable(element.details) : [],
+        _visible: true,
+        data: {} as Record<string, ParameterValue>
       }
 
-      // Add parameter values as direct properties
+      // Add parameter values to data object
       if (element.parameters) {
         Object.entries(element.parameters).forEach(([key, value]) => {
-          rowData[key] = value
+          if (typeof key === 'string') {
+            ;(rowData.data as Record<string, ParameterValue>)[key] = value
+          }
         })
       }
 
@@ -81,150 +128,70 @@ export function useElementsData({
     })
   }
 
-  // Process essential data first
-  function processEssentialData() {
+  // Process data pipeline
+  async function processDataPipeline(): Promise<void> {
     if (!allElements.value) {
       debug.warn(DebugCategories.DATA, 'No elements available for processing')
       return
     }
 
     try {
-      // Step 1: Filter elements with essential fields only
-      const { filteredElements } = filterElements({
-        allElements: allElements.value,
-        selectedParent: selectedParentCategories.value,
-        selectedChild: selectedChildCategories.value,
-        essentialFieldsOnly: true
-      })
-      filteredElementsRef.value = filteredElements
-
-      // Step 2: Process essential fields only
-      const { processedElements, parameterColumns, availableHeaders } =
-        processParameters({
-          filteredElements: filteredElementsRef.value,
-          essentialFieldsOnly: true
-        })
-
-      processedElementsRef.value = processedElements
-      parameterColumnsRef.value = [
-        ...defaultColumns,
-        ...parameterColumns.filter(
-          (col) => !defaultColumns.find((d) => d.field === col.field)
-        )
-      ]
-      availableHeadersRef.value = availableHeaders
-
-      // Step 3: Transform to table data
-      tableDataRef.value = transformToTableData(processedElements)
-
-      debug.log(DebugCategories.DATA, 'Essential data processed', {
-        sourceElements: allElements.value.length,
-        filteredElements: filteredElements.length,
-        processedElements: processedElements.length,
-        tableRows: tableDataRef.value.length,
-        parameterColumns: parameterColumnsRef.value.length
-      })
-    } catch (error) {
-      debug.error(DebugCategories.ERROR, 'Error processing essential data:', error)
-      processingState.value.error =
-        error instanceof Error ? error : new Error('Failed to process essential data')
-      throw processingState.value.error
-    }
-  }
-
-  // Process full data pipeline
-  function processFullData() {
-    if (!allElements.value) return
-
-    try {
       processingState.value.isProcessingFullData = true
 
-      // Step 1: Full filter
-      const { filteredElements } = filterElements({
-        allElements: allElements.value,
-        selectedParent: selectedParentCategories.value,
-        selectedChild: selectedChildCategories.value
-      })
-      filteredElementsRef.value = filteredElements
-
-      // Step 2: Full processing
+      // Step 1: Process parameters from filtered elements
       const { processedElements, parameterColumns, availableHeaders } =
-        processParameters({
+        await processParameters({
           filteredElements: filteredElementsRef.value
         })
 
-      processedElementsRef.value = processedElements
-      parameterColumnsRef.value = [
-        ...defaultColumns,
-        ...parameterColumns.filter(
-          (col) => !defaultColumns.find((d) => d.field === col.field)
-        )
-      ]
-      availableHeadersRef.value = availableHeaders
+      // Step 2: Transform to table data
+      const tableData = transformToTableData(toMutable(processedElements))
 
-      // Step 3: Transform to table data
-      tableDataRef.value = transformToTableData(processedElements)
+      // Step 3: Update store and local refs
+      await Promise.all([
+        store.setScheduleData(toMutable(processedElements)),
+        store.setTableData(tableData),
+        store.setParameterColumns([
+          ...defaultColumns,
+          ...toMutable(parameterColumns).filter(
+            (col) => !defaultColumns.find((d) => d.field === col.field)
+          )
+        ])
+      ])
 
-      debug.log(DebugCategories.DATA, 'Full data pipeline complete', {
+      availableHeadersRef.value = {
+        parent: toMutable(availableHeaders.parent),
+        child: toMutable(availableHeaders.child)
+      }
+
+      debug.log(DebugCategories.DATA, 'Data pipeline complete', {
         sourceElements: allElements.value.length,
-        filteredElements: filteredElements.length,
+        filteredElements: filteredElementsRef.value.length,
         processedElements: processedElements.length,
-        tableRows: tableDataRef.value.length,
-        parameterColumns: parameterColumnsRef.value.length,
+        tableRows: tableData.length,
+        parameterColumns: parameterColumns.length,
         availableHeaders: {
           parent: availableHeaders.parent.length,
           child: availableHeaders.child.length
         }
       })
     } catch (error) {
-      debug.error(DebugCategories.ERROR, 'Error processing full data:', error)
+      debug.error(DebugCategories.ERROR, 'Error processing data:', error)
       processingState.value.error =
-        error instanceof Error ? error : new Error('Failed to process full data')
+        error instanceof Error ? error : new Error('Failed to process data')
+      throw error
     } finally {
       processingState.value.isProcessingFullData = false
     }
   }
 
-  // Process data pipeline progressively
-  function processDataPipeline() {
-    if (!allElements.value) {
-      debug.warn(DebugCategories.DATA, 'No elements available for processing')
-      return
-    }
-
-    try {
-      // Process essential data immediately
-      processEssentialData()
-
-      // Queue full processing
-      queueMicrotask(() => {
-        processFullData()
-      })
-    } catch (error) {
-      debug.error(DebugCategories.ERROR, 'Error in data pipeline:', error)
-      processingState.value.error =
-        error instanceof Error ? error : new Error('Failed to process data pipeline')
-      throw processingState.value.error
-    }
-  }
-
-  // Watch for changes in source data
+  // Watch for changes that require processing
   watch(
-    () => allElements.value,
-    () => {
-      processDataPipeline()
+    [() => filteredElementsRef.value],
+    async () => {
+      await processDataPipeline()
     },
-    { immediate: true }
-  )
-
-  // Watch for category changes
-  watch(
-    [selectedParentCategories, selectedChildCategories],
-    () => {
-      if (!allElements.value) return
-      processDataPipeline()
-    },
-    { immediate: true }
+    { deep: true }
   )
 
   // Category update handler
@@ -251,28 +218,14 @@ export function useElementsData({
       }
 
       // Update selected categories
-      selectedParentCategories.value = parentCategories
-      selectedChildCategories.value = childCategories
+      selectedParentCategories.value = toMutable(parentCategories)
+      selectedChildCategories.value = toMutable(childCategories)
 
-      // Process essential data first
-      await new Promise<void>((resolve) => {
-        processEssentialData()
-        resolve()
-      })
-
-      // Process full data
-      await new Promise<void>((resolve) => {
-        queueMicrotask(() => {
-          processFullData()
-          resolve()
-        })
-      })
+      // Wait for filtered elements to update
+      await new Promise((resolve) => setTimeout(resolve, 0))
 
       debug.log(DebugCategories.DATA, 'Categories updated', {
         filteredCount: filteredElementsRef.value.length,
-        processedCount: processedElementsRef.value.length,
-        tableRows: tableDataRef.value.length,
-        visibleColumns: parameterColumnsRef.value.filter((col) => col.visible).length,
         parentCategories,
         childCategories
       })
@@ -280,7 +233,7 @@ export function useElementsData({
       debug.error(DebugCategories.ERROR, 'Error updating categories:', error)
       processingState.value.error =
         error instanceof Error ? error : new Error('Failed to update categories')
-      throw processingState.value.error
+      throw error
     } finally {
       processingState.value.isUpdatingCategories = false
     }
@@ -311,9 +264,6 @@ export function useElementsData({
       debug.log(DebugCategories.INITIALIZATION, 'Data initialization complete', {
         allElements: allElements.value?.length || 0,
         filteredElements: filteredElementsRef.value.length,
-        processedElements: processedElementsRef.value.length,
-        tableRows: tableDataRef.value.length,
-        columns: parameterColumnsRef.value.length,
         selectedParentCategories: selectedParentCategories.value,
         selectedChildCategories: selectedChildCategories.value
       })
@@ -321,57 +271,38 @@ export function useElementsData({
       debug.error(DebugCategories.ERROR, 'Error initializing data:', error)
       processingState.value.error =
         error instanceof Error ? error : new Error('Failed to initialize data')
-      throw processingState.value.error
+      throw error
     } finally {
       processingState.value.isInitializing = false
     }
   }
 
   // Create refs for debug views
-  const parentElements = ref<ElementData[]>([])
-  const childElements = ref<ElementData[]>([])
-  const matchedElements = ref<ElementData[]>([])
-  const orphanedElements = ref<ElementData[]>([])
-
-  // Update debug refs when filtered elements change
-  watch(
-    () => filteredElementsRef.value,
-    (elements) => {
-      if (!elements?.length) {
-        parentElements.value = []
-        childElements.value = []
-        matchedElements.value = []
-        orphanedElements.value = []
-        return
-      }
-
-      const filterElements = (predicate: (el: ElementData) => boolean) =>
-        elements.filter(predicate)
-
-      parentElements.value = filterElements((el) => !el.host)
-      childElements.value = filterElements((el) => !!el.host)
-      matchedElements.value = filterElements((el) => !!el.details?.length)
-      orphanedElements.value = filterElements((el) => !!el.host && !el.details?.length)
-
-      debug.log(DebugCategories.DATA, 'Debug elements updated', {
-        parentCount: parentElements.value.length,
-        childCount: childElements.value.length,
-        matchedCount: matchedElements.value.length,
-        orphanedCount: orphanedElements.value.length
-      })
-    },
-    { immediate: true }
+  const parentElements = computed(() =>
+    toMutable(filteredElementsRef.value.filter((el) => !el.isChild))
+  )
+  const childElements = computed(() =>
+    toMutable(filteredElementsRef.value.filter((el) => el.isChild))
+  )
+  const matchedElements = computed(() =>
+    toMutable(filteredElementsRef.value.filter((el) => el.details?.length))
+  )
+  const orphanedElements = computed(() =>
+    toMutable(filteredElementsRef.value.filter((el) => el.host && !el.details?.length))
   )
 
   return {
     // Core data
-    scheduleData: processedElementsRef,
+    scheduleData: scheduleDataRef,
     tableData: tableDataRef,
     availableHeaders: availableHeadersRef,
     availableCategories: computed(() => ({
       parent: new Set(selectedParentCategories.value),
       child: new Set(selectedChildCategories.value)
     })),
+
+    // Filtered elements (needed by other composables)
+    filteredElements: filteredElementsRef,
 
     // Actions
     updateCategories,
@@ -394,4 +325,17 @@ export function useElementsData({
     matchedElements,
     orphanedElements
   }
+}
+
+// Export a function to create an instance
+export function createElementsData(
+  selectedParentCategories: Ref<string[]>,
+  selectedChildCategories: Ref<string[]>,
+  viewerState: ViewerState
+) {
+  return useElementsData({
+    selectedParentCategories,
+    selectedChildCategories,
+    viewerState
+  })
 }

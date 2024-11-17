@@ -38,9 +38,8 @@ export function useSettingsState() {
       if (!newSettings) {
         debug.warn(
           DebugCategories.INITIALIZATION,
-          'No settings in update, initializing with empty state'
+          'No settings in update, using empty state'
         )
-        settings.value = { namedTables: {} }
         return
       }
 
@@ -66,7 +65,6 @@ export function useSettingsState() {
         })
       } catch (err) {
         debug.error(DebugCategories.ERROR, 'Failed to process settings update', err)
-        settings.value = { namedTables: {} }
       }
     },
     { deep: true }
@@ -77,25 +75,27 @@ export function useSettingsState() {
       loading.value = true
       error.value = null
 
-      const rawSettings = await fetchSettings()
-      if (!rawSettings || !isUserSettings(rawSettings)) {
-        settings.value = { namedTables: {} }
-        return
-      }
+      // Try to fetch settings, but don't block on failure
+      try {
+        const rawSettings = await fetchSettings()
+        if (rawSettings && isUserSettings(rawSettings)) {
+          settings.value = {
+            ...rawSettings,
+            namedTables: rawSettings.namedTables || {}
+          }
 
-      settings.value = {
-        ...rawSettings,
-        namedTables: rawSettings.namedTables || {}
+          debug.log(DebugCategories.INITIALIZATION, 'Settings loaded', {
+            namedTablesCount: Object.keys(settings.value.namedTables).length,
+            namedTables: settings.value.namedTables
+          })
+        }
+      } catch (err) {
+        debug.warn(
+          DebugCategories.INITIALIZATION,
+          'Failed to fetch settings, using empty state',
+          err
+        )
       }
-
-      debug.log(DebugCategories.INITIALIZATION, 'Settings loaded', {
-        namedTablesCount: Object.keys(settings.value.namedTables).length,
-        namedTables: settings.value.namedTables
-      })
-    } catch (err) {
-      error.value = err instanceof Error ? err : new Error('Failed to load settings')
-      debug.error(DebugCategories.ERROR, 'Failed to load settings', err)
-      throw error.value
     } finally {
       loading.value = false
     }
@@ -111,13 +111,17 @@ export function useSettingsState() {
         // Record update time before sending to avoid race conditions
         lastUpdateTime.value = Date.now()
 
-        const success = await updateSettings(newSettings)
-        if (success) {
-          settings.value = newSettings
-          // Refetch settings to ensure we have the latest state
-          await loadSettings()
+        // Update local state immediately
+        settings.value = newSettings
+
+        // Try to persist settings, but don't block on failure
+        try {
+          await updateSettings(newSettings)
+        } catch (err) {
+          debug.warn(DebugCategories.STATE, 'Failed to persist settings', err)
         }
-        return success
+
+        return true
       } catch (err) {
         error.value = err instanceof Error ? err : new Error('Failed to save settings')
         throw error.value

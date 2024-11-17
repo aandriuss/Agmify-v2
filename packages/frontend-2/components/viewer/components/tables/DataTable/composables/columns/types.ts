@@ -8,6 +8,7 @@ export interface ColumnDef {
   order: number
   headerComponent?: unknown
   category?: string
+  source?: string // Parameter group (e.g., 'Identity Data', 'Constraints')
   description?: string
   isFixed?: boolean
   isCustomParameter?: boolean
@@ -36,7 +37,7 @@ export interface TableSettings {
   }
 }
 
-export type SortBy = 'name' | 'category' | 'type' | 'fixed'
+export type SortBy = 'name' | 'category' | 'type' | 'fixed' | 'group'
 
 export interface UseColumnsOptions {
   initialColumns: ColumnDef[]

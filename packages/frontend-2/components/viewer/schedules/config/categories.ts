@@ -11,8 +11,5 @@ export const childCategories = [
   'Pipes',
   'Cable Trays',
   'Conduits',
-  'Lighting Fixtures',
-  'Beams',
-  'Plates',
-  'Studs'
+  'Lighting Fixtures'
 ]

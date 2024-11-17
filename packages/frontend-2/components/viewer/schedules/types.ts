@@ -6,6 +6,7 @@ import type {
   NamedTableConfig,
   CustomParameter
 } from '~/composables/useUserSettings'
+import type { InitializationState } from './core/composables/useScheduleInitializationFlow'
 
 // Value types
 export type BIMNodeValue = string | number | boolean | null | undefined
@@ -52,6 +53,8 @@ export interface ScheduleInitializationInstance
   }>
   selectedParentCategories: Ref<string[]>
   selectedChildCategories: Ref<string[]>
+  state: Ref<InitializationState>
+  handleRetry: () => Promise<void>
 }
 
 // Processing state interface
@@ -93,6 +96,8 @@ export interface ScheduleDataManagementExposed {
 export interface ScheduleParameterHandlingExposed {
   parameterColumns: Ref<ColumnDef[]>
   evaluatedData: Ref<ElementData[]>
+  availableParentParameters: Ref<CustomParameter[]>
+  availableChildParameters: Ref<CustomParameter[]>
   mergedParentParameters: Ref<CustomParameter[]>
   mergedChildParameters: Ref<CustomParameter[]>
   updateParameterVisibility: (field: string, visible: boolean) => Promise<void>
@@ -159,6 +164,7 @@ export interface ElementData extends BaseElementData {
   area?: number
   parameters?: Record<string, ParameterValue>
   _visible?: boolean
+  isChild?: boolean // Added isChild flag to mark elements based on selected categories
   [key: string]:
     | ParameterValue
     | ElementData[]

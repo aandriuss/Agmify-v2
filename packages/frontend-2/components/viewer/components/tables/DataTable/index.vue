@@ -73,7 +73,7 @@ import {
 import type { ColumnDef } from './composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { TableRowData } from '~/components/viewer/schedules/types'
-import { debug } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
 
 interface Props {
   tableId: string
@@ -138,13 +138,13 @@ const tempChildColumns = ref<ColumnDef[]>([])
 function handleError(error: Error): void {
   errorMessage.value = error.message
   emit('error', error)
-  debug.error('DataTable error:', error)
+  debug.error(DebugCategories.ERROR, 'DataTable error', error)
 }
 
 // State Management Functions
 function initializeState(): void {
   try {
-    debug.log('Initializing table state')
+    debug.log(DebugCategories.STATE, 'Initializing table state')
     if (props.initialState) {
       localParentColumns.value = safeJSONClone(
         sortColumnsByOrder(props.initialState.columns)
@@ -161,7 +161,7 @@ function initializeState(): void {
       localChildColumns.value = safeJSONClone(props.detailColumns)
     }
 
-    debug.log('Table state initialized:', {
+    debug.log(DebugCategories.STATE, 'Table state initialized', {
       parentColumns: localParentColumns.value,
       childColumns: localChildColumns.value,
       data: props.data
@@ -173,7 +173,7 @@ function initializeState(): void {
   }
 }
 
-// Watchers
+// Update debug calls in watchers
 watch(
   () => settings.value?.namedTables?.[props.tableId],
   (newTableSettings) => {
@@ -185,7 +185,7 @@ watch(
       localChildColumns.value = safeJSONClone(
         sortColumnsByOrder(newTableSettings.childColumns)
       )
-      debug.log('Updated columns from settings:', {
+      debug.log(DebugCategories.COLUMNS, 'Updated columns from settings', {
         parent: localParentColumns.value,
         child: localChildColumns.value
       })
@@ -199,7 +199,11 @@ watch(
   (cols) => {
     if (isInitialized.value) {
       updateColumns(cols, (c) => (localParentColumns.value = c))
-      debug.log('Updated parent columns from props:', localParentColumns.value)
+      debug.log(
+        DebugCategories.COLUMNS,
+        'Updated parent columns from props',
+        localParentColumns.value
+      )
     }
   },
   { deep: true }
@@ -210,7 +214,7 @@ watch(
   (data) => {
     if (isInitialized.value) {
       validateData(data, handleError)
-      debug.log('Updated table data:', data)
+      debug.log(DebugCategories.DATA, 'Updated table data', data)
     }
   }
 )
@@ -219,7 +223,7 @@ watch(
   () => expandedRows.value,
   (newValue) => {
     if (isInitialized.value) {
-      debug.log('DataTable expanded rows changed:', {
+      debug.log(DebugCategories.DATA, 'DataTable expanded rows changed', {
         expandedCount: newValue.length,
         firstExpanded: newValue[0],
         firstExpandedDetails: newValue[0]?.details
@@ -322,7 +326,7 @@ async function handleApply(): Promise<void> {
     })
 
     dialogOpen.value = false
-    debug.log('Applied column updates:', {
+    debug.log(DebugCategories.COLUMNS, 'Applied column updates', {
       parent: localParentColumns.value,
       child: localChildColumns.value
     })
@@ -424,7 +428,7 @@ async function handleColumnReorder(event: {
     }
 
     emit('column-reorder', { target })
-    debug.log('Reordered columns:', {
+    debug.log(DebugCategories.COLUMNS, 'Reordered columns', {
       parent: localParentColumns.value,
       child: localChildColumns.value
     })
@@ -480,7 +484,7 @@ watch(
   () => props.data,
   (newData) => {
     if (isInitialized.value) {
-      debug.log('DataTable data received:', {
+      debug.log(DebugCategories.DATA, 'DataTable data received', {
         rowCount: newData.length,
         firstRow: newData[0],
         firstRowDetails: newData[0]?.details,

@@ -1,5 +1,5 @@
 import { ref, onMounted } from 'vue'
-import type { TreeItemComponentModel } from '../types'
+import type { TreeItemComponentModel, BIMNode } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 
 export function useDataOrganization() {
@@ -7,34 +7,102 @@ export function useDataOrganization() {
   const rootNodes = ref<TreeItemComponentModel[]>([])
   let isInitialized = false
 
+  // Helper function to extract host information
+  function getHostInfo(node: BIMNode) {
+    const raw = node.raw
+    const constraints = raw.Constraints || {}
+    return {
+      mark: String(raw.Mark || ''),
+      host: String(constraints.Host || ''),
+      category: String(
+        raw.Other?.Category || raw.speckleType || raw.type || 'Uncategorized'
+      )
+    }
+  }
+
+  // Helper function to organize nodes by host/mark relationships
+  function organizeNodesByHost(
+    nodes: TreeItemComponentModel[]
+  ): TreeItemComponentModel[] {
+    const markToNodeMap = new Map<string, TreeItemComponentModel>()
+    const hostToChildrenMap = new Map<string, TreeItemComponentModel[]>()
+    const orphanedNodes: TreeItemComponentModel[] = []
+
+    // First pass: create maps for quick lookup
+    nodes.forEach((node) => {
+      const { mark, host } = getHostInfo(node.rawNode)
+
+      if (mark) {
+        markToNodeMap.set(mark, node)
+      }
+
+      if (host) {
+        if (!hostToChildrenMap.has(host)) {
+          hostToChildrenMap.set(host, [])
+        }
+        const children = hostToChildrenMap.get(host)
+        if (children) {
+          children.push(node)
+        }
+      }
+    })
+
+    // Second pass: organize nodes
+    const organizedNodes: TreeItemComponentModel[] = []
+    nodes.forEach((node) => {
+      const { mark, host } = getHostInfo(node.rawNode)
+
+      if (!host) {
+        // This is a parent node
+        const children = hostToChildrenMap.get(mark) || []
+        node.children = children
+        organizedNodes.push(node)
+      } else if (!markToNodeMap.has(host)) {
+        // This is an orphaned child
+        orphanedNodes.push(node)
+      }
+    })
+
+    // Handle orphaned nodes
+    if (orphanedNodes.length > 0) {
+      const ungroupedParent: TreeItemComponentModel = {
+        rawNode: {
+          raw: {
+            id: 'ungrouped',
+            Mark: 'Ungrouped',
+            type: 'Ungrouped',
+            Other: { Category: 'Ungrouped' }
+          }
+        },
+        children: orphanedNodes
+      }
+      organizedNodes.push(ungroupedParent)
+    }
+
+    debug.log(DebugCategories.DATA, 'Nodes organized by host:', {
+      totalNodes: nodes.length,
+      parentNodes: organizedNodes.length,
+      orphanedNodes: orphanedNodes.length,
+      hostRelationships: Array.from(hostToChildrenMap.entries()).map(
+        ([host, children]) => ({
+          host,
+          childrenCount: children.length
+        })
+      )
+    })
+
+    return organizedNodes
+  }
+
   // Function to update root nodes
   const updateRootNodes = async (nodes: TreeItemComponentModel[]): Promise<void> => {
     debug.startState('updateRootNodes')
 
     try {
-      // Log raw data from model with prominent console.log
-      // eslint-disable-next-line no-console
-      console.log('🔍 IMPORTANT RAW DATA FROM DATA ORGANIZATION:', {
-        timestamp: new Date().toISOString(),
-        nodesCount: nodes?.length,
-        nodes: nodes?.map((node) => ({
-          raw: node.rawNode?.raw,
-          rawKeys: node.rawNode?.raw ? Object.keys(node.rawNode.raw) : [],
-          children: node.children?.map((child) => ({
-            raw: child.rawNode?.raw,
-            rawKeys: child.rawNode?.raw ? Object.keys(child.rawNode.raw) : [],
-            hasChildren: child.children && child.children.length > 0
-          }))
-        }))
-      })
-
       debug.log(DebugCategories.DATA, 'Updating root nodes:', {
         nodesLength: nodes?.length,
         firstNode: nodes?.[0],
-        isArray: Array.isArray(nodes),
-        firstNodeRaw: nodes?.[0]?.rawNode?.raw,
-        firstNodeChildren: nodes?.[0]?.children,
-        allNodes: nodes
+        isArray: Array.isArray(nodes)
       })
 
       if (!nodes || !Array.isArray(nodes)) {
@@ -50,66 +118,37 @@ export function useDataOrganization() {
         return isValid
       })
 
-      debug.log(DebugCategories.DATA, 'Valid nodes:', {
-        originalCount: nodes.length,
-        validCount: validNodes.length,
-        firstValidNode: validNodes[0],
-        firstValidNodeRaw: validNodes[0]?.rawNode?.raw,
-        firstValidNodeChildren: validNodes[0]?.children,
-        allValidNodes: validNodes
-      })
+      // Organize nodes by host/mark relationships
+      const organizedNodes = organizeNodesByHost(validNodes)
 
       // Ensure we have valid data before updating
-      if (validNodes.length === 0) {
+      if (organizedNodes.length === 0) {
         throw new Error('No valid nodes found in update')
       }
 
-      // Update the ref with valid nodes
-      rootNodes.value = validNodes
+      // Update the ref with organized nodes
+      rootNodes.value = organizedNodes
 
       // Mark as initialized after first successful update
       if (!isInitialized) {
         isInitialized = true
-        debug.log(DebugCategories.INITIALIZATION, 'Data organization initialized')
-        // Log initial data state with prominent console.log
-        // eslint-disable-next-line no-console
-        console.log('🔍 IMPORTANT INITIAL DATA STATE:', {
-          timestamp: new Date().toISOString(),
-          isInitialized,
+        debug.log(DebugCategories.INITIALIZATION, 'Data organization initialized', {
           nodesCount: rootNodes.value.length,
-          firstNode: rootNodes.value[0],
           nodeCategories: rootNodes.value.map(
-            (node) =>
-              node.rawNode.raw.Other?.Category ||
-              node.rawNode.raw.speckle_type ||
-              node.rawNode.raw.type ||
-              'Uncategorized'
-          ),
-          allNodes: rootNodes.value.map((node) => ({
-            raw: node.rawNode?.raw,
-            rawKeys: node.rawNode?.raw ? Object.keys(node.rawNode.raw) : [],
-            children: node.children?.map((child) => ({
-              raw: child.rawNode?.raw,
-              rawKeys: child.rawNode?.raw ? Object.keys(child.rawNode.raw) : [],
-              hasChildren: child.children && child.children.length > 0
-            }))
-          }))
+            (node) => getHostInfo(node.rawNode).category
+          )
         })
       }
 
       debug.log(DebugCategories.DATA, 'Root nodes updated:', {
         nodesLength: rootNodes.value.length,
-        firstNode: rootNodes.value[0],
         nodeCategories: rootNodes.value.map(
-          (node) =>
-            node.rawNode.raw.Other?.Category ||
-            node.rawNode.raw.speckle_type ||
-            node.rawNode.raw.type ||
-            'Uncategorized'
+          (node) => getHostInfo(node.rawNode).category
         ),
-        firstNodeChildren: rootNodes.value[0]?.children,
-        firstNodeRaw: rootNodes.value[0]?.rawNode?.raw,
-        allNodes: rootNodes.value
+        hostRelationships: rootNodes.value.map((node) => ({
+          mark: getHostInfo(node.rawNode).mark,
+          childrenCount: node.children?.length || 0
+        }))
       })
 
       // Wait for Vue to update the DOM
@@ -129,9 +168,6 @@ export function useDataOrganization() {
       {
         nodesLength: rootNodes.value.length,
         hasNodes: rootNodes.value.length > 0,
-        firstNode: rootNodes.value[0],
-        firstNodeRaw: rootNodes.value[0]?.rawNode?.raw,
-        firstNodeChildren: rootNodes.value[0]?.children,
         isInitialized
       }
     )

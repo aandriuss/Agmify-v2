@@ -9,7 +9,9 @@ export const defaultColumns: ColumnDef[] = [
     order: 0,
     visible: true,
     removable: false,
-    isFixed: true
+    isFixed: true,
+    source: 'Basic',
+    description: 'Element mark identifier'
   },
   {
     field: 'category',
@@ -18,7 +20,9 @@ export const defaultColumns: ColumnDef[] = [
     order: 1,
     visible: true,
     removable: false,
-    isFixed: true
+    isFixed: true,
+    source: 'Basic',
+    description: 'Element category'
   },
   {
     field: 'host',
@@ -26,7 +30,29 @@ export const defaultColumns: ColumnDef[] = [
     type: 'string',
     order: 2,
     visible: true,
-    removable: true
+    removable: true,
+    source: 'Basic',
+    description: 'Host element mark'
+  },
+  {
+    field: 'length',
+    header: 'Length',
+    type: 'number',
+    order: 4,
+    visible: true,
+    removable: true,
+    source: 'Dimensions',
+    description: 'Element length'
+  },
+  {
+    field: 'endLevelOffset',
+    header: 'End Level Offset',
+    type: 'string',
+    order: 3,
+    visible: true,
+    removable: true,
+    source: 'Constraints',
+    description: 'End level offset'
   }
 ]
 
@@ -38,7 +64,9 @@ export const defaultDetailColumns: ColumnDef[] = [
     order: 0,
     visible: true,
     removable: false,
-    isFixed: true
+    isFixed: true,
+    source: 'Basic',
+    description: 'Element mark identifier'
   },
   {
     field: 'category',
@@ -47,7 +75,30 @@ export const defaultDetailColumns: ColumnDef[] = [
     order: 1,
     visible: true,
     removable: false,
-    isFixed: true
+    isFixed: true,
+    source: 'Basic',
+    description: 'Element category'
+  },
+  {
+    field: 'host',
+    header: 'Host',
+    type: 'string',
+    order: 2,
+    visible: true,
+    removable: false,
+    isFixed: true, // Host is required for child elements
+    source: 'Basic',
+    description: 'Host element mark'
+  },
+  {
+    field: 'endLevelOffset',
+    header: 'End Level Offset',
+    type: 'string',
+    order: 3,
+    visible: true,
+    removable: true,
+    source: 'Constraints',
+    description: 'End level offset'
   }
 ]
 

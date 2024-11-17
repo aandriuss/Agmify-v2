@@ -13,6 +13,7 @@ export interface BaseParameter {
   field: string
   header: string
   category?: string
+  source?: string // Parameter group (e.g., 'Identity Data', 'Constraints')
   color?: string
   description?: string
   removable?: boolean

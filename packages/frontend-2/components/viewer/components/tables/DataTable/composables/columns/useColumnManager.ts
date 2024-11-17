@@ -17,7 +17,7 @@ interface UseColumnManagerOptions {
   availableParentParameters: CustomParameter[]
   availableChildParameters: CustomParameter[]
   searchTerm?: string
-  sortBy?: 'name' | 'category' | 'type' | 'fixed'
+  sortBy?: 'name' | 'category' | 'type' | 'fixed' | 'group'
   selectedCategories?: string[]
   onUpdate?: (columns: ColumnDef[]) => void
 }
@@ -35,7 +35,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     availableParentParameters,
     availableChildParameters,
     searchTerm = '',
-    sortBy = 'name',
+    sortBy = 'group',
     selectedCategories = [],
     onUpdate
   } = options
@@ -103,6 +103,13 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           return (a.type || 'string').localeCompare(b.type || 'string')
         case 'fixed':
           return (a.isFixed ? 0 : 1) - (b.isFixed ? 0 : 1)
+        case 'group':
+          // Sort by source (group) first, then by header
+          const sourceA = a.source || 'Ungrouped'
+          const sourceB = b.source || 'Ungrouped'
+          return sourceA === sourceB
+            ? a.header.localeCompare(b.header)
+            : sourceA.localeCompare(sourceB)
         default:
           return 0
       }
@@ -116,19 +123,29 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     const groups: Record<string, ColumnDef[]> = {}
 
     processedColumns.value.forEach((col) => {
-      const category = col.category || 'Uncategorized'
-      if (!groups[category]) {
-        groups[category] = []
+      // Use source as group if available, otherwise use category
+      const group = col.source || col.category || 'Ungrouped'
+      if (!groups[group]) {
+        groups[group] = []
       }
-      groups[category].push(col)
+      groups[group].push(col)
     })
 
-    return Object.entries(groups).map(
-      ([category, columns]): ColumnGroup => ({
-        category,
-        columns
+    // Sort groups by name, but keep essential groups at the top
+    return Object.entries(groups)
+      .sort(([a], [b]) => {
+        // Essential groups first
+        if (a === 'Basic' || a === 'essential') return -1
+        if (b === 'Basic' || b === 'essential') return 1
+        // Then sort alphabetically
+        return a.localeCompare(b)
       })
-    )
+      .map(
+        ([group, columns]): ColumnGroup => ({
+          category: group,
+          columns: columns.sort((a, b) => a.header.localeCompare(b.header))
+        })
+      )
   })
 
   // View management
@@ -141,11 +158,12 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     return {
       field: param.field,
       header: param.header,
-      type: 'string',
+      type: param.type || 'string',
       visible: true,
       removable: true,
       order,
       category: param.category || 'Custom Parameters',
+      source: param.source || 'Custom',
       description: param.description,
       isFixed: false
     }
@@ -165,6 +183,12 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           )
           columns.value.push(newColumn)
           columnState.value.pendingChanges.push(operation)
+
+          debug.log('Column added:', {
+            field: newColumn.field,
+            source: newColumn.source,
+            category: newColumn.category
+          })
           break
         }
         case 'remove': {
@@ -172,6 +196,12 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             (col) => col.field !== operation.column.field
           )
           columnState.value.pendingChanges.push(operation)
+
+          debug.log('Column removed:', {
+            field: operation.column.field,
+            source: operation.column.source,
+            category: operation.column.category
+          })
           break
         }
         case 'visibility': {
@@ -182,6 +212,13 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             column.visible = operation.visible
             columnState.value.visibility.set(column.field, operation.visible)
             columnState.value.pendingChanges.push(operation)
+
+            debug.log('Column visibility changed:', {
+              field: column.field,
+              visible: operation.visible,
+              source: column.source,
+              category: column.category
+            })
           }
           break
         }
@@ -189,6 +226,14 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           const [removed] = columns.value.splice(operation.fromIndex, 1)
           columns.value.splice(operation.toIndex, 0, removed)
           columnState.value.pendingChanges.push(operation)
+
+          debug.log('Column reordered:', {
+            field: removed.field,
+            fromIndex: operation.fromIndex,
+            toIndex: operation.toIndex,
+            source: removed.source,
+            category: removed.category
+          })
           break
         }
       }
@@ -197,7 +242,11 @@ export function useColumnManager(options: UseColumnManagerOptions) {
       debug.log('Column operation completed:', {
         operation,
         tableId,
-        currentView: currentView.value
+        currentView: currentView.value,
+        groupCounts: groupedColumns.value.reduce((acc, group) => {
+          acc[group.category] = group.columns.length
+          return acc
+        }, {} as Record<string, number>)
       })
     } finally {
       isUpdating.value = false
@@ -238,8 +287,12 @@ export function useColumnManager(options: UseColumnManagerOptions) {
 
       debug.log('Saved column changes:', {
         tableId,
-        parentColumns: parentColumns.value,
-        childColumns: childColumns.value
+        parentColumns: parentColumns.value.length,
+        childColumns: childColumns.value.length,
+        groupCounts: groupedColumns.value.reduce((acc, group) => {
+          acc[group.category] = group.columns.length
+          return acc
+        }, {} as Record<string, number>)
       })
 
       return {

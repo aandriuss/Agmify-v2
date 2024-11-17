@@ -1,14 +1,9 @@
 import { computed } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
 import type { CustomParameter } from '~/composables/useUserSettings'
+import type { ProcessedHeader } from '../types'
 import { CATEGORY_SETTINGS } from '../config/constants'
-import { debug } from '../utils/debug'
-
-interface ProcessedHeader {
-  field: string
-  header?: string
-  category?: string
-}
+import { debug, DebugCategories } from '../utils/debug'
 
 interface UseScheduleParametersOptions {
   availableHeaders:
@@ -33,12 +28,14 @@ export function useScheduleParameters(options: UseScheduleParametersOptions) {
   function mapHeadersToParameters(headers: ProcessedHeader[]): CustomParameter[] {
     return headers.map((header) => ({
       id: header.field,
-      name: header.field,
+      name: header.header, // Use header for display name
       field: header.field,
       type: 'fixed',
       value: '',
-      header: header.header || header.field,
+      header: header.header,
       category: header.category || CATEGORY_SETTINGS.defaultCategory,
+      source: header.source, // Preserve source group
+      description: header.description,
       removable: true,
       visible: true,
       order: 0
@@ -59,23 +56,100 @@ export function useScheduleParameters(options: UseScheduleParametersOptions) {
     )
   }
 
-  const mergedParentParameters = computed<CustomParameter[]>(() => {
+  // Group parameters by source
+  function groupParametersBySource(
+    parameters: CustomParameter[]
+  ): Record<string, CustomParameter[]> {
+    return parameters.reduce((groups, param) => {
+      const source = param.source || 'Other'
+      if (!groups[source]) {
+        groups[source] = []
+      }
+      groups[source].push(param)
+      return groups
+    }, {} as Record<string, CustomParameter[]>)
+  }
+
+  // Available parameters (without merging with custom parameters)
+  const availableParentParameters = computed<CustomParameter[]>(() => {
     if (isInitialized?.value === false) return []
 
     const mappedHeaders = mapHeadersToParameters(availableHeaders.value.parent)
-    const customParams = customParameters.value
     const filteredHeaders = filterHeadersByCategory(
       mappedHeaders,
       selectedParentCategories.value
     )
 
-    debug.log('Merged parent parameters:', {
+    // Group parameters by source
+    const groupedParameters = groupParametersBySource(filteredHeaders)
+
+    debug.log(DebugCategories.PARAMETERS, 'Available parent parameters:', {
       mappedHeadersCount: mappedHeaders.length,
-      customParamsCount: customParams.length,
-      filteredHeadersCount: filteredHeaders.length
+      filteredHeadersCount: filteredHeaders.length,
+      groups: Object.keys(groupedParameters),
+      parametersByGroup: Object.fromEntries(
+        Object.entries(groupedParameters).map(([group, params]) => [
+          group,
+          params.length
+        ])
+      )
     })
 
-    return [...filteredHeaders, ...customParams].map((param, index) => ({
+    // Return flattened grouped parameters
+    return Object.values(groupedParameters)
+      .flat()
+      .map((param, index) => ({
+        ...param,
+        order: index
+      }))
+  })
+
+  const availableChildParameters = computed<CustomParameter[]>(() => {
+    if (isInitialized?.value === false) return []
+
+    const mappedHeaders = mapHeadersToParameters(availableHeaders.value.child)
+    const filteredHeaders = filterHeadersByCategory(
+      mappedHeaders,
+      selectedChildCategories.value
+    )
+
+    // Group parameters by source
+    const groupedParameters = groupParametersBySource(filteredHeaders)
+
+    debug.log(DebugCategories.PARAMETERS, 'Available child parameters:', {
+      mappedHeadersCount: mappedHeaders.length,
+      filteredHeadersCount: filteredHeaders.length,
+      groups: Object.keys(groupedParameters),
+      parametersByGroup: Object.fromEntries(
+        Object.entries(groupedParameters).map(([group, params]) => [
+          group,
+          params.length
+        ])
+      )
+    })
+
+    // Return flattened grouped parameters
+    return Object.values(groupedParameters)
+      .flat()
+      .map((param, index) => ({
+        ...param,
+        order: index
+      }))
+  })
+
+  // Merged parameters (including custom parameters)
+  const mergedParentParameters = computed<CustomParameter[]>(() => {
+    if (isInitialized?.value === false) return []
+
+    const available = availableParentParameters.value
+    const custom = customParameters.value
+
+    debug.log(DebugCategories.PARAMETERS, 'Merged parent parameters:', {
+      availableCount: available.length,
+      customCount: custom.length
+    })
+
+    return [...available, ...custom].map((param, index) => ({
       ...param,
       order: index
     }))
@@ -84,26 +158,25 @@ export function useScheduleParameters(options: UseScheduleParametersOptions) {
   const mergedChildParameters = computed<CustomParameter[]>(() => {
     if (isInitialized?.value === false) return []
 
-    const mappedHeaders = mapHeadersToParameters(availableHeaders.value.child)
-    const customParams = customParameters.value
-    const filteredHeaders = filterHeadersByCategory(
-      mappedHeaders,
-      selectedChildCategories.value
-    )
+    const available = availableChildParameters.value
+    const custom = customParameters.value
 
-    debug.log('Merged child parameters:', {
-      mappedHeadersCount: mappedHeaders.length,
-      customParamsCount: customParams.length,
-      filteredHeadersCount: filteredHeaders.length
+    debug.log(DebugCategories.PARAMETERS, 'Merged child parameters:', {
+      availableCount: available.length,
+      customCount: custom.length
     })
 
-    return [...filteredHeaders, ...customParams].map((param, index) => ({
+    return [...available, ...custom].map((param, index) => ({
       ...param,
       order: index
     }))
   })
 
   return {
+    // Available parameters (without custom parameters)
+    availableParentParameters,
+    availableChildParameters,
+    // Merged parameters (with custom parameters)
     mergedParentParameters,
     mergedChildParameters
   }

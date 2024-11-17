@@ -11,12 +11,14 @@ import { debug, DebugCategories } from '../utils/debug'
 import { processDataPipeline, processDebugElements } from '../utils/dataPipeline'
 import { useBIMElements } from './useBIMElements'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
+import type { ViewerState } from './useScheduleSetup'
 
 interface ScheduleStateOptions {
   allElements?: Ref<ElementData[] | null>
   selectedParentCategories?: Ref<string[]>
   selectedChildCategories?: Ref<string[]>
   currentTable?: Ref<{ parentColumns?: ColumnDef[]; childColumns?: ColumnDef[] } | null>
+  viewerState: ViewerState
 }
 
 interface ScheduleStateReturn {
@@ -63,15 +65,13 @@ interface ScheduleStateReturn {
 /**
  * Manages reactive state for schedule data
  */
-export function useScheduleState(
-  options: ScheduleStateOptions = {}
-): ScheduleStateReturn {
+export function useScheduleState(options: ScheduleStateOptions): ScheduleStateReturn {
   // Get BIM elements if not provided
   const {
     allElements: bimElements,
     isLoading: bimLoading,
     hasError: bimError
-  } = useBIMElements()
+  } = useBIMElements(options.viewerState)
 
   const allElements = options.allElements || bimElements
   const selectedParentCategories = options.selectedParentCategories || ref<string[]>([])
@@ -232,7 +232,7 @@ export function useScheduleState(
 
         // Update state with essential data
         state.scheduleData = essentialResult.processedElements
-        state.tableData = essentialResult.tableData // Added this line
+        state.tableData = essentialResult.tableData
         state.parameterColumns = [
           ...defaultColumns,
           ...essentialResult.parameterColumns.filter(
@@ -255,7 +255,7 @@ export function useScheduleState(
 
             // Update state with full data
             state.scheduleData = fullResult.processedElements
-            state.tableData = fullResult.tableData // Added this line
+            state.tableData = fullResult.tableData
             state.parameterColumns = [
               ...defaultColumns,
               ...fullResult.parameterColumns.filter(
@@ -266,7 +266,7 @@ export function useScheduleState(
 
             debug.log(DebugCategories.DATA, 'Full data processing complete', {
               dataCount: state.scheduleData.length,
-              tableRows: state.tableData.length, // Added this line
+              tableRows: state.tableData.length,
               columnCount: state.parameterColumns.length,
               headers: {
                 parent: state.availableHeaders.parent.length,
@@ -329,4 +329,19 @@ export function useScheduleState(
     matchedElements,
     orphanedElements
   }
+}
+
+// Export a function to create an instance
+export function createScheduleState(
+  selectedParentCategories: Ref<string[]>,
+  selectedChildCategories: Ref<string[]>,
+  currentTable: Ref<{ parentColumns?: ColumnDef[]; childColumns?: ColumnDef[] } | null>,
+  viewerState: ViewerState
+) {
+  return useScheduleState({
+    selectedParentCategories,
+    selectedChildCategories,
+    currentTable,
+    viewerState
+  })
 }
