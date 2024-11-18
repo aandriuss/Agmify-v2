@@ -78,23 +78,23 @@ export function useElementsData({
           selectedChildCategories: childCats
         })
 
-        // Step 1: Process parameters from all elements
-        const { processedElements, parameterColumns, availableHeaders } =
-          await processParameters({
-            filteredElements: toMutable(elements)
-          })
-
-        // Step 2: Filter elements based on categories
+        // Step 1: Filter elements based on categories FIRST
         const { filteredElements } = filterElements({
-          allElements: toMutable(processedElements),
+          allElements: toMutable(elements),
           selectedParent: parentCats,
           selectedChild: childCats
         })
 
-        filteredElementsRef.value = toMutable(filteredElements)
+        // Step 2: Process parameters ONLY from filtered elements
+        const { processedElements, parameterColumns, availableHeaders } =
+          await processParameters({
+            filteredElements: toMutable(filteredElements)
+          })
+
+        filteredElementsRef.value = toMutable(processedElements)
 
         // Step 3: Update store with processed data
-        await store.setScheduleData(toMutable(filteredElements))
+        await store.setScheduleData(toMutable(processedElements))
         await store.setParameterColumns([
           ...defaultColumns,
           ...toMutable(parameterColumns).filter(
@@ -103,7 +103,7 @@ export function useElementsData({
         ])
 
         // Step 4: Transform to table data
-        const tableData = filteredElements.map((element) => ({
+        const tableData = processedElements.map((element) => ({
           id: element.id,
           mark: element.mark,
           category: element.category,

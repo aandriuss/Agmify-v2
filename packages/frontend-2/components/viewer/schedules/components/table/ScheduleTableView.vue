@@ -29,7 +29,7 @@
 
     <!-- Data Table -->
     <DataTable
-      v-if="props.tableData.length > 0 && !props.isLoading"
+      v-else-if="canShowTable"
       :key="`${props.tableKey}-${props.tableData.length}`"
       :table-id="props.currentTableId"
       :table-name="props.tableName"
@@ -105,13 +105,13 @@
 
           <div class="mt-6 flex justify-center space-x-4">
             <button
-              class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              class="px-4 py-2 bg-blue-500 text-white rounded hover-bg-blue-600"
               @click="toggleDebug"
             >
               Show Debug Panel
             </button>
             <button
-              class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+              class="px-4 py-2 bg-green-500 text-white rounded hover-bg-green-600"
               @click="retryLoading"
             >
               Retry Loading
@@ -124,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import DataTable from '../../../components/tables/DataTable/index.vue'
 import type { ColumnDef } from '../../../components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '../../../../../composables/useUserSettings'
@@ -178,6 +178,34 @@ const emit = defineEmits<{
 // Debug state
 const showDebug = ref(false)
 const debugFilter = ref('')
+
+// Can show table with more detailed error tracking
+const canShowTable = computed(() => {
+  const hasData = props.tableData.length > 0
+  const hasColumns = props.mergedTableColumns.length > 0
+  const hasVisibleColumns = props.mergedTableColumns.some((col) => col.visible)
+  const hasVisibleRows = props.tableData.some((row) => row._visible !== false)
+
+  const canShow = hasData && hasColumns && hasVisibleColumns && hasVisibleRows
+
+  // Enhanced debug logging with more details
+  debug.log(DebugCategories.STATE, 'Table display checks:', {
+    hasData,
+    hasColumns,
+    hasVisibleColumns,
+    hasVisibleRows,
+    canShow,
+    dataCount: props.tableData.length,
+    columnsCount: props.mergedTableColumns.length,
+    visibleColumnsCount: props.mergedTableColumns.filter((col) => col.visible).length,
+    visibleRowsCount: props.tableData.filter((row) => row._visible !== false).length,
+    currentTableId: props.currentTableId,
+    tableName: props.tableName,
+    isInitialized: props.isInitialized
+  })
+
+  return canShow
+})
 
 // Event handlers
 const handleBothColumnsUpdate = (updates: {
