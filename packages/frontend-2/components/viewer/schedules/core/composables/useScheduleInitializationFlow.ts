@@ -56,16 +56,30 @@ export function useScheduleInitializationFlow(): InitializationFlow {
     settings: null
   })
 
-  // Project ID validation
+  // Project ID validation - prioritize viewer state
   const projectId = computed(() => {
+    // First try to get project ID from viewer state
+    if (viewerState.projectId?.value) {
+      debug.log(
+        DebugCategories.INITIALIZATION,
+        'Using project ID from viewer state:',
+        viewerState.projectId.value
+      )
+      return viewerState.projectId.value
+    }
+
+    // Fallback to route if needed
     const fullPath = route.fullPath
     const match = fullPath.match(/\/projects\/([^/]+)/)
     const id = match ? match[1] : route.params.projectId
-    debug.log(DebugCategories.INITIALIZATION, 'Route params:', {
-      params: route.params,
-      fullPath: route.fullPath,
-      id
+
+    debug.log(DebugCategories.INITIALIZATION, 'Project ID resolution:', {
+      fromViewer: viewerState.projectId?.value,
+      fromRoute: id,
+      routeParams: route.params,
+      fullPath: route.fullPath
     })
+
     return typeof id === 'string' && id ? id : null
   })
 
@@ -99,7 +113,7 @@ export function useScheduleInitializationFlow(): InitializationFlow {
     }
 
     try {
-      // Wait for viewer initialization
+      // Wait for viewer initialization first
       await viewerState.viewer.init.promise
 
       // Validate store
@@ -107,11 +121,13 @@ export function useScheduleInitializationFlow(): InitializationFlow {
 
       // Initialize store with project ID
       store.setProjectId(projectId.value)
-      await store.lifecycle.init()
 
-      // Load settings after core initialization
+      // Load settings before store initialization
       const settings = await initializeSettings()
       state.value.settings = settings
+
+      // Initialize store lifecycle
+      await store.lifecycle.init()
 
       // Update state
       state.value.projectId = projectId.value
@@ -120,7 +136,9 @@ export function useScheduleInitializationFlow(): InitializationFlow {
 
       debug.log(DebugCategories.INITIALIZATION, 'Core initialization complete', {
         projectId: projectId.value,
-        hasSettings: !!settings
+        hasSettings: !!settings,
+        viewerReady: !!viewerState?.viewer?.instance,
+        storeInitialized: store.initialized.value
       })
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
@@ -131,7 +149,10 @@ export function useScheduleInitializationFlow(): InitializationFlow {
 
   // Main initialization flow with retry logic
   async function initialize(): Promise<void> {
-    if (state.value.isLoading) return
+    if (state.value.isLoading) {
+      debug.log(DebugCategories.INITIALIZATION, 'Initialization already in progress')
+      return
+    }
 
     try {
       state.value.isLoading = true
@@ -139,7 +160,9 @@ export function useScheduleInitializationFlow(): InitializationFlow {
 
       debug.startState('scheduleInitialization')
       debug.log(DebugCategories.INITIALIZATION, 'Starting initialization flow', {
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        projectId: projectId.value,
+        viewerState: !!viewerState?.viewer?.instance
       })
 
       await initializeCore()
@@ -151,6 +174,7 @@ export function useScheduleInitializationFlow(): InitializationFlow {
       state.value.error = error
       state.value.isInitialized = false
       debug.error(DebugCategories.ERROR, 'Initialization failed:', error)
+      throw error
     } finally {
       state.value.isLoading = false
     }

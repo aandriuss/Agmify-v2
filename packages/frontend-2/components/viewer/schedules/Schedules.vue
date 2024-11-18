@@ -185,7 +185,7 @@ import { useScheduleEmits } from './composables/useScheduleEmits'
 import { useElementsData } from './composables/useElementsData'
 import { useScheduleState } from './composables/useScheduleState'
 import { parentCategories, childCategories } from './config/categories'
-import scheduleStore, { initializeStore } from './composables/useScheduleStore'
+import scheduleStore from './composables/useScheduleStore'
 import { defaultTable } from './config/defaultColumns'
 
 // Types
@@ -314,6 +314,17 @@ const availableChildParameters = computed(() => {
     }))
 })
 
+// Debounced store initialization
+const debouncedInit = (() => {
+  let timeout: NodeJS.Timeout | null = null
+  return () => {
+    if (timeout) clearTimeout(timeout)
+    timeout = setTimeout(() => {
+      scheduleStore.lifecycle.init().catch(handleError)
+    }, 100)
+  }
+})()
+
 // Initialize setup instance
 onMounted(async () => {
   try {
@@ -353,60 +364,33 @@ function handleDataInitialized() {
   debug.log(DebugCategories.INITIALIZATION, 'Data initialized')
 }
 
+// Update handlers now use debounced store initialization
 function handleTableDataUpdate() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleParameterColumnsUpdate() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleEvaluatedDataUpdate() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleMergedParentParametersUpdate() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleMergedChildParametersUpdate() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleMergedTableColumnsUpdate() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleMergedDetailColumnsUpdate() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleSelectedTableIdUpdate(value: string) {
@@ -426,40 +410,24 @@ function handleTableNameUpdate(value: string) {
 }
 
 function handleColumnVisibilityChange() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleColumnOrderChange() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleParameterVisibility() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 function handleParameterOrder() {
-  try {
-    scheduleStore.lifecycle.init()
-  } catch (err) {
-    handleError(err)
-  }
+  debouncedInit()
 }
 
 async function handleParameterUpdate() {
   try {
-    await scheduleStore.lifecycle.init()
+    await debouncedInit()
     showParameterManager.value = false
   } catch (err) {
     handleError(err)
@@ -468,7 +436,7 @@ async function handleParameterUpdate() {
 
 async function handleTableChange() {
   try {
-    await scheduleStore.lifecycle.init()
+    await debouncedInit()
   } catch (err) {
     handleError(err)
   }
@@ -476,7 +444,7 @@ async function handleTableChange() {
 
 async function handleSaveTable() {
   try {
-    await scheduleStore.lifecycle.init()
+    await debouncedInit()
   } catch (err) {
     handleError(err)
   }
@@ -488,7 +456,7 @@ async function handleBothColumnsUpdate(
 ) {
   try {
     await scheduleStore.setMergedColumns(tableColumns, detailColumns)
-    await scheduleStore.lifecycle.init()
+    await debouncedInit()
   } catch (err) {
     handleError(err)
   }
@@ -520,6 +488,16 @@ async function handleRetry() {
   await retry()
 }
 
+// Reset state
+function resetState() {
+  initialized.value = false
+  error.value = null
+  selectedParentCategories.value = defaultTable.categoryFilters.selectedParentCategories
+  selectedChildCategories.value = defaultTable.categoryFilters.selectedChildCategories
+  showCategoryOptions.value = false
+  showParameterManager.value = false
+}
+
 // Watch for project ID changes
 watch(
   () => viewerState.projectId.value,
@@ -528,8 +506,11 @@ watch(
 
     debug.log(DebugCategories.INITIALIZATION, 'Project ID changed:', newId)
     try {
-      initialized.value = false
-      error.value = null
+      // Reset state first
+      await resetState()
+
+      // Clean up previous state
+      await cleanup()
 
       // Re-initialize everything through the flow
       await initialize()

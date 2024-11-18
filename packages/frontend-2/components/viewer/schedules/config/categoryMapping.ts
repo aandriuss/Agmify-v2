@@ -1,4 +1,5 @@
 import { parentCategories, childCategories } from './categories'
+import { debug, DebugCategories } from '../utils/debug'
 
 /**
  * Maps UI category names to their corresponding IFC type patterns
@@ -48,18 +49,37 @@ export function getTypePatterns(category: string): string[] {
  * Check if a speckle type matches any of the patterns for a given category
  */
 export function matchesCategory(speckleType: string, category: string): boolean {
-  // Special case for Uncategorized - it matches when no other category matches
-  if (category === 'Uncategorized') {
-    return !Object.entries(categoryToTypeMapping)
-      .filter(([cat]) => cat !== 'Uncategorized')
-      .some(([_, patterns]) =>
-        patterns.some((pattern) => speckleType.toLowerCase().includes(pattern))
-      )
+  const lowercaseType = speckleType.toLowerCase()
+
+  // First check if it matches any child category patterns
+  if (childCategories.includes(category)) {
+    const patterns = getTypePatterns(category)
+    return patterns.some((pattern) => lowercaseType.includes(pattern))
   }
 
-  const patterns = getTypePatterns(category)
-  const lowercaseType = speckleType.toLowerCase()
-  return patterns.some((pattern) => lowercaseType.includes(pattern))
+  // For parent categories, check if it matches any patterns
+  if (parentCategories.includes(category)) {
+    if (category === 'Uncategorized') {
+      // Only mark as Uncategorized if it doesn't match any child category
+      const matchesAnyChild = childCategories.some((childCat) =>
+        getTypePatterns(childCat).some((pattern) => lowercaseType.includes(pattern))
+      )
+      if (matchesAnyChild) return false
+
+      // And doesn't match any other parent category
+      const matchesOtherParent = parentCategories
+        .filter((cat) => cat !== 'Uncategorized')
+        .some((parentCat) =>
+          getTypePatterns(parentCat).some((pattern) => lowercaseType.includes(pattern))
+        )
+      return !matchesOtherParent
+    }
+
+    const patterns = getTypePatterns(category)
+    return patterns.some((pattern) => lowercaseType.includes(pattern))
+  }
+
+  return false
 }
 
 /**
@@ -71,22 +91,49 @@ export function findMatchingCategories(speckleType: string): {
 } {
   const lowercaseType = speckleType.toLowerCase()
 
-  // Find matching categories
-  const matched = {
-    parentCategories: parentCategories.filter((category) =>
-      getTypePatterns(category).some((pattern) => lowercaseType.includes(pattern))
-    ),
-    childCategories: childCategories.filter((category) =>
+  // Check child categories first
+  const matchedChildren = childCategories.filter((category) =>
+    getTypePatterns(category).some((pattern) => lowercaseType.includes(pattern))
+  )
+
+  // If we found child categories, don't look for parent categories
+  if (matchedChildren.length > 0) {
+    debug.log(DebugCategories.CATEGORIES, 'Found child categories:', {
+      speckleType,
+      categories: matchedChildren
+    })
+    return {
+      parentCategories: [],
+      childCategories: matchedChildren
+    }
+  }
+
+  // Look for parent categories
+  const matchedParents = parentCategories
+    .filter((category) => category !== 'Uncategorized')
+    .filter((category) =>
       getTypePatterns(category).some((pattern) => lowercaseType.includes(pattern))
     )
-  }
 
   // If no matches found, add to Uncategorized
-  if (matched.parentCategories.length === 0 && matched.childCategories.length === 0) {
-    matched.parentCategories.push('Uncategorized')
+  if (matchedParents.length === 0) {
+    debug.log(DebugCategories.CATEGORIES, 'No matches found, using Uncategorized:', {
+      speckleType
+    })
+    return {
+      parentCategories: ['Uncategorized'],
+      childCategories: []
+    }
   }
 
-  return matched
+  debug.log(DebugCategories.CATEGORIES, 'Found parent categories:', {
+    speckleType,
+    categories: matchedParents
+  })
+  return {
+    parentCategories: matchedParents,
+    childCategories: []
+  }
 }
 
 /**
@@ -98,8 +145,13 @@ export function getMostSpecificCategory(speckleType: string): string {
     findMatchingCategories(speckleType)
 
   // Prefer child categories as they are more specific
-  if (matchedChildren.length > 0) return matchedChildren[0]
-  if (matchedParents.length > 0) return matchedParents[0]
+  if (matchedChildren.length > 0) {
+    return matchedChildren[0]
+  }
+
+  if (matchedParents.length > 0) {
+    return matchedParents[0]
+  }
 
   // Always return Uncategorized as fallback instead of null
   return 'Uncategorized'

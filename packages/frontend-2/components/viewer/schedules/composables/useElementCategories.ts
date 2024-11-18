@@ -18,22 +18,22 @@ function determineElementType(
   selectedParent: string[],
   selectedChild: string[]
 ): 'parent' | 'child' {
-  // If no categories are selected, treat all elements as parents
-  if (selectedParent.length === 0 && selectedChild.length === 0) {
-    return 'parent'
-  }
-
   // Check if element's category is in parent or child categories
   const isParentCategory = parentCategories.includes(element.category)
   const isChildCategory = childCategories.includes(element.category)
+
+  // If element's category is in child categories, treat as child
+  if (isChildCategory) {
+    return 'child'
+  }
 
   // If element's category is in parent categories or is Uncategorized, treat as parent
   if (isParentCategory || element.category === 'Uncategorized') {
     return 'parent'
   }
 
-  // If element's category is in child categories, treat as child
-  if (isChildCategory) {
+  // If no specific category match, check selected categories
+  if (selectedChild.includes(element.category)) {
     return 'child'
   }
 
@@ -54,72 +54,114 @@ export function filterElements({
     totalElements: allElements.length,
     selectedParent,
     selectedChild,
-    essentialFieldsOnly
+    essentialFieldsOnly,
+    categories: [...new Set(allElements.map((el) => el.category))]
   })
 
-  // Create a map of parent marks for quick lookup
-  const parentMarkMap = new Map<string, ElementData>()
+  // First pass: Identify potential parents and children
+  const parents: ElementData[] = []
+  const children: ElementData[] = []
+
   allElements.forEach((element) => {
-    if (
-      element.mark &&
-      determineElementType(element, selectedParent, selectedChild) === 'parent'
-    ) {
-      parentMarkMap.set(element.mark, element)
-    }
-  })
-
-  // Flatten all elements and mark them based on selected categories
-  const flattenedElements = allElements.reduce<ElementData[]>((acc, element) => {
     const elementType = determineElementType(element, selectedParent, selectedChild)
     const isParent = elementType === 'parent'
 
-    // Add the main element if it matches the selected categories
-    if (
-      (isParent &&
-        (selectedParent.length === 0 || selectedParent.includes(element.category))) ||
-      (!isParent &&
-        (selectedChild.length === 0 || selectedChild.includes(element.category)))
-    ) {
-      acc.push({
-        ...element,
-        isChild: !isParent,
-        _visible: true
-      })
+    // Check if element matches selected categories
+    const matchesSelectedCategories = isParent
+      ? selectedParent.length === 0 || selectedParent.includes(element.category)
+      : selectedChild.length === 0 || selectedChild.includes(element.category)
+
+    if (matchesSelectedCategories) {
+      if (isParent) {
+        parents.push({
+          ...element,
+          isChild: false,
+          _visible: true
+        })
+      } else {
+        children.push({
+          ...element,
+          isChild: true,
+          _visible: true
+        })
+      }
     }
 
-    // Add details as separate elements if they match categories
+    // Process details
     element.details?.forEach((detail) => {
       const detailType = determineElementType(detail, selectedParent, selectedChild)
       const isDetailParent = detailType === 'parent'
 
-      if (
-        (isDetailParent &&
-          (selectedParent.length === 0 || selectedParent.includes(detail.category))) ||
-        (!isDetailParent &&
-          (selectedChild.length === 0 || selectedChild.includes(detail.category)))
-      ) {
-        acc.push({
-          ...detail,
-          host: detail.host || element.mark, // Ensure host is set
-          isChild: !isDetailParent,
-          _visible: true
-        })
+      // Check if detail matches selected categories
+      const detailMatchesCategories = isDetailParent
+        ? selectedParent.length === 0 || selectedParent.includes(detail.category)
+        : selectedChild.length === 0 || selectedChild.includes(detail.category)
+
+      if (detailMatchesCategories) {
+        if (isDetailParent) {
+          parents.push({
+            ...detail,
+            host: detail.host || element.mark,
+            isChild: false,
+            _visible: true
+          })
+        } else {
+          children.push({
+            ...detail,
+            host: detail.host || element.mark,
+            isChild: true,
+            _visible: true
+          })
+        }
       }
     })
-
-    return acc
-  }, [])
-
-  // Filter out child elements that don't have a valid parent
-  const validElements = flattenedElements.filter((element) => {
-    if (element.isChild) {
-      return element.host && parentMarkMap.has(element.host)
-    }
-    return true
   })
 
+  // Create a map of parent marks
+  const parentMarkMap = new Map<string, ElementData>()
+  parents.forEach((parent) => {
+    if (parent.mark) {
+      parentMarkMap.set(parent.mark, parent)
+    }
+  })
+
+  // Create "Without Host" parent if needed
+  const withoutHostParent: ElementData = {
+    id: 'without-host',
+    mark: 'Without Host',
+    category: 'Uncategorized',
+    type: 'group',
+    parameters: {},
+    details: [],
+    isChild: false,
+    _visible: true
+  }
+
+  // Second pass: Match children to parents or assign to "Without Host"
+  const orphanedChildren: ElementData[] = []
+  const matchedChildren: ElementData[] = []
+
+  children.forEach((child) => {
+    if (child.host && parentMarkMap.has(child.host)) {
+      matchedChildren.push(child)
+    } else {
+      // Assign to "Without Host" parent
+      orphanedChildren.push({
+        ...child,
+        host: withoutHostParent.mark
+      })
+    }
+  })
+
+  // Add "Without Host" parent only if there are orphaned children
+  const finalElements = [...parents]
+  if (orphanedChildren.length > 0) {
+    finalElements.push(withoutHostParent)
+  }
+  finalElements.push(...matchedChildren, ...orphanedChildren)
+
   // When essentialFieldsOnly is true, only include necessary fields
-  const filteredElements = validElements.map((element) =>
+  const filteredElements = finalElements.map((element) =>
     essentialFieldsOnly
       ? {
           id: element.id,
@@ -133,15 +175,28 @@ export function filterElements({
       : element
   )
 
+  // Log detailed filtering results
+  const parentCount = filteredElements.filter((el) => !el.isChild).length
+  const childCount = filteredElements.filter((el) => el.isChild).length
+  const categories = [...new Set(filteredElements.map((el) => el.category))]
+
   debug.log(DebugCategories.CATEGORIES, 'Elements filtered', {
     totalElements: allElements.length,
     filteredCount: filteredElements.length,
     selectedParent,
     selectedChild,
     essentialFieldsOnly,
-    filteredCategories: [...new Set(filteredElements.map((el) => el.category))],
-    parentCount: filteredElements.filter((el) => !el.isChild).length,
-    childCount: filteredElements.filter((el) => el.isChild).length
+    filteredCategories: categories,
+    parentCount,
+    childCount,
+    orphanedCount: orphanedChildren.length,
+    matchedCount: matchedChildren.length,
+    categoryBreakdown: categories.map((cat) => ({
+      category: cat,
+      count: filteredElements.filter((el) => el.category === cat).length,
+      isParent: parentCategories.includes(cat),
+      isChild: childCategories.includes(cat)
+    }))
   })
 
   return {

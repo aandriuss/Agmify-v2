@@ -24,6 +24,22 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
     return true
   }
 
+  // Helper to ensure atomic updates
+  const atomicUpdate = <T>(operation: string, update: () => T): T | undefined => {
+    if (!validateProjectId(operation)) return
+
+    try {
+      state.value.loading = true
+      const result = update()
+      return result
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, `${operation} failed:`, error)
+      throw error
+    } finally {
+      state.value.loading = false
+    }
+  }
+
   return {
     // Core mutations
     setProjectId: (id: string | null) => {
@@ -31,58 +47,58 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
       state.value.projectId = id
     },
     setScheduleData: (data: ElementData[]) => {
-      if (validateProjectId('set schedule data')) {
+      atomicUpdate('set schedule data', () => {
         state.value.scheduleData = data
-      }
+      })
     },
     setEvaluatedData: (data: ElementData[]) => {
-      if (validateProjectId('set evaluated data')) {
+      atomicUpdate('set evaluated data', () => {
         state.value.evaluatedData = data
-      }
+      })
     },
     setTableData: (data: TableRowData[]) => {
-      if (validateProjectId('set table data')) {
+      atomicUpdate('set table data', () => {
         state.value.tableData = data
-      }
+      })
     },
 
     // Parameter mutations
     setCustomParameters: (params: CustomParameter[]) => {
-      if (validateProjectId('set parameters')) {
+      atomicUpdate('set parameters', () => {
         state.value.customParameters = params
-      }
+      })
     },
     setParameterColumns: (columns: ColumnDef[]) => {
-      if (validateProjectId('set parameter columns')) {
+      atomicUpdate('set parameter columns', () => {
         state.value.parameterColumns = columns
-      }
+      })
     },
     setMergedParameters: (parent: CustomParameter[], child: CustomParameter[]) => {
-      if (validateProjectId('set merged parameters')) {
+      atomicUpdate('set merged parameters', () => {
         state.value.mergedParentParameters = parent
         state.value.mergedChildParameters = child
-      }
+      })
     },
     setProcessedParameters: (params: Record<string, unknown>) => {
-      if (validateProjectId('set processed parameters')) {
+      atomicUpdate('set processed parameters', () => {
         state.value.processedParameters = params
-      }
+      })
     },
     setParameterDefinitions: (defs: Record<string, unknown>) => {
-      if (validateProjectId('set parameter definitions')) {
+      atomicUpdate('set parameter definitions', () => {
         state.value.parameterDefinitions = defs
-      }
+      })
     },
     setParameterVisibility: (parameterId: string, visible: boolean) => {
-      if (validateProjectId('set parameter visibility')) {
+      atomicUpdate('set parameter visibility', () => {
         const params = state.value.customParameters.map((p) =>
           p.id === parameterId ? { ...p, visible } : p
         )
         state.value.customParameters = params
-      }
+      })
     },
     setParameterOrder: (parameterId: string, newIndex: number) => {
-      if (validateProjectId('set parameter order')) {
+      atomicUpdate('set parameter order', () => {
         const params = [...state.value.customParameters]
         const currentIndex = params.findIndex((p) => p.id === parameterId)
         if (currentIndex !== -1) {
@@ -90,24 +106,24 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
           params.splice(newIndex, 0, param)
           state.value.customParameters = params
         }
-      }
+      })
     },
 
     // Column mutations
     setCurrentColumns: (table: ColumnDef[], detail: ColumnDef[]) => {
-      if (validateProjectId('set current columns')) {
+      atomicUpdate('set current columns', () => {
         state.value.currentTableColumns = table
         state.value.currentDetailColumns = detail
-      }
+      })
     },
     setMergedColumns: (table: ColumnDef[], detail: ColumnDef[]) => {
-      if (validateProjectId('set merged columns')) {
+      atomicUpdate('set merged columns', () => {
         state.value.mergedTableColumns = table
         state.value.mergedDetailColumns = detail
-      }
+      })
     },
     setColumnVisibility: (columnId: string, visible: boolean) => {
-      if (validateProjectId('set column visibility')) {
+      atomicUpdate('set column visibility', () => {
         const updateColumns = (columns: ColumnDef[]) =>
           columns.map((c) => (c.field === columnId ? { ...c, visible } : c))
 
@@ -115,10 +131,10 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
         state.value.currentDetailColumns = updateColumns(
           state.value.currentDetailColumns
         )
-      }
+      })
     },
     setColumnOrder: (columnId: string, newIndex: number) => {
-      if (validateProjectId('set column order')) {
+      atomicUpdate('set column order', () => {
         const reorderColumns = (columns: ColumnDef[]) => {
           const currentIndex = columns.findIndex((c) => c.field === columnId)
           if (currentIndex !== -1) {
@@ -136,24 +152,24 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
         state.value.currentDetailColumns = reorderColumns(
           state.value.currentDetailColumns
         )
-      }
+      })
     },
 
     // Category mutations
     setSelectedCategories: (categories: Set<string>) => {
-      if (validateProjectId('set selected categories')) {
+      atomicUpdate('set selected categories', () => {
         state.value.selectedCategories = categories
-      }
+      })
     },
     setParentCategories: (categories: string[]) => {
-      if (validateProjectId('set parent categories')) {
+      atomicUpdate('set parent categories', () => {
         state.value.selectedParentCategories = categories
-      }
+      })
     },
     setChildCategories: (categories: string[]) => {
-      if (validateProjectId('set child categories')) {
+      atomicUpdate('set child categories', () => {
         state.value.selectedChildCategories = categories
-      }
+      })
     },
 
     // Table mutations
@@ -171,20 +187,20 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
 
     // Element mutations
     setElementVisibility: (elementId: string, visible: boolean) => {
-      if (validateProjectId('set element visibility')) {
+      atomicUpdate('set element visibility', () => {
         state.value.scheduleData = state.value.scheduleData.map((element) =>
           'id' in element && element.id === elementId
             ? { ...element, visible }
             : element
         )
-      }
+      })
     },
 
     // Header mutations
     setAvailableHeaders: (headers) => {
-      if (validateProjectId('set available headers')) {
+      atomicUpdate('set available headers', () => {
         state.value.availableHeaders = headers
-      }
+      })
     },
 
     // Status mutations
@@ -200,15 +216,31 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
 
     // Data processing
     processData: async () => {
-      if (validateProjectId('process data')) {
-        debug.log(DebugCategories.DATA, 'Processing data')
-        try {
-          await Promise.resolve() // Placeholder for actual processing
-        } catch (error) {
-          debug.error(DebugCategories.ERROR, 'Data processing failed:', error)
-          throw error
+      await atomicUpdate('process data', () => {
+        debug.log(DebugCategories.DATA, 'Processing data', {
+          scheduleDataLength: state.value.scheduleData.length,
+          evaluatedDataLength: state.value.evaluatedData.length,
+          tableDataLength: state.value.tableData.length,
+          parameterColumnsLength: state.value.parameterColumns.length
+        })
+
+        // Ensure all required data is present
+        if (!state.value.scheduleData.length) {
+          debug.warn(DebugCategories.DATA, 'No schedule data to process')
+          return
         }
-      }
+
+        // Process parameters if needed
+        if (state.value.customParameters.length > 0) {
+          debug.log(DebugCategories.DATA, 'Processing parameters', {
+            customParametersLength: state.value.customParameters.length
+          })
+          // Parameter processing logic would go here
+        }
+
+        // Update processed state
+        state.value.initialized = true
+      })
     },
 
     // Reset

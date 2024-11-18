@@ -11,7 +11,7 @@
 
     <!-- Loading State -->
     <ScheduleLoadingState
-      v-if="isLoading && !tableData.length"
+      v-if="isLoading && !hasData"
       :loading-message="'Loading schedule data...'"
       :loading-detail="'Please wait while we prepare your data'"
       :current-step="1"
@@ -30,7 +30,7 @@
     <!-- Data Table -->
     <DataTable
       v-if="canShowTable"
-      :key="`${tableKey}-${tableData.length}`"
+      :key="`${tableKey}-${tableData.length}-${effectiveTableColumns.length}`"
       :table-id="currentTableId"
       :table-name="tableName"
       :data="tableData"
@@ -43,6 +43,24 @@
       @table-updated="handleTableUpdate"
       @column-visibility-change="handleColumnVisibilityChange"
     />
+
+    <!-- No Data Message -->
+    <div v-else-if="!isLoading && hasData && !canShowTable" class="p-4">
+      <div class="text-center">
+        <div class="text-lg font-semibold mb-2">
+          Data is available but cannot be displayed
+        </div>
+        <div class="text-sm text-gray-500">
+          {{ getDisplayError }}
+        </div>
+        <button
+          class="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          @click="toggleDebug"
+        >
+          Show Debug Panel
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -119,52 +137,41 @@ const {
   isInitialized: computed(() => props.isInitialized)
 })
 
-// Can show table
+// Data availability checks
+const hasData = computed(() => props.tableData.length > 0)
+const hasColumns = computed(() => effectiveTableColumns.value.length > 0)
+const isStillLoading = computed(() => props.isLoading && !hasData.value)
+
+// Can show table with more detailed error tracking
 const canShowTable = computed(() => {
-  // Check initialization first
-  if (!props.isInitialized) {
-    debug.log(DebugCategories.STATE, 'Table not initialized')
-    return false
-  }
-
-  // Check for data
-  const hasData = props.tableData.length > 0
-  if (!hasData) {
-    debug.log(DebugCategories.STATE, 'No table data available')
-    return false
-  }
-
-  // Check for columns
-  const hasColumns = effectiveTableColumns.value.length > 0
-  if (!hasColumns) {
-    debug.log(DebugCategories.STATE, 'No columns available')
-    return false
-  }
-
-  // Check loading state
-  const isStillLoading = props.isLoading && !hasData
-  if (isStillLoading) {
-    debug.log(DebugCategories.STATE, 'Still loading data')
-    return false
-  }
-
-  // Check for errors
-  if (props.loadingError) {
-    debug.log(DebugCategories.STATE, 'Loading error present:', props.loadingError)
-    return false
-  }
-
-  debug.log(DebugCategories.STATE, 'Table can be shown:', {
+  const checks = {
     isInitialized: props.isInitialized,
-    hasData,
-    hasColumns,
-    isLoading: props.isLoading,
-    hasError: !!props.loadingError,
+    hasData: hasData.value,
+    hasColumns: hasColumns.value,
+    notLoading: !isStillLoading.value,
+    noError: !props.loadingError
+  }
+
+  const canShow = Object.values(checks).every(Boolean)
+
+  debug.log(DebugCategories.STATE, 'Table display checks:', {
+    ...checks,
+    canShow,
     dataCount: props.tableData.length,
     columnsCount: effectiveTableColumns.value.length
   })
 
-  return true
+  return canShow
+})
+
+// Display error message
+const getDisplayError = computed(() => {
+  if (!props.isInitialized) return 'Waiting for initialization...'
+  if (!hasData.value) return 'No data available'
+  if (!hasColumns.value) return 'No columns configured'
+  if (isStillLoading.value) return 'Still loading data...'
+  if (props.loadingError) return props.loadingError.message
+  return 'Unknown display error'
 })
 
 // Add debug logging for data changes
@@ -212,7 +219,8 @@ watch(
     dataLength: props.tableData.length,
     columnsLength: effectiveTableColumns.value.length,
     hasError: !!props.loadingError,
-    isLoading: props.isLoading
+    isLoading: props.isLoading,
+    canShowTable: canShowTable.value
   }),
   (state) => {
     debug.log(DebugCategories.TABLE_UPDATES, 'Table view state:', state)
@@ -298,7 +306,8 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyPress)
   debug.log(DebugCategories.INITIALIZATION, 'Table view mounted:', {
     dataLength: props.tableData.length,
-    columnsLength: effectiveTableColumns.value.length
+    columnsCount: effectiveTableColumns.value.length,
+    isInitialized: props.isInitialized
   })
 })
 

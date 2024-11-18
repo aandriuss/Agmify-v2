@@ -65,23 +65,84 @@ export function useElementsData({
   // Update filtered elements when source data or categories change
   watch(
     [allElements, selectedParentCategories, selectedChildCategories],
-    async () => {
+    async ([elements, parentCats, childCats]) => {
       try {
-        if (!allElements.value) {
+        if (!elements) {
           filteredElementsRef.value = []
           return
         }
 
+        debug.log(DebugCategories.DATA, 'Processing elements:', {
+          totalElements: elements.length,
+          selectedParentCategories: parentCats,
+          selectedChildCategories: childCats
+        })
+
+        // Step 1: Process parameters from all elements
+        const { processedElements, parameterColumns, availableHeaders } =
+          await processParameters({
+            filteredElements: toMutable(elements)
+          })
+
+        // Step 2: Filter elements based on categories
         const { filteredElements } = filterElements({
-          allElements: toMutable(allElements.value),
-          selectedParent: selectedParentCategories.value,
-          selectedChild: selectedChildCategories.value
+          allElements: toMutable(processedElements),
+          selectedParent: parentCats,
+          selectedChild: childCats
         })
 
         filteredElementsRef.value = toMutable(filteredElements)
 
-        // Process data pipeline after filtering
-        await processDataPipeline()
+        // Step 3: Update store with processed data
+        await store.setScheduleData(toMutable(filteredElements))
+        await store.setParameterColumns([
+          ...defaultColumns,
+          ...toMutable(parameterColumns).filter(
+            (col) => !defaultColumns.find((d) => d.field === col.field)
+          )
+        ])
+
+        // Step 4: Transform to table data
+        const tableData = filteredElements.map((element) => ({
+          id: element.id,
+          mark: element.mark,
+          category: element.category,
+          type: element.type || '',
+          details: element.details ? toMutable(element.details) : [],
+          _visible: true,
+          data: Object.entries(element.parameters || {}).reduce((acc, [key, value]) => {
+            if (key !== '_groups') {
+              acc[key] = value
+            }
+            return acc
+          }, {} as Record<string, ParameterValue>)
+        }))
+
+        await store.setTableData(tableData)
+
+        // Step 5: Update available headers
+        availableHeadersRef.value = {
+          parent: toMutable(availableHeaders.parent),
+          child: toMutable(availableHeaders.child)
+        }
+
+        debug.log(DebugCategories.DATA, 'Data pipeline complete', {
+          sourceElements: elements.length,
+          processedElements: processedElements.length,
+          filteredElements: filteredElements.length,
+          tableRows: tableData.length,
+          parameterColumns: parameterColumns.length,
+          availableHeaders: {
+            parent: availableHeaders.parent.length,
+            child: availableHeaders.child.length
+          },
+          categories: [...new Set(filteredElements.map((el) => el.category))],
+          parentElements: filteredElements.filter((el) => !el.isChild).length,
+          childElements: filteredElements.filter((el) => el.isChild).length,
+          orphanedElements: filteredElements.filter(
+            (el) => el.isChild && (!el.host || el.host === 'Without Host')
+          ).length
+        })
       } catch (error) {
         debug.error(DebugCategories.ERROR, 'Error updating filtered elements:', error)
         processingState.value.error =
@@ -116,109 +177,6 @@ export function useElementsData({
     { immediate: true }
   )
 
-  // Transform ElementData to TableRowData
-  function transformToTableData(elements: ElementData[]): TableRowData[] {
-    return elements.map((element) => {
-      try {
-        const rowData: TableRowData = {
-          id: element.id,
-          mark: element.mark,
-          category: element.category,
-          type: element.type || '',
-          details: element.details ? toMutable(element.details) : [],
-          _visible: true,
-          data: {} as Record<string, ParameterValue>
-        }
-
-        // Add parameter values to data object
-        if (element.parameters) {
-          Object.entries(element.parameters).forEach(([key, value]) => {
-            if (typeof key === 'string') {
-              ;(rowData.data as Record<string, ParameterValue>)[key] = value
-            }
-          })
-        }
-
-        return rowData
-      } catch (error) {
-        debug.error(DebugCategories.ERROR, 'Error transforming element:', error)
-        return {
-          id: element.id || 'unknown',
-          mark: element.mark || 'unknown',
-          category: element.category || 'unknown',
-          type: '',
-          details: [],
-          _visible: true,
-          data: {}
-        }
-      }
-    })
-  }
-
-  // Process data pipeline
-  async function processDataPipeline(): Promise<void> {
-    if (!allElements.value) {
-      debug.warn(DebugCategories.DATA, 'No elements available for processing')
-      return
-    }
-
-    try {
-      processingState.value.isProcessingFullData = true
-
-      // Use all elements if no categories are selected
-      const elementsToProcess =
-        selectedParentCategories.value.length === 0 &&
-        selectedChildCategories.value.length === 0
-          ? toMutable(allElements.value)
-          : filteredElementsRef.value
-
-      // Step 1: Process parameters from filtered elements
-      const { processedElements, parameterColumns, availableHeaders } =
-        await processParameters({
-          filteredElements: elementsToProcess
-        })
-
-      // Step 2: Transform to table data
-      const tableData = transformToTableData(toMutable(processedElements))
-
-      // Step 3: Update store and local refs
-      await Promise.all([
-        store.setScheduleData(toMutable(processedElements)),
-        store.setTableData(tableData),
-        store.setParameterColumns([
-          ...defaultColumns,
-          ...toMutable(parameterColumns).filter(
-            (col) => !defaultColumns.find((d) => d.field === col.field)
-          )
-        ])
-      ])
-
-      availableHeadersRef.value = {
-        parent: toMutable(availableHeaders.parent),
-        child: toMutable(availableHeaders.child)
-      }
-
-      debug.log(DebugCategories.DATA, 'Data pipeline complete', {
-        sourceElements: allElements.value.length,
-        filteredElements: filteredElementsRef.value.length,
-        processedElements: processedElements.length,
-        tableRows: tableData.length,
-        parameterColumns: parameterColumns.length,
-        availableHeaders: {
-          parent: availableHeaders.parent.length,
-          child: availableHeaders.child.length
-        }
-      })
-    } catch (error) {
-      debug.error(DebugCategories.ERROR, 'Error processing data:', error)
-      processingState.value.error =
-        error instanceof Error ? error : new Error('Failed to process data')
-      throw error
-    } finally {
-      processingState.value.isProcessingFullData = false
-    }
-  }
-
   // Category update handler
   async function updateCategories(
     parentCategories: string[],
@@ -246,8 +204,17 @@ export function useElementsData({
       selectedParentCategories.value = toMutable(parentCategories)
       selectedChildCategories.value = toMutable(childCategories)
 
-      // Wait for filtered elements to update
-      await new Promise((resolve) => setTimeout(resolve, 0))
+      // Wait for the watch handler to process the changes
+      await new Promise<void>((resolve) => {
+        const unwatch = watch(
+          [selectedParentCategories, selectedChildCategories],
+          () => {
+            unwatch()
+            resolve()
+          },
+          { immediate: true }
+        )
+      })
 
       debug.log(DebugCategories.DATA, 'Categories updated', {
         filteredCount: filteredElementsRef.value.length,
@@ -275,15 +242,10 @@ export function useElementsData({
       // Initialize BIM elements first
       await initializeElements()
 
-      // Update categories if any are selected
-      if (
-        selectedParentCategories.value.length > 0 ||
-        selectedChildCategories.value.length > 0
-      ) {
-        await updateCategories(
-          selectedParentCategories.value,
-          selectedChildCategories.value
-        )
+      // Initialize store if needed
+      if (!store.initialized.value) {
+        debug.log(DebugCategories.DATA, 'Initializing store...')
+        await store.lifecycle.init()
       }
 
       debug.log(DebugCategories.INITIALIZATION, 'Data initialization complete', {
@@ -338,11 +300,17 @@ export function useElementsData({
       toMutable(filteredElementsRef.value.filter((el) => el.isChild))
     ),
     matchedElements: computed(() =>
-      toMutable(filteredElementsRef.value.filter((el) => el.details?.length))
+      toMutable(
+        filteredElementsRef.value.filter(
+          (el) => el.isChild && el.host && el.host !== 'Without Host'
+        )
+      )
     ),
     orphanedElements: computed(() =>
       toMutable(
-        filteredElementsRef.value.filter((el) => el.host && !el.details?.length)
+        filteredElementsRef.value.filter(
+          (el) => el.isChild && (!el.host || el.host === 'Without Host')
+        )
       )
     )
   }

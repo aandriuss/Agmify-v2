@@ -35,23 +35,31 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
 
   // Get base columns, using defaults if settings are empty
   const baseTableColumns = computed<ColumnDef[]>(() => {
-    if (!currentTableColumns.value?.length) {
-      debug.log(DebugCategories.COLUMNS, 'Using default table columns')
-      return defaultColumns
+    // Wait for initialization before using current columns
+    if (isInitialized?.value && currentTableColumns.value?.length) {
+      return currentTableColumns.value
     }
-    return currentTableColumns.value
+    debug.log(DebugCategories.COLUMNS, 'Using default table columns')
+    return defaultColumns
   })
 
   const baseDetailColumns = computed<ColumnDef[]>(() => {
-    if (!currentDetailColumns.value?.length) {
-      debug.log(DebugCategories.COLUMNS, 'Using default detail columns')
-      return defaultDetailColumns
+    // Wait for initialization before using current columns
+    if (isInitialized?.value && currentDetailColumns.value?.length) {
+      return currentDetailColumns.value
     }
-    return currentDetailColumns.value
+    debug.log(DebugCategories.COLUMNS, 'Using default detail columns')
+    return defaultDetailColumns
   })
 
   // Filter parameter columns based on category selection if categories are provided
   const filteredParamColumns = computed(() => {
+    // Wait for initialization before processing parameters
+    if (!isInitialized?.value) {
+      debug.log(DebugCategories.COLUMNS, 'Skipping parameter columns - not initialized')
+      return []
+    }
+
     // Ensure we have valid parameter columns
     const validParams = (parameterColumns.value || []).filter(
       (col): col is NonNullable<typeof col> => {
@@ -97,7 +105,6 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
   })
 
   const mergedTableColumns = computed<ColumnDef[]>(() => {
-    // Always merge columns regardless of initialization state
     const baseColumns = baseTableColumns.value
     const paramCols = filteredParamColumns.value.map(
       (col, index): ColumnDef => ({
@@ -132,7 +139,6 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
   })
 
   const mergedDetailColumns = computed<ColumnDef[]>(() => {
-    // Always merge columns regardless of initialization state
     const baseColumns = baseDetailColumns.value
     const paramCols = filteredParamColumns.value.map(
       (col, index): ColumnDef => ({
