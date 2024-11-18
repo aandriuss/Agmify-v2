@@ -174,7 +174,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted, watch, unref } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { debug, DebugCategories } from './utils/debug'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import { useScheduleInitializationFlow } from './core/composables/useScheduleInitializationFlow'
@@ -232,14 +232,7 @@ const parameterComponent = ref<ScheduleParameterHandlingExposed | null>(null)
 const columnComponent = ref<ScheduleColumnManagementExposed | null>(null)
 
 // Initialize store values
-const storeValues = computed(() => {
-  try {
-    return useScheduleValues()
-  } catch (err) {
-    debug.error(DebugCategories.ERROR, 'Failed to get store values:', err)
-    return null
-  }
-})
+const storeValues = useScheduleValues()
 
 // Initialize flow
 const { state: flowState, initialize, retry, cleanup } = useScheduleInitializationFlow()
@@ -294,12 +287,11 @@ const { processedHeaders } = useProcessedHeaders({
 
 // Parameter handling
 const availableParentParameters = computed(() => {
-  if (!storeValues?.value?.customParameters) {
+  if (!storeValues?.customParameters) {
     return []
   }
 
-  const params = storeValues.value.customParameters
-  return params
+  return storeValues.customParameters
     .filter((param): param is NonNullable<typeof param> => !!param && !!param.type)
     .filter((param) => param.type === 'fixed')
     .map((param) => ({
@@ -309,12 +301,11 @@ const availableParentParameters = computed(() => {
 })
 
 const availableChildParameters = computed(() => {
-  if (!storeValues?.value?.customParameters) {
+  if (!storeValues?.customParameters) {
     return []
   }
 
-  const params = storeValues.value.customParameters
-  return params
+  return storeValues.customParameters
     .filter((param): param is NonNullable<typeof param> => !!param && !!param.type)
     .filter((param) => param.type === 'equation')
     .map((param) => ({
@@ -328,14 +319,11 @@ onMounted(async () => {
   try {
     debug.log(DebugCategories.INITIALIZATION, 'Mounting Schedules component')
 
-    // Initialize store with viewer state
-    initializeStore(viewerState)
-
-    // Initialize data first
-    await elementsData.initializeData()
-
-    // Then initialize the rest
+    // Initialize the flow first - this handles store initialization and project ID
     await initialize()
+
+    // Initialize data after store is ready
+    await elementsData.initializeData()
 
     // Set initialized after everything is ready
     initialized.value = true
@@ -543,19 +531,16 @@ watch(
       initialized.value = false
       error.value = null
 
-      // Re-initialize store with viewer state
-      initializeStore(viewerState)
-
-      // Initialize store lifecycle
-      await scheduleStore.lifecycle.init()
-
-      // Initialize data
+      // Re-initialize everything through the flow
       await initialize()
+
+      // Then initialize data
       await elementsData.initializeData()
 
       // Set initialized after everything is ready
       initialized.value = true
     } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Project ID change handling failed:', err)
       handleError(err)
     }
   }
@@ -569,9 +554,27 @@ onBeforeUnmount(() => {
 
 // Error handling
 function handleError(err: Error | unknown) {
-  const errorValue = err instanceof Error ? err : new Error(String(err))
+  // Type guard for Error objects
+  function isError(value: unknown): value is Error {
+    return value instanceof Error
+  }
+
+  // Create a safe error object
+  const errorValue = isError(err)
+    ? err
+    : new Error(typeof err === 'string' ? err : 'Unknown error occurred')
+
+  // Set error state
   error.value = errorValue
-  debug.error(DebugCategories.ERROR, 'Schedule error:', errorValue)
+
+  // Safe error logging with type guards
+  const errorDetails = {
+    name: isError(err) ? err.name : 'Error',
+    message: errorValue.message,
+    stack: isError(err) && typeof err.stack === 'string' ? err.stack : undefined
+  }
+
+  debug.error(DebugCategories.ERROR, 'Schedule error:', errorDetails)
 }
 
 // Expose necessary functions
