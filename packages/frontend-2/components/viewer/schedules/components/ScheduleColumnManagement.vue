@@ -29,7 +29,10 @@ const { mergedTableColumns, mergedDetailColumns } = useMergedColumns({
   currentTableColumns: computed(() => props.currentTableColumns),
   currentDetailColumns: computed(() => props.currentDetailColumns),
   parameterColumns: computed(() => props.parameterColumns),
-  isInitialized: computed(() => props.isInitialized)
+  isInitialized: computed(() => props.isInitialized),
+  // Since this component doesn't handle category filtering, we don't need to pass these
+  selectedParentCategories: computed(() => []),
+  selectedChildCategories: computed(() => [])
 })
 
 // Initialize column visibility

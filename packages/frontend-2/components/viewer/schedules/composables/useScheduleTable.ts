@@ -2,7 +2,11 @@ import { computed, ref, watch, type Ref, type ComputedRef } from 'vue'
 import { debug, DebugCategories } from '../utils/debug'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
-import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
+import {
+  defaultColumns,
+  defaultDetailColumns,
+  defaultTable
+} from '../config/defaultColumns'
 import { useUpdateQueue } from '~/composables/settings/useUpdateQueue'
 
 interface UseScheduleTableOptions {
@@ -66,17 +70,25 @@ export function useScheduleTable(
   const isLoading = ref<boolean>(false)
   const isTableUpdatePending = ref<boolean>(false)
 
-  // Category state
-  const selectedParentCategories = ref<string[]>([])
-  const selectedChildCategories = ref<string[]>([])
+  // Category state - initialize with defaults
+  const selectedParentCategories = ref<string[]>(
+    defaultTable.categoryFilters.selectedParentCategories
+  )
+  const selectedChildCategories = ref<string[]>(
+    defaultTable.categoryFilters.selectedChildCategories
+  )
 
   // Column state - initialize with defaults
   const currentParentColumns = ref<ColumnDef[]>(defaultColumns)
   const currentChildColumns = ref<ColumnDef[]>(defaultDetailColumns)
 
   // Original state for tracking changes
-  const originalParentCategories = ref<string[]>([])
-  const originalChildCategories = ref<string[]>([])
+  const originalParentCategories = ref<string[]>(
+    defaultTable.categoryFilters.selectedParentCategories
+  )
+  const originalChildCategories = ref<string[]>(
+    defaultTable.categoryFilters.selectedChildCategories
+  )
 
   // Watch for settings changes
   watch(
@@ -293,13 +305,30 @@ export function useScheduleTable(
         currentParentColumns.value = defaultColumns
         currentChildColumns.value = defaultDetailColumns
         updateCurrentColumns(defaultColumns, defaultDetailColumns)
-        selectedParentCategories.value = []
-        selectedChildCategories.value = []
-        originalParentCategories.value = []
-        originalChildCategories.value = []
-        // Update elements data with empty categories
-        await updateElementsData([], [])
-        debug.log(DebugCategories.CATEGORIES, 'Reset to defaults - no table selected')
+
+        // Use default categories instead of empty arrays
+        selectedParentCategories.value = [
+          ...defaultTable.categoryFilters.selectedParentCategories
+        ]
+        selectedChildCategories.value = [
+          ...defaultTable.categoryFilters.selectedChildCategories
+        ]
+        originalParentCategories.value = [
+          ...defaultTable.categoryFilters.selectedParentCategories
+        ]
+        originalChildCategories.value = [
+          ...defaultTable.categoryFilters.selectedChildCategories
+        ]
+
+        // Update elements data with default categories
+        await updateElementsData(
+          defaultTable.categoryFilters.selectedParentCategories,
+          defaultTable.categoryFilters.selectedChildCategories
+        )
+        debug.log(
+          DebugCategories.CATEGORIES,
+          'Reset to defaults - using default categories'
+        )
       }
     } catch (err) {
       handleError(err)

@@ -1,7 +1,8 @@
 import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import { debug } from '../utils/debug'
+import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
+import { debug, DebugCategories } from '../utils/debug'
 
 interface UseMergedColumnsOptions {
   currentTableColumns: ComputedRef<ColumnDef[]>
@@ -17,39 +18,112 @@ interface UseMergedColumnsOptions {
       description?: string
     }[]
   >
+  selectedParentCategories?: ComputedRef<string[]>
+  selectedChildCategories?: ComputedRef<string[]>
   isInitialized?: Ref<boolean>
 }
 
 export function useMergedColumns(options: UseMergedColumnsOptions) {
-  const { currentTableColumns, currentDetailColumns, parameterColumns, isInitialized } =
-    options
+  const {
+    currentTableColumns,
+    currentDetailColumns,
+    parameterColumns,
+    selectedParentCategories,
+    selectedChildCategories,
+    isInitialized
+  } = options
+
+  // Get base columns, using defaults if settings are empty
+  const baseTableColumns = computed<ColumnDef[]>(() => {
+    if (!currentTableColumns.value?.length) {
+      debug.log(DebugCategories.COLUMNS, 'Using default table columns')
+      return defaultColumns
+    }
+    return currentTableColumns.value
+  })
+
+  const baseDetailColumns = computed<ColumnDef[]>(() => {
+    if (!currentDetailColumns.value?.length) {
+      debug.log(DebugCategories.COLUMNS, 'Using default detail columns')
+      return defaultDetailColumns
+    }
+    return currentDetailColumns.value
+  })
+
+  // Filter parameter columns based on category selection if categories are provided
+  const filteredParamColumns = computed(() => {
+    // Ensure we have valid parameter columns
+    const validParams = (parameterColumns.value || []).filter(
+      (col): col is NonNullable<typeof col> => {
+        if (!col) {
+          debug.warn(DebugCategories.COLUMNS, 'Found null parameter column')
+          return false
+        }
+        if (!col.field || !col.header) {
+          debug.warn(DebugCategories.COLUMNS, 'Invalid parameter column:', col)
+          return false
+        }
+        return true
+      }
+    )
+
+    // If no category selection is provided, return all valid parameter columns
+    if (!selectedParentCategories || !selectedChildCategories) {
+      return validParams
+    }
+
+    const hasCategories =
+      selectedParentCategories.value?.length > 0 ||
+      selectedChildCategories.value?.length > 0
+    if (!hasCategories) {
+      // If no categories selected, show all valid parameter columns
+      return validParams
+    }
+
+    return validParams.filter((col) => {
+      const isParentParam = !col.category?.includes('Child') // Assuming child parameters have 'Child' in category
+      if (isParentParam) {
+        return (
+          !selectedParentCategories.value?.length ||
+          selectedParentCategories.value.some((cat) => col.category?.includes(cat))
+        )
+      } else {
+        return (
+          !selectedChildCategories.value?.length ||
+          selectedChildCategories.value.some((cat) => col.category?.includes(cat))
+        )
+      }
+    })
+  })
 
   const mergedTableColumns = computed<ColumnDef[]>(() => {
     // Always merge columns regardless of initialization state
-    const baseColumns = currentTableColumns.value
-    const paramCols = parameterColumns.value.map(
+    const baseColumns = baseTableColumns.value
+    const paramCols = filteredParamColumns.value.map(
       (col, index): ColumnDef => ({
         field: col.field,
         header: col.header,
-        type: col.type || 'string',
+        type: col.type || 'string', // Provide default type
         visible: col.visible ?? true,
         removable: col.removable ?? true,
         order: baseColumns.length + index,
-        category: col.category,
-        description: col.description,
+        category: col.category || '',
+        description: col.description || '',
         isFixed: false
       })
     )
 
     const mergedColumns = [...baseColumns, ...paramCols]
 
-    debug.log('🔍 MERGED TABLE COLUMNS:', {
+    debug.log(DebugCategories.COLUMNS, 'Merged table columns:', {
       timestamp: new Date().toISOString(),
       baseColumnCount: baseColumns.length,
       paramColumnCount: paramCols.length,
       totalColumns: mergedColumns.length,
       visibleColumns: mergedColumns.filter((col) => col.visible).length,
       isInitialized: isInitialized?.value,
+      selectedParentCategories: selectedParentCategories?.value,
+      selectedChildCategories: selectedChildCategories?.value,
       firstColumn: mergedColumns[0],
       allColumns: mergedColumns
     })
@@ -59,30 +133,32 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
 
   const mergedDetailColumns = computed<ColumnDef[]>(() => {
     // Always merge columns regardless of initialization state
-    const baseColumns = currentDetailColumns.value
-    const paramCols = parameterColumns.value.map(
+    const baseColumns = baseDetailColumns.value
+    const paramCols = filteredParamColumns.value.map(
       (col, index): ColumnDef => ({
         field: col.field,
         header: col.header,
-        type: col.type || 'string',
+        type: col.type || 'string', // Provide default type
         visible: col.visible ?? true,
         removable: col.removable ?? true,
         order: baseColumns.length + index,
-        category: col.category,
-        description: col.description,
+        category: col.category || '',
+        description: col.description || '',
         isFixed: false
       })
     )
 
     const mergedColumns = [...baseColumns, ...paramCols]
 
-    debug.log('🔍 MERGED DETAIL COLUMNS:', {
+    debug.log(DebugCategories.COLUMNS, 'Merged detail columns:', {
       timestamp: new Date().toISOString(),
       baseColumnCount: baseColumns.length,
       paramColumnCount: paramCols.length,
       totalColumns: mergedColumns.length,
       visibleColumns: mergedColumns.filter((col) => col.visible).length,
       isInitialized: isInitialized?.value,
+      selectedParentCategories: selectedParentCategories?.value,
+      selectedChildCategories: selectedChildCategories?.value,
       firstColumn: mergedColumns[0],
       allColumns: mergedColumns
     })

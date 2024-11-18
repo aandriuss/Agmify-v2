@@ -33,10 +33,10 @@
         </slot>
       </template>
 
-      <template #expansion="slotProps">
-        <div class="p-2 bg-gray-50">
+      <template #expansion="{ data: expandedData }">
+        <div v-if="expandedData.details?.length" class="p-2 bg-gray-50">
           <DataTable
-            :value="slotProps.data.details"
+            :value="expandedData.details"
             resizable-columns
             reorderable-columns
             striped-rows
@@ -56,7 +56,9 @@
               sortable
             >
               <template #body="{ data }">
-                <div class="truncate">{{ data[col.field] }}</div>
+                <div class="truncate">
+                  {{ getFieldValue(data, col.field) }}
+                </div>
               </template>
             </Column>
           </DataTable>
@@ -75,7 +77,9 @@
         sortable
       >
         <template #body="{ data }">
-          <div class="truncate">{{ data[col.field] }}</div>
+          <div class="truncate">
+            {{ getFieldValue(data, col.field) }}
+          </div>
         </template>
       </Column>
     </DataTable>
@@ -216,6 +220,78 @@ function getColumnStyle(col: ColumnDef) {
   }
 }
 
+function getFieldValue(data: TableRowData, field: string) {
+  try {
+    // Handle special fields first
+    if (field === 'mark' || field === 'category' || field === 'host') {
+      const value = data[field]
+      debug.log('Special field access:', {
+        field,
+        value,
+        dataId: data.id
+      })
+      return value
+    }
+
+    // Handle parameters with dot notation (e.g., 'Identity Data.Mark')
+    if (field.includes('.') && data.parameters) {
+      const [group, param] = field.split('.')
+      if (data.parameters[`${group}.${param}`]) {
+        const value = data.parameters[`${group}.${param}`]
+        debug.log('Parameter group access:', {
+          field,
+          group,
+          param,
+          value,
+          dataId: data.id
+        })
+        return value
+      }
+    }
+
+    // Handle direct parameter access
+    if (data.parameters && field in data.parameters) {
+      const value = data.parameters[field]
+      debug.log('Direct parameter access:', {
+        field,
+        value,
+        dataId: data.id
+      })
+      return value
+    }
+
+    // Handle raw data access
+    if (data._raw && typeof data._raw === 'object') {
+      const raw = data._raw as Record<string, unknown>
+      if (field in raw) {
+        const value = raw[field]
+        debug.log('Raw data access:', {
+          field,
+          value,
+          dataId: data.id
+        })
+        return value
+      }
+    }
+
+    // Fallback to direct field access
+    const value = data[field]
+    debug.log('Direct field access:', {
+      field,
+      value,
+      dataId: data.id
+    })
+    return value
+  } catch (error) {
+    debug.error('Error getting field value:', {
+      error,
+      field,
+      dataId: data.id
+    })
+    return undefined
+  }
+}
+
 function handleExpandedRowsUpdate(value: unknown) {
   debug.log('Expanded rows update:', {
     value,
@@ -250,10 +326,11 @@ function handleSort(event: DataTableSortEvent) {
     event &&
     'field' in event &&
     'order' in event &&
-    typeof event.order === 'number'
+    typeof event.order === 'number' &&
+    typeof event.field === 'string'
   ) {
     debug.log('Sort:', { field: event.field, order: event.order })
-    emit('sort', event.field as string, event.order)
+    emit('sort', event.field, event.order)
   }
 }
 

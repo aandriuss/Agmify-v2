@@ -1,13 +1,34 @@
 import type { ElementData, TableRowData, AvailableHeaders } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import type { ComputedRef } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
+import type { Viewer } from '@speckle/viewer'
 
 export class ValidationError extends Error {
   constructor(message: string, public details?: unknown) {
     super(message)
     this.name = 'ValidationError'
   }
+}
+
+export class InitializationError extends Error {
+  constructor(message: string, public recoverable: boolean = true) {
+    super(message)
+    this.name = 'InitializationError'
+  }
+}
+
+export interface ViewerState {
+  viewer: {
+    instance: Viewer | null
+    init: {
+      ref: Ref<boolean>
+      promise: Promise<void>
+    }
+    metadata: {
+      worldTree: Ref<unknown>
+    }
+  } | null
 }
 
 export interface StoreState {

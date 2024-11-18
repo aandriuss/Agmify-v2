@@ -4,6 +4,7 @@ import type { CustomParameter } from '~/composables/useUserSettings'
 import type { ProcessedHeader } from '../types'
 import { CATEGORY_SETTINGS } from '../config/constants'
 import { debug, DebugCategories } from '../utils/debug'
+import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 
 interface UseScheduleParametersOptions {
   availableHeaders:
@@ -20,155 +21,238 @@ export function useScheduleParameters(options: UseScheduleParametersOptions) {
     availableHeaders,
     customParameters,
     selectedParentCategories,
-    selectedChildCategories,
-    isInitialized
+    selectedChildCategories
   } = options
 
-  // Map headers to parameter definitions
+  // Map headers to parameter definitions with improved defaults
   function mapHeadersToParameters(headers: ProcessedHeader[]): CustomParameter[] {
-    return headers.map((header) => ({
-      id: header.field,
-      name: header.header, // Use header for display name
-      field: header.field,
-      type: 'fixed',
-      value: '',
-      header: header.header,
-      category: header.category || CATEGORY_SETTINGS.defaultCategory,
-      source: header.source, // Preserve source group
-      description: header.description,
-      removable: true,
-      visible: true,
-      order: 0
-    }))
+    return headers.map(
+      (header): CustomParameter => ({
+        id: header.field,
+        name: header.header,
+        field: header.field,
+        type: 'fixed',
+        value: '',
+        header: header.header,
+        category: header.category || CATEGORY_SETTINGS.defaultCategory,
+        source: header.source,
+        description: header.description || `Parameter for ${header.header}`,
+        removable: true,
+        visible: true,
+        order: 0
+      })
+    )
   }
 
-  // Filter headers by selected categories
+  // Filter headers by selected categories with default category always included
   function filterHeadersByCategory(
     headers: CustomParameter[],
     selectedCategories: string[]
   ): CustomParameter[] {
-    if (!selectedCategories.length) return headers
+    // If no categories selected, show all headers
+    if (!selectedCategories.length) {
+      debug.log(
+        DebugCategories.PARAMETERS,
+        'No categories selected, showing all headers'
+      )
+      return headers
+    }
 
-    return headers.filter(
-      (header) =>
-        header.category === CATEGORY_SETTINGS.defaultCategory ||
-        selectedCategories.includes(header.category || '')
-    )
+    return headers.filter((header) => {
+      const isDefaultCategory = header.category === CATEGORY_SETTINGS.defaultCategory
+      const isSelectedCategory = selectedCategories.includes(header.category || '')
+      const isFixedParameter = !header.removable
+
+      // Always include fixed parameters and default category
+      return isFixedParameter || isDefaultCategory || isSelectedCategory
+    })
   }
 
-  // Group parameters by source
+  // Group parameters by source with improved sorting
   function groupParametersBySource(
     parameters: CustomParameter[]
   ): Record<string, CustomParameter[]> {
-    return parameters.reduce((groups, param) => {
+    const groups = parameters.reduce((acc, param) => {
       const source = param.source || 'Other'
-      if (!groups[source]) {
-        groups[source] = []
+      if (!acc[source]) {
+        acc[source] = []
       }
-      groups[source].push(param)
-      return groups
+      acc[source].push(param)
+      return acc
     }, {} as Record<string, CustomParameter[]>)
+
+    // Sort parameters within each group
+    Object.keys(groups).forEach((source) => {
+      groups[source].sort((a, b) => {
+        // Fixed parameters first
+        if (!a.removable && b.removable) return -1
+        if (a.removable && !b.removable) return 1
+        // Then by order
+        return (a.order || 0) - (b.order || 0)
+      })
+    })
+
+    return groups
   }
+
+  // Get default parameters from default columns
+  const defaultParentParameters = computed<CustomParameter[]>(() => {
+    return defaultColumns.map(
+      (col): CustomParameter => ({
+        id: col.field,
+        name: col.header,
+        field: col.field,
+        type: 'fixed',
+        value: '',
+        header: col.header,
+        category: col.source || CATEGORY_SETTINGS.defaultCategory,
+        source: col.source || 'Default',
+        description: col.description || `Default parameter for ${col.header}`,
+        removable: col.removable ?? false,
+        visible: col.visible ?? true,
+        order: col.order ?? 0
+      })
+    )
+  })
+
+  const defaultChildParameters = computed<CustomParameter[]>(() => {
+    return defaultDetailColumns.map(
+      (col): CustomParameter => ({
+        id: col.field,
+        name: col.header,
+        field: col.field,
+        type: 'fixed',
+        value: '',
+        header: col.header,
+        category: col.source || CATEGORY_SETTINGS.defaultCategory,
+        source: col.source || 'Default',
+        description: col.description || `Default parameter for ${col.header}`,
+        removable: col.removable ?? false,
+        visible: col.visible ?? true,
+        order: col.order ?? 0
+      })
+    )
+  })
 
   // Available parameters (without merging with custom parameters)
   const availableParentParameters = computed<CustomParameter[]>(() => {
-    if (isInitialized?.value === false) return []
-
     const mappedHeaders = mapHeadersToParameters(availableHeaders.value.parent)
     const filteredHeaders = filterHeadersByCategory(
       mappedHeaders,
       selectedParentCategories.value
     )
-
-    // Group parameters by source
     const groupedParameters = groupParametersBySource(filteredHeaders)
 
+    // Merge with default parameters
+    const mergedParameters = [
+      ...defaultParentParameters.value,
+      ...Object.values(groupedParameters).flat()
+    ]
+
     debug.log(DebugCategories.PARAMETERS, 'Available parent parameters:', {
+      defaultCount: defaultParentParameters.value.length,
       mappedHeadersCount: mappedHeaders.length,
       filteredHeadersCount: filteredHeaders.length,
-      groups: Object.keys(groupedParameters),
-      parametersByGroup: Object.fromEntries(
-        Object.entries(groupedParameters).map(([group, params]) => [
-          group,
-          params.length
-        ])
-      )
+      finalCount: mergedParameters.length,
+      groups: Object.keys(groupedParameters)
     })
 
-    // Return flattened grouped parameters
-    return Object.values(groupedParameters)
-      .flat()
-      .map((param, index) => ({
-        ...param,
-        order: index
-      }))
+    return mergedParameters
   })
 
   const availableChildParameters = computed<CustomParameter[]>(() => {
-    if (isInitialized?.value === false) return []
-
     const mappedHeaders = mapHeadersToParameters(availableHeaders.value.child)
     const filteredHeaders = filterHeadersByCategory(
       mappedHeaders,
       selectedChildCategories.value
     )
-
-    // Group parameters by source
     const groupedParameters = groupParametersBySource(filteredHeaders)
 
+    // Merge with default parameters
+    const mergedParameters = [
+      ...defaultChildParameters.value,
+      ...Object.values(groupedParameters).flat()
+    ]
+
     debug.log(DebugCategories.PARAMETERS, 'Available child parameters:', {
+      defaultCount: defaultChildParameters.value.length,
       mappedHeadersCount: mappedHeaders.length,
       filteredHeadersCount: filteredHeaders.length,
-      groups: Object.keys(groupedParameters),
-      parametersByGroup: Object.fromEntries(
-        Object.entries(groupedParameters).map(([group, params]) => [
-          group,
-          params.length
-        ])
-      )
+      finalCount: mergedParameters.length,
+      groups: Object.keys(groupedParameters)
     })
 
-    // Return flattened grouped parameters
-    return Object.values(groupedParameters)
-      .flat()
-      .map((param, index) => ({
-        ...param,
-        order: index
-      }))
+    return mergedParameters
   })
 
   // Merged parameters (including custom parameters)
   const mergedParentParameters = computed<CustomParameter[]>(() => {
-    if (isInitialized?.value === false) return []
-
     const available = availableParentParameters.value
     const custom = customParameters.value
 
-    debug.log(DebugCategories.PARAMETERS, 'Merged parent parameters:', {
-      availableCount: available.length,
-      customCount: custom.length
+    // Ensure unique parameters by field
+    const uniqueParameters = [...available]
+    custom.forEach((customParam) => {
+      const existingIndex = uniqueParameters.findIndex(
+        (p) => p.field === customParam.field
+      )
+      if (existingIndex >= 0) {
+        // Update existing parameter with custom values while preserving required fields
+        uniqueParameters[existingIndex] = {
+          ...uniqueParameters[existingIndex],
+          ...customParam,
+          type: customParam.type || 'fixed'
+        }
+      } else {
+        // Add new custom parameter
+        uniqueParameters.push(customParam)
+      }
     })
 
-    return [...available, ...custom].map((param, index) => ({
+    debug.log(DebugCategories.PARAMETERS, 'Merged parent parameters:', {
+      availableCount: available.length,
+      customCount: custom.length,
+      uniqueCount: uniqueParameters.length
+    })
+
+    return uniqueParameters.map((param, index) => ({
       ...param,
-      order: index
+      order: param.order ?? index
     }))
   })
 
   const mergedChildParameters = computed<CustomParameter[]>(() => {
-    if (isInitialized?.value === false) return []
-
     const available = availableChildParameters.value
     const custom = customParameters.value
 
-    debug.log(DebugCategories.PARAMETERS, 'Merged child parameters:', {
-      availableCount: available.length,
-      customCount: custom.length
+    // Ensure unique parameters by field
+    const uniqueParameters = [...available]
+    custom.forEach((customParam) => {
+      const existingIndex = uniqueParameters.findIndex(
+        (p) => p.field === customParam.field
+      )
+      if (existingIndex >= 0) {
+        // Update existing parameter with custom values while preserving required fields
+        uniqueParameters[existingIndex] = {
+          ...uniqueParameters[existingIndex],
+          ...customParam,
+          type: customParam.type || 'fixed'
+        }
+      } else {
+        // Add new custom parameter
+        uniqueParameters.push(customParam)
+      }
     })
 
-    return [...available, ...custom].map((param, index) => ({
+    debug.log(DebugCategories.PARAMETERS, 'Merged child parameters:', {
+      availableCount: available.length,
+      customCount: custom.length,
+      uniqueCount: uniqueParameters.length
+    })
+
+    return uniqueParameters.map((param, index) => ({
       ...param,
-      order: index
+      order: param.order ?? index
     }))
   })
 

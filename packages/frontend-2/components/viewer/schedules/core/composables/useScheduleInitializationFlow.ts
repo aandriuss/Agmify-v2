@@ -1,7 +1,6 @@
 import { ref, computed, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { debug, DebugCategories } from '../../utils/debug'
-import { useViewerInitialization } from './useViewerInitialization'
 import store from '../../composables/useScheduleStore'
 import { useUserSettings } from '~/composables/useUserSettings'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
@@ -47,7 +46,6 @@ function assertStore(store: unknown): asserts store is Store {
 export function useScheduleInitializationFlow(): InitializationFlow {
   const route = useRoute()
   const viewerState = useInjectedViewerState()
-  const { waitForInitialization } = useViewerInitialization()
 
   // State management
   const state = ref<InitializationState>({
@@ -101,8 +99,8 @@ export function useScheduleInitializationFlow(): InitializationFlow {
     }
 
     try {
-      // Wait for viewer initialization first
-      await waitForInitialization()
+      // Wait for viewer initialization
+      await viewerState.viewer.init.promise
 
       // Validate store
       assertStore(store)

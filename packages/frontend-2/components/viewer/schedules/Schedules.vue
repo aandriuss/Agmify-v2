@@ -1,52 +1,40 @@
 <template>
-  <div>
-    <ViewerLayoutPanel :initial-width="400" @close="handleClose">
-      <!-- Header -->
-      <template #header>
-        <ScheduleHeader
-          :selected-table-id="unref(storeValues.selectedTableId)"
-          :table-name="unref(storeValues.tableName)"
-          :tables="unref(storeValues.tablesArray)"
-          :show-category-options="showCategoryOptions"
-          :has-changes="!!setup?.hasChanges"
-          @update:selected-table-id="handleSelectedTableIdUpdate"
-          @update:table-name="handleTableNameUpdate"
-          @table-change="setup?.handleTableChangeInternal"
-          @save="setup?.handleSaveTable"
-          @manage-parameters="showParameterManager = true"
-          @toggle-category-options="showCategoryOptions = !showCategoryOptions"
-        />
-      </template>
-
-      <!-- Main Content -->
-      <div
-        ref="viewerContainer"
-        class="viewer-container"
-        style="width: 100%; height: 100%; min-height: 400px"
-      >
-        <!-- Loading State -->
-        <div v-if="isLoading" class="flex flex-col p-4">
-          <div class="text-gray-500">Loading schedule data...</div>
+  <ViewerLayoutPanel :initial-width="400" @close="handleClose">
+    <template #default>
+      <!-- Loading State -->
+      <div v-if="isLoading" class="flex items-center justify-center h-full">
+        <div class="text-center">
+          <div class="text-lg font-semibold mb-2">Loading schedule data...</div>
+          <div class="text-sm text-gray-500">
+            Please wait while we prepare your data
+          </div>
         </div>
+      </div>
 
-        <!-- Error State -->
-        <div v-else-if="error" class="flex flex-col p-4">
-          <div class="text-red-500">
+      <!-- Error State -->
+      <div v-else-if="error" class="flex items-center justify-center h-full">
+        <div class="text-center">
+          <div class="text-lg font-semibold mb-2 text-red-500">
             {{ error.message }}
           </div>
-          <div class="mt-2">
-            <button
-              class="px-4 py-2 bg-blue-500 text-white rounded hover-bg-blue-600"
-              @click="handleRetry"
-            >
-              Retry
-            </button>
-          </div>
+          <FormButton
+            class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            @click="handleRetry"
+          >
+            Retry
+          </FormButton>
         </div>
+      </div>
 
-        <!-- Content -->
-        <div v-else class="flex flex-col">
-          <!-- Core Components -->
+      <!-- Content -->
+      <template v-else>
+        <!-- Main Content -->
+        <div
+          ref="viewerContainer"
+          class="viewer-container"
+          style="width: 100%; height: 100%; min-height: 400px"
+        >
+          <!-- Core Components (always mounted) -->
           <ScheduleInitialization
             ref="initComponent"
             v-model:initialized="initialized"
@@ -55,27 +43,67 @@
             @error="handleError"
           />
 
+          <!-- Debug View -->
+          <BIMDebugView
+            :selected-parent-categories="selectedParentCategories"
+            :selected-child-categories="selectedChildCategories"
+            :raw-elements="elementsData?.rawElements || []"
+            :parent-elements="elementsData?.parentElements || []"
+            :child-elements="elementsData?.childElements || []"
+            :matched-elements="elementsData?.matchedElements || []"
+            :orphaned-elements="elementsData?.orphanedElements || []"
+          />
+
+          <!-- Table View -->
+          <ScheduleTableView
+            v-if="initialized && !isLoading"
+            :selected-table-id="storeValues?.selectedTableId || ''"
+            :current-table="currentTableConfig"
+            :is-initialized="initialized"
+            :table-name="storeValues?.tableName || ''"
+            :current-table-id="storeValues?.currentTableId || ''"
+            :table-key="storeValues?.tableKey || '0'"
+            :loading-error="error"
+            :merged-table-columns="storeValues?.mergedTableColumns || []"
+            :merged-detail-columns="storeValues?.mergedDetailColumns || []"
+            :available-parent-parameters="availableParentParameters"
+            :available-child-parameters="availableChildParameters"
+            :schedule-data="storeValues?.scheduleData || []"
+            :evaluated-data="storeValues?.evaluatedData || []"
+            :table-data="storeValues?.tableData || []"
+            :is-loading="isLoading"
+            :is-loading-additional-data="isUpdating"
+            :no-categories-selected="!hasSelectedCategories"
+            :selected-parent-categories="selectedParentCategories"
+            :selected-child-categories="selectedChildCategories"
+            @update:both-columns="handleBothColumnsUpdate"
+            @table-updated="handleTableDataUpdate"
+            @column-visibility-change="handleColumnVisibilityChange"
+          />
+
           <!-- Category Filters -->
           <ScheduleCategoryFilters
+            v-if="initialized && !isLoading"
             :show-category-options="showCategoryOptions"
             :parent-categories="parentCategories"
             :child-categories="childCategories"
-            :selected-parent-categories="selectedParentCategoriesComputed"
-            :selected-child-categories="selectedChildCategoriesComputed"
-            :is-updating="!!setup?.isUpdating"
-            @toggle-category="setup?.toggleCategory"
+            :selected-parent-categories="selectedParentCategories"
+            :selected-child-categories="selectedChildCategories"
+            :is-updating="isUpdating"
+            @toggle-category="handleCategoryToggle"
           />
 
           <!-- Data Management -->
           <ScheduleDataManagement
+            v-if="initialized && !isLoading"
             ref="dataComponent"
-            :schedule-data="unref(storeValues.scheduleData)"
-            :evaluated-data="unref(storeValues.evaluatedData)"
-            :custom-parameters="unref(storeValues.customParameters)"
-            :merged-table-columns="unref(storeValues.mergedTableColumns)"
-            :merged-detail-columns="unref(storeValues.mergedDetailColumns)"
-            :selected-parent-categories="unref(selectedParentCategoriesComputed)"
-            :selected-child-categories="unref(selectedChildCategoriesComputed)"
+            :schedule-data="storeValues?.scheduleData || []"
+            :evaluated-data="storeValues?.evaluatedData || []"
+            :custom-parameters="storeValues?.customParameters || []"
+            :merged-table-columns="storeValues?.mergedTableColumns || []"
+            :merged-detail-columns="storeValues?.mergedDetailColumns || []"
+            :selected-parent-categories="selectedParentCategories"
+            :selected-child-categories="selectedChildCategories"
             :is-initialized="initialized"
             @update:table-data="handleTableDataUpdate"
             @error="handleError"
@@ -83,12 +111,13 @@
 
           <!-- Parameter Handling -->
           <ScheduleParameterHandling
+            v-if="initialized && !isLoading"
             ref="parameterComponent"
-            :schedule-data="unref(storeValues.scheduleData)"
-            :custom-parameters="unref(storeValues.customParameters)"
-            :selected-parent-categories="unref(selectedParentCategoriesComputed)"
-            :selected-child-categories="unref(selectedChildCategoriesComputed)"
-            :available-headers="unref(processedHeaders)"
+            :schedule-data="storeValues?.scheduleData || []"
+            :custom-parameters="storeValues?.customParameters || []"
+            :selected-parent-categories="selectedParentCategories"
+            :selected-child-categories="selectedChildCategories"
+            :available-headers="processedHeaders"
             :is-initialized="initialized"
             @update:parameter-columns="handleParameterColumnsUpdate"
             @update:evaluated-data="handleEvaluatedDataUpdate"
@@ -99,10 +128,11 @@
 
           <!-- Column Management -->
           <ScheduleColumnManagement
+            v-if="initialized && !isLoading"
             ref="columnComponent"
-            :current-table-columns="unref(storeValues.currentTableColumns)"
-            :current-detail-columns="unref(storeValues.currentDetailColumns)"
-            :parameter-columns="unref(storeValues.parameterColumns)"
+            :current-table-columns="storeValues?.currentTableColumns || []"
+            :current-detail-columns="storeValues?.currentDetailColumns || []"
+            :parameter-columns="storeValues?.parameterColumns || []"
             :is-initialized="initialized"
             @update:merged-table-columns="handleMergedTableColumnsUpdate"
             @update:merged-detail-columns="handleMergedDetailColumnsUpdate"
@@ -111,61 +141,52 @@
             @error="handleError"
           />
 
-          <!-- Table View -->
-          <ScheduleTableView
-            :selected-table-id="unref(storeValues.selectedTableId)"
-            :current-table="unref(currentTableConfig)"
-            :is-initialized="initialized"
-            :table-name="unref(storeValues.tableName)"
-            :current-table-id="unref(storeValues.currentTableId)"
-            :table-key="unref(storeValues.tableKey)"
-            :loading-error="error"
-            :merged-table-columns="unref(storeValues.mergedTableColumns)"
-            :merged-detail-columns="unref(storeValues.mergedDetailColumns)"
-            :available-parent-parameters="unref(availableParentParameters)"
-            :available-child-parameters="unref(availableChildParameters)"
-            :schedule-data="unref(storeValues.scheduleData)"
-            :evaluated-data="unref(storeValues.evaluatedData)"
-            :table-data="unref(storeValues.tableData)"
-            :is-loading="isLoading"
-            :is-loading-additional-data="!!setup?.isUpdating"
-            :no-categories-selected="!selectedParentCategoriesComputed.length"
-            @update:both-columns="setup?.handleBothColumnsUpdate"
-            @table-updated="handleTableDataUpdate"
-            @column-visibility-change="handleColumnVisibilityChange"
-          />
-
-          <!-- Debug View -->
-          <BIMDebugView
-            :selected-parent-categories="unref(selectedParentCategoriesComputed)"
-            :selected-child-categories="unref(selectedChildCategoriesComputed)"
-            :raw-elements="setup?.debugRawElements || []"
-            :parent-elements="setup?.debugParentElements || []"
-            :child-elements="setup?.debugChildElements || []"
-            :matched-elements="setup?.debugMatchedElements || []"
-            :orphaned-elements="setup?.debugOrphanedElements || []"
-          />
-
           <!-- Parameter Manager Modal -->
           <ScheduleParameterManagerModal
+            v-if="initialized && !isLoading && showParameterManager"
             v-model:show="showParameterManager"
-            :table-id="unref(storeValues.currentTableId)"
+            :table-id="storeValues?.currentTableId || ''"
             @update="handleParameterUpdate"
             @update:visibility="handleParameterVisibility"
             @update:order="handleParameterOrder"
           />
         </div>
-      </div>
-    </ViewerLayoutPanel>
-  </div>
+      </template>
+    </template>
+
+    <template #header>
+      <ScheduleHeader
+        v-if="initialized && !isLoading"
+        :selected-table-id="storeValues?.selectedTableId || ''"
+        :table-name="storeValues?.tableName || ''"
+        :tables="storeValues?.tablesArray || []"
+        :show-category-options="showCategoryOptions"
+        :has-changes="hasChanges"
+        @update:selected-table-id="handleSelectedTableIdUpdate"
+        @update:table-name="handleTableNameUpdate"
+        @table-change="handleTableChange"
+        @save="handleSaveTable"
+        @manage-parameters="showParameterManager = true"
+        @toggle-category-options="showCategoryOptions = !showCategoryOptions"
+      />
+    </template>
+  </ViewerLayoutPanel>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted, watch, unref, type Ref } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch, unref } from 'vue'
 import { debug, DebugCategories } from './utils/debug'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
-import { InitializationError } from './core/composables/useScheduleInitializationFlow'
-import type { ScheduleSetup } from './composables/useScheduleSetup'
+import { useScheduleInitializationFlow } from './core/composables/useScheduleInitializationFlow'
+import { useScheduleValues } from './composables/useScheduleValues'
+import { useScheduleFlow } from './composables/useScheduleFlow'
+import { useProcessedHeaders } from './composables/useProcessedHeaders'
+import { useScheduleEmits } from './composables/useScheduleEmits'
+import { useElementsData } from './composables/useElementsData'
+import { useScheduleState } from './composables/useScheduleState'
+import { parentCategories, childCategories } from './config/categories'
+import scheduleStore, { initializeStore } from './composables/useScheduleStore'
+import { defaultTable } from './config/defaultColumns'
 
 // Types
 import type {
@@ -175,6 +196,7 @@ import type {
   ScheduleInitializationInstance
 } from './types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
+import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
 // Components
 import ScheduleHeader from './components/ScheduleTableHeader.vue'
@@ -187,28 +209,21 @@ import ScheduleCategoryFilters from './components/ScheduleCategoryFilters.vue'
 import BIMDebugView from './components/BIMDebugView.vue'
 import { ScheduleTableView } from './components/table'
 
-// Composables
-import { parentCategories, childCategories } from './config/categories'
-import scheduleStore, { initializeStore } from './composables/useScheduleStore'
-import { useScheduleValues } from './composables/useScheduleValues'
-import { useScheduleFlow } from './composables/useScheduleFlow'
-import { useProcessedHeaders } from './composables/useProcessedHeaders'
-import { useScheduleEmits } from './composables/useScheduleEmits'
-
 // Get viewer state from parent
-const state = useInjectedViewerState()
-
-// Initialize store with viewer state
-initializeStore(state)
+const viewerState = useInjectedViewerState()
 
 // Initialize refs
-const setup = ref<ScheduleSetup | null>(null)
 const showCategoryOptions = ref(false)
 const showParameterManager = ref(false)
 const initialized = ref(false)
 const error = ref<Error | null>(null)
 const viewerContainer = ref<HTMLElement | null>(null)
-const isViewerInitialized = ref(false)
+const selectedParentCategories = ref<string[]>(
+  defaultTable.categoryFilters.selectedParentCategories
+)
+const selectedChildCategories = ref<string[]>(
+  defaultTable.categoryFilters.selectedChildCategories
+)
 
 // Component refs
 const initComponent = ref<ScheduleInitializationInstance | null>(null)
@@ -216,64 +231,54 @@ const dataComponent = ref<ScheduleDataManagementExposed | null>(null)
 const parameterComponent = ref<ScheduleParameterHandlingExposed | null>(null)
 const columnComponent = ref<ScheduleColumnManagementExposed | null>(null)
 
-// Initialize store values after getting state
-const storeValues = useScheduleValues()
-
-// Loading state
-const isLoading = computed(() => {
-  return !initialized.value || scheduleStore.loading.value || !!setup.value?.isUpdating
+// Initialize store values
+const storeValues = computed(() => {
+  try {
+    return useScheduleValues()
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Failed to get store values:', err)
+    return null
+  }
 })
 
-// Initialize store with project ID if available
-watch(
-  () => state?.projectId?.value,
-  (projectId) => {
-    if (projectId) {
-      try {
-        scheduleStore.setProjectId(projectId)
-      } catch (err) {
-        handleError(err)
-      }
-    }
-  },
-  { immediate: true }
-)
+// Initialize flow
+const { state: flowState, initialize, retry, cleanup } = useScheduleInitializationFlow()
 
-// Type-safe array helper
-function safeArrayValue<T>(value: T[] | Ref<T[]> | undefined): T[] {
-  if (!value) return []
-  if (Array.isArray(value)) return [...value]
-  return Array.isArray(value.value) ? [...value.value] : []
-}
-
-// Computed properties
-const selectedParentCategoriesComputed = computed<string[]>(() => {
-  const setupRef = setup.value
-  if (!setupRef?.selectedParentCategories) return []
-  return safeArrayValue(setupRef.selectedParentCategories)
-})
-
-const selectedChildCategoriesComputed = computed<string[]>(() => {
-  const setupRef = setup.value
-  if (!setupRef?.selectedChildCategories) return []
-  return safeArrayValue(setupRef.selectedChildCategories)
-})
-
-const currentTableComputed = computed<NamedTableConfig | null>(() => {
-  const setupRef = setup.value
-  const table = setupRef?.currentTable
-  if (!table || !table.value) return null
-  return { ...table.value }
+// Initialize elements data
+const elementsData = useElementsData({
+  selectedParentCategories,
+  selectedChildCategories
 })
 
 // Flow management
 const { tableConfig } = useScheduleFlow({
-  currentTable: currentTableComputed
+  currentTable: computed(() => defaultTable)
 })
 
 const currentTableConfig = computed<NamedTableConfig | null>(() =>
   tableConfig.value ? { ...tableConfig.value } : null
 )
+
+// Initialize schedule state
+const scheduleState = useScheduleState({
+  selectedParentCategories,
+  selectedChildCategories,
+  currentTable: currentTableConfig
+})
+
+// Loading state
+const isLoading = computed(
+  () => flowState.value.isLoading || elementsData.isLoading.value
+)
+const isUpdating = computed(
+  () => scheduleState.processingState.value.isProcessingElements
+)
+const hasSelectedCategories = computed(
+  () =>
+    selectedParentCategories.value.length > 0 ||
+    selectedChildCategories.value.length > 0
+)
+const hasChanges = computed(() => false) // TODO: Implement change tracking
 
 // Process headers
 const { processedHeaders } = useProcessedHeaders({
@@ -281,7 +286,7 @@ const { processedHeaders } = useProcessedHeaders({
     try {
       return scheduleStore.availableHeaders.value
     } catch (err) {
-      handleError(err)
+      debug.error(DebugCategories.ERROR, 'Failed to get headers:', err)
       return { parent: [], child: [] }
     }
   })
@@ -289,8 +294,13 @@ const { processedHeaders } = useProcessedHeaders({
 
 // Parameter handling
 const availableParentParameters = computed(() => {
-  const params = storeValues.customParameters.value || []
+  if (!storeValues?.value?.customParameters) {
+    return []
+  }
+
+  const params = storeValues.value.customParameters
   return params
+    .filter((param): param is NonNullable<typeof param> => !!param && !!param.type)
     .filter((param) => param.type === 'fixed')
     .map((param) => ({
       ...param,
@@ -299,13 +309,42 @@ const availableParentParameters = computed(() => {
 })
 
 const availableChildParameters = computed(() => {
-  const params = storeValues.customParameters.value || []
+  if (!storeValues?.value?.customParameters) {
+    return []
+  }
+
+  const params = storeValues.value.customParameters
   return params
+    .filter((param): param is NonNullable<typeof param> => !!param && !!param.type)
     .filter((param) => param.type === 'equation')
     .map((param) => ({
       ...param,
       header: param.name
     }))
+})
+
+// Initialize setup instance
+onMounted(async () => {
+  try {
+    debug.log(DebugCategories.INITIALIZATION, 'Mounting Schedules component')
+
+    // Initialize store with viewer state
+    initializeStore(viewerState)
+
+    // Initialize data first
+    await elementsData.initializeData()
+
+    // Then initialize the rest
+    await initialize()
+
+    // Set initialized after everything is ready
+    initialized.value = true
+
+    debug.log(DebugCategories.INITIALIZATION, 'Schedules component mounted')
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Schedules initialization failed:', err)
+    handleError(err)
+  }
 })
 
 // Emits
@@ -324,12 +363,6 @@ function handleSettingsLoaded(settings: {
 
 function handleDataInitialized() {
   debug.log(DebugCategories.INITIALIZATION, 'Data initialized')
-  initialized.value = true
-}
-
-function handleRetry() {
-  error.value = null
-  scheduleStore.lifecycle.init()
 }
 
 function handleTableDataUpdate() {
@@ -445,37 +478,63 @@ async function handleParameterUpdate() {
   }
 }
 
-// Initialize setup instance
-onMounted(async () => {
+async function handleTableChange() {
   try {
-    // Initialize store first
     await scheduleStore.lifecycle.init()
-
-    // Import dynamically to avoid hooks outside setup
-    const { useScheduleSetupInstance } = await import('./composables/useScheduleSetup')
-
-    // Initialize setup instance after store is ready
-    setup.value = useScheduleSetupInstance(
-      state.viewer.instance,
-      isViewerInitialized,
-      async () => {
-        isViewerInitialized.value = true
-      },
-      state
-    )
-
-    // Initialize elements data
-    if (setup.value) {
-      await setup.value.initializeElementsData()
-    }
   } catch (err) {
     handleError(err)
   }
-})
+}
+
+async function handleSaveTable() {
+  try {
+    await scheduleStore.lifecycle.init()
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+async function handleBothColumnsUpdate(
+  tableColumns: ColumnDef[],
+  detailColumns: ColumnDef[]
+) {
+  try {
+    await scheduleStore.setMergedColumns(tableColumns, detailColumns)
+    await scheduleStore.lifecycle.init()
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+async function handleCategoryToggle(category: string, type: 'parent' | 'child') {
+  try {
+    const categories =
+      type === 'parent' ? selectedParentCategories : selectedChildCategories
+    const index = categories.value.indexOf(category)
+    if (index === -1) {
+      categories.value.push(category)
+    } else {
+      categories.value.splice(index, 1)
+    }
+    await elementsData.updateCategories(
+      selectedParentCategories.value,
+      selectedChildCategories.value
+    )
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+// Add retry handler
+async function handleRetry() {
+  error.value = null
+  initialized.value = false
+  await retry()
+}
 
 // Watch for project ID changes
 watch(
-  () => state?.projectId?.value,
+  () => viewerState.projectId.value,
   async (newId) => {
     if (!newId) return
 
@@ -484,14 +543,18 @@ watch(
       initialized.value = false
       error.value = null
 
-      // Update store with new project ID first
-      scheduleStore.setProjectId(newId)
+      // Re-initialize store with viewer state
+      initializeStore(viewerState)
+
+      // Initialize store lifecycle
       await scheduleStore.lifecycle.init()
 
-      // Then update setup
-      if (setup.value) {
-        await setup.value.initializeElementsData()
-      }
+      // Initialize data
+      await initialize()
+      await elementsData.initializeData()
+
+      // Set initialized after everything is ready
+      initialized.value = true
     } catch (err) {
       handleError(err)
     }
@@ -500,13 +563,13 @@ watch(
 
 // Clean up
 onBeforeUnmount(() => {
-  setup.value?.stopWorldTreeWatch()
+  elementsData.stopWorldTreeWatch()
+  cleanup()
 })
 
 // Error handling
 function handleError(err: Error | unknown) {
-  const errorValue =
-    err instanceof InitializationError ? err : new InitializationError(String(err))
+  const errorValue = err instanceof Error ? err : new Error(String(err))
   error.value = errorValue
   debug.error(DebugCategories.ERROR, 'Schedule error:', errorValue)
 }
@@ -515,9 +578,9 @@ function handleError(err: Error | unknown) {
 defineExpose({
   handleError,
   handleParameterUpdate,
-  handleBothColumnsUpdate: computed(() => setup.value?.handleBothColumnsUpdate),
+  handleBothColumnsUpdate,
   handleTableDataUpdate,
-  handleCategoryToggle: computed(() => setup.value?.toggleCategory)
+  handleCategoryToggle
 })
 </script>
 

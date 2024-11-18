@@ -8,6 +8,7 @@ import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/
 import { debug, DebugCategories } from './debug'
 import { filterElements } from '../composables/useElementCategories'
 import { processParameters } from '../composables/useElementParameters'
+import { parentCategories, childCategories } from '../config/categories'
 
 interface PipelineResult {
   filteredElements: ElementData[]
@@ -50,7 +51,39 @@ function flattenParameters(
   return result
 }
 
-function transformToTableData(elements: ElementData[]): TableRowData[] {
+function determineElementType(
+  element: ElementData,
+  selectedParent: string[],
+  selectedChild: string[]
+): 'parent' | 'child' {
+  // If no categories are selected, treat all elements as parents
+  if (selectedParent.length === 0 && selectedChild.length === 0) {
+    return 'parent'
+  }
+
+  // Check if element's category is in parent or child categories
+  const isParentCategory = parentCategories.includes(element.category)
+  const isChildCategory = childCategories.includes(element.category)
+
+  // If element's category is in parent categories or is Uncategorized, treat as parent
+  if (isParentCategory || element.category === 'Uncategorized') {
+    return 'parent'
+  }
+
+  // If element's category is in child categories, treat as child
+  if (isChildCategory) {
+    return 'child'
+  }
+
+  // Default to parent for any other cases
+  return 'parent'
+}
+
+function transformToTableData(
+  elements: ElementData[],
+  selectedParent: string[],
+  selectedChild: string[]
+): TableRowData[] {
   debug.log(DebugCategories.DATA_TRANSFORM, 'Starting table data transformation', {
     elementCount: elements.length,
     elementCategories: [...new Set(elements.map((el) => el.category))]
@@ -59,7 +92,10 @@ function transformToTableData(elements: ElementData[]): TableRowData[] {
   // Create a map for quick parent lookup
   const parentMap = new Map<string, ElementData>()
   elements.forEach((element) => {
-    if (element.mark) {
+    if (
+      element.mark &&
+      determineElementType(element, selectedParent, selectedChild) === 'parent'
+    ) {
       parentMap.set(element.mark, element)
     }
   })
@@ -71,14 +107,17 @@ function transformToTableData(elements: ElementData[]): TableRowData[] {
 
   // Transform elements to table rows with proper parent-child relationships
   const tableData = elements.map((element) => {
+    const elementType = determineElementType(element, selectedParent, selectedChild)
     const row = {
       ...element,
       _visible: true,
+      isChild: elementType === 'child',
       details: element.details?.map((detail) => {
         // Ensure host field is set for child elements
         const childRow: TableRowData = {
           ...detail,
           _visible: true,
+          isChild: true,
           host: detail.host || element.mark // Use parent's mark as host if not set
         }
 
@@ -87,14 +126,6 @@ function transformToTableData(elements: ElementData[]): TableRowData[] {
           const flatParams = flattenParameters(detail.parameters)
           Object.entries(flatParams).forEach(([key, value]) => {
             ;(childRow as Record<string, ParameterValue>)[key] = value
-          })
-
-          debug.log(DebugCategories.DATA_TRANSFORM, 'Child parameters flattened', {
-            parentMark: element.mark,
-            childMark: detail.mark,
-            category: detail.category,
-            parameterCount: Object.keys(flatParams).length,
-            parameters: Object.keys(flatParams)
           })
         }
 
@@ -108,14 +139,6 @@ function transformToTableData(elements: ElementData[]): TableRowData[] {
               ;(childRow as Record<string, ParameterValue>)[key] = value
             }
           })
-
-          debug.log(DebugCategories.DATA_TRANSFORM, 'Child raw parameters added', {
-            parentMark: element.mark,
-            childMark: detail.mark,
-            category: detail.category,
-            rawParameterCount: Object.keys(rawParams).length,
-            rawParameters: Object.keys(rawParams)
-          })
         }
 
         return childRow
@@ -127,13 +150,6 @@ function transformToTableData(elements: ElementData[]): TableRowData[] {
       const flatParams = flattenParameters(element.parameters)
       Object.entries(flatParams).forEach(([key, value]) => {
         ;(row as Record<string, ParameterValue>)[key] = value
-      })
-
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Parent parameters flattened', {
-        mark: element.mark,
-        category: element.category,
-        parameterCount: Object.keys(flatParams).length,
-        parameters: Object.keys(flatParams)
       })
     }
 
@@ -147,13 +163,6 @@ function transformToTableData(elements: ElementData[]): TableRowData[] {
           ;(row as Record<string, ParameterValue>)[key] = value
         }
       })
-
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Parent raw parameters added', {
-        mark: element.mark,
-        category: element.category,
-        rawParameterCount: Object.keys(rawParams).length,
-        rawParameters: Object.keys(rawParams)
-      })
     }
 
     // If this is a child element (has host), find its parent's details
@@ -162,24 +171,25 @@ function transformToTableData(elements: ElementData[]): TableRowData[] {
       if (parent) {
         row.parentCategory = parent.category
         row.parentMark = parent.mark
-
-        debug.log(DebugCategories.DATA_TRANSFORM, 'Parent details added to child', {
-          childMark: element.mark,
-          childCategory: element.category,
-          parentMark: parent.mark,
-          parentCategory: parent.category
-        })
       }
     }
 
     return row
   })
 
+  // Filter out child elements that don't have a valid parent
+  const filteredTableData = tableData.filter((row) => {
+    if (row.isChild) {
+      return row.host && parentMap.has(row.host)
+    }
+    return true
+  })
+
   debug.log(DebugCategories.DATA_TRANSFORM, 'Table data transformation complete', {
-    rowCount: tableData.length,
-    rowCategories: [...new Set(tableData.map((row) => row.category))],
-    sampleRow: tableData[0],
-    sampleParameters: Object.keys(tableData[0] || {}).filter(
+    rowCount: filteredTableData.length,
+    rowCategories: [...new Set(filteredTableData.map((row) => row.category))],
+    sampleRow: filteredTableData[0],
+    sampleParameters: Object.keys(filteredTableData[0] || {}).filter(
       (key) =>
         ![
           'id',
@@ -188,12 +198,13 @@ function transformToTableData(elements: ElementData[]): TableRowData[] {
           'category',
           'parameters',
           'details',
-          '_visible'
+          '_visible',
+          'isChild'
         ].includes(key)
     )
   })
 
-  return tableData
+  return filteredTableData
 }
 
 /**
@@ -242,7 +253,11 @@ export function processDataPipeline({
   })
 
   // Step 3: Transform to table data
-  const tableData = transformToTableData(processedElements)
+  const tableData = transformToTableData(
+    processedElements,
+    selectedParent,
+    selectedChild
+  )
 
   debug.log(DebugCategories.DATA_TRANSFORM, 'Data pipeline complete', {
     sourceElements: allElements.length,

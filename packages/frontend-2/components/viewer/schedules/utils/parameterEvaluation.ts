@@ -1,6 +1,6 @@
 import type { CustomParameter } from '~/composables/useUserSettings'
-import type { ElementData } from '../types'
-import { debug } from './debug'
+import type { ElementData, ParameterValue } from '../types'
+import { debug, DebugCategories } from './debug'
 
 export class EquationError extends Error {
   constructor(message: string, public details?: Record<string, unknown>) {
@@ -29,30 +29,29 @@ export function evaluateParameter(
   parameter: CustomParameter,
   allParameters: CustomParameter[],
   rowData: ElementData
-): number | null {
+): ParameterValue {
   try {
     debug.startState('parameterEvaluation')
-    debug.log('Evaluating parameter:', {
+    debug.log(DebugCategories.PARAMETERS, 'Evaluating parameter:', {
       parameter,
       rowData
     })
 
-    // For fixed type parameters, convert value to number
+    // For fixed type parameters, return value as is
     if (parameter.type === 'fixed') {
-      const value = parameter.value ? Number(parameter.value) : null
-      if (value === null || isNaN(value)) {
-        throw new EquationError('Invalid fixed value', {
-          value: parameter.value,
-          parameter
-        })
-      }
-      debug.log('Fixed parameter value:', value)
+      const value = parameter.value || ''
+      debug.log(DebugCategories.PARAMETERS, 'Fixed parameter value:', value)
       debug.completeState('parameterEvaluation')
       return value
     }
 
     // For equation type parameters, evaluate the equation
-    if (parameter.type === 'equation' && parameter.value) {
+    if (parameter.type === 'equation') {
+      if (!parameter.equation) {
+        debug.warn(DebugCategories.PARAMETERS, 'Empty equation, returning 0')
+        return 0
+      }
+
       // Create evaluation context with row data and math functions
       const evalContext: EvalContextType = {
         parameters: {
@@ -60,6 +59,7 @@ export function evaluateParameter(
           // Add values from other parameters
           ...allParameters.reduce((acc, param) => {
             if (param.type === 'fixed' && param.value) {
+              // Try to convert fixed values to numbers for equations
               const value = Number(param.value)
               if (!isNaN(value)) {
                 acc[param.name] = value
@@ -80,20 +80,25 @@ export function evaluateParameter(
         }
       }
 
-      debug.log('Evaluation context:', evalContext)
+      debug.log(DebugCategories.PARAMETERS, 'Evaluation context:', evalContext)
 
       // Replace parameter references with context values
-      const evaluatedEquation = parameter.value.replace(/\${([^}]+)}/g, (_, param) => {
-        if (!evalContext.parameters.hasOwnProperty(param)) {
-          throw new EquationError(`Parameter "${param}" not found`, {
-            parameter: param,
-            availableParameters: Object.keys(evalContext.parameters)
-          })
+      const evaluatedEquation = parameter.equation.replace(
+        /\${([^}]+)}/g,
+        (_, paramName: string) => {
+          if (
+            !Object.prototype.hasOwnProperty.call(evalContext.parameters, paramName)
+          ) {
+            throw new EquationError(`Parameter "${paramName}" not found`, {
+              parameter: paramName,
+              availableParameters: Object.keys(evalContext.parameters)
+            })
+          }
+          return `context.parameters['${paramName}']`
         }
-        return `context.parameters['${param}']`
-      })
+      )
 
-      debug.log('Evaluated equation:', evaluatedEquation)
+      debug.log(DebugCategories.PARAMETERS, 'Evaluated equation:', evaluatedEquation)
 
       // Create a function that evaluates the equation in the context
       let fn: (context: EvalContextType) => number
@@ -102,46 +107,48 @@ export function evaluateParameter(
           context: EvalContextType
         ) => number
       } catch (error) {
-        throw new EquationError('Invalid equation syntax', {
-          equation: parameter.value,
+        debug.error(DebugCategories.PARAMETERS, 'Equation syntax error:', {
+          equation: parameter.equation,
           error: error instanceof Error ? error.message : 'Unknown error'
         })
+        return NaN
       }
 
-      const result = fn(evalContext)
-      if (isNaN(result)) {
-        throw new EquationError('Equation resulted in NaN', {
-          equation: parameter.value,
+      try {
+        const result = fn(evalContext)
+        if (isNaN(result)) {
+          debug.warn(DebugCategories.PARAMETERS, 'Equation resulted in NaN:', {
+            equation: parameter.equation,
+            evaluatedEquation,
+            context: evalContext
+          })
+          return NaN
+        }
+
+        debug.log(DebugCategories.PARAMETERS, 'Equation result:', result)
+        debug.completeState('parameterEvaluation')
+        return result
+      } catch (error) {
+        debug.error(DebugCategories.PARAMETERS, 'Equation evaluation error:', {
+          equation: parameter.equation,
           evaluatedEquation,
-          context: evalContext
+          error: error instanceof Error ? error.message : 'Unknown error'
         })
+        return NaN
       }
-
-      debug.log('Equation result:', result)
-      debug.completeState('parameterEvaluation')
-      return result
     }
 
-    throw new EquationError('Invalid parameter type or missing value', {
+    debug.warn(DebugCategories.PARAMETERS, 'Invalid parameter type:', {
       parameter,
-      type: parameter.type,
-      value: parameter.value
+      type: parameter.type
     })
+    return parameter.type === 'equation' ? NaN : ''
   } catch (error) {
-    if (error instanceof EquationError) {
-      debug.error('Parameter evaluation error:', {
-        message: error.message,
-        details: error.details
-      })
-      throw error
-    }
-
-    const wrappedError = new EquationError('Parameter evaluation failed', {
+    debug.error(DebugCategories.PARAMETERS, 'Parameter evaluation error:', {
       parameter,
       error: error instanceof Error ? error.message : 'Unknown error'
     })
-    debug.error('Parameter evaluation error:', wrappedError)
     debug.completeState('parameterEvaluation')
-    throw wrappedError
+    return parameter.type === 'equation' ? NaN : ''
   }
 }

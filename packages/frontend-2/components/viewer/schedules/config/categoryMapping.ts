@@ -6,6 +6,7 @@ import { parentCategories, childCategories } from './categories'
  */
 export const categoryToTypeMapping: Record<string, string[]> = {
   // Parent categories
+  Uncategorized: [], // Empty array so it never matches automatically
   Walls: ['ifcwall', 'ifcwallstandardcase', 'wall'],
   Floors: ['ifcfloor', 'ifcslab', 'floor', 'slab'],
   Roofs: ['ifcroof', 'roof'],
@@ -47,6 +48,15 @@ export function getTypePatterns(category: string): string[] {
  * Check if a speckle type matches any of the patterns for a given category
  */
 export function matchesCategory(speckleType: string, category: string): boolean {
+  // Special case for Uncategorized - it matches when no other category matches
+  if (category === 'Uncategorized') {
+    return !Object.entries(categoryToTypeMapping)
+      .filter(([cat]) => cat !== 'Uncategorized')
+      .some(([_, patterns]) =>
+        patterns.some((pattern) => speckleType.toLowerCase().includes(pattern))
+      )
+  }
+
   const patterns = getTypePatterns(category)
   const lowercaseType = speckleType.toLowerCase()
   return patterns.some((pattern) => lowercaseType.includes(pattern))
@@ -61,7 +71,8 @@ export function findMatchingCategories(speckleType: string): {
 } {
   const lowercaseType = speckleType.toLowerCase()
 
-  return {
+  // Find matching categories
+  const matched = {
     parentCategories: parentCategories.filter((category) =>
       getTypePatterns(category).some((pattern) => lowercaseType.includes(pattern))
     ),
@@ -69,13 +80,20 @@ export function findMatchingCategories(speckleType: string): {
       getTypePatterns(category).some((pattern) => lowercaseType.includes(pattern))
     )
   }
+
+  // If no matches found, add to Uncategorized
+  if (matched.parentCategories.length === 0 && matched.childCategories.length === 0) {
+    matched.parentCategories.push('Uncategorized')
+  }
+
+  return matched
 }
 
 /**
  * Get the most specific category for a speckle type
  * This is useful when an element could match multiple categories
  */
-export function getMostSpecificCategory(speckleType: string): string | null {
+export function getMostSpecificCategory(speckleType: string): string {
   const { parentCategories: matchedParents, childCategories: matchedChildren } =
     findMatchingCategories(speckleType)
 
@@ -83,5 +101,6 @@ export function getMostSpecificCategory(speckleType: string): string | null {
   if (matchedChildren.length > 0) return matchedChildren[0]
   if (matchedParents.length > 0) return matchedParents[0]
 
-  return null
+  // Always return Uncategorized as fallback instead of null
+  return 'Uncategorized'
 }

@@ -14,7 +14,6 @@ import { filterElements } from './useElementCategories'
 import { processParameters } from './useElementParameters'
 import { defaultColumns } from '../config/defaultColumns'
 import store from './useScheduleStore'
-import type { ViewerState } from './useScheduleSetup'
 
 /**
  * Creates a mutable copy of an array with type safety
@@ -29,12 +28,10 @@ function toMutable<T>(arr: readonly T[] | T[]): T[] {
  */
 export function useElementsData({
   selectedParentCategories,
-  selectedChildCategories,
-  viewerState
+  selectedChildCategories
 }: {
   selectedParentCategories: Ref<string[]>
   selectedChildCategories: Ref<string[]>
-  viewerState: ViewerState
 }): ElementsDataReturn & { filteredElements: Ref<ElementData[]> } {
   // Initialize processing state
   const processingState = ref<ProcessingState>({
@@ -54,7 +51,7 @@ export function useElementsData({
     hasError,
     initializeElements,
     stopWorldTreeWatch
-  } = useBIMElements(viewerState)
+  } = useBIMElements()
 
   // Create refs for data
   const filteredElementsRef = ref<ElementData[]>([])
@@ -68,19 +65,28 @@ export function useElementsData({
   // Update filtered elements when source data or categories change
   watch(
     [allElements, selectedParentCategories, selectedChildCategories],
-    () => {
-      if (!allElements.value) {
-        filteredElementsRef.value = []
-        return
+    async () => {
+      try {
+        if (!allElements.value) {
+          filteredElementsRef.value = []
+          return
+        }
+
+        const { filteredElements } = filterElements({
+          allElements: toMutable(allElements.value),
+          selectedParent: selectedParentCategories.value,
+          selectedChild: selectedChildCategories.value
+        })
+
+        filteredElementsRef.value = toMutable(filteredElements)
+
+        // Process data pipeline after filtering
+        await processDataPipeline()
+      } catch (error) {
+        debug.error(DebugCategories.ERROR, 'Error updating filtered elements:', error)
+        processingState.value.error =
+          error instanceof Error ? error : new Error(String(error))
       }
-
-      const { filteredElements } = filterElements({
-        allElements: toMutable(allElements.value),
-        selectedParent: selectedParentCategories.value,
-        selectedChild: selectedChildCategories.value
-      })
-
-      filteredElementsRef.value = toMutable(filteredElements)
     },
     { immediate: true }
   )
@@ -89,7 +95,11 @@ export function useElementsData({
   watch(
     () => store.scheduleData.value,
     (newData) => {
-      scheduleDataRef.value = toMutable(newData)
+      try {
+        scheduleDataRef.value = toMutable(newData)
+      } catch (error) {
+        debug.error(DebugCategories.ERROR, 'Error updating schedule data:', error)
+      }
     },
     { immediate: true }
   )
@@ -97,7 +107,11 @@ export function useElementsData({
   watch(
     () => store.tableData.value,
     (newData) => {
-      tableDataRef.value = toMutable(newData)
+      try {
+        tableDataRef.value = toMutable(newData)
+      } catch (error) {
+        debug.error(DebugCategories.ERROR, 'Error updating table data:', error)
+      }
     },
     { immediate: true }
   )
@@ -105,26 +119,39 @@ export function useElementsData({
   // Transform ElementData to TableRowData
   function transformToTableData(elements: ElementData[]): TableRowData[] {
     return elements.map((element) => {
-      const rowData: TableRowData = {
-        id: element.id,
-        mark: element.mark,
-        category: element.category,
-        type: element.type || '',
-        details: element.details ? toMutable(element.details) : [],
-        _visible: true,
-        data: {} as Record<string, ParameterValue>
-      }
+      try {
+        const rowData: TableRowData = {
+          id: element.id,
+          mark: element.mark,
+          category: element.category,
+          type: element.type || '',
+          details: element.details ? toMutable(element.details) : [],
+          _visible: true,
+          data: {} as Record<string, ParameterValue>
+        }
 
-      // Add parameter values to data object
-      if (element.parameters) {
-        Object.entries(element.parameters).forEach(([key, value]) => {
-          if (typeof key === 'string') {
-            ;(rowData.data as Record<string, ParameterValue>)[key] = value
-          }
-        })
-      }
+        // Add parameter values to data object
+        if (element.parameters) {
+          Object.entries(element.parameters).forEach(([key, value]) => {
+            if (typeof key === 'string') {
+              ;(rowData.data as Record<string, ParameterValue>)[key] = value
+            }
+          })
+        }
 
-      return rowData
+        return rowData
+      } catch (error) {
+        debug.error(DebugCategories.ERROR, 'Error transforming element:', error)
+        return {
+          id: element.id || 'unknown',
+          mark: element.mark || 'unknown',
+          category: element.category || 'unknown',
+          type: '',
+          details: [],
+          _visible: true,
+          data: {}
+        }
+      }
     })
   }
 
@@ -138,10 +165,17 @@ export function useElementsData({
     try {
       processingState.value.isProcessingFullData = true
 
+      // Use all elements if no categories are selected
+      const elementsToProcess =
+        selectedParentCategories.value.length === 0 &&
+        selectedChildCategories.value.length === 0
+          ? toMutable(allElements.value)
+          : filteredElementsRef.value
+
       // Step 1: Process parameters from filtered elements
       const { processedElements, parameterColumns, availableHeaders } =
         await processParameters({
-          filteredElements: filteredElementsRef.value
+          filteredElements: elementsToProcess
         })
 
       // Step 2: Transform to table data
@@ -184,15 +218,6 @@ export function useElementsData({
       processingState.value.isProcessingFullData = false
     }
   }
-
-  // Watch for changes that require processing
-  watch(
-    [() => filteredElementsRef.value],
-    async () => {
-      await processDataPipeline()
-    },
-    { deep: true }
-  )
 
   // Category update handler
   async function updateCategories(
@@ -277,20 +302,6 @@ export function useElementsData({
     }
   }
 
-  // Create refs for debug views
-  const parentElements = computed(() =>
-    toMutable(filteredElementsRef.value.filter((el) => !el.isChild))
-  )
-  const childElements = computed(() =>
-    toMutable(filteredElementsRef.value.filter((el) => el.isChild))
-  )
-  const matchedElements = computed(() =>
-    toMutable(filteredElementsRef.value.filter((el) => el.details?.length))
-  )
-  const orphanedElements = computed(() =>
-    toMutable(filteredElementsRef.value.filter((el) => el.host && !el.details?.length))
-  )
-
   return {
     // Core data
     scheduleData: scheduleDataRef,
@@ -320,22 +331,19 @@ export function useElementsData({
 
     // Debug properties
     rawElements: allElements,
-    parentElements,
-    childElements,
-    matchedElements,
-    orphanedElements
+    parentElements: computed(() =>
+      toMutable(filteredElementsRef.value.filter((el) => !el.isChild))
+    ),
+    childElements: computed(() =>
+      toMutable(filteredElementsRef.value.filter((el) => el.isChild))
+    ),
+    matchedElements: computed(() =>
+      toMutable(filteredElementsRef.value.filter((el) => el.details?.length))
+    ),
+    orphanedElements: computed(() =>
+      toMutable(
+        filteredElementsRef.value.filter((el) => el.host && !el.details?.length)
+      )
+    )
   }
-}
-
-// Export a function to create an instance
-export function createElementsData(
-  selectedParentCategories: Ref<string[]>,
-  selectedChildCategories: Ref<string[]>,
-  viewerState: ViewerState
-) {
-  return useElementsData({
-    selectedParentCategories,
-    selectedChildCategories,
-    viewerState
-  })
 }

@@ -11,14 +11,13 @@ import { debug, DebugCategories } from '../utils/debug'
 import { processDataPipeline, processDebugElements } from '../utils/dataPipeline'
 import { useBIMElements } from './useBIMElements'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
-import type { ViewerState } from './useScheduleSetup'
+import store from './useScheduleStore'
 
 interface ScheduleStateOptions {
   allElements?: Ref<ElementData[] | null>
   selectedParentCategories?: Ref<string[]>
   selectedChildCategories?: Ref<string[]>
   currentTable?: Ref<{ parentColumns?: ColumnDef[]; childColumns?: ColumnDef[] } | null>
-  viewerState: ViewerState
 }
 
 interface ScheduleStateReturn {
@@ -71,7 +70,7 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
     allElements: bimElements,
     isLoading: bimLoading,
     hasError: bimError
-  } = useBIMElements(options.viewerState)
+  } = useBIMElements()
 
   const allElements = options.allElements || bimElements
   const selectedParentCategories = options.selectedParentCategories || ref<string[]>([])
@@ -230,7 +229,7 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
           essentialFieldsOnly: true
         })
 
-        // Update state with essential data
+        // Update state and store with essential data
         state.scheduleData = essentialResult.processedElements
         state.tableData = essentialResult.tableData
         state.parameterColumns = [
@@ -240,6 +239,12 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
           )
         ]
         state.availableHeaders = essentialResult.availableHeaders
+
+        // Update store with essential data
+        store.setScheduleData(essentialResult.processedElements)
+        store.setTableData(essentialResult.tableData)
+        store.setParameterColumns(state.parameterColumns)
+        store.setAvailableHeaders(essentialResult.availableHeaders)
 
         // Queue full processing
         queueMicrotask(() => {
@@ -264,6 +269,12 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
             ]
             state.availableHeaders = fullResult.availableHeaders
 
+            // Update store with full data
+            store.setScheduleData(fullResult.processedElements)
+            store.setTableData(fullResult.tableData)
+            store.setParameterColumns(state.parameterColumns)
+            store.setAvailableHeaders(fullResult.availableHeaders)
+
             debug.log(DebugCategories.DATA, 'Full data processing complete', {
               dataCount: state.scheduleData.length,
               tableRows: state.tableData.length,
@@ -287,6 +298,42 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
           error instanceof Error ? error : new Error('Failed to process data')
       } finally {
         processingState.value.isProcessingElements = false
+      }
+    },
+    { immediate: true }
+  )
+
+  // Watch for table changes to update columns
+  watch(
+    () => currentTable?.value,
+    (newTable) => {
+      if (newTable) {
+        // Use table columns if available, otherwise use defaults
+        state.mergedTableColumns = newTable.parentColumns || defaultColumns
+        state.mergedDetailColumns = newTable.childColumns || defaultDetailColumns
+        state.currentTableColumns = newTable.parentColumns || defaultColumns
+        state.currentDetailColumns = newTable.childColumns || defaultDetailColumns
+
+        // Update store with new columns
+        store.setMergedColumns(state.mergedTableColumns, state.mergedDetailColumns)
+        store.setCurrentColumns(state.currentTableColumns, state.currentDetailColumns)
+
+        debug.log(DebugCategories.COLUMNS, 'Updated columns from table:', {
+          parentColumns: state.mergedTableColumns.length,
+          childColumns: state.mergedDetailColumns.length
+        })
+      } else {
+        // Reset to defaults if no table
+        state.mergedTableColumns = defaultColumns
+        state.mergedDetailColumns = defaultDetailColumns
+        state.currentTableColumns = defaultColumns
+        state.currentDetailColumns = defaultDetailColumns
+
+        // Update store with default columns
+        store.setMergedColumns(defaultColumns, defaultDetailColumns)
+        store.setCurrentColumns(defaultColumns, defaultDetailColumns)
+
+        debug.log(DebugCategories.COLUMNS, 'Reset to default columns')
       }
     },
     { immediate: true }
@@ -335,13 +382,11 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
 export function createScheduleState(
   selectedParentCategories: Ref<string[]>,
   selectedChildCategories: Ref<string[]>,
-  currentTable: Ref<{ parentColumns?: ColumnDef[]; childColumns?: ColumnDef[] } | null>,
-  viewerState: ViewerState
+  currentTable: Ref<{ parentColumns?: ColumnDef[]; childColumns?: ColumnDef[] } | null>
 ) {
   return useScheduleState({
     selectedParentCategories,
     selectedChildCategories,
-    currentTable,
-    viewerState
+    currentTable
   })
 }

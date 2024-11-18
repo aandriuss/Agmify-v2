@@ -1,5 +1,6 @@
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
+import { parentCategories, childCategories } from './categories'
 
 export const defaultColumns: ColumnDef[] = [
   {
@@ -108,9 +109,9 @@ export const defaultTable: NamedTableConfig = {
   parentColumns: defaultColumns,
   childColumns: defaultDetailColumns,
   categoryFilters: {
-    // Initialize with all parent categories to show data immediately
-    selectedParentCategories: ['Walls', 'Building', 'Site', 'Base'],
-    selectedChildCategories: ['Structural Framing']
+    // Initialize with all categories to show all data immediately
+    selectedParentCategories: parentCategories,
+    selectedChildCategories: childCategories
   },
   customParameters: []
 }

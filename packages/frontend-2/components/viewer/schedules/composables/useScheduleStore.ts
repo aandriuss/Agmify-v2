@@ -2,10 +2,15 @@ import { ref, computed } from 'vue'
 import type { Store, StoreState } from '../core/types'
 import { debug, DebugCategories } from '../utils/debug'
 import { createMutations } from '../core/store/mutations'
-import type { ViewerState } from './useScheduleSetup'
+import type { ViewerState } from '../types/viewer'
 import type { ElementData, TableRowData, AvailableHeaders } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
+import {
+  defaultColumns,
+  defaultDetailColumns,
+  defaultTable
+} from '../config/defaultColumns'
 
 const initialState: StoreState = {
   projectId: null,
@@ -17,20 +22,20 @@ const initialState: StoreState = {
   mergedParentParameters: [],
   mergedChildParameters: [],
   processedParameters: {},
-  currentTableColumns: [],
-  currentDetailColumns: [],
-  mergedTableColumns: [],
-  mergedDetailColumns: [],
+  currentTableColumns: defaultColumns,
+  currentDetailColumns: defaultDetailColumns,
+  mergedTableColumns: defaultColumns,
+  mergedDetailColumns: defaultDetailColumns,
   parameterDefinitions: {},
   availableHeaders: { parent: [], child: [] },
   selectedCategories: new Set(),
-  selectedParentCategories: [],
-  selectedChildCategories: [],
+  selectedParentCategories: defaultTable.categoryFilters.selectedParentCategories,
+  selectedChildCategories: defaultTable.categoryFilters.selectedChildCategories,
   tablesArray: [],
-  tableName: '',
-  selectedTableId: '',
-  currentTableId: '',
-  tableKey: '',
+  tableName: defaultTable.name,
+  selectedTableId: defaultTable.id,
+  currentTableId: defaultTable.id,
+  tableKey: '0',
   initialized: false,
   loading: false,
   error: null
@@ -86,10 +91,37 @@ function createStore(viewerState: ViewerState): Store {
           await new Promise((resolve) => setTimeout(resolve, 100))
         }
 
+        // Initialize with default columns if none set
+        if (!internalState.value.currentTableColumns.length) {
+          mutations.setCurrentColumns(defaultColumns, defaultDetailColumns)
+        }
+
+        if (!internalState.value.mergedTableColumns.length) {
+          mutations.setMergedColumns(defaultColumns, defaultDetailColumns)
+        }
+
+        // Initialize with default categories if none set
+        if (!internalState.value.selectedParentCategories.length) {
+          mutations.setParentCategories(
+            defaultTable.categoryFilters.selectedParentCategories
+          )
+        }
+
+        if (!internalState.value.selectedChildCategories.length) {
+          mutations.setChildCategories(
+            defaultTable.categoryFilters.selectedChildCategories
+          )
+        }
+
         debug.log(DebugCategories.INITIALIZATION, 'Store initialization complete', {
           projectId: internalState.value.projectId,
-          viewerInitialized: true
+          viewerInitialized: true,
+          columnsCount: internalState.value.currentTableColumns.length,
+          detailColumnsCount: internalState.value.currentDetailColumns.length,
+          parentCategories: internalState.value.selectedParentCategories,
+          childCategories: internalState.value.selectedChildCategories
         })
+
         mutations.setInitialized(true)
       } catch (error) {
         debug.error(DebugCategories.ERROR, 'Store initialization failed:', error)

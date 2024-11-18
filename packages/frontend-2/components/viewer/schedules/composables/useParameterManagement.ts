@@ -1,10 +1,10 @@
 import { computed, ref, watch } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import type { ElementData } from '../types'
+import type { ElementData, ParameterValue } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { evaluateParameter } from '../utils/parameterEvaluation'
-import { debug } from '../utils/debug'
+import { debug, DebugCategories } from '../utils/debug'
 
 interface UseParameterManagementOptions {
   parameters: ComputedRef<CustomParameter[]> | Ref<CustomParameter[]>
@@ -13,40 +13,35 @@ interface UseParameterManagementOptions {
 }
 
 export function useParameterManagement(options: UseParameterManagementOptions) {
-  const { isInitialized } = options
-
   // Keep track of parameter visibility state
   const parameterVisibility = ref<Record<string, boolean>>({})
 
-  // Convert parameters to columns with purple color and custom category
+  // Convert parameters to columns with proper types and metadata
   const parameterColumns = computed<ColumnDef[]>(() => {
-    if (isInitialized?.value === false) return []
-
-    debug.log('Creating parameter columns:', {
+    debug.log(DebugCategories.PARAMETERS, 'Creating parameter columns:', {
       parameters: options.parameters.value,
       visibilityState: parameterVisibility.value
     })
 
     return options.parameters.value.map((param, index) => {
-      // Use parameter ID for both field and ref to ensure consistency
       const field = `param_${param.id}`
       const isVisible = parameterVisibility.value[param.id] ?? true
 
       return {
         field,
         header: param.name,
-        type: 'number',
-        removable: true,
+        type: param.type === 'equation' ? 'number' : 'string', // Equations always return numbers
+        removable: param.removable ?? true,
         visible: isVisible,
-        order: index,
-        isCustomParameter: true,
+        order: param.order ?? index,
         parameterRef: param.id,
-        color: 'purple',
-        category: 'Custom Parameters',
+        category: param.category || 'Custom Parameters',
+        source: param.source || 'Parameters',
         description:
           param.type === 'equation'
             ? `Equation: ${param.equation || ''}`
-            : `Fixed value: ${param.value || ''}`
+            : `Fixed value: ${param.value || ''}`,
+        color: param.color || 'purple'
       }
     })
   })
@@ -55,8 +50,6 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
   watch(
     () => options.parameters.value,
     (newParams) => {
-      if (isInitialized?.value === false) return
-
       const newVisibility: Record<string, boolean> = {}
       newParams.forEach((param) => {
         // Preserve existing visibility state or default to true
@@ -64,7 +57,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
       })
       parameterVisibility.value = newVisibility
 
-      debug.log('Updated parameter visibility state:', {
+      debug.log(DebugCategories.PARAMETERS, 'Updated parameter visibility state:', {
         parameters: newParams.length,
         visibilityState: newVisibility
       })
@@ -73,15 +66,13 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
 
   // Evaluate parameters for each row
   const evaluatedData = computed(() => {
-    if (isInitialized?.value === false) return []
-
-    debug.log('Evaluating parameters for data:', {
+    debug.log(DebugCategories.PARAMETERS, 'Evaluating parameters for data:', {
       parametersCount: options.parameters.value.length,
       dataCount: options.data.value.length
     })
 
     return options.data.value.map((row) => {
-      const paramValues: Record<string, number> = {}
+      const paramValues: Record<string, ParameterValue> = {}
       const details = row.details
 
       // Create a clean row data object without details for parameter evaluation
@@ -92,10 +83,9 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
       for (const param of options.parameters.value) {
         try {
           const value = evaluateParameter(param, options.parameters.value, rowData)
-          // Use consistent field naming
           const field = `param_${param.id}`
-          paramValues[field] = value as number
-          debug.log('Evaluated parameter:', {
+          paramValues[field] = value
+          debug.log(DebugCategories.PARAMETERS, 'Evaluated parameter:', {
             parameter: param.name,
             field,
             value,
@@ -103,8 +93,8 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
           })
         } catch (error) {
           const field = `param_${param.id}`
-          paramValues[field] = NaN
-          debug.warn('Parameter evaluation failed:', {
+          paramValues[field] = param.type === 'equation' ? NaN : ''
+          debug.warn(DebugCategories.PARAMETERS, 'Parameter evaluation failed:', {
             parameter: param.name,
             field,
             rowId: row.id,
@@ -115,7 +105,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
 
       // If row has details, evaluate parameters for each child
       if (Array.isArray(details) && details.length > 0) {
-        debug.log('Processing details:', {
+        debug.log(DebugCategories.PARAMETERS, 'Processing details:', {
           parentId: row.id,
           detailsCount: details.length
         })
@@ -124,14 +114,14 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
           ...row,
           ...paramValues,
           details: details.map((child) => {
-            const childParamValues: Record<string, number> = {}
+            const childParamValues: Record<string, ParameterValue> = {}
             // Evaluate each parameter for child row
             for (const param of options.parameters.value) {
               try {
                 const value = evaluateParameter(param, options.parameters.value, child)
                 const field = `param_${param.id}`
-                childParamValues[field] = value as number
-                debug.log('Evaluated child parameter:', {
+                childParamValues[field] = value
+                debug.log(DebugCategories.PARAMETERS, 'Evaluated child parameter:', {
                   parameter: param.name,
                   field,
                   value,
@@ -140,14 +130,18 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
                 })
               } catch (error) {
                 const field = `param_${param.id}`
-                childParamValues[field] = NaN
-                debug.warn('Child parameter evaluation failed:', {
-                  parameter: param.name,
-                  field,
-                  childId: child.id,
-                  parentId: row.id,
-                  error: error instanceof Error ? error.message : 'Unknown error'
-                })
+                childParamValues[field] = param.type === 'equation' ? NaN : ''
+                debug.warn(
+                  DebugCategories.PARAMETERS,
+                  'Child parameter evaluation failed:',
+                  {
+                    parameter: param.name,
+                    field,
+                    childId: child.id,
+                    parentId: row.id,
+                    error: error instanceof Error ? error.message : 'Unknown error'
+                  }
+                )
               }
             }
             return {
@@ -174,22 +168,22 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
       () => parameterVisibility.value
     ],
     ([newParams, newData, newVisibility]) => {
-      if (isInitialized?.value === false) return
-
-      debug.log('Parameters, data, or visibility changed:', {
-        parametersCount: newParams.length,
-        dataCount: newData.length,
-        visibilityState: newVisibility
-      })
+      debug.log(
+        DebugCategories.PARAMETERS,
+        'Parameters, data, or visibility changed:',
+        {
+          parametersCount: newParams.length,
+          dataCount: newData.length,
+          visibilityState: newVisibility
+        }
+      )
     },
     { deep: true }
   )
 
   // Update parameter visibility
   function updateParameterVisibility(paramId: string, visible: boolean) {
-    if (isInitialized?.value === false) return
-
-    debug.log('Updating parameter visibility:', {
+    debug.log(DebugCategories.PARAMETERS, 'Updating parameter visibility:', {
       paramId,
       visible
     })

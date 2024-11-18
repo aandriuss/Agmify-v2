@@ -57,8 +57,10 @@ The system uses a strict type hierarchy:
 - Computed ref handling with proper unwrapping
 - Immutable state updates
 - Viewer state synchronization
+- Direct data access in components (new)
+- Improved category initialization (new)
 
-### Component Flow
+### Component Flow (Updated)
 
 ```
 Schedules.vue
@@ -70,6 +72,7 @@ Schedules.vue
 └── Components
     ├── table/
     │   ├── ScheduleTableView (Main container)
+    │   │   ├── TableWrapper (Direct data access) // Updated
     │   │   ├── ScheduleDebugPanel (Debug information)
     │   │   ├── ScheduleLoadingState (Loading progress)
     │   │   ├── ScheduleErrorState (Error handling)
@@ -112,8 +115,8 @@ Store Initialization -> ViewerState -> BIMElements -> Components
        └── Error ──────────┴── State ─────┘
 
 NamedTableConfig -> TableConfig -> Component Props
-         ↑                ↓
-         └── State Updates ←┘
+         ↑                ↓             ↓
+         └── State Updates ←───── Direct Data Access
 ```
 
 ### Error Handling
@@ -134,7 +137,24 @@ NamedTableConfig -> TableConfig -> Component Props
 
 ## Implementation Details
 
-### Store Integration (Updated)
+### Implementation Details (Updated)
+
+#### Data Access
+
+```typescript
+// Direct data access in components
+<template>
+  <div class="truncate">{{ data[col.field] }}</div>
+</template>
+
+// Category initialization
+export const defaultTable: NamedTableConfig = {
+  categoryFilters: {
+    selectedParentCategories: parentCategories,
+    selectedChildCategories: childCategories
+  }
+}
+```
 
 ```typescript
 // Early store initialization

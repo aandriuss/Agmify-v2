@@ -11,7 +11,7 @@ import { ValidationError } from '../utils/validation'
 import { convertToString } from '../utils/dataConversion'
 import { getMostSpecificCategory } from '../config/categoryMapping'
 import { ViewerInitializationError } from '../core/composables/useViewerInitialization'
-import type { ViewerState } from './useScheduleSetup'
+import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 
 interface UseBIMElementsReturn {
   allElements: Ref<ElementData[]>
@@ -298,7 +298,8 @@ function processNode(
   return elements
 }
 
-export function useBIMElements(state: ViewerState): UseBIMElementsReturn {
+export function useBIMElements(): UseBIMElementsReturn {
+  const { viewer } = useInjectedViewerState()
   const allElements = ref<ElementData[]>([])
   const rawWorldTree = ref<WorldTreeNode | null>(null)
   const rawTreeNodes = ref<TreeItemComponentModel[]>([])
@@ -306,13 +307,13 @@ export function useBIMElements(state: ViewerState): UseBIMElementsReturn {
   const hasError = ref(false)
 
   async function waitForWorldTree(maxAttempts = 10, interval = 500): Promise<void> {
-    if (!state?.viewer?.instance) {
-      throw new ViewerInitializationError('Viewer state not available')
+    if (!viewer.instance) {
+      throw new ViewerInitializationError('Viewer instance not available')
     }
 
     let attempts = 0
     while (attempts < maxAttempts) {
-      if (state.viewer.metadata.worldTree.value) {
+      if (viewer.metadata.worldTree.value) {
         return
       }
       await new Promise((resolve) => setTimeout(resolve, interval))
@@ -326,23 +327,23 @@ export function useBIMElements(state: ViewerState): UseBIMElementsReturn {
       isLoading.value = true
       hasError.value = false
 
-      if (!state?.viewer?.instance) {
-        throw new ViewerInitializationError('Viewer state not initialized')
+      if (!viewer.instance) {
+        throw new ViewerInitializationError('Viewer instance not available')
       }
 
       await waitForWorldTree()
 
       debug.log(DebugCategories.INITIALIZATION, 'Starting element initialization', {
-        hasWorldTree: !!state.viewer.metadata.worldTree.value,
-        isViewerInitialized: !!state.viewer.init.ref.value
+        hasWorldTree: !!viewer.metadata.worldTree.value,
+        isViewerInitialized: !!viewer.init.ref.value
       })
 
-      if (!state.viewer.metadata.worldTree.value) {
+      if (!viewer.metadata.worldTree.value) {
         debug.error(DebugCategories.VALIDATION, 'WorldTree is null or undefined')
         throw new ValidationError('WorldTree is null or undefined')
       }
 
-      const tree = state.viewer.metadata.worldTree.value as unknown as {
+      const tree = viewer.metadata.worldTree.value as unknown as {
         _root: TreeNode
       }
       if (!tree._root) {
@@ -400,9 +401,9 @@ export function useBIMElements(state: ViewerState): UseBIMElementsReturn {
 
   // Initialize watchers
   const stopWorldTreeWatch = watch(
-    () => state.viewer.metadata.worldTree.value,
+    () => viewer.metadata.worldTree.value,
     async (newWorldTree) => {
-      if (newWorldTree && state.viewer.init.ref.value) {
+      if (newWorldTree && viewer.init.ref.value) {
         const tree = newWorldTree as unknown as { _root: TreeNode }
         debug.log(DebugCategories.DATA, 'WorldTree updated', {
           hasRoot: !!tree._root,

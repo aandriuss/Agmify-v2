@@ -1,172 +1,172 @@
-# Schedule System Implementation - Loading State Investigation
+# Schedule System Implementation Prompt
 
 ## Current Status
 
-We've made significant progress in the schedule system implementation:
+We've made progress with:
 
-1. Store Improvements
+- Basic data loading working
+- Store initialization fixed
+- Initial rendering working
+- Debug view showing data (80 rows)
 
-- Early store initialization implemented
-- Type-safe state access working
-- Error handling improved
-- Data flowing correctly through store
+## Next Phase: Restore Existing DataTable
 
-2. Current Issue
+### 1. Identify Current Issues
 
-- UI stuck in loading state despite data being available
-- Console shows correct data
-- No visible errors
-- Components not rendering
+1. DataTable component is not showing despite data being available
+2. Category filters are missing
+3. Column management modal is missing
+4. Table settings are not being loaded
 
-## Investigation Areas
+### 2. Component Investigation
 
-### 1. Loading State Logic
+Need to check:
 
-```typescript
-// Current implementation
-const isLoading = computed(() => {
-  return !initialized.value || scheduleStore.loading.value || !!setup?.value?.isUpdating
-})
+1. `components/tables/DataTable/index.vue` - existing table component
+2. `ScheduleColumnManagement.vue` - column management
+3. `ScheduleCategoryFilters.vue` - category filtering
+4. `ScheduleParameterManagerModal.vue` - parameter management
+
+### 3. Implementation Steps
+
+#### Step 1: Restore DataTable Display
+
+1. Check DataTable component integration in ScheduleTableView.vue
+2. Verify props being passed to DataTable
+3. Ensure store data is properly connected
+4. Remove any blocking conditions in table rendering
+
+#### Step 2: Restore Category Management
+
+1. Re-enable ScheduleCategoryFilters component
+2. Connect category selection to store
+3. Verify category filtering logic
+4. Restore category UI state
+
+#### Step 3: Restore Column Management
+
+1. Re-enable column management modal
+2. Connect column visibility state
+3. Restore column ordering functionality
+4. Re-enable column settings persistence
+
+### 4. Key Files to Check
+
+```
+components/table/
+├── ScheduleTableView.vue       // Main table container
+├── DataTable/
+│   ├── index.vue              // Existing table component
+│   └── components/
+│       └── TableWrapper.vue   // Table wrapper component
+
+components/
+├── ScheduleCategoryFilters.vue    // Category management
+├── ScheduleColumnManagement.vue   // Column management
+└── ScheduleParameterManagerModal.vue // Parameter management
 ```
 
-Need to verify:
+### 5. Required Changes
 
-- When does `initialized` become true?
-- Is store loading state transitioning correctly?
-- Are setup updates completing?
-
-### 2. Component Lifecycle
-
-Need to track:
-
-- Component mounting order
-- Data availability timing
-- State transition triggers
-- Re-render conditions
-
-### 3. Store Integration
-
-Need to verify:
-
-- Store subscription timing
-- Reactivity chain
-- State update propagation
-- Component update triggers
-
-## Debug Plan
-
-### 1. Add State Logging
+#### ScheduleTableView.vue
 
 ```typescript
-watch(
-  () => ({
-    initialized: initialized.value,
-    storeLoading: scheduleStore.loading.value,
-    setupUpdating: !!setup?.value?.isUpdating,
-    hasData: !!storeValues.scheduleData.value?.length
-  }),
-  (state) => {
-    debug.log(DebugCategories.STATE, 'State update:', state)
-  },
-  { immediate: true, deep: true }
-)
+// Remove blocking conditions
+- Remove initialization checks
+- Show table when data is available
+- Keep error handling
 ```
 
-### 2. Track Component Lifecycle
+#### DataTable Integration
 
 ```typescript
-onMounted(() => {
-  debug.log(DebugCategories.LIFECYCLE, 'Component mounted', {
-    initialized: initialized.value,
-    hasData: !!storeValues.scheduleData.value?.length,
-    isLoading: isLoading.value
-  })
-})
+// Restore table props
+<DataTable
+  :data="tableData"          // Direct from store
+  :columns="tableColumns"    // From column management
+  :settings="tableSettings"  // From store
+  @update="handleUpdate"
+/>
 ```
 
-### 3. Monitor Store Updates
+#### Category Management
 
 ```typescript
-watch(
-  () => storeValues.scheduleData.value,
-  (data) => {
-    debug.log(DebugCategories.STATE, 'Store data updated', {
-      hasData: !!data?.length,
-      isLoading: isLoading.value
-    })
-  },
-  { immediate: true }
-)
+// Restore category filters
+<ScheduleCategoryFilters
+  :parent-categories="parentCategories"
+  :child-categories="childCategories"
+  :selected-parent="selectedParent"
+  :selected-child="selectedChild"
+  @update:selection="handleCategoryUpdate"
+/>
 ```
 
-## Success Criteria
+#### Column Management
 
-### 1. State Transitions
+```typescript
+// Restore column manager
+<ScheduleColumnManagement
+  v-if="showColumnManager"
+  :columns="availableColumns"
+  :visible-columns="visibleColumns"
+  @update:visibility="handleColumnVisibility"
+  @update:order="handleColumnOrder"
+/>
+```
 
-- [ ] Loading state transitions correctly
-- [ ] Components receive data updates
-- [ ] UI renders when data is available
+### 6. Success Criteria
 
-### 2. Component Behavior
+#### DataTable
 
-- [ ] Components mount in correct order
-- [ ] Data flows properly to components
-- [ ] UI updates reactively
+- [ ] Table shows when data is available
+- [ ] Data is properly formatted
+- [ ] Sorting works
+- [ ] Filtering works
 
-### 3. Performance
+#### Category Management
 
-- [ ] No unnecessary re-renders
-- [ ] Smooth state transitions
-- [ ] Proper error handling
+- [ ] Category filters are visible
+- [ ] Parent/child selection works
+- [ ] Filtering updates table
+- [ ] Selection persists
 
-## Implementation Steps
+#### Column Management
 
-1. Add Debug Logging
+- [ ] Column manager modal works
+- [ ] Column visibility toggles work
+- [ ] Column ordering works
+- [ ] Settings persist
 
-- Add state transition logging
-- Track component lifecycle
-- Monitor store updates
+### 7. Next Steps
 
-2. Verify State Flow
+1. Review existing DataTable component
+2. Check component mounting order
+3. Verify data flow to table
+4. Test category filtering
+5. Test column management
+6. Verify settings persistence
+7. Add any missing functionality
+8. Polish UI interactions
 
-- Check initialization timing
-- Verify loading state conditions
-- Test state transitions
+### 8. Questions to Answer
 
-3. Test Component Updates
+1. Is the DataTable component being properly mounted?
+2. Are we passing the correct props to the table?
+3. Is the category filtering logic working?
+4. Are column settings being properly loaded?
+5. Is the store data flowing correctly?
+6. Are we blocking the table unnecessarily?
+7. Are all required components imported?
+8. Are event handlers properly connected?
 
-- Monitor component mounting
-- Track data flow
-- Verify UI updates
+### 9. Implementation Order
 
-## Expected Results
-
-After investigation, we should:
-
-1. Understand why loading state persists
-2. Know when components should update
-3. Have clear path to fix the issue
-4. Be able to implement proper fix
-
-## Next Steps
-
-### Immediate
-
-1. Implement debug logging
-2. Monitor state transitions
-3. Track component lifecycle
-4. Analyze results
-
-### Short Term
-
-1. Fix loading state logic
-2. Improve component updates
-3. Add performance monitoring
-4. Update documentation
-
-### Long Term
-
-1. Add comprehensive testing
-2. Improve error handling
-3. Optimize performance
-4. Enhance developer experience
+1. Fix table display
+2. Restore category filters
+3. Restore column management
+4. Fix settings persistence
+5. Polish interactions
+6. Add error handling
+7. Improve performance
+8. Update documentation
