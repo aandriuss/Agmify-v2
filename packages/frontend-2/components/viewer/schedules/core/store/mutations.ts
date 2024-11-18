@@ -190,7 +190,7 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
       atomicUpdate('set element visibility', () => {
         state.value.scheduleData = state.value.scheduleData.map((element) =>
           'id' in element && element.id === elementId
-            ? { ...element, visible }
+            ? { ...element, _visible: visible }
             : element
         )
       })
@@ -230,6 +230,12 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
           return
         }
 
+        // Set visibility flags for all elements
+        state.value.scheduleData = state.value.scheduleData.map((element) => ({
+          ...element,
+          _visible: true
+        }))
+
         // Process parameters if needed
         if (state.value.customParameters.length > 0) {
           debug.log(DebugCategories.DATA, 'Processing parameters', {
@@ -240,6 +246,11 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
 
         // Update processed state
         state.value.initialized = true
+
+        debug.log(DebugCategories.DATA, 'Data processing complete', {
+          scheduleDataLength: state.value.scheduleData.length,
+          visibleElements: state.value.scheduleData.filter((el) => el._visible).length
+        })
       })
     },
 

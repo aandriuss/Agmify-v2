@@ -109,7 +109,7 @@ export function useElementsData({
           category: element.category,
           type: element.type || '',
           details: element.details ? toMutable(element.details) : [],
-          _visible: true,
+          _visible: element._visible !== false, // Changed: Default to true if undefined
           data: Object.entries(element.parameters || {}).reduce((acc, [key, value]) => {
             if (key !== '_groups') {
               acc[key] = value
@@ -117,6 +117,19 @@ export function useElementsData({
             return acc
           }, {} as Record<string, ParameterValue>)
         }))
+
+        // Add debug logging for visibility
+        debug.log(DebugCategories.DATA, 'Table data visibility:', {
+          totalRows: tableData.length,
+          visibleRows: tableData.filter((row) => row._visible).length,
+          firstRow: tableData[0]
+            ? {
+                id: tableData[0].id,
+                mark: tableData[0].mark,
+                visible: tableData[0]._visible
+              }
+            : null
+        })
 
         await store.setTableData(tableData)
 
