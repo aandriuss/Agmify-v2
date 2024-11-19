@@ -47,12 +47,22 @@ Root cause:
 - ✅ Added debug utilities
 - ✅ Created recovery patterns
 
-### 3. Data Display (New)
+### 3. Data Display (Updated)
 
 - ✅ Fixed data access in TableWrapper
 - ✅ Updated category initialization
 - ✅ Improved data transformation
 - ✅ Enhanced state management
+- ✅ Implemented independent element handling
+- ✅ Added host-mark relationship matching
+
+### 4. Element Relationships (New)
+
+- ✅ Independent BIM elements
+- ✅ Category-based filtering
+- ✅ Host-mark relationship matching
+- ✅ "Without Host" grouping
+- ✅ Parameter discovery per element
 
 ## Immediate Tasks (⏳ In Progress)
 
@@ -101,6 +111,71 @@ const handleRecovery = async () => {
     await reinitializeViewer()
   }
 }
+```
+
+### 4. Element Processing (Updated)
+
+```typescript
+// Element relationship handling
+const processElements = async () => {
+  // 1. Extract parameters with host handling
+  const parameters = extractParameters(raw)
+  if (raw.Constraints?.Host) {
+    parameters.host = raw.Constraints.Host
+    parameterGroups.host = 'Constraints'
+  }
+
+  // 2. Create element with parameters
+  const element = createEmptyElement(
+    raw.id.toString(),
+    speckleType,
+    mark,
+    category,
+    parameters
+  )
+
+  // 3. Filter by categories
+  const { filteredElements } = filterElements({
+    allElements: toMutable(elements),
+    selectedParent: parentCats,
+    selectedChild: childCats
+  })
+
+  // 4. Process parameters
+  const { processedElements, parameterColumns, availableHeaders } =
+    await processParameters({
+      filteredElements: toMutable(filteredElements)
+    })
+
+  // 5. Update store with all data at once
+  await store.lifecycle.update({
+    scheduleData: processedElements,
+    parameterColumns: parameterColumnsWithDefaults,
+    availableHeaders: {
+      parent: availableHeaders.parent,
+      child: availableHeaders.child
+    }
+  })
+}
+```
+
+### 5. Store Updates (New)
+
+```typescript
+// Store lifecycle management
+interface StoreLifecycle {
+  init: () => Promise<void>
+  update: (state: Partial<StoreState>) => Promise<void>
+  cleanup: () => void
+}
+
+// Batch state updates
+await store.lifecycle.update({
+  selectedParentCategories: parentCategories,
+  selectedChildCategories: childCategories,
+  scheduleData: processedElements,
+  parameterColumns: parameterColumnsWithDefaults
+})
 ```
 
 ## Next Steps (📋 Planned)
@@ -197,14 +272,33 @@ const handleRecovery = async () => {
 - [ ] Smooth data updates
 - [ ] Proper error states
 
-## Current Status
+### 4. Data Organization (New)
+
+- [x] Elements processed independently
+- [x] Categories filtered correctly
+- [x] Host-mark relationships established
+- [x] Orphaned elements handled properly
+- [x] Parameters discovered per element
+
+## Current Status (Updated)
+
+### Data Organization
+
+- Element Independence: ✅ Complete
+- Category Filtering: ✅ Complete
+- Relationship Matching: ✅ Complete
+- Parameter Discovery: ✅ Complete
+- Host Parameter Extraction: ✅ Complete
+- Store Updates: ✅ Complete
+- Error Handling: 🔄 In Progress
 
 ### Code Quality
 
 - Type Safety: ✅ Complete
 - Error Handling: 🔄 In Progress
 - Component Architecture: ✅ Complete
-- State Management: 🔄 In Progress
+- State Management: ✅ Complete
+- Store Lifecycle: ✅ Complete
 
 ### Performance
 

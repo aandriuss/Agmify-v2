@@ -13,11 +13,7 @@ interface FilterElementsResult {
   filteredElements: ElementData[]
 }
 
-function determineElementType(
-  element: ElementData,
-  selectedParent: string[],
-  selectedChild: string[]
-): 'parent' | 'child' {
+function determineElementType(element: ElementData): 'parent' | 'child' {
   // Check if element's category is in parent or child categories
   const isParentCategory = parentCategories.includes(element.category)
   const isChildCategory = childCategories.includes(element.category)
@@ -32,12 +28,7 @@ function determineElementType(
     return 'parent'
   }
 
-  // If no specific category match, check selected categories
-  if (selectedChild.includes(element.category)) {
-    return 'child'
-  }
-
-  // Default to parent for any other cases
+  // Default uncategorized elements to parent
   return 'parent'
 }
 
@@ -62,8 +53,11 @@ export function filterElements({
   const parents: ElementData[] = []
   const children: ElementData[] = []
 
+  // If no categories are selected, show all elements as parents
+  const showAllAsParents = selectedParent.length === 0 && selectedChild.length === 0
+
   allElements.forEach((element) => {
-    const elementType = determineElementType(element, selectedParent, selectedChild)
+    const elementType = showAllAsParents ? 'parent' : determineElementType(element)
     const isParent = elementType === 'parent'
 
     // Check if element matches selected categories
@@ -89,7 +83,7 @@ export function filterElements({
 
     // Process details
     element.details?.forEach((detail) => {
-      const detailType = determineElementType(detail, selectedParent, selectedChild)
+      const detailType = showAllAsParents ? 'parent' : determineElementType(detail)
       const isDetailParent = detailType === 'parent'
 
       // Check if detail matches selected categories
@@ -117,11 +111,25 @@ export function filterElements({
     })
   })
 
+  // Log initial parent-child split
+  debug.logRelationships(parents, children, 'Initial parent-child split')
+
   // Create a map of parent marks
   const parentMarkMap = new Map<string, ElementData>()
   parents.forEach((parent) => {
     if (parent.mark) {
       parentMarkMap.set(parent.mark, parent)
+      debug.logRelationshipValidation(
+        parent,
+        true,
+        `Parent element with mark '${parent.mark}' registered`
+      )
+    } else {
+      debug.logRelationshipValidation(
+        parent,
+        false,
+        'Parent element missing required mark value'
+      )
     }
   })
 
@@ -143,13 +151,30 @@ export function filterElements({
 
   children.forEach((child) => {
     if (child.host && parentMarkMap.has(child.host)) {
+      const matchedParent = parentMarkMap.get(child.host)
       matchedChildren.push(child)
+      debug.logMarkHostMatch(child, matchedParent, true)
     } else {
+      // Log why the child is orphaned
+      if (!child.host) {
+        debug.logRelationshipValidation(
+          child,
+          false,
+          'Child element missing host value'
+        )
+      } else {
+        debug.logRelationshipValidation(
+          child,
+          false,
+          `No parent found with mark '${child.host}'`
+        )
+      }
       // Assign to "Without Host" parent
       orphanedChildren.push({
         ...child,
         host: withoutHostParent.mark
       })
+      debug.logMarkHostMatch(child, undefined, false)
     }
   })
 
@@ -175,7 +200,7 @@ export function filterElements({
       : element
   )
 
-  // Log detailed filtering results
+  // Log final relationship stats
   const parentCount = filteredElements.filter((el) => !el.isChild).length
   const childCount = filteredElements.filter((el) => el.isChild).length
   const categories = [...new Set(filteredElements.map((el) => el.category))]
@@ -198,6 +223,13 @@ export function filterElements({
       isChild: childCategories.includes(cat)
     }))
   })
+
+  // Log final relationship status
+  debug.logRelationships(
+    filteredElements.filter((el) => !el.isChild),
+    filteredElements.filter((el) => el.isChild),
+    'Final relationship status'
+  )
 
   return {
     filteredElements

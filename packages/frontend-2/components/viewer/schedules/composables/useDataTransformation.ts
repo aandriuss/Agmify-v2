@@ -1,7 +1,8 @@
 import { computed, watch, type ComputedRef } from 'vue'
-import type { TableRowData, ParameterValue, ElementData } from '../types'
+import type { TableRowData, ElementData, ParameterValue } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import { parentCategories, childCategories } from '../config/categories'
 
 interface UseDataTransformationOptions {
   state: {
@@ -28,77 +29,69 @@ function isValidElement(element: unknown): element is ElementData {
   )
 }
 
-/**
- * Filter elements based on selected categories
- */
-function filterElementsByCategory(
-  elements: ElementData[],
-  selectedParentCategories: string[],
-  selectedChildCategories: string[]
-): ElementData[] {
-  // If no categories selected, return all elements
-  if (selectedParentCategories.length === 0 && selectedChildCategories.length === 0) {
-    return elements
-  }
-
-  return elements.filter((element) => {
-    const isParent = !element.host // Elements without host are parent elements
-    if (isParent) {
-      return (
-        selectedParentCategories.length === 0 ||
-        selectedParentCategories.includes(element.category)
-      )
-    } else {
-      return (
-        selectedChildCategories.length === 0 ||
-        selectedChildCategories.includes(element.category)
-      )
-    }
-  })
+function isParentElement(element: ElementData): boolean {
+  return (
+    parentCategories.includes(element.category) || element.category === 'Uncategorized'
+  )
 }
 
 /**
- * Creates a display row with proper type conversion
+ * Convert a value to a valid ParameterValue
+ */
+function toParameterValue(value: unknown): ParameterValue {
+  if (value === null) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return value
+  if (typeof value === 'boolean') return value
+  return String(value)
+}
+
+/**
+ * Creates a display row with proper type conversion, using only active parameters
  */
 function createDisplayRow(element: ElementData, columns: ColumnDef[]): TableRowData {
   if (!isValidElement(element)) {
     throw new Error('Invalid element data')
   }
 
-  const parameters = element.parameters as Record<string, ParameterValue>
+  // Get only the parameters that correspond to active columns
+  const activeParameters: Record<string, ParameterValue> = {}
+  const displayData: Record<string, ParameterValue> = {}
 
-  // Map column fields to data values
-  const data = columns.reduce<Record<string, ParameterValue>>((acc, column) => {
+  columns.forEach((column) => {
     const field = column.field
-    let value: ParameterValue = ''
+    let value: ParameterValue
 
     // Handle special fields
     if (field === 'mark') {
-      value = element.id
+      value = element.mark
     } else if (field === 'category') {
       value = element.category
     } else if (field === 'type') {
       value = element.type || ''
     } else if (field === 'host') {
       value = element.host || ''
+    } else if (element.parameters && field in element.parameters) {
+      value = element.parameters[field]
     } else {
-      // Get value from parameters
-      value = parameters[field] ?? ''
+      value = ''
     }
 
-    acc[field] = value
-    return acc
-  }, {})
+    // Ensure value is a valid ParameterValue
+    const paramValue = toParameterValue(value)
+    activeParameters[field] = paramValue
+    displayData[field] = paramValue
+  })
 
   return {
     id: element.id,
-    mark: element.id,
+    mark: element.mark,
     category: element.category,
     type: element.type || '',
-    parameters,
+    parameters: activeParameters,
     _visible: true,
-    details: undefined,
-    data
+    details: element.details,
+    data: displayData
   }
 }
 
@@ -115,15 +108,48 @@ export function useDataTransformation({
 }: UseDataTransformationOptions) {
   // Filter elements by category and transform into display rows
   const transformedData = computed<TableRowData[]>(() => {
-    const filteredElements = filterElementsByCategory(
-      state.evaluatedData,
-      selectedParentCategories.value,
-      selectedChildCategories.value
-    )
+    try {
+      // Get filtered elements based on selected categories
+      const filteredElements = state.evaluatedData.filter((element) => {
+        const isParent = isParentElement(element)
+        if (isParent) {
+          return (
+            selectedParentCategories.value.length === 0 ||
+            selectedParentCategories.value.includes(element.category)
+          )
+        } else {
+          return (
+            selectedChildCategories.value.length === 0 ||
+            selectedChildCategories.value.includes(element.category)
+          )
+        }
+      })
 
-    return filteredElements
-      .filter(isValidElement)
-      .map((element) => createDisplayRow(element, state.mergedTableColumns))
+      // Get active columns (these represent active parameters)
+      const activeColumns = state.mergedTableColumns.filter((col) => col.visible)
+
+      // Transform filtered elements to table rows with only active parameters
+      const displayRows = filteredElements
+        .filter(isValidElement)
+        .map((element) => createDisplayRow(element, activeColumns))
+
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Transformed data:', {
+        totalElements: state.evaluatedData.length,
+        filteredElements: filteredElements.length,
+        displayRows: displayRows.length,
+        parentCategories: selectedParentCategories.value,
+        childCategories: selectedChildCategories.value,
+        activeColumns: activeColumns.length,
+        firstRow: displayRows[0]
+      })
+
+      return displayRows
+    } catch (error) {
+      handleError(
+        error instanceof Error ? error : new Error('Data transformation failed')
+      )
+      return []
+    }
   })
 
   // Watch for changes that require display update
@@ -148,13 +174,14 @@ export function useDataTransformation({
       debug.log(DebugCategories.DATA_TRANSFORM, 'Processing data...', {
         totalElements: state.evaluatedData.length,
         selectedParentCategories: selectedParentCategories.value,
-        selectedChildCategories: selectedChildCategories.value
+        selectedChildCategories: selectedChildCategories.value,
+        activeColumns: state.mergedTableColumns.filter((col) => col.visible).length
       })
 
-      // Simulate async processing
+      // Add minimal delay to ensure async context
       await new Promise((resolve) => setTimeout(resolve, 0))
 
-      const displayData = transformedData.value.map((row) => ({ ...row }))
+      const displayData = transformedData.value
       updateTableData(displayData)
 
       debug.log(DebugCategories.DATA_TRANSFORM, 'Data processing complete', {
@@ -163,7 +190,10 @@ export function useDataTransformation({
         parentCategories: selectedParentCategories.value,
         childCategories: selectedChildCategories.value,
         firstRow: displayData[0]?.data,
-        columns: state.mergedTableColumns.map((c) => c.field)
+        parameters: displayData[0]?.parameters,
+        activeColumns: state.mergedTableColumns
+          .filter((col) => col.visible)
+          .map((c) => c.field)
       })
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
@@ -178,7 +208,7 @@ export function useDataTransformation({
    */
   async function updateVisibility(id: string, visible: boolean): Promise<void> {
     try {
-      // Simulate async processing
+      // Add minimal delay to ensure async context
       await new Promise((resolve) => setTimeout(resolve, 0))
 
       const updatedData = state.tableData.map((row: TableRowData) =>

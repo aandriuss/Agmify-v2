@@ -3,6 +3,7 @@ import { debug, DebugCategories } from '../utils/debug'
 import type { ElementData } from '../types'
 import store from './useScheduleStore'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
+import { defaultTable } from '../config/defaultColumns'
 
 export function useScheduleInitialization() {
   const initialized = ref(false)
@@ -43,13 +44,26 @@ export function useScheduleInitialization() {
       // Set project ID in store first
       store.setProjectId(projectId)
 
+      // Set initial categories
+      store.setParentCategories(defaultTable.categoryFilters.selectedParentCategories)
+      store.setChildCategories(defaultTable.categoryFilters.selectedChildCategories)
+
       // Initialize store
       await store.lifecycle.init()
+
+      // Wait for data to be processed
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      // Process data to ensure parameters are handled
+      await store.processData()
 
       initialized.value = true
       debug.log(DebugCategories.INITIALIZATION, 'Schedule data initialized', {
         projectId,
-        hasViewer: !!viewer?.init.ref.value
+        hasViewer: !!viewer?.init.ref.value,
+        dataCount: store.scheduleData.value.length,
+        parameterCount: store.parameterColumns.value.length,
+        tableDataCount: store.tableData.value.length
       })
     } catch (err) {
       error.value = err instanceof Error ? err : new Error(String(err))
@@ -92,8 +106,15 @@ export function useScheduleInitialization() {
         await new Promise((resolve) => setTimeout(resolve, 200))
       }
 
+      // Ensure parameters are processed
+      if (!store.parameterColumns.value.length) {
+        await store.processData()
+      }
+
       debug.log(DebugCategories.INITIALIZATION, 'Schedule data ready', {
         dataCount: store.scheduleData.value.length,
+        parameterCount: store.parameterColumns.value.length,
+        tableDataCount: store.tableData.value.length,
         projectId,
         hasViewer: !!viewer?.init.ref.value
       })

@@ -22,15 +22,11 @@
       @filter="handleFilter"
     >
       <template #empty>
-        <slot name="empty">
-          <div class="p-4 text-center text-gray-500">No data available</div>
-        </slot>
+        <div class="p-4 text-center text-gray-500">No data available</div>
       </template>
 
       <template #loading>
-        <slot name="loading">
-          <div class="p-4 text-center text-gray-500">Loading data...</div>
-        </slot>
+        <div class="p-4 text-center text-gray-500">Loading data...</div>
       </template>
 
       <template #expansion="{ data: expandedData }">
@@ -87,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import type {
@@ -99,11 +95,12 @@ import type {
 } from 'primevue/datatable'
 import type { ColumnDef } from '../../composables/columns/types'
 import type { TableRowData } from '~/components/viewer/schedules/types'
-import { debug } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
 
 interface Props {
   modelValue: TableRowData[]
   data: TableRowData[]
+  scheduleData: TableRowData[]
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   loading?: boolean
@@ -124,82 +121,17 @@ const emit = defineEmits<{
   filter: [filters: Record<string, unknown>]
 }>()
 
-// Debug incoming props
-watch(
-  () => props.data,
-  (newData: TableRowData[]) => {
-    debug.log('TableWrapper data changed:', {
-      rowCount: newData.length,
-      firstRow: newData[0],
-      firstRowDetails: newData[0]?.details,
-      withDetails: newData.filter(
-        (row) => Array.isArray(row.details) && row.details.length > 0
-      ).length,
-      detailsExample: newData[0]?.details?.[0]
-    })
-  },
-  { immediate: true }
-)
-
-watch(
-  () => props.modelValue,
-  (newValue: TableRowData[]) => {
-    debug.log('TableWrapper expanded rows changed:', {
-      expandedCount: newValue.length,
-      firstExpanded: newValue[0],
-      firstExpandedDetails: newValue[0]?.details
-    })
-  },
-  { immediate: true }
-)
-
-watch(
-  () => props.parentColumns,
-  (newColumns: ColumnDef[]) => {
-    debug.log('TableWrapper parent columns changed:', {
-      columnCount: newColumns.length,
-      visibleColumns: newColumns.filter((col) => col.visible).length,
-      fields: newColumns.map((col) => col.field)
-    })
-  },
-  { immediate: true }
-)
-
-watch(
-  () => props.childColumns,
-  (newColumns: ColumnDef[]) => {
-    debug.log('TableWrapper child columns changed:', {
-      columnCount: newColumns.length,
-      visibleColumns: newColumns.filter((col) => col.visible).length,
-      fields: newColumns.map((col) => col.field)
-    })
-  },
-  { immediate: true }
-)
-
-const sortedParentColumns = computed(() => {
-  const columns = [...props.parentColumns]
+const sortedParentColumns = computed(() =>
+  [...props.parentColumns]
     .filter((col) => col.visible)
     .sort((a, b) => (a.order || 0) - (b.order || 0))
-  debug.log('Sorted parent columns:', {
-    columnCount: columns.length,
-    fields: columns.map((col) => col.field),
-    firstColumn: columns[0]
-  })
-  return columns
-})
+)
 
-const sortedChildColumns = computed(() => {
-  const columns = [...props.childColumns]
+const sortedChildColumns = computed(() =>
+  [...props.childColumns]
     .filter((col) => col.visible)
     .sort((a, b) => (a.order || 0) - (b.order || 0))
-  debug.log('Sorted child columns:', {
-    columnCount: columns.length,
-    fields: columns.map((col) => col.field),
-    firstColumn: columns[0]
-  })
-  return columns
-})
+)
 
 const tableFilters = computed(() => {
   if (!props.filters) return {}
@@ -224,66 +156,34 @@ function getFieldValue(data: TableRowData, field: string) {
   try {
     // Handle special fields first
     if (field === 'mark' || field === 'category' || field === 'host') {
-      const value = data[field]
-      debug.log('Special field access:', {
-        field,
-        value,
-        dataId: data.id
-      })
-      return value
+      return data[field]
     }
 
     // Handle parameters with dot notation (e.g., 'Identity Data.Mark')
     if (field.includes('.') && data.parameters) {
       const [group, param] = field.split('.')
       if (data.parameters[`${group}.${param}`]) {
-        const value = data.parameters[`${group}.${param}`]
-        debug.log('Parameter group access:', {
-          field,
-          group,
-          param,
-          value,
-          dataId: data.id
-        })
-        return value
+        return data.parameters[`${group}.${param}`]
       }
     }
 
     // Handle direct parameter access
     if (data.parameters && field in data.parameters) {
-      const value = data.parameters[field]
-      debug.log('Direct parameter access:', {
-        field,
-        value,
-        dataId: data.id
-      })
-      return value
+      return data.parameters[field]
     }
 
     // Handle raw data access
     if (data._raw && typeof data._raw === 'object') {
       const raw = data._raw as Record<string, unknown>
       if (field in raw) {
-        const value = raw[field]
-        debug.log('Raw data access:', {
-          field,
-          value,
-          dataId: data.id
-        })
-        return value
+        return raw[field]
       }
     }
 
     // Fallback to direct field access
-    const value = data[field]
-    debug.log('Direct field access:', {
-      field,
-      value,
-      dataId: data.id
-    })
-    return value
+    return data[field]
   } catch (error) {
-    debug.error('Error getting field value:', {
+    debug.error(DebugCategories.ERROR, 'Error getting field value:', {
       error,
       field,
       dataId: data.id
@@ -293,11 +193,6 @@ function getFieldValue(data: TableRowData, field: string) {
 }
 
 function handleExpandedRowsUpdate(value: unknown) {
-  debug.log('Expanded rows update:', {
-    value,
-    isArray: Array.isArray(value),
-    length: Array.isArray(value) ? value.length : 0
-  })
   if (Array.isArray(value)) {
     emit('update:modelValue', value as TableRowData[])
   }
@@ -305,9 +200,6 @@ function handleExpandedRowsUpdate(value: unknown) {
 
 function handleColumnResize(event: DataTableColumnResizeEndEvent) {
   if (event && 'element' in event && event.element instanceof HTMLElement) {
-    const field = event.element.dataset.field
-    const width = event.element.offsetWidth
-    debug.log('Column resize:', { field, width })
     emit('column-resize', { element: event.element })
   }
 }
@@ -315,8 +207,6 @@ function handleColumnResize(event: DataTableColumnResizeEndEvent) {
 function handleColumnReorder(event: DataTableColumnReorderEvent) {
   if (event && 'target' in event) {
     const target = event.target instanceof HTMLElement ? event.target : null
-    const field = target?.dataset.field
-    debug.log('Column reorder:', { field, target: target?.outerHTML })
     emit('column-reorder', { target })
   }
 }
@@ -329,7 +219,6 @@ function handleSort(event: DataTableSortEvent) {
     typeof event.order === 'number' &&
     typeof event.field === 'string'
   ) {
-    debug.log('Sort:', { field: event.field, order: event.order })
     emit('sort', event.field, event.order)
   }
 }
@@ -345,7 +234,6 @@ function handleFilter(event: DataTableFilterEvent) {
       },
       {} as Record<string, unknown>
     )
-    debug.log('Filter:', filters)
     emit('filter', filters)
   }
 }

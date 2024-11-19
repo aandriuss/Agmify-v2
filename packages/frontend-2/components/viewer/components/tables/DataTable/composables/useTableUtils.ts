@@ -1,7 +1,6 @@
 import type { ColumnDef } from './columns/types'
-import type { TableRowData, ParameterValue } from '~/components/viewer/schedules/types'
+import type { TableRowData } from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
-import { convertToString } from '~/components/viewer/schedules/utils/dataConversion'
 
 export function safeJSONClone<T>(obj: T): T {
   const jsonString = JSON.stringify(obj)
@@ -80,7 +79,6 @@ export function updateLocalColumns(
     }))
 
     debug.log(DebugCategories.COLUMNS, 'Updating local columns', columns)
-    debug.logColumnVisibility(columns)
 
     updateFn(sortColumnsByOrder(columns))
   } catch (error) {
@@ -89,17 +87,14 @@ export function updateLocalColumns(
   }
 }
 
-function createEmptyParameters(): Record<string, ParameterValue> {
-  return {} as Record<string, ParameterValue>
-}
-
+/**
+ * This function has been simplified to just validate and pass through data
+ * since transformation is now handled by useElementsData
+ */
 export function transformToTableRowData(data: unknown[]): TableRowData[] {
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Starting data transformation', {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Validating table data', {
     timestamp: new Date().toISOString(),
-    inputCount: data?.length,
-    isArray: Array.isArray(data),
-    firstItem: data?.[0],
-    allItems: data
+    inputCount: data?.length
   })
 
   if (!Array.isArray(data)) {
@@ -107,110 +102,19 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
     return []
   }
 
-  const validItems = data.filter(
-    (item): item is Record<string, unknown> => item !== null && typeof item === 'object'
-  )
-
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Valid items filtered', {
-    timestamp: new Date().toISOString(),
-    validCount: validItems.length,
-    firstValidItem: validItems[0],
-    allValidItems: validItems
-  })
-
-  const transformedData = validItems.map((item) => {
-    // Extract required fields and visibility flag
-    const {
-      id,
-      mark,
-      category,
-      type,
-      name,
-      host,
-      details,
-      _visible,
-      parameters,
-      ...rest
-    } = item
-
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Processing item', {
-      timestamp: new Date().toISOString(),
-      raw: item,
-      extractedFields: {
-        id,
-        mark,
-        category,
-        type,
-        name,
-        host,
-        _visible,
-        hasDetails: Array.isArray(details),
-        detailsCount: Array.isArray(details) ? details.length : 0,
-        hasParameters: parameters !== undefined
-      },
-      remainingFields: rest
-    })
-
-    // Validate and transform details if they exist
-    const transformedDetails = Array.isArray(details)
-      ? details
-          .filter(
-            (detail): detail is Record<string, unknown> =>
-              detail !== null && typeof detail === 'object'
-          )
-          .map((detail) => ({
-            id: convertToString(detail.id),
-            mark: convertToString(detail.mark),
-            category: convertToString(detail.category),
-            type: convertToString(detail.type),
-            name: convertToString(detail.name),
-            host: convertToString(detail.host),
-            parameters:
-              (detail.parameters as Record<string, ParameterValue>) ||
-              createEmptyParameters(),
-            _visible: typeof detail._visible === 'boolean' ? detail._visible : true,
-            ...detail
-          }))
-      : undefined
-
-    // Construct the transformed item
-    const transformedItem: TableRowData = {
-      id: convertToString(id),
-      mark: convertToString(mark),
-      category: convertToString(category),
-      type: convertToString(type),
-      name: convertToString(name),
-      host: convertToString(host),
-      parameters:
-        (parameters as Record<string, ParameterValue>) || createEmptyParameters(),
-      _visible: typeof _visible === 'boolean' ? _visible : true,
-      ...rest
+  // Just validate that each item is a TableRowData
+  const validItems = data.filter((item): item is TableRowData => {
+    const isValid = isTableRowData(item)
+    if (!isValid) {
+      debug.warn(DebugCategories.VALIDATION, 'Invalid table row data', item)
     }
-
-    if (transformedDetails) {
-      transformedItem.details = transformedDetails
-    }
-
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Item transformed', {
-      timestamp: new Date().toISOString(),
-      transformedItem,
-      hasDetails: Array.isArray(transformedItem.details),
-      detailsCount: Array.isArray(transformedItem.details)
-        ? transformedItem.details.length
-        : 0,
-      isVisible: transformedItem._visible
-    })
-
-    return transformedItem
+    return isValid
   })
 
-  // Don't filter out invisible items - let the table handle visibility
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Transformation complete', {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Data validation complete', {
     timestamp: new Date().toISOString(),
-    totalCount: transformedData.length,
-    firstTransformedItem: transformedData[0],
-    allTransformedItems: transformedData
+    validCount: validItems.length
   })
 
-  return transformedData
+  return validItems
 }

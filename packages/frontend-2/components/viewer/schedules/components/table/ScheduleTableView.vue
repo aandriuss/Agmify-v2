@@ -3,9 +3,18 @@
     <!-- Debug Panel -->
     <ScheduleDebugPanel
       v-if="showDebug"
-      :schedule-data="scheduleData"
-      :evaluated-data="evaluatedData"
+      :schedule-data="props.scheduleData"
+      :evaluated-data="props.evaluatedData"
+      :table-data="props.tableData"
       :debug-filter="debugFilter"
+      :selected-parent-categories="props.selectedParentCategories"
+      :selected-child-categories="props.selectedChildCategories"
+      :parent-elements="parentElements"
+      :child-elements="childElements"
+      :matched-elements="matchedElements"
+      :orphaned-elements="orphanedElements"
+      :merged-table-columns="props.mergedTableColumns"
+      :merged-detail-columns="props.mergedDetailColumns"
       @toggle="toggleDebug"
     />
 
@@ -27,13 +36,14 @@
       @show-debug="toggleDebug"
     />
 
-    <!-- Data Table -->
+    <!-- Table -->
     <DataTable
       v-else-if="canShowTable"
       :key="`${props.tableKey}-${props.tableData.length}`"
       :table-id="props.currentTableId"
       :table-name="props.tableName"
       :data="props.tableData"
+      :schedule-data="props.scheduleData"
       :columns="props.mergedTableColumns"
       :detail-columns="props.mergedDetailColumns"
       :available-parent-parameters="props.availableParentParameters"
@@ -44,7 +54,7 @@
       @column-visibility-change="handleColumnVisibilityChange"
     />
 
-    <!-- Status Display -->
+    <!-- Empty State -->
     <div v-else class="p-4">
       <div class="text-center">
         <div class="text-lg font-semibold mb-2">Schedule Status</div>
@@ -179,32 +189,101 @@ const emit = defineEmits<{
 const showDebug = ref(false)
 const debugFilter = ref('')
 
-// Can show table with more detailed error tracking
+// Add back the canShowTable computed property
 const canShowTable = computed(() => {
+  // Check initialization and loading states first
+  if (!props.isInitialized || props.isLoading || props.loadingError) {
+    debug.log(DebugCategories.STATE, 'Basic state checks failed:', {
+      isInitialized: props.isInitialized,
+      isLoading: props.isLoading,
+      hasError: !!props.loadingError
+    })
+    return false
+  }
+
+  // Check categories
+  const hasCategories = !props.noCategoriesSelected
+  if (!hasCategories) {
+    debug.log(DebugCategories.STATE, 'No categories selected:', {
+      parentCategories: props.selectedParentCategories,
+      childCategories: props.selectedChildCategories
+    })
+    return false
+  }
+
+  // Check data
   const hasData = props.tableData.length > 0
   const hasColumns = props.mergedTableColumns.length > 0
   const hasVisibleColumns = props.mergedTableColumns.some((col) => col.visible)
   const hasVisibleRows = props.tableData.some((row) => row._visible !== false)
 
-  const canShow = hasData && hasColumns && hasVisibleColumns && hasVisibleRows
-
-  // Enhanced debug logging with more details
-  debug.log(DebugCategories.STATE, 'Table display checks:', {
+  // Add more detailed logging
+  debug.log(DebugCategories.STATE, 'Table data checks:', {
     hasData,
+    dataLength: props.tableData.length,
     hasColumns,
+    columnsLength: props.mergedTableColumns.length,
     hasVisibleColumns,
-    hasVisibleRows,
-    canShow,
-    dataCount: props.tableData.length,
-    columnsCount: props.mergedTableColumns.length,
     visibleColumnsCount: props.mergedTableColumns.filter((col) => col.visible).length,
+    hasVisibleRows,
     visibleRowsCount: props.tableData.filter((row) => row._visible !== false).length,
-    currentTableId: props.currentTableId,
-    tableName: props.tableName,
-    isInitialized: props.isInitialized
+    scheduleData: props.scheduleData.length,
+    evaluatedData: props.evaluatedData.length,
+    selectedParentCategories: props.selectedParentCategories,
+    selectedChildCategories: props.selectedChildCategories,
+    mergedDetailColumns: props.mergedDetailColumns.length,
+    availableParentParameters: props.availableParentParameters.length,
+    availableChildParameters: props.availableChildParameters.length
   })
 
-  return canShow
+  // Check if any condition fails
+  if (!hasData) {
+    debug.warn(DebugCategories.STATE, '!!! No table data available')
+    return false
+  }
+  if (!hasColumns) {
+    debug.warn(DebugCategories.STATE, '!!! No columns available')
+    return false
+  }
+  if (!hasVisibleColumns) {
+    debug.warn(DebugCategories.STATE, '!!! No visible columns')
+    return false
+  }
+  if (!hasVisibleRows) {
+    debug.warn(DebugCategories.STATE, '!!! No visible rows')
+    return false
+  }
+
+  return true
+})
+
+// Add computed properties for relationship data
+const parentElements = computed(() => props.scheduleData.filter((el) => !el.isChild))
+
+const childElements = computed(() => props.scheduleData.filter((el) => el.isChild))
+
+const matchedElements = computed(() => {
+  const parentMarkMap = new Map<string, ElementData>()
+  parentElements.value.forEach((parent) => {
+    if (parent.mark) {
+      parentMarkMap.set(parent.mark, parent)
+    }
+  })
+  return childElements.value.filter(
+    (child) => child.host && parentMarkMap.has(child.host)
+  )
+})
+
+const orphanedElements = computed(() => {
+  const parentMarkMap = new Map<string, ElementData>()
+  parentElements.value.forEach((parent) => {
+    if (parent.mark) {
+      parentMarkMap.set(parent.mark, parent)
+    }
+  })
+  return childElements.value.filter(
+    (child) => !child.host || !parentMarkMap.has(child.host)
+  )
 })
 
 // Event handlers

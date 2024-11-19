@@ -4,7 +4,6 @@ import type {
   ElementData,
   ProcessingState,
   TableRowData,
-  ParameterValue,
   ProcessedHeader,
   AvailableHeaders
 } from '../types'
@@ -12,7 +11,7 @@ import { debug, DebugCategories } from '../utils/debug'
 import { useBIMElements } from './useBIMElements'
 import { filterElements } from './useElementCategories'
 import { processParameters } from './useElementParameters'
-import { defaultColumns } from '../config/defaultColumns'
+import { defaultColumns, defaultTable } from '../config/defaultColumns'
 import store from './useScheduleStore'
 
 /**
@@ -91,49 +90,28 @@ export function useElementsData({
             filteredElements: toMutable(filteredElements)
           })
 
+        // Step 3: Update filtered elements
         filteredElementsRef.value = toMutable(processedElements)
 
-        // Step 3: Update store with processed data
-        await store.setScheduleData(toMutable(processedElements))
-        await store.setParameterColumns([
+        // Step 4: Update store with all data at once
+        const parameterColumnsWithDefaults = [
           ...defaultColumns,
           ...toMutable(parameterColumns).filter(
             (col) => !defaultColumns.find((d) => d.field === col.field)
           )
-        ])
+        ]
 
-        // Step 4: Transform to table data
-        const tableData = processedElements.map((element) => ({
-          id: element.id,
-          mark: element.mark,
-          category: element.category,
-          type: element.type || '',
-          details: element.details ? toMutable(element.details) : [],
-          _visible: element._visible !== false, // Changed: Default to true if undefined
-          data: Object.entries(element.parameters || {}).reduce((acc, [key, value]) => {
-            if (key !== '_groups') {
-              acc[key] = value
-            }
-            return acc
-          }, {} as Record<string, ParameterValue>)
-        }))
-
-        // Add debug logging for visibility
-        debug.log(DebugCategories.DATA, 'Table data visibility:', {
-          totalRows: tableData.length,
-          visibleRows: tableData.filter((row) => row._visible).length,
-          firstRow: tableData[0]
-            ? {
-                id: tableData[0].id,
-                mark: tableData[0].mark,
-                visible: tableData[0]._visible
-              }
-            : null
+        // Update store state
+        await store.lifecycle.update({
+          scheduleData: toMutable(processedElements),
+          parameterColumns: parameterColumnsWithDefaults,
+          availableHeaders: {
+            parent: toMutable(availableHeaders.parent),
+            child: toMutable(availableHeaders.child)
+          }
         })
 
-        await store.setTableData(tableData)
-
-        // Step 5: Update available headers
+        // Step 5: Update available headers locally
         availableHeadersRef.value = {
           parent: toMutable(availableHeaders.parent),
           child: toMutable(availableHeaders.child)
@@ -143,7 +121,8 @@ export function useElementsData({
           sourceElements: elements.length,
           processedElements: processedElements.length,
           filteredElements: filteredElements.length,
-          tableRows: tableData.length,
+          tableRows: processedElements.length,
+          visibleRows: processedElements.filter((row) => row._visible !== false).length,
           parameterColumns: parameterColumns.length,
           availableHeaders: {
             parent: availableHeaders.parent.length,
@@ -213,24 +192,42 @@ export function useElementsData({
         return
       }
 
-      // Update selected categories
+      // Step 1: Update local categories
       selectedParentCategories.value = toMutable(parentCategories)
       selectedChildCategories.value = toMutable(childCategories)
 
-      // Wait for the watch handler to process the changes
-      await new Promise<void>((resolve) => {
-        const unwatch = watch(
-          [selectedParentCategories, selectedChildCategories],
-          () => {
-            unwatch()
-            resolve()
-          },
-          { immediate: true }
+      // Step 2: Filter elements with new categories
+      const { filteredElements } = filterElements({
+        allElements: toMutable(allElements.value),
+        selectedParent: parentCategories,
+        selectedChild: childCategories
+      })
+
+      // Step 3: Process parameters
+      const { processedElements, parameterColumns } = await processParameters({
+        filteredElements: toMutable(filteredElements)
+      })
+
+      // Step 4: Update store with all data at once
+      const parameterColumnsWithDefaults = [
+        ...defaultColumns,
+        ...toMutable(parameterColumns).filter(
+          (col) => !defaultColumns.find((d) => d.field === col.field)
         )
+      ]
+
+      // Update store state
+      await store.lifecycle.update({
+        selectedParentCategories: parentCategories,
+        selectedChildCategories: childCategories,
+        scheduleData: toMutable(processedElements),
+        parameterColumns: parameterColumnsWithDefaults
       })
 
       debug.log(DebugCategories.DATA, 'Categories updated', {
-        filteredCount: filteredElementsRef.value.length,
+        filteredCount: filteredElements.length,
+        processedCount: processedElements.length,
+        tableDataCount: processedElements.length,
         parentCategories,
         childCategories
       })
@@ -244,7 +241,7 @@ export function useElementsData({
     }
   }
 
-  // Initialize data
+  // Initialize data with proper order
   async function initializeData(): Promise<void> {
     try {
       processingState.value.isInitializing = true
@@ -252,20 +249,74 @@ export function useElementsData({
 
       debug.log(DebugCategories.INITIALIZATION, 'Starting data initialization')
 
-      // Initialize BIM elements first
-      await initializeElements()
-
-      // Initialize store if needed
+      // Step 1: Initialize store if needed
       if (!store.initialized.value) {
         debug.log(DebugCategories.DATA, 'Initializing store...')
         await store.lifecycle.init()
+      }
+
+      // Step 2: Initialize BIM elements
+      await initializeElements()
+
+      // Step 3: Set default categories if needed
+      const parentCategories =
+        selectedParentCategories.value.length === 0 &&
+        defaultTable?.categoryFilters?.selectedParentCategories
+          ? [...defaultTable.categoryFilters.selectedParentCategories]
+          : selectedParentCategories.value
+
+      const childCategories =
+        selectedChildCategories.value.length === 0 &&
+        defaultTable?.categoryFilters?.selectedChildCategories
+          ? [...defaultTable.categoryFilters.selectedChildCategories]
+          : selectedChildCategories.value
+
+      // Step 4: Update local categories
+      selectedParentCategories.value = toMutable(parentCategories)
+      selectedChildCategories.value = toMutable(childCategories)
+
+      // Step 5: Process data if elements are available
+      if (allElements.value) {
+        // Filter elements based on categories
+        const { filteredElements } = filterElements({
+          allElements: toMutable(allElements.value),
+          selectedParent: parentCategories,
+          selectedChild: childCategories
+        })
+
+        // Process parameters
+        const { processedElements, parameterColumns } = await processParameters({
+          filteredElements: toMutable(filteredElements)
+        })
+
+        // Update store with all data at once
+        const parameterColumnsWithDefaults = [
+          ...defaultColumns,
+          ...toMutable(parameterColumns).filter(
+            (col) => !defaultColumns.find((d) => d.field === col.field)
+          )
+        ]
+
+        // Update store state
+        await store.lifecycle.update({
+          selectedParentCategories: parentCategories,
+          selectedChildCategories: childCategories,
+          scheduleData: toMutable(processedElements),
+          parameterColumns: parameterColumnsWithDefaults
+        })
       }
 
       debug.log(DebugCategories.INITIALIZATION, 'Data initialization complete', {
         allElements: allElements.value?.length || 0,
         filteredElements: filteredElementsRef.value.length,
         selectedParentCategories: selectedParentCategories.value,
-        selectedChildCategories: selectedChildCategories.value
+        selectedChildCategories: selectedChildCategories.value,
+        storeData: {
+          scheduleData: store.scheduleData.value.length,
+          tableData: store.tableData.value.length,
+          parameterColumns: store.parameterColumns.value.length,
+          mergedTableColumns: store.mergedTableColumns.value.length
+        }
       })
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error initializing data:', error)

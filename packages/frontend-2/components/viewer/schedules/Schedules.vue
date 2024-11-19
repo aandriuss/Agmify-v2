@@ -333,13 +333,23 @@ onMounted(async () => {
     // Initialize the flow first - this handles store initialization and project ID
     await initialize()
 
-    // Initialize data after store is ready
+    // Initialize data after flow is ready
     await elementsData.initializeData()
+
+    // Process data to ensure parameters and columns are ready
+    await scheduleStore.processData()
 
     // Set initialized after everything is ready
     initialized.value = true
 
-    debug.log(DebugCategories.INITIALIZATION, 'Schedules component mounted')
+    debug.log(DebugCategories.INITIALIZATION, 'Schedules component mounted', {
+      storeData: {
+        scheduleData: scheduleStore.scheduleData.value.length,
+        tableData: scheduleStore.tableData.value.length,
+        parameterColumns: scheduleStore.parameterColumns.value.length,
+        mergedTableColumns: scheduleStore.mergedTableColumns.value.length
+      }
+    })
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Schedules initialization failed:', err)
     handleError(err)
@@ -364,17 +374,23 @@ function handleDataInitialized() {
   debug.log(DebugCategories.INITIALIZATION, 'Data initialized')
 }
 
-// Update handlers now use debounced store initialization
-function handleTableDataUpdate() {
-  debouncedInit()
+// Update handlers now ensure data is processed
+async function handleTableDataUpdate() {
+  try {
+    await scheduleStore.processData()
+    debouncedInit()
+  } catch (err) {
+    handleError(err)
+  }
 }
 
-function handleParameterColumnsUpdate() {
-  debouncedInit()
-}
-
-function handleEvaluatedDataUpdate() {
-  debouncedInit()
+async function handleParameterColumnsUpdate() {
+  try {
+    await scheduleStore.processData()
+    debouncedInit()
+  } catch (err) {
+    handleError(err)
+  }
 }
 
 function handleMergedParentParametersUpdate() {
@@ -425,6 +441,15 @@ function handleParameterOrder() {
   debouncedInit()
 }
 
+async function handleEvaluatedDataUpdate() {
+  try {
+    await scheduleStore.processData()
+    debouncedInit()
+  } catch (err) {
+    handleError(err)
+  }
+}
+
 async function handleParameterUpdate() {
   try {
     await debouncedInit()
@@ -450,20 +475,30 @@ async function handleSaveTable() {
   }
 }
 
-async function handleBothColumnsUpdate(
-  tableColumns: ColumnDef[],
-  detailColumns: ColumnDef[]
-) {
+async function handleBothColumnsUpdate(updates: {
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+}) {
   try {
-    await scheduleStore.setMergedColumns(tableColumns, detailColumns)
+    await scheduleStore.setMergedColumns(updates.parentColumns, updates.childColumns)
     await debouncedInit()
   } catch (err) {
     handleError(err)
   }
 }
 
-async function handleCategoryToggle(category: string, type: 'parent' | 'child') {
+async function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   try {
+    debug.log(DebugCategories.CATEGORIES, 'Category toggle:', {
+      type,
+      category,
+      currentState: {
+        parent: selectedParentCategories.value,
+        child: selectedChildCategories.value
+      }
+    })
+
+    // Update categories
     const categories =
       type === 'parent' ? selectedParentCategories : selectedChildCategories
     const index = categories.value.indexOf(category)
@@ -472,10 +507,31 @@ async function handleCategoryToggle(category: string, type: 'parent' | 'child') 
     } else {
       categories.value.splice(index, 1)
     }
+
+    // Update elements with new categories
     await elementsData.updateCategories(
       selectedParentCategories.value,
       selectedChildCategories.value
     )
+
+    // Process data to ensure parameters and columns are ready
+    await scheduleStore.processData()
+
+    // Log the update completion
+    const storeData = {
+      scheduleData: scheduleStore.scheduleData.value.length,
+      tableData: scheduleStore.tableData.value.length,
+      parameterColumns: scheduleStore.parameterColumns.value.length,
+      mergedTableColumns: scheduleStore.mergedTableColumns.value.length
+    }
+
+    debug.log(DebugCategories.CATEGORIES, 'Category update complete:', {
+      newState: {
+        parent: selectedParentCategories.value,
+        child: selectedChildCategories.value
+      },
+      storeData
+    })
   } catch (err) {
     handleError(err)
   }
@@ -515,8 +571,14 @@ watch(
       // Re-initialize everything through the flow
       await initialize()
 
+      // Initialize store
+      await scheduleStore.lifecycle.init()
+
       // Then initialize data
       await elementsData.initializeData()
+
+      // Process data to ensure parameters and columns are ready
+      await scheduleStore.processData()
 
       // Set initialized after everything is ready
       initialized.value = true

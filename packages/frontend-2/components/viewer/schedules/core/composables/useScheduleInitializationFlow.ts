@@ -6,6 +6,7 @@ import { useUserSettings } from '~/composables/useUserSettings'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 import type { Store } from '../types'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
+import { parentCategories, childCategories } from '../../config/categories'
 
 export interface InitializationState {
   isInitialized: boolean
@@ -102,6 +103,45 @@ export function useScheduleInitializationFlow(): InitializationFlow {
     }
   }
 
+  // Initialize categories based on available data
+  async function initializeCategories(): Promise<void> {
+    try {
+      // Get all available categories from data
+      const scheduleData = store.scheduleData.value
+      const availableCategories = new Set(scheduleData.map((el) => el.category))
+
+      // Filter parent categories to only those that exist in data
+      const availableParents = parentCategories.filter((cat) =>
+        availableCategories.has(cat)
+      )
+
+      // Filter child categories to only those that exist in data
+      const availableChildren = childCategories.filter((cat) =>
+        availableCategories.has(cat)
+      )
+
+      debug.log(DebugCategories.INITIALIZATION, 'Available categories:', {
+        all: Array.from(availableCategories),
+        parents: availableParents,
+        children: availableChildren
+      })
+
+      // Update store with all category changes at once
+      if (availableParents.length > 0 || availableChildren.length > 0) {
+        await store.lifecycle.update({
+          selectedParentCategories: availableParents.length > 0 ? availableParents : [],
+          selectedChildCategories: availableChildren.length > 0 ? availableChildren : []
+        })
+      }
+    } catch (err) {
+      debug.warn(
+        DebugCategories.INITIALIZATION,
+        'Failed to initialize categories:',
+        err
+      )
+    }
+  }
+
   // Core initialization with proper error handling
   async function initializeCore(): Promise<void> {
     if (!projectId.value) {
@@ -129,6 +169,9 @@ export function useScheduleInitializationFlow(): InitializationFlow {
       // Initialize store lifecycle
       await store.lifecycle.init()
 
+      // Initialize categories after data is loaded
+      await initializeCategories()
+
       // Update state
       state.value.projectId = projectId.value
       state.value.isInitialized = true
@@ -138,7 +181,9 @@ export function useScheduleInitializationFlow(): InitializationFlow {
         projectId: projectId.value,
         hasSettings: !!settings,
         viewerReady: !!viewerState?.viewer?.instance,
-        storeInitialized: store.initialized.value
+        storeInitialized: store.initialized.value,
+        parentCategories: store.selectedParentCategories.value,
+        childCategories: store.selectedChildCategories.value
       })
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))

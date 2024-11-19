@@ -27,6 +27,7 @@
     <TableWrapper
       v-model="expandedRows"
       :data="data"
+      :schedule-data="scheduleData"
       :parent-columns="localParentColumns"
       :child-columns="localChildColumns"
       :loading="loading"
@@ -57,14 +58,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import { useUserSettings } from '~/composables/useUserSettings'
 import ColumnManager from './components/ColumnManager/index.vue'
 import TableWrapper from './components/TableWrapper/index.vue'
 import {
   safeJSONClone,
-  validateData,
   sortColumnsByOrder,
   isTableRowData,
   updateLocalColumns as updateColumns,
@@ -73,12 +73,12 @@ import {
 import type { ColumnDef } from './composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { TableRowData } from '~/components/viewer/schedules/types'
-import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
 
 interface Props {
   tableId: string
   tableName?: string
   data: TableRowData[]
+  scheduleData: TableRowData[]
   columns: ColumnDef[]
   detailColumns: ColumnDef[]
   availableParentParameters: CustomParameter[]
@@ -138,13 +138,11 @@ const tempChildColumns = ref<ColumnDef[]>([])
 function handleError(error: Error): void {
   errorMessage.value = error.message
   emit('error', error)
-  debug.error(DebugCategories.ERROR, 'DataTable error', error)
 }
 
 // State Management Functions
 function initializeState(): void {
   try {
-    debug.log(DebugCategories.STATE, 'Initializing table state')
     if (props.initialState) {
       localParentColumns.value = safeJSONClone(
         sortColumnsByOrder(props.initialState.columns)
@@ -161,85 +159,11 @@ function initializeState(): void {
       localChildColumns.value = safeJSONClone(props.detailColumns)
     }
 
-    debug.log(DebugCategories.STATE, 'Table state initialized', {
-      parentColumns: localParentColumns.value,
-      childColumns: localChildColumns.value,
-      data: props.data
-    })
-
     isInitialized.value = true
   } catch (error) {
     handleError(error as Error)
   }
 }
-
-// Update debug calls in watchers
-watch(
-  () => settings.value?.namedTables?.[props.tableId],
-  (newTableSettings) => {
-    if (newTableSettings && isInitialized.value) {
-      // Sort columns by order before updating local state
-      localParentColumns.value = safeJSONClone(
-        sortColumnsByOrder(newTableSettings.parentColumns)
-      )
-      localChildColumns.value = safeJSONClone(
-        sortColumnsByOrder(newTableSettings.childColumns)
-      )
-      debug.log(DebugCategories.COLUMNS, 'Updated columns from settings', {
-        parent: localParentColumns.value,
-        child: localChildColumns.value
-      })
-    }
-  },
-  { deep: true }
-)
-
-watch(
-  () => props.columns,
-  (cols) => {
-    if (isInitialized.value) {
-      updateColumns(cols, (c) => (localParentColumns.value = c))
-      debug.log(
-        DebugCategories.COLUMNS,
-        'Updated parent columns from props',
-        localParentColumns.value
-      )
-    }
-  },
-  { deep: true }
-)
-
-watch(
-  () => props.data,
-  (data) => {
-    if (isInitialized.value) {
-      validateData(data, handleError)
-      debug.log(DebugCategories.DATA, 'Updated table data', data)
-    }
-  }
-)
-
-watch(
-  () => expandedRows.value,
-  (newValue) => {
-    if (isInitialized.value) {
-      debug.log(DebugCategories.DATA, 'DataTable expanded rows changed', {
-        expandedCount: newValue.length,
-        firstExpanded: newValue[0],
-        firstExpandedDetails: newValue[0]?.details
-      })
-    }
-  }
-)
-
-// Initialization
-onMounted(() => {
-  try {
-    initializeState()
-  } catch (error) {
-    handleError(error as Error)
-  }
-})
 
 // Event Handlers
 function openDialog(): void {
@@ -326,10 +250,6 @@ async function handleApply(): Promise<void> {
     })
 
     dialogOpen.value = false
-    debug.log(DebugCategories.COLUMNS, 'Applied column updates', {
-      parent: localParentColumns.value,
-      child: localChildColumns.value
-    })
   } catch (error) {
     handleError(error as Error)
     // Revert temp columns on error
@@ -428,10 +348,6 @@ async function handleColumnReorder(event: {
     }
 
     emit('column-reorder', { target })
-    debug.log(DebugCategories.COLUMNS, 'Reordered columns', {
-      parent: localParentColumns.value,
-      child: localChildColumns.value
-    })
   } catch (error) {
     handleError(error as Error)
   } finally {
@@ -474,28 +390,18 @@ function handleSort(field: string, order: number): void {
   emit('sort', field, order)
 }
 
-function handleFilter(newFilters: Record<string, unknown>): void {
-  filters.value = newFilters
-  emit('filter', newFilters)
+function handleFilter(filters: Record<string, unknown>): void {
+  emit('filter', filters)
 }
 
-// Debug data flow
-watch(
-  () => props.data,
-  (newData) => {
-    if (isInitialized.value) {
-      debug.log(DebugCategories.DATA, 'DataTable data received', {
-        rowCount: newData.length,
-        firstRow: newData[0],
-        firstRowDetails: newData[0]?.details,
-        withDetails: newData.filter(
-          (row) => Array.isArray(row.details) && row.details.length > 0
-        ).length,
-        detailsExample: newData[0]?.details?.[0]
-      })
-    }
+// Initialization
+onMounted(() => {
+  try {
+    initializeState()
+  } catch (error) {
+    handleError(error as Error)
   }
-)
+})
 </script>
 
 <style scoped>
@@ -507,41 +413,5 @@ watch(
   --surface-border: #dfe7ef;
   --text-color: #495057;
   --text-color-secondary: #6c757d;
-}
-
-.datatable-wrapper :deep(.p-datatable) {
-  background-color: var(--surface-card);
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
-}
-
-.datatable-wrapper :deep(.p-datatable .p-datatable-header) {
-  background-color: var(--surface-section);
-  border-top-left-radius: 0.5rem;
-  border-top-right-radius: 0.5rem;
-  padding: 0.2rem;
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.datatable-wrapper :deep(.p-datatable .p-datatable-thead > tr > th) {
-  background-color: var(--surface-section);
-  color: var(--text-color);
-  font-weight: 600;
-  padding: 0.2rem;
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.datatable-wrapper :deep(.p-datatable .p-datatable-tbody > tr) {
-  color: var(--text-color);
-  transition: background-color 0.2s;
-}
-
-.datatable-wrapper :deep(.p-datatable .p-datatable-tbody > tr > td) {
-  padding: 0.2rem;
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.datatable-wrapper :deep(.p-datatable .p-datatable-tbody > tr:hover) {
-  background-color: #f0f7ff;
 }
 </style>

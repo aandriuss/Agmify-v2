@@ -119,6 +119,86 @@ NamedTableConfig -> TableConfig -> Component Props
          └── State Updates ←───── Direct Data Access
 ```
 
+### Element Relationships (Updated)
+
+```
+BIM Data Structure:
+└── Elements (Independent)
+    ├── Parent Elements (Walls, Floors, etc.)
+    │   ├── mark: unique identifier
+    │   └── category: from parentCategories
+    └── Child Elements (Windows, Doors, etc.)
+        ├── host: from Constraints.Host
+        └── category: from childCategories
+
+Parameter Extraction:
+1. Process Identity Data (mark)
+2. Process Constraints (host)
+3. Process Other parameters
+4. Group parameters by source
+
+Relationship Flow:
+1. Each element starts independent
+2. Extract host from Constraints
+3. Category determination (parent/child)
+4. Host-mark matching for relationships
+5. Orphaned children → "Without Host"
+```
+
+### Store Architecture (Updated)
+
+```
+core/store/
+└── useScheduleStore.ts       // Central store management
+    ├── State
+    │   ├── Core data (scheduleData, evaluatedData)
+    │   ├── Parameters (customParameters, parameterColumns)
+    │   ├── Categories (selectedParentCategories, selectedChildCategories)
+    │   └── UI state (loading, error)
+    ├── Lifecycle
+    │   ├── init: () => Promise<void>
+    │   ├── update: (state: Partial<StoreState>) => Promise<void>
+    │   └── cleanup: () => void
+    └── Mutations
+        ├── Individual setters (legacy)
+        └── Batch updates (new)
+
+State Flow:
+1. Store initialization (immediate)
+2. Project ID setup
+3. Component initialization
+4. Batch data updates
+```
+
+### Data Flow (Updated)
+
+```
+1. Raw BIM Data
+   └── Independent elements with parameters
+      ├── Identity Data (mark)
+      ├── Constraints (host)
+      └── Other parameters
+
+2. Parameter Processing
+   ├── Extract host from Constraints
+   ├── Group parameters by source
+   └── Create parameter columns
+
+3. Category Processing
+   ├── Parent categories (Walls, Floors, etc.)
+   └── Child categories (Windows, Doors, etc.)
+
+4. Relationship Establishment
+   ├── Match child.host with parent.mark
+   └── Group orphans under "Without Host"
+
+5. Store Updates
+   └── Batch update multiple states
+      ├── scheduleData
+      ├── parameterColumns
+      └── availableHeaders
+```
+
 ### Error Handling
 
 - Type-safe error handling
@@ -135,9 +215,51 @@ NamedTableConfig -> TableConfig -> Component Props
 - Computed properties for derived state
 - Proper ref unwrapping
 
-## Implementation Details
+### Implementation Details
 
-### Implementation Details (Updated)
+#### Store Updates
+
+```typescript
+// Store lifecycle management
+interface StoreLifecycle {
+  init: () => Promise<void>
+  update: (state: Partial<StoreState>) => Promise<void>
+  cleanup: () => void
+}
+
+// Batch state updates
+await store.lifecycle.update({
+  selectedParentCategories: parentCategories,
+  selectedChildCategories: childCategories,
+  scheduleData: processedElements,
+  parameterColumns: parameterColumnsWithDefaults
+})
+```
+
+#### Parameter Extraction
+
+```typescript
+function extractParameters(raw: BIMNodeRaw): ParametersWithGroups {
+  // Process Identity Data
+  if (raw['Identity Data']) {
+    processGroup(raw['Identity Data'], 'Identity Data', ['Mark'])
+  }
+
+  // Process Constraints - special handling for Host
+  if (raw.Constraints) {
+    if ('Host' in raw.Constraints) {
+      parameters.host = raw.Constraints.Host
+      parameterGroups.host = 'Constraints'
+    }
+    processGroup(raw.Constraints, 'Constraints')
+  }
+
+  // Process Other parameters
+  if (raw.Other) {
+    processGroup(raw.Other, 'Other', ['Category'])
+  }
+}
+```
 
 #### Data Access
 

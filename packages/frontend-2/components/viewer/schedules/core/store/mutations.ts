@@ -1,9 +1,10 @@
 import { type Ref } from 'vue'
 import { debug, DebugCategories } from '../../utils/debug'
 import type { StoreState, StoreMutations } from '../types'
-import type { ElementData, TableRowData } from '../../types'
+import type { ElementData, TableRowData, ParameterValue } from '../../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
+import { defaultColumns } from '../../config/defaultColumns'
 
 export function createMutations(state: Ref<StoreState>): StoreMutations {
   // Helper to validate project ID only for data operations
@@ -38,6 +39,79 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
     } finally {
       state.value.loading = false
     }
+  }
+
+  // Helper to convert unknown to ParameterValue
+  const toParameterValue = (value: unknown): ParameterValue => {
+    if (value === null) return null
+    if (typeof value === 'string') return value
+    if (typeof value === 'number') return value
+    if (typeof value === 'boolean') return value
+    return String(value)
+  }
+
+  // Helper to process parameters and create columns
+  const processParameters = (elements: ElementData[]): ColumnDef[] => {
+    const parameterSet = new Set<string>()
+
+    // Collect all parameter names
+    elements.forEach((element) => {
+      if (element.parameters) {
+        Object.keys(element.parameters).forEach((key) => parameterSet.add(key))
+      }
+    })
+
+    // Create columns for parameters
+    return Array.from(parameterSet).map((field, index) => ({
+      field,
+      header: field,
+      type: 'string',
+      category: 'parameter',
+      description: `Parameter: ${field}`,
+      visible: true,
+      order: index,
+      removable: true,
+      source: 'Parameters'
+    }))
+  }
+
+  // Helper to create table data
+  const createTableData = (
+    elements: ElementData[],
+    columns: ColumnDef[]
+  ): TableRowData[] => {
+    return elements.map((element) => {
+      const parameters: Record<string, ParameterValue> = {}
+      const data: Record<string, ParameterValue> = {}
+
+      // Add special fields
+      data.mark = element.mark
+      data.category = element.category
+      data.type = element.type || ''
+      data.host = element.host || ''
+
+      // Add parameters
+      if (element.parameters) {
+        columns.forEach((column) => {
+          if (column.field in element.parameters!) {
+            const value = toParameterValue(element.parameters![column.field])
+            parameters[column.field] = value
+            data[column.field] = value
+          }
+        })
+      }
+
+      return {
+        id: element.id,
+        mark: element.mark,
+        category: element.category,
+        type: element.type || '',
+        parameters,
+        _visible: true,
+        details: element.details,
+        data
+      }
+    })
   }
 
   return {
@@ -217,11 +291,13 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
     // Data processing
     processData: async () => {
       await atomicUpdate('process data', () => {
-        debug.log(DebugCategories.DATA, 'Processing data', {
+        debug.log(DebugCategories.DATA, 'Starting data processing', {
           scheduleDataLength: state.value.scheduleData.length,
           evaluatedDataLength: state.value.evaluatedData.length,
           tableDataLength: state.value.tableData.length,
-          parameterColumnsLength: state.value.parameterColumns.length
+          parameterColumnsLength: state.value.parameterColumns.length,
+          currentTableColumnsLength: state.value.currentTableColumns.length,
+          mergedTableColumnsLength: state.value.mergedTableColumns.length
         })
 
         // Ensure all required data is present
@@ -230,26 +306,96 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
           return
         }
 
-        // Set visibility flags for all elements
+        // Step 1: Process parameters and create columns
+        const parameterColumns = processParameters(state.value.scheduleData)
+        state.value.parameterColumns = parameterColumns
+
+        debug.log(DebugCategories.DATA, 'Parameter columns processed', {
+          count: parameterColumns.length,
+          fields: parameterColumns.map((col) => col.field)
+        })
+
+        // Step 2: Ensure we have default columns
+        if (!state.value.currentTableColumns.length) {
+          state.value.currentTableColumns = [...defaultColumns]
+        }
+
+        // Step 3: Merge columns in correct order
+        const mergedColumns = [
+          ...state.value.currentTableColumns,
+          ...parameterColumns.filter(
+            (col) =>
+              !state.value.currentTableColumns.some(
+                (existing) => existing.field === col.field
+              )
+          )
+        ].map((col) => ({
+          ...col,
+          visible: col.visible !== false // Ensure visibility is set
+        }))
+
+        state.value.mergedTableColumns = mergedColumns
+
+        debug.log(DebugCategories.DATA, 'Columns merged', {
+          defaultCount: state.value.currentTableColumns.length,
+          parameterCount: parameterColumns.length,
+          mergedCount: mergedColumns.length,
+          visibleCount: mergedColumns.filter((col) => col.visible).length
+        })
+
+        // Step 4: Set visibility flags for all elements
         state.value.scheduleData = state.value.scheduleData.map((element) => ({
           ...element,
           _visible: true
         }))
 
-        // Process parameters if needed
+        // Step 5: Create table data with all parameters
+        const tableData = createTableData(state.value.scheduleData, mergedColumns)
+        state.value.tableData = tableData
+
+        debug.log(DebugCategories.DATA, 'Table data created', {
+          rowCount: tableData.length,
+          visibleRows: tableData.filter((row) => row._visible).length,
+          firstRow: tableData[0]
+        })
+
+        // Step 6: Process custom parameters if needed
         if (state.value.customParameters.length > 0) {
-          debug.log(DebugCategories.DATA, 'Processing parameters', {
+          debug.log(DebugCategories.DATA, 'Processing custom parameters', {
             customParametersLength: state.value.customParameters.length
           })
-          // Parameter processing logic would go here
+
+          // Add custom parameters to columns
+          state.value.customParameters.forEach((param) => {
+            if (!mergedColumns.some((col) => col.field === param.field)) {
+              mergedColumns.push({
+                field: param.field,
+                header: param.name,
+                type: 'string',
+                category: param.category,
+                description: param.description || '',
+                visible: param.visible ?? true,
+                order: param.order || mergedColumns.length,
+                removable: true,
+                source: 'Custom'
+              })
+            }
+          })
+
+          // Update merged columns after adding custom parameters
+          state.value.mergedTableColumns = mergedColumns
         }
 
-        // Update processed state
+        // Step 7: Update processed state
         state.value.initialized = true
 
         debug.log(DebugCategories.DATA, 'Data processing complete', {
           scheduleDataLength: state.value.scheduleData.length,
-          visibleElements: state.value.scheduleData.filter((el) => el._visible).length
+          tableDataLength: state.value.tableData.length,
+          columnsLength: mergedColumns.length,
+          visibleElements: state.value.scheduleData.filter((el) => el._visible).length,
+          visibleColumns: mergedColumns.filter((col) => col.visible).length,
+          columnFields: mergedColumns.map((col) => col.field)
         })
       })
     },

@@ -71,6 +71,16 @@ function extractParameters(raw: BIMNodeRaw): ParametersWithGroups {
           parameters[paramKey] = value as ParameterValue
           parameterGroups[paramKey] = groupName
 
+          // Special handling for Host parameter
+          if (groupName === 'Constraints' && key === 'Host') {
+            parameters.host = value as ParameterValue
+            parameterGroups.host = 'Constraints'
+            debug.log(DebugCategories.PARAMETERS, 'Found host parameter', {
+              value,
+              source: groupName
+            })
+          }
+
           debug.log(DebugCategories.PARAMETERS, 'Found parameter in group', {
             group: groupName,
             key,
@@ -87,8 +97,16 @@ function extractParameters(raw: BIMNodeRaw): ParametersWithGroups {
     processGroup(raw['Identity Data'], 'Identity Data', ['Mark'])
   }
 
-  // Process Constraints
+  // Process Constraints - special handling for Host
   if (raw.Constraints) {
+    // First check for direct Host property
+    if ('Host' in raw.Constraints) {
+      parameters.host = raw.Constraints.Host as ParameterValue
+      parameterGroups.host = 'Constraints'
+      debug.log(DebugCategories.PARAMETERS, 'Found direct host parameter', {
+        value: raw.Constraints.Host
+      })
+    }
     processGroup(raw.Constraints, 'Constraints')
   }
 
@@ -136,6 +154,8 @@ function extractParameters(raw: BIMNodeRaw): ParametersWithGroups {
   debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
     totalParameters: Object.keys(parameters).length,
     groups: [...new Set(Object.values(parameterGroups))],
+    hasHost: 'host' in parameters,
+    hostValue: parameters.host,
     parameters: Object.keys(parameters).map((key) => ({
       key,
       group: parameterGroups[key]
@@ -206,9 +226,10 @@ function extractElementData(raw: BIMNodeRaw): ElementData | null {
       parameters
     )
 
+    // Make _raw enumerable so it shows up in debug panel
     Object.defineProperty(element, '_raw', {
       value: raw,
-      enumerable: false,
+      enumerable: true, // Changed from false to true
       configurable: true
     })
 

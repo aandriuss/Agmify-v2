@@ -1,215 +1,78 @@
-# Schedule System: Next Steps
+# Schedule System Development Instructions
 
-## Current Status
+## Overview
 
-We've identified critical issues in the viewer initialization chain:
+The Schedule system is a Vue.js component for displaying and managing BIM (Building Information Modeling) data in a tabular format. It handles complex relationships between building elements while maintaining their independence.
 
-1. Timing Issues
+## Key Concepts
 
-```typescript
-// ❌ Current issue: Wrong timing
-const { viewer } = useInjectedViewer()
-```
+### Element Independence
 
-2. Container Issues
+- Each BIM element is independent in the raw data
+- Elements have their own parameters and properties
+- No inherent parent-child relationships in raw data
 
-```
-❌ Error: GL_INVALID_FRAMEBUFFER_OPERATION
-Cause: Container not properly mounted/sized
-```
+### Category System
 
-3. State Management
+- Predefined parent categories (Walls, Floors, etc.)
+- Predefined child categories (Windows, Doors, etc.)
+- Categories defined in config/categories.ts
 
-```typescript
-// ❌ Current issue: State not ready
-const { viewer } = useInjectedViewerState()
-```
+### Relationship Establishment
 
-## Implementation Order
+- Parent-child relationships created after filtering
+- Matching based on child.host === parent.mark
+- Orphaned children grouped under "Without Host"
 
-### 1. Container Management (🎯 Start Here)
+### Data Flow
 
-```typescript
-// ✅ Add container ref
-const viewerContainer = ref<HTMLElement | null>(null)
+1. Load raw BIM elements independently
+2. Filter elements by predefined categories
+3. Establish relationships through host-mark matching
+4. Process parameters for each element
+5. Create parameter columns for display
 
-// ✅ Add container validation
-onMounted(() => {
-  if (!viewerContainer.value) {
-    throw new Error('Container not mounted')
-  }
-})
+## Development Guidelines
 
-// ✅ Add explicit dimensions
-<div
-  ref="viewerContainer"
-  class="viewer-container"
-  style="width: 100%; height: 100%; min-height: 400px"
->
-```
+### Element Processing
 
-### 2. State Initialization
+- Always treat elements as independent first
+- Use predefined categories for filtering
+- Establish relationships after filtering
+- Handle orphaned elements properly
 
-```typescript
-// ✅ Proper initialization order
-onMounted(async () => {
-  // 1. Validate container
-  if (!viewerContainer.value) throw new Error('...')
+### Parameter Handling
 
-  // 2. Setup viewer state
-  useSetupViewer({ projectId })
+- Discover parameters from raw elements
+- Process parameters independently
+- Create parameter columns after relationships
+- Handle parameter updates efficiently
 
-  // 3. Wait for initialization
-  await waitForInitialization()
+### Error Handling
 
-  // 4. Initialize schedule system
-  setup.value = useScheduleSetupInstance(...)
-})
-```
+- Validate element categories
+- Check host-mark relationships
+- Handle orphaned elements gracefully
+- Provide clear error messages
 
-### 3. Error Handling
+### Performance Considerations
 
-```typescript
-// ✅ Add error boundaries
-const handleError = (err: Error | unknown) => {
-  const errorValue = err instanceof Error ? err : new Error(String(err))
-  error.value = errorValue
-  debug.error(DebugCategories.ERROR, 'Schedule error:', errorValue)
-}
+- Process elements in batches
+- Cache relationship mappings
+- Optimize parameter discovery
+- Handle large datasets efficiently
 
-// ✅ Add recovery
-const handleRecovery = async () => {
-  error.value = null
-  await reinitializeViewer()
-}
-```
+## Testing Focus Areas
 
-## Files to Update
+1. Element independence verification
+2. Category filtering accuracy
+3. Host-mark relationship matching
+4. Parameter discovery and processing
+5. Error handling and recovery
 
-### 1. Core Files
+## Documentation Requirements
 
-#### useViewerInitialization.ts
-
-- Add container management
-- Improve error handling
-- Add retry mechanism
-- Add state validation
-
-#### useScheduleSetup.ts
-
-- Update viewer state handling
-- Add container validation
-- Improve error recovery
-- Add initialization guards
-
-#### Schedules.vue
-
-- Move viewer initialization to setup
-- Add container refs
-- Improve error boundaries
-- Add recovery UI
-
-## Testing Strategy
-
-### 1. Container Tests
-
-- Test mounting
-- Test dimensions
-- Test resize
-- Test errors
-
-### 2. Initialization Tests
-
-- Test timing
-- Test state
-- Test errors
-- Test recovery
-
-### 3. Integration Tests
-
-- Test full flow
-- Test errors
-- Test recovery
-- Test performance
-
-## Success Criteria
-
-### 1. Container
-
-- [ ] Mounts successfully
-- [ ] Has proper dimensions
-- [ ] Handles resize
-- [ ] Reports errors
-
-### 2. Initialization
-
-- [ ] Correct timing
-- [ ] Proper state flow
-- [ ] Error handling
-- [ ] Recovery works
-
-### 3. Integration
-
-- [ ] Full flow works
-- [ ] Error recovery works
-- [ ] Performance good
-- [ ] DX improved
-
-## Development Flow
-
-1. Start with container management
-
-   - Add container ref
-   - Set dimensions
-   - Add validation
-   - Test mounting
-
-2. Move to state initialization
-
-   - Fix timing
-   - Add validation
-   - Handle errors
-   - Test flow
-
-3. Finish with error handling
-   - Add boundaries
-   - Add recovery
-   - Add logging
-   - Test scenarios
-
-## Documentation Updates
-
-### 1. Update architecture.md
-
-- Add container section
-- Update initialization flow
-- Document error handling
-- Add recovery patterns
-
-### 2. Update implementation.md
-
-- Update status
-- Add new tasks
-- Document progress
-- Update metrics
-
-### 3. Update file-structure.md
-
-- Add new files
-- Update responsibilities
-- Document changes
-- Update organization
-
-## Next Steps
-
-1. Start with container management in Schedules.vue
-2. Move to viewer initialization in useViewerInitialization.ts
-3. Update schedule setup in useScheduleSetup.ts
-4. Add tests and documentation
-
-## Notes
-
-- Keep changes incremental
-- Test each step
-- Document changes
-- Update architecture
+1. Update architecture.md for changes
+2. Keep implementation.md current
+3. Document data flow clearly
+4. Maintain debugging guides
