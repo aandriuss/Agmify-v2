@@ -6,37 +6,7 @@ export interface BIMParameter {
   name: string
   path: string[]
   fallback: keyof BIMNodeRaw
-  group?: string
 }
-
-// IFC Property Set mapping
-const IFC_PROPERTY_SETS = {
-  psetBeamCommon: 'Pset_BeamCommon',
-  psetQuantityTakeOff: 'Pset_QuantityTakeOff',
-  psetProductRequirements: 'Pset_ProductRequirements',
-  psetReinforcementBarPitchOfBeam: 'Pset_ReinforcementBarPitchOfBeam'
-} as const
-
-// Known parameter groups
-export const PARAMETER_GROUPS = [
-  'Dimensions',
-  'Structural',
-  'Graphics',
-  'Phasing',
-  'Construction',
-  'Model Properties',
-  'Geometric Position',
-  'Wall Framing Schedule',
-  IFC_PROPERTY_SETS.psetBeamCommon,
-  IFC_PROPERTY_SETS.psetQuantityTakeOff,
-  IFC_PROPERTY_SETS.psetProductRequirements,
-  IFC_PROPERTY_SETS.psetReinforcementBarPitchOfBeam,
-  'Other',
-  'Identity Data',
-  'Constraints'
-] as const
-
-export type ParameterGroup = (typeof PARAMETER_GROUPS)[number]
 
 // Helper to safely get nested property
 export function getNestedValue(obj: BIMNodeRaw, path: string[]): string | undefined {
@@ -71,132 +41,57 @@ export function getGroupParameters(
   return result
 }
 
-// Predefined list of BIM Active parameters we want to collect
-export const BASIC_PARAMETERS: BIMParameter[] = [
-  {
-    name: 'Mark',
-    path: ['Identity Data', 'Mark'],
-    fallback: 'Tag',
-    group: 'Identity Data'
-  },
-  {
-    name: 'Category',
-    path: ['Other', 'Category'],
-    fallback: 'type',
-    group: 'Other'
-  },
-  {
-    name: 'Host',
-    path: ['Constraints', 'Host'],
-    fallback: 'id',
-    group: 'Constraints'
-  },
-  {
-    name: 'Length',
-    path: ['Dimensions', 'Length'],
-    fallback: 'id',
-    group: 'Dimensions'
-  },
-  {
-    name: 'End Level Offset',
-    path: ['Constraints', 'End Level Offset'],
-    fallback: 'id',
-    group: 'Constraints'
-  },
-  {
-    name: 'ID',
-    path: ['id'],
-    fallback: 'id',
-    group: 'root'
-  }
-] as const
-
-// Common parameters by group
-export const GROUP_PARAMETERS: Record<ParameterGroup, string[]> = {
-  Dimensions: [
-    'Length',
-    'Width',
-    'Height',
-    'Volume',
-    'Area',
-    'Profile Vertical Offset',
-    'Profile Horizontal Offset'
-  ],
-  Structural: [
-    'Cut Length',
-    'Structural Usage',
-    'Stick Symbol Location',
-    'Enable Analytical Model'
-  ],
-  Graphics: [
-    'Split Part',
-    'Solid Visible',
-    'Axis Visible_T',
-    'Symbolic Section_Build in Place'
-  ],
-  Phasing: ['Phase Created'],
-  Construction: ['Build in Place', 'Link to Connected Wall'],
-  'Model Properties': [
-    'Left',
-    'Right',
-    'Slope',
-    'Rotated',
-    'External',
-    'Internal',
-    'End Flange',
-    'Start Flange'
-  ],
-  'Geometric Position': [
-    'Join Status',
-    'End Extension',
-    'Start Extension',
-    'y Justification',
-    'z Justification',
-    'yz Justification'
-  ],
-  'Wall Framing Schedule': ['Type', 'Cut Length', 'Family and Type'],
-  [IFC_PROPERTY_SETS.psetBeamCommon]: [
-    'Span',
-    'Slope',
-    'Reference',
-    'IsExternal',
-    'LoadBearing'
-  ],
-  [IFC_PROPERTY_SETS.psetQuantityTakeOff]: ['Reference'],
-  [IFC_PROPERTY_SETS.psetProductRequirements]: ['Category'],
-  [IFC_PROPERTY_SETS.psetReinforcementBarPitchOfBeam]: ['Reference'],
-  Other: ['Category', 'Type', 'Family'],
-  'Identity Data': ['Mark', 'Type', 'Family', 'Type Id', 'Family and Type'],
-  Constraints: ['Host']
-} as const
-
-// Helper to check if a parameter belongs to a group
-export function getParameterGroup(parameterName: string): ParameterGroup | 'root' {
-  for (const [group, parameters] of Object.entries(GROUP_PARAMETERS)) {
-    if (parameters.includes(parameterName)) {
-      return group as ParameterGroup
-    }
-  }
-  return 'root'
-}
-
 // Helper to get all parameters from all groups
 export function getAllGroupParameters(
   obj: BIMNodeRaw
 ): Record<string, Record<string, string>> {
   const result: Record<string, Record<string, string>> = {}
 
-  PARAMETER_GROUPS.forEach((group) => {
-    const groupParams = getGroupParameters(obj, group)
-    if (Object.keys(groupParams).length > 0) {
-      result[group] = groupParams
+  // Extract groups from raw data
+  Object.entries(obj).forEach(([key, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const groupParams = getGroupParameters(obj, key)
+      if (Object.keys(groupParams).length > 0) {
+        result[key] = groupParams
+      }
     }
   })
+
+  // Handle ungrouped (top-level) parameters
+  const ungrouped: Record<string, string> = {}
+  Object.entries(obj).forEach(([key, value]) => {
+    if (
+      !Object.keys(result).includes(key) && // Not a group name
+      typeof value !== 'object' && // Not an object (which would be a group)
+      value !== undefined &&
+      value !== null
+    ) {
+      ungrouped[key] = convertToString(value)
+    }
+  })
+  if (Object.keys(ungrouped).length > 0) {
+    result['Ungrouped'] = ungrouped
+  }
 
   return result
 }
 
-// Helper to get IFC property set name from camelCase key
-export function getIFCPropertySetName(key: keyof typeof IFC_PROPERTY_SETS): string {
-  return IFC_PROPERTY_SETS[key]
+// Helper to get parameter group
+export function getParameterGroup(parameterName: string, raw: BIMNodeRaw): string {
+  // Check raw data groups
+  for (const [group, value] of Object.entries(raw)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (parameterName in value) {
+        return group
+      }
+    }
+  }
+
+  // If parameter is at root level
+  if (parameterName in raw) {
+    return 'Ungrouped'
+  }
+
+  // Default to Parameters group for any other case
+  return 'Parameters'
 }

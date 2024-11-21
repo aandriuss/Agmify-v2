@@ -5,8 +5,12 @@ import store from '../../composables/useScheduleStore'
 import { useUserSettings } from '~/composables/useUserSettings'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 import type { Store } from '../types'
+import type { ProcessedHeader } from '../../types'
+import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
-import { parentCategories, childCategories } from '../../config/categories'
+import { defaultColumns } from '../../config/defaultColumns'
+import { useBIMElements } from '../../composables/useBIMElements'
+import { discoverParameters } from '../../features/parameters/discovery'
 
 export interface InitializationState {
   isInitialized: boolean
@@ -44,9 +48,31 @@ function assertStore(store: unknown): asserts store is Store {
   }
 }
 
+// Convert ParameterDefinition to ProcessedHeader
+function toProcessedHeader(param: ParameterDefinition): ProcessedHeader {
+  const group = param.category || 'Parameters'
+  return {
+    field: param.field,
+    header: param.header,
+    type:
+      param.type === 'number'
+        ? 'number'
+        : param.type === 'boolean'
+        ? 'boolean'
+        : 'string',
+    category: param.category || 'Parameters',
+    description: param.description || `Parameter ${param.header}`,
+    fetchedGroup: group,
+    currentGroup: group,
+    isFetched: true,
+    source: group
+  }
+}
+
 export function useScheduleInitializationFlow(): InitializationFlow {
   const route = useRoute()
   const viewerState = useInjectedViewerState()
+  const { initializeElements, allElements } = useBIMElements()
 
   // State management
   const state = ref<InitializationState>({
@@ -103,43 +129,36 @@ export function useScheduleInitializationFlow(): InitializationFlow {
     }
   }
 
-  // Initialize categories based on available data
-  async function initializeCategories(): Promise<void> {
-    try {
-      // Get all available categories from data
-      const scheduleData = store.scheduleData.value
-      const availableCategories = new Set(scheduleData.map((el) => el.category))
+  // Get active parameters from settings or defaults
+  function getActiveParameters(
+    settings: Record<string, NamedTableConfig> | null
+  ): string[] {
+    // Try to get from settings
+    if (settings) {
+      const currentTable = Object.values(settings)[0] // Use first table for now
+      if (currentTable) {
+        const activeParams = [
+          ...currentTable.parentColumns,
+          ...currentTable.childColumns
+        ].map((col) => col.field)
 
-      // Filter parent categories to only those that exist in data
-      const availableParents = parentCategories.filter((cat) =>
-        availableCategories.has(cat)
-      )
-
-      // Filter child categories to only those that exist in data
-      const availableChildren = childCategories.filter((cat) =>
-        availableCategories.has(cat)
-      )
-
-      debug.log(DebugCategories.INITIALIZATION, 'Available categories:', {
-        all: Array.from(availableCategories),
-        parents: availableParents,
-        children: availableChildren
-      })
-
-      // Update store with all category changes at once
-      if (availableParents.length > 0 || availableChildren.length > 0) {
-        await store.lifecycle.update({
-          selectedParentCategories: availableParents.length > 0 ? availableParents : [],
-          selectedChildCategories: availableChildren.length > 0 ? availableChildren : []
+        debug.log(DebugCategories.PARAMETERS, 'Using active parameters from settings', {
+          count: activeParams.length,
+          parameters: activeParams
         })
+
+        return activeParams
       }
-    } catch (err) {
-      debug.warn(
-        DebugCategories.INITIALIZATION,
-        'Failed to initialize categories:',
-        err
-      )
     }
+
+    // Fallback to defaults
+    const defaultParams = defaultColumns.map((col) => col.field)
+    debug.log(DebugCategories.PARAMETERS, 'Using default active parameters', {
+      count: defaultParams.length,
+      parameters: defaultParams
+    })
+
+    return defaultParams
   }
 
   // Core initialization with proper error handling
@@ -166,11 +185,33 @@ export function useScheduleInitializationFlow(): InitializationFlow {
       const settings = await initializeSettings()
       state.value.settings = settings
 
+      // Get active parameters
+      const activeParameters = getActiveParameters(settings)
+
       // Initialize store lifecycle
       await store.lifecycle.init()
 
-      // Initialize categories after data is loaded
-      await initializeCategories()
+      // Initialize BIM elements with active parameters
+      await initializeElements(activeParameters)
+
+      // Initialize with all elements as parents
+      await store.lifecycle.update({
+        scheduleData: allElements.value.map((el) => ({ ...el, isChild: false })),
+        parameterColumns: defaultColumns,
+        selectedParentCategories: [],
+        selectedChildCategories: []
+      })
+
+      // Discover all available parameters for parameter manager
+      const discoveredParameters = await discoverParameters(allElements.value)
+      const processedHeaders = discoveredParameters.map(toProcessedHeader)
+
+      await store.lifecycle.update({
+        availableHeaders: {
+          parent: processedHeaders,
+          child: processedHeaders
+        }
+      })
 
       // Update state
       state.value.projectId = projectId.value
@@ -182,8 +223,10 @@ export function useScheduleInitializationFlow(): InitializationFlow {
         hasSettings: !!settings,
         viewerReady: !!viewerState?.viewer?.instance,
         storeInitialized: store.initialized.value,
-        parentCategories: store.selectedParentCategories.value,
-        childCategories: store.selectedChildCategories.value
+        scheduleDataLength: store.scheduleData.value.length,
+        parameterColumnsLength: store.parameterColumns.value.length,
+        activeParameters,
+        availableParametersCount: processedHeaders.length
       })
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))

@@ -1,86 +1,103 @@
-import type { Ref, ComponentPublicInstance } from 'vue'
+import type { Ref } from 'vue'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import type {
-  UserSettings,
+  UserSettings as _UserSettings,
   NamedTableConfig,
   CustomParameter
 } from '~/composables/useUserSettings'
-import type { InitializationState } from './core/composables/useScheduleInitializationFlow'
+import type { InitializationState as _InitializationState } from './core/composables/useScheduleInitializationFlow'
 
 // Value types
 export type BIMNodeValue = string | number | boolean | null | undefined
 export type ParameterValue = string | number | boolean | null
 export type ParameterValueType = 'string' | 'number' | 'boolean'
 
-// Component emit events
-type _ScheduleInitializationEmits = {
-  (e: 'error', error: Error): void
-  (e: 'update:initialized', value: boolean): void
-  (
-    e: 'settings-loaded',
-    settings: { namedTables: Record<string, NamedTableConfig> }
-  ): void
-  (e: 'data-initialized'): void
+// Parameter value tracking
+export interface ParameterValueState {
+  fetchedValue: ParameterValue
+  currentValue: ParameterValue
+  previousValue: ParameterValue
+  userValue: ParameterValue | null
 }
 
-// Component props
-interface ScheduleInitializationProps {
-  initialized: boolean
-}
-
-// Component instance type
-export interface ScheduleInitializationInstance
-  extends ComponentPublicInstance<ScheduleInitializationProps> {
-  settings: UserSettings
-  updateNamedTable: (id: string, config: Partial<NamedTableConfig>) => Promise<void>
-  createNamedTable: (
-    name: string,
-    config: Omit<NamedTableConfig, 'id' | 'name'>
-  ) => Promise<NamedTableConfig>
-  scheduleData: Ref<ElementData[]>
-  updateElementsDataCategories: (parent: string[], child: string[]) => Promise<void>
-  loadingError: Ref<Error | null>
-  selectedTableId: Ref<string>
-  tableName: Ref<string>
-  currentTableId: Ref<string>
-  currentTable: Ref<NamedTableConfig | null>
-  handleTableSelection: (id: string) => Promise<void>
-  tablesArray: Ref<{ id: string; name: string }[]>
-  availableCategories: Ref<{
-    parent: Set<string>
-    child: Set<string>
-  }>
-  selectedParentCategories: Ref<string[]>
-  selectedChildCategories: Ref<string[]>
-  state: Ref<InitializationState>
+// Component instance types
+export interface ScheduleInitializationInstance {
+  initialized: Ref<boolean>
+  loading: Ref<boolean>
+  error: Ref<Error | null>
   handleRetry: () => Promise<void>
 }
 
-// Processing state interface
-export interface ProcessingState {
-  isInitializing: boolean
-  isProcessingElements: boolean
-  isUpdatingCategories: boolean
-  isProcessingFullData: boolean
-  error: Error | null
+// Parameter types
+export type ParametersWithGroups = Record<string, ParameterValue>
+export type Parameters = Record<string, ParameterValueState>
+
+// Base element data types
+export interface BaseElementData {
+  id: string
+  mark: string
+  category: string
+  type?: string
+  host?: string
+  _visible?: boolean
+  isChild?: boolean
+  parameters: ParametersWithGroups | Parameters
+  [key: string]: unknown
 }
 
-// Options for element categories
-export interface UseElementCategoriesOptions {
-  allElements: ElementData[]
-  selectedParent: string[]
-  selectedChild: string[]
-  essentialFieldsOnly?: boolean
+// Discovery phase element data
+export interface ElementData extends BaseElementData {
+  name?: string
+  speckle_type?: string
+  details?: ElementData[]
+  parameters: ParametersWithGroups
+  _raw?: Record<string, unknown>
 }
 
-// Options for element parameters
-export interface UseElementParametersOptions {
-  filteredElements: ElementData[]
-  essentialFieldsOnly?: boolean
+// Filtering phase element data
+export interface FilteredElementData extends BaseElementData {
+  parameters: ParametersWithGroups
+  _raw?: Record<string, unknown>
 }
 
-// World tree types
+// Final data phase element data
+export interface TableRow extends BaseElementData {
+  parameters: Parameters
+  _raw?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+// BIM types
+export interface BIMNodeConstraints {
+  Host?: string | number | { id?: string | number; Mark?: string; Tag?: string }
+  [key: string]: unknown
+}
+
+export interface BIMNodeRaw {
+  id: string | number
+  type?: string
+  Name?: string
+  Mark?: string
+  speckleType?: string
+  Constraints?: BIMNodeConstraints
+  Other?: {
+    Category?: string
+    [key: string]: unknown
+  }
+  parameters?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface BIMNode {
+  raw: BIMNodeRaw
+}
+
+export interface TreeItemComponentModel {
+  rawNode: BIMNode
+  children?: TreeItemComponentModel[]
+}
+
 export interface WorldTreeNode {
   _root?: {
     type?: string
@@ -88,8 +105,63 @@ export interface WorldTreeNode {
   }
 }
 
+// Header types
+export interface ProcessedHeader {
+  field: string
+  header: string
+  fetchedGroup: string // Group from raw data
+  currentGroup: string // Current group (initially same as fetchedGroup)
+  type: ParameterValueType
+  category: string
+  description: string
+  isFetched: boolean // Whether parameter was fetched from raw data or is custom
+  source: string
+}
+
+export interface HeaderInfo {
+  field: string
+  header: string
+  fetchedGroup: string
+}
+
+export interface AvailableHeaders {
+  parent: ProcessedHeader[]
+  child: ProcessedHeader[]
+}
+
+// Table types
+export interface TableConfig {
+  id?: string
+  name: string
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+  categoryFilters?: {
+    selectedParentCategories: string[]
+    selectedChildCategories: string[]
+  }
+  customParameters?: ParameterDefinition[]
+  lastUpdateTimestamp?: number
+}
+
+export interface TableUpdatePayload {
+  tableId: string
+  tableName: string
+}
+
+export interface TableState {
+  selectedTableId: string
+  tableName: string
+  showCategoryOptions: boolean
+  showParameterManager: boolean
+  expandedRows: string[]
+  tableKey: string
+  initialized: boolean
+  loadingError: Error | null
+}
+
+// Component types
 export interface ScheduleDataManagementExposed {
-  tableData: Ref<TableRowData[]>
+  tableData: Ref<ElementData[]>
   updateRootNodes: (nodes: TreeItemComponentModel[]) => void
 }
 
@@ -111,126 +183,20 @@ export interface ScheduleColumnManagementExposed {
   updateMergedDetailColumns: (columns: ColumnDef[]) => void
 }
 
-export interface BIMNodeConstraints {
-  Host?: string | number | { id?: string | number; Mark?: string; Tag?: string }
-  [key: string]: unknown
+// State types
+export interface ProcessingState {
+  isInitializing: boolean
+  isProcessingElements: boolean
+  isUpdatingCategories: boolean
+  isProcessingFullData: boolean
+  error: Error | null
 }
 
-export interface BIMNodeRaw {
-  id: string | number
-  type?: string
-  Name?: string
-  Mark?: string
-  speckleType?: string
-  Tag?: string
-  'Identity Data'?: Record<string, unknown>
-  Constraints?: {
-    Host?: string | number
-    [key: string]: unknown
-  }
-  Other?: {
-    Category?: string
-    [key: string]: unknown
-  }
-  [key: string]: unknown
-}
-
-export interface BIMNode {
-  raw: BIMNodeRaw
-}
-
-export interface TreeItemComponentModel {
-  rawNode: BIMNode
-  children?: TreeItemComponentModel[]
-}
-
-// Base element data without optional fields
-export interface BaseElementData {
-  id: string
-  mark: string
-  category: string
-}
-
-// Full element data with all possible fields
-export interface ElementData extends BaseElementData {
-  type?: string
-  name?: string
-  host?: string
-  details?: ElementData[]
-  length?: number
-  height?: number
-  width?: number
-  thickness?: number
-  area?: number
-  parameters?: Record<string, ParameterValue>
-  _visible?: boolean
-  isChild?: boolean // Added isChild flag to mark elements based on selected categories
-  [key: string]:
-    | ParameterValue
-    | ElementData[]
-    | undefined
-    | string
-    | number
-    | boolean
-    | Record<string, ParameterValue>
-    | null
-}
-
-export interface ProcessedHeader {
-  field: string
-  header: string
-  source: string
-  type: ParameterValueType
-  category: string
-  description: string
-}
-
-export interface HeaderInfo {
-  field: string
-  header: string
-  source: string
-}
-
-export interface AvailableHeaders {
-  parent: ProcessedHeader[]
-  child: ProcessedHeader[]
-}
-
-export interface DataOrganization {
-  rootNodes: Ref<TreeItemComponentModel[]>
-}
-
-export type SpecialFieldMappings = {
-  [key: string]: (node: BIMNode) => ParameterValue
-}
-
-export interface TableState {
-  selectedTableId: string
-  tableName: string
-  showCategoryOptions: boolean
-  showParameterManager: boolean
-  expandedRows: string[]
-  tableKey: string
-  initialized: boolean
-  loadingError: Error | null
-}
-
-export interface TableConfig {
-  id?: string
-  name: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-  categoryFilters?: {
-    selectedParentCategories: string[]
-    selectedChildCategories: string[]
-  }
-  customParameters?: ParameterDefinition[]
-  lastUpdateTimestamp?: number
-}
-
-export interface TableUpdatePayload {
-  tableId: string
-  tableName: string
+// Options types
+export interface UseElementParametersOptions {
+  filteredElements: ElementData[]
+  essentialFieldsOnly?: boolean
+  initialColumns?: ColumnDef[]
 }
 
 export interface ElementsDataOptions {
@@ -239,34 +205,26 @@ export interface ElementsDataOptions {
   customParameters?: ParameterDefinition[]
 }
 
+// Return types
 export interface ElementsDataReturn {
-  // Core data
   scheduleData: Ref<ElementData[]>
-  tableData: Ref<TableRowData[]> // Added this line
+  tableData: Ref<ElementData[]>
   availableHeaders: Ref<AvailableHeaders>
   availableCategories: Ref<{
     parent: Set<string>
     child: Set<string>
   }>
-
-  // Actions
   updateCategories: (
     parentCategories: string[],
     childCategories: string[]
   ) => Promise<void>
   initializeData: () => Promise<void>
   stopWorldTreeWatch: () => void
-
-  // State
   isLoading: Ref<boolean>
   hasError: Ref<boolean>
   processingState: Ref<ProcessingState>
-
-  // Raw data for debugging
   rawWorldTree: Ref<WorldTreeNode | null>
   rawTreeNodes: Ref<TreeItemComponentModel[]>
-
-  // Debug properties
   rawElements: Ref<ElementData[]>
   parentElements: Ref<ElementData[]>
   childElements: Ref<ElementData[]>
@@ -274,30 +232,47 @@ export interface ElementsDataReturn {
   orphanedElements: Ref<ElementData[]>
 }
 
-// Debug utility types
-export interface ValidationResult {
-  isValid: boolean
-  errors: string[]
-}
-
-export interface DebugOptions {
-  validateData: (data: unknown) => data is ElementData[]
-  validateColumns: (columns: unknown) => columns is ColumnDef[]
-  validateHeader: (header: unknown) => header is ProcessedHeader
-  log: (...args: unknown[]) => void
-  warn: (...args: unknown[]) => void
-  error: (...args: unknown[]) => void
-  table: (data: unknown[], columns?: string[]) => void
+// Helper functions
+export function createParameterValueState(value: ParameterValue): ParameterValueState {
+  return {
+    fetchedValue: value,
+    currentValue: value,
+    previousValue: value,
+    userValue: null
+  }
 }
 
 // Type guards
+export function isTableRow(value: unknown): value is TableRow {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Record<string, unknown>
+  return (
+    typeof data.id === 'string' &&
+    typeof data.mark === 'string' &&
+    typeof data.category === 'string' &&
+    typeof data.parameters === 'object'
+  )
+}
+
+export function isParameterValueState(value: unknown): value is ParameterValueState {
+  if (!value || typeof value !== 'object') return false
+  const state = value as Record<string, unknown>
+  return (
+    'fetchedValue' in state &&
+    'currentValue' in state &&
+    'previousValue' in state &&
+    'userValue' in state
+  )
+}
+
 export function isElementData(value: unknown): value is ElementData {
   if (!value || typeof value !== 'object') return false
   const data = value as Record<string, unknown>
   return (
     typeof data.id === 'string' &&
     typeof data.mark === 'string' &&
-    typeof data.category === 'string'
+    typeof data.category === 'string' &&
+    typeof data.parameters === 'object'
   )
 }
 
@@ -307,10 +282,12 @@ export function isProcessedHeader(value: unknown): value is ProcessedHeader {
   return (
     typeof header.field === 'string' &&
     typeof header.header === 'string' &&
-    typeof header.source === 'string' &&
+    typeof header.fetchedGroup === 'string' &&
+    typeof header.currentGroup === 'string' &&
     typeof header.type === 'string' &&
     typeof header.category === 'string' &&
-    typeof header.description === 'string'
+    typeof header.description === 'string' &&
+    typeof header.isFetched === 'boolean'
   )
 }
 
@@ -333,5 +310,18 @@ export function isValidBIMNodeRaw(node: unknown): node is BIMNodeRaw {
   )
 }
 
-// Utility type to ensure ElementData is assignable to Record<string, unknown>
-export type TableRowData = ElementData & Record<string, unknown>
+// Component props
+interface _ScheduleInitializationProps {
+  initialized: boolean
+}
+
+// Component emit events
+type _ScheduleInitializationEmits = {
+  (e: 'error', error: Error): void
+  (e: 'update:initialized', value: boolean): void
+  (
+    e: 'settings-loaded',
+    settings: { namedTables: Record<string, NamedTableConfig> }
+  ): void
+  (e: 'data-initialized'): void
+}

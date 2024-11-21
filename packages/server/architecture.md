@@ -2,6 +2,30 @@
 
 ## Core Architecture
 
+### Parameter Flow (New)
+
+```
+Parameter Processing Chain:
+1. Raw BIM Data
+   └── Parameters with groups
+       ├── Identity Data (mark, etc.)
+       ├── Constraints (host, etc.)
+       └── Other parameters
+
+2. Parameter Discovery
+   └── useParameterDiscovery.ts
+       ├── Scans raw data
+       ├── Creates ProcessedHeader objects
+       └── Groups by source
+
+3. Parameter State Management
+   └── Parameters with value states
+       ├── fetchedValue (original)
+       ├── currentValue (active)
+       ├── previousValue (for undo)
+       └── userValue (modifications)
+```
+
 ### Initialization Flow
 
 ```
@@ -23,7 +47,7 @@ composables/
 └── useScheduleFlow.ts         // State flow management
 ```
 
-### Store Architecture (Updated)
+### Store Architecture
 
 ```
 core/store/
@@ -40,31 +64,56 @@ State Flow:
 4. Data loading
 ```
 
-### Type System
+### Type System (Updated)
 
 The system uses a strict type hierarchy:
 
-- `TableConfig`: Core type for table configuration
-- `NamedTableConfig`: Extended type with additional metadata
-- Type conversion utilities ensure type safety between different parts of the system
-- Runtime type guards for data validation
+```typescript
+// Parameter value tracking
+interface ParameterValueState {
+  fetchedValue: ParameterValue
+  currentValue: ParameterValue
+  previousValue: ParameterValue
+  userValue: ParameterValue | null
+}
 
-### State Management
+// Element data types
+interface BaseElementData {
+  id: string
+  mark: string
+  category: string
+  type?: string
+  host?: string
+  _visible?: boolean
+  isChild?: boolean
+}
 
+// Discovery phase element data
+interface ElementData extends BaseElementData {
+  parameters: ParametersWithGroups
+}
+
+// Final data phase element data
+interface TableRow extends BaseElementData {
+  parameters: Parameters
+}
+```
+
+### State Management (Updated)
+
+- Two-phase parameter handling:
+  1. Discovery phase with raw parameters
+  2. Data phase with parameter states
 - Store-first initialization approach
 - Composable-based state management
 - Type-safe mutations
 - Computed ref handling with proper unwrapping
-- Immutable state updates
-- Viewer state synchronization
-- Direct data access in components (new)
-- Improved category initialization (new)
 
 ### Component Flow (Updated)
 
 ```
 Schedules.vue
-├── useScheduleStore (Store initialization)  // New primary state
+├── useScheduleStore (Store initialization)
 ├── useViewerInitialization (Core viewer state)
 ├── useScheduleFlow (Type conversion & state flow)
 ├── useScheduleTable (Table management)
@@ -72,20 +121,92 @@ Schedules.vue
 └── Components
     ├── table/
     │   ├── ScheduleTableView (Main container)
-    │   │   ├── TableWrapper (Direct data access) // Updated
-    │   │   ├── ScheduleDebugPanel (Debug information)
+    │   │   ├── TableWrapper (Parameter display)
+    │   │   ├── ScheduleDebugPanel (Parameter stats)
     │   │   ├── ScheduleLoadingState (Loading progress)
     │   │   ├── ScheduleErrorState (Error handling)
     │   │   └── ScheduleEmptyState (Empty state)
     │   └── index.ts (Component exports)
-    ├── ScheduleParameterHandling
-    ├── ScheduleColumnManagement
+    ├── ScheduleParameterHandling (Parameter UI)
+    ├── ScheduleColumnManagement (Column UI)
     └── ScheduleDataManagement
+```
+
+### Parameter Types and Flow (Updated)
+
+```
+Parameter Discovery Flow:
+└── Raw Parameters (from BIM)
+    ├── Identity Data
+    │   └── mark (parent identifier)
+    ├── Constraints
+    │   └── Host (child-parent relationship)
+    └── Other Parameters
+        └── Category, etc.
+
+Parameter Data Flow:
+└── Parameter States
+    ├── fetchedValue (original from BIM)
+    ├── currentValue (active in table)
+    ├── previousValue (for undo/redo)
+    └── userValue (user modifications)
+
+Key Parameter Objects:
+├── availableHeaders: { parent: ColumnDef[], child: ColumnDef[] }
+│   ├── Raw parameter definitions from BIM
+│   ├── Separated by parent/child relationship
+│   └── Used for initial parameter discovery
+│
+├── availableParameters: CustomParameter[]
+│   ├── UI representation of parameters
+│   ├── Filtered by current view (parent/child)
+│   └── Used for column selection
+│
+└── parameterColumns: ColumnDef[]
+    ├── Active columns in table
+    ├── Created from availableHeaders
+    └── Grouped by source (Identity Data, Constraints, Other)
+
+Processing Chain:
+1. Raw BIM Data
+   └── useElementParameters.ts
+       ├── Extracts raw parameters
+       ├── Creates availableHeaders
+       └── Separates parent/child parameters
+
+2. Parameter Organization
+   └── dataPipeline.ts
+       ├── Processes parameters
+       ├── Groups by source
+       └── Separates parent/child
+
+3. UI Representation
+   └── useColumnManager.ts
+       ├── Manages available parameters
+       ├── Handles column operations
+       └── Controls parameter visibility
+
+Parameter States:
+├── Raw State (BIM data)
+├── Processed State (availableHeaders)
+└── UI State (availableParameters)
+
+Debug Output:
+└── Parameter Statistics
+    ├── Source Elements
+    ├── Parent Parameters
+    │   ├── Total Count
+    │   ├── Available Count
+    │   └── Groups with Visibility
+    └── Child Parameters
+        ├── Total Count
+        ├── Available Count
+        └── Groups with Visibility
 ```
 
 ## Design Patterns
 
-### Loading State Management (New)
+### Loading State Management
 
 ```typescript
 // Centralized loading state
@@ -107,7 +228,7 @@ const isLoading = computed(() => {
 - Type guards for data validation
 - Proper null handling
 
-### State Flow (Updated)
+### State Flow
 
 ```
 Store Initialization -> ViewerState -> BIMElements -> Components
@@ -119,7 +240,7 @@ NamedTableConfig -> TableConfig -> Component Props
          └── State Updates ←───── Direct Data Access
 ```
 
-### Element Relationships (Updated)
+### Element Relationships
 
 ```
 BIM Data Structure:
@@ -145,7 +266,7 @@ Relationship Flow:
 5. Orphaned children → "Without Host"
 ```
 
-### Store Architecture (Updated)
+### Store Architecture
 
 ```
 core/store/
@@ -170,35 +291,6 @@ State Flow:
 4. Batch data updates
 ```
 
-### Data Flow (Updated)
-
-```
-1. Raw BIM Data
-   └── Independent elements with parameters
-      ├── Identity Data (mark)
-      ├── Constraints (host)
-      └── Other parameters
-
-2. Parameter Processing
-   ├── Extract host from Constraints
-   ├── Group parameters by source
-   └── Create parameter columns
-
-3. Category Processing
-   ├── Parent categories (Walls, Floors, etc.)
-   └── Child categories (Windows, Doors, etc.)
-
-4. Relationship Establishment
-   ├── Match child.host with parent.mark
-   └── Group orphans under "Without Host"
-
-5. Store Updates
-   └── Batch update multiple states
-      ├── scheduleData
-      ├── parameterColumns
-      └── availableHeaders
-```
-
 ### Error Handling
 
 - Type-safe error handling
@@ -214,131 +306,6 @@ State Flow:
 - Type-safe event handling
 - Computed properties for derived state
 - Proper ref unwrapping
-
-### Implementation Details
-
-#### Store Updates
-
-```typescript
-// Store lifecycle management
-interface StoreLifecycle {
-  init: () => Promise<void>
-  update: (state: Partial<StoreState>) => Promise<void>
-  cleanup: () => void
-}
-
-// Batch state updates
-await store.lifecycle.update({
-  selectedParentCategories: parentCategories,
-  selectedChildCategories: childCategories,
-  scheduleData: processedElements,
-  parameterColumns: parameterColumnsWithDefaults
-})
-```
-
-#### Parameter Extraction
-
-```typescript
-function extractParameters(raw: BIMNodeRaw): ParametersWithGroups {
-  // Process Identity Data
-  if (raw['Identity Data']) {
-    processGroup(raw['Identity Data'], 'Identity Data', ['Mark'])
-  }
-
-  // Process Constraints - special handling for Host
-  if (raw.Constraints) {
-    if ('Host' in raw.Constraints) {
-      parameters.host = raw.Constraints.Host
-      parameterGroups.host = 'Constraints'
-    }
-    processGroup(raw.Constraints, 'Constraints')
-  }
-
-  // Process Other parameters
-  if (raw.Other) {
-    processGroup(raw.Other, 'Other', ['Category'])
-  }
-}
-```
-
-#### Data Access
-
-```typescript
-// Direct data access in components
-<template>
-  <div class="truncate">{{ data[col.field] }}</div>
-</template>
-
-// Category initialization
-export const defaultTable: NamedTableConfig = {
-  categoryFilters: {
-    selectedParentCategories: parentCategories,
-    selectedChildCategories: childCategories
-  }
-}
-```
-
-```typescript
-// Early store initialization
-initializeStore(state)
-
-// Type-safe state access
-const storeValues = useScheduleValues()
-
-// Loading state management
-const isLoading = computed(() => {
-  return !initialized.value || scheduleStore.loading.value
-})
-```
-
-### Table View Structure
-
-```typescript
-// Table view with state handling
-const { canShowTable } = useTableView({
-  mergedTableColumns: computed(() => props.mergedTableColumns),
-  tableData: computed(() => props.tableData)
-})
-
-// State-specific rendering
-<template>
-  <ScheduleDebugPanel v-if="showDebug" />
-  <ScheduleLoadingState v-if="isLoading" />
-  <DataTable v-else-if="canShowTable" />
-  <ScheduleErrorState v-else-if="loadingError" />
-  <ScheduleEmptyState v-else />
-</template>
-```
-
-### State Management (Updated)
-
-```typescript
-// Type-safe state management with early initialization
-const currentTableConfig = computed(() => tableConfig.value || null)
-
-// Parameter handling with type safety
-const availableParameters = computed(() => {
-  const params = customParameters.value || []
-  return params.map((p) => ({
-    ...p,
-    header: p.name
-  }))
-})
-```
-
-### Error Handling
-
-```typescript
-// Type-safe error handling with debug utilities
-const handleError = (err: Error | unknown) => {
-  debug.log(DebugCategories.ERRORS, 'Error occurred:', {
-    error: err,
-    timestamp: new Date().toISOString()
-  })
-  const errorValue = err instanceof Error ? err : new Error(String(err))
-  error.value = errorValue
-}
-```
 
 ## Best Practices
 
@@ -356,7 +323,7 @@ const handleError = (err: Error | unknown) => {
 - Use type guards for runtime checks
 - Handle null cases explicitly
 
-### State Management (Updated)
+### State Management
 
 - Initialize store early
 - Use computed properties for derived state
@@ -373,7 +340,7 @@ const handleError = (err: Error | unknown) => {
 - Debug utilities with categories
 - Proper viewer error recovery
 
-## Current Status (New)
+## Current Status
 
 ### Working
 
@@ -381,20 +348,25 @@ const handleError = (err: Error | unknown) => {
 - Type safety improvements
 - Error handling
 - Data flow
+- Parameter discovery
+- Parameter state management
+- Element relationships
 
 ### In Progress
 
-- Loading state management
-- Component initialization timing
-- UI rendering
-- State transitions
+- Parameter value display
+- Parameter group organization
+- Parameter state tracking
+- Parameter filtering
 
 ### Next Steps
 
-1. Debug loading state
-2. Verify component mounting
-3. Improve initialization flow
-4. Add performance monitoring
+1. Implement parameter cell component
+2. Add parameter group headers
+3. Create parameter state indicators
+4. Add parameter filtering UI
+5. Implement debug panel
+6. Add performance monitoring
 
 ## Future Improvements
 
@@ -404,7 +376,7 @@ const handleError = (err: Error | unknown) => {
 - Computed property optimization
 - Virtual scrolling for large datasets
 - Batch updates
-- Viewer initialization optimization
+- Parameter state caching
 
 ### Developer Experience
 
@@ -412,7 +384,7 @@ const handleError = (err: Error | unknown) => {
 - Better error messages
 - Development tools
 - Testing utilities
-- Viewer debugging tools
+- Parameter debugging tools
 
 ### Monitoring
 
@@ -420,4 +392,4 @@ const handleError = (err: Error | unknown) => {
 - Error tracking
 - Usage analytics
 - State debugging
-- Viewer state monitoring
+- Parameter state monitoring

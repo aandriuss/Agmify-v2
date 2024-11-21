@@ -1,21 +1,42 @@
 <template>
-  <div class="hidden">
-    <ScheduleErrorAlert
-      v-if="error"
-      :error="error"
-      :recoverable="true"
-      @retry="handleRetry"
-    />
+  <div>
+    <div class="hidden">
+      <ScheduleErrorAlert
+        v-if="coreError"
+        :error="coreError"
+        :recoverable="true"
+        @retry="handleRetry"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { onMounted, watch, computed } from 'vue'
 import { useScheduleInitialization } from '../composables/useScheduleInitialization'
+import { useScheduleInitializationFlow } from '../composables/useScheduleInitializationFlow'
 import { debug, DebugCategories } from '../utils/debug'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
-import store from '../composables/useScheduleStore'
+import type { ElementData, TreeItemComponentModel } from '../types'
 import ScheduleErrorAlert from './ScheduleErrorAlert.vue'
+
+// Props for initialization flow
+const props = defineProps<{
+  updateRootNodes: (nodes: TreeItemComponentModel[]) => Promise<void>
+  loadSettings: () => Promise<void>
+  handleTableSelection: (id: string) => Promise<void>
+  currentTable: NamedTableConfig | null
+  selectedTableId: string
+  currentTableId: string
+  loadingError: Error | null
+  scheduleData: ElementData[]
+  rootNodes: TreeItemComponentModel[]
+  isInitialized: boolean
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
+  projectId: string
+  initialized: boolean // Added missing prop
+}>()
 
 const emit = defineEmits<{
   'update:initialized': [value: boolean]
@@ -24,19 +45,47 @@ const emit = defineEmits<{
   error: [error: Error]
 }>()
 
-// Initialize flow
-const { initialized, loading, error, initializeData, waitForData } =
-  useScheduleInitialization()
+// Initialize core data handling
+const {
+  initialized: coreInitialized,
+  loading: coreLoading,
+  error: coreError,
+  initializeData,
+  waitForData
+} = useScheduleInitialization()
+
+// Initialize high-level flow
+const { initialize: initializeFlow } = useScheduleInitializationFlow({
+  // Core data functions
+  initializeData,
+  waitForData,
+  // Node handling
+  updateRootNodes: props.updateRootNodes,
+  // Settings and table management
+  loadSettings: props.loadSettings,
+  handleTableSelection: props.handleTableSelection,
+  // State refs
+  currentTable: computed(() => props.currentTable),
+  selectedTableId: computed(() => props.selectedTableId),
+  currentTableId: computed(() => props.currentTableId),
+  loadingError: { value: props.loadingError },
+  scheduleData: computed(() => props.scheduleData),
+  rootNodes: computed(() => props.rootNodes),
+  isInitialized: computed(() => props.isInitialized),
+  selectedParentCategories: { value: props.selectedParentCategories },
+  selectedChildCategories: { value: props.selectedChildCategories },
+  projectId: computed(() => props.projectId)
+})
 
 // Watch for state changes
-watch(initialized, (newValue) => {
+watch(coreInitialized, (newValue) => {
   emit('update:initialized', newValue)
   if (newValue) {
     emit('data-initialized')
   }
 })
 
-watch(error, (newValue) => {
+watch(coreError, (newValue) => {
   if (newValue) {
     emit('error', newValue)
   }
@@ -46,12 +95,8 @@ watch(error, (newValue) => {
 async function handleRetry() {
   debug.log(DebugCategories.INITIALIZATION, 'Handling retry request')
   try {
-    const projectId = store.projectId.value
-    if (!projectId) {
-      throw new Error('Project ID is required but not provided')
-    }
-    await initializeData(projectId)
-    await waitForData(projectId)
+    // Retry full initialization flow
+    await initializeFlow()
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Retry failed:', err)
   }
@@ -59,24 +104,24 @@ async function handleRetry() {
 
 // Lifecycle
 onMounted(async () => {
-  debug.log(DebugCategories.INITIALIZATION, 'Mounting initialization component')
+  debug.log(DebugCategories.INITIALIZATION, 'Starting initialization sequence')
   try {
-    const projectId = store.projectId.value
-    if (!projectId) {
-      throw new Error('Project ID is required but not provided')
-    }
-    await initializeData(projectId)
-    await waitForData(projectId)
+    // Start full initialization flow
+    // This will:
+    // 1. Initialize viewer and settings
+    // 2. Initialize core data
+    // 3. Start parameter discovery in background
+    await initializeFlow()
   } catch (err) {
-    debug.error(DebugCategories.ERROR, 'Initialization failed:', err)
+    debug.error(DebugCategories.ERROR, 'Initialization sequence failed:', err)
   }
 })
 
 // Expose necessary functions and state
 defineExpose({
-  initialized,
-  loading,
-  error,
+  initialized: coreInitialized,
+  loading: coreLoading,
+  error: coreError,
   handleRetry
 })
 </script>

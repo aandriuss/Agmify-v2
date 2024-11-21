@@ -8,11 +8,15 @@ export interface ColumnDef {
   order: number
   headerComponent?: unknown
   category?: string
-  source?: string // Parameter group (e.g., 'Identity Data', 'Constraints')
+  source?: string // Legacy parameter group (for backward compatibility)
+  fetchedGroup?: string // Group from raw data
+  currentGroup?: string // Current group (initially same as fetchedGroup)
+  isFetched?: boolean // Whether parameter was fetched from raw data or is custom
   description?: string
   isFixed?: boolean
   isCustomParameter?: boolean
   parameterRef?: string
+  color?: string
 }
 
 export interface ColumnGroup {
@@ -57,6 +61,10 @@ export function isColumnDef(value: unknown): value is ColumnDef {
     typeof col.header === 'string' &&
     typeof col.type === 'string' &&
     typeof col.visible === 'boolean' &&
-    typeof col.order === 'number'
+    typeof col.order === 'number' &&
+    (col.source === undefined || typeof col.source === 'string') &&
+    (col.fetchedGroup === undefined || typeof col.fetchedGroup === 'string') &&
+    (col.currentGroup === undefined || typeof col.currentGroup === 'string') &&
+    (col.isFetched === undefined || typeof col.isFetched === 'boolean')
   )
 }

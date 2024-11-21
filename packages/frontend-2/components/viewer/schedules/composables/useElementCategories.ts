@@ -185,7 +185,7 @@ export function filterElements({
   }
   finalElements.push(...matchedChildren, ...orphanedChildren)
 
-  // When essentialFieldsOnly is true, only include necessary fields
+  // When essentialFieldsOnly is true, only include necessary fields but keep parameters
   const filteredElements = finalElements.map((element) =>
     essentialFieldsOnly
       ? {
@@ -195,7 +195,8 @@ export function filterElements({
           type: element.type,
           host: element.host,
           isChild: element.isChild,
-          _visible: true
+          _visible: true,
+          parameters: element.parameters // Keep parameters to satisfy ElementData interface
         }
       : element
   )

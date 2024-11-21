@@ -66,19 +66,20 @@ import TableWrapper from './components/TableWrapper/index.vue'
 import {
   safeJSONClone,
   sortColumnsByOrder,
-  isTableRowData,
+  isTableRow,
   updateLocalColumns as updateColumns,
-  transformToTableRowData
+  validateTableRows
 } from './composables/useTableUtils'
 import type { ColumnDef } from './composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import type { TableRowData } from '~/components/viewer/schedules/types'
+import type { TableRow } from '~/components/viewer/schedules/types'
+import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
 
 interface Props {
   tableId: string
   tableName?: string
-  data: TableRowData[]
-  scheduleData: TableRowData[]
+  data: TableRow[]
+  scheduleData: TableRow[]
   columns: ColumnDef[]
   detailColumns: ColumnDef[]
   availableParentParameters: CustomParameter[]
@@ -89,7 +90,7 @@ interface Props {
 
 interface TableState {
   columns: ColumnDef[]
-  expandedRows: TableRowData[]
+  expandedRows: TableRow[]
   sortField?: string
   sortOrder?: number
   filters?: Record<string, unknown>
@@ -101,7 +102,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  'update:expandedRows': [value: TableRowData[]]
+  'update:expandedRows': [value: TableRow[]]
   'update:columns': [columns: ColumnDef[]]
   'update:detail-columns': [columns: ColumnDef[]]
   'update:both-columns': [
@@ -123,7 +124,7 @@ const errorMessage = ref('')
 const isInitialized = ref(false)
 
 // Table State
-const expandedRows = ref<TableRowData[]>([])
+const expandedRows = ref<TableRow[]>([])
 const sortField = ref<string>('')
 const sortOrder = ref<number>(1)
 const filters = ref<Record<string, unknown>>({})
@@ -135,33 +136,66 @@ const tempParentColumns = ref<ColumnDef[]>([])
 const tempChildColumns = ref<ColumnDef[]>([])
 
 // Error Handler
-function handleError(error: Error): void {
-  errorMessage.value = error.message
-  emit('error', error)
+function handleError(error: Error | unknown): void {
+  const err = error instanceof Error ? error : new Error(String(error))
+  errorMessage.value = err.message
+  emit('error', err)
+}
+
+// Helper function to ensure column properties
+function ensureColumnProperties(column: ColumnDef): ColumnDef {
+  return {
+    ...column,
+    visible: column.visible ?? true,
+    removable: column.removable ?? true,
+    type: column.type || 'string',
+    category: column.category || 'Parameters',
+    description:
+      column.description || `${column.category || 'Parameters'} > ${column.field}`
+  }
 }
 
 // State Management Functions
 function initializeState(): void {
   try {
     if (props.initialState) {
-      localParentColumns.value = safeJSONClone(
-        sortColumnsByOrder(props.initialState.columns)
+      // Initialize with proper defaults for each column
+      const initialColumns = props.initialState.columns.map((col) =>
+        ensureColumnProperties(col)
       )
+      localParentColumns.value = safeJSONClone(sortColumnsByOrder(initialColumns))
 
-      // Transform expanded rows to TableRowData
-      expandedRows.value = transformToTableRowData(props.initialState.expandedRows)
+      // Transform expanded rows
+      expandedRows.value = validateTableRows(props.initialState.expandedRows)
 
       sortField.value = props.initialState.sortField || ''
       sortOrder.value = props.initialState.sortOrder || 1
       filters.value = props.initialState.filters || {}
     } else {
-      updateColumns(props.columns, (cols) => (localParentColumns.value = cols))
-      localChildColumns.value = safeJSONClone(props.detailColumns)
+      // Initialize from props with proper defaults
+      updateColumns(
+        props.columns.map((col) => ensureColumnProperties(col)),
+        (cols) => (localParentColumns.value = cols)
+      )
+      localChildColumns.value = safeJSONClone(
+        props.detailColumns.map((col) => ensureColumnProperties(col))
+      )
     }
+
+    debug.log(DebugCategories.INITIALIZATION, 'State initialized', {
+      parentColumns: localParentColumns.value.length,
+      childColumns: localChildColumns.value.length,
+      groups: [
+        ...new Set([
+          ...localParentColumns.value.map((c) => c.category),
+          ...localChildColumns.value.map((c) => c.category)
+        ])
+      ]
+    })
 
     isInitialized.value = true
   } catch (error) {
-    handleError(error as Error)
+    handleError(error)
   }
 }
 
@@ -172,7 +206,7 @@ function openDialog(): void {
     tempChildColumns.value = safeJSONClone(localChildColumns.value)
     dialogOpen.value = true
   } catch (error) {
-    handleError(error as Error)
+    handleError(error)
   }
 }
 
@@ -180,8 +214,12 @@ function handleColumnsUpdate(updates: {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
 }): void {
-  tempParentColumns.value = safeJSONClone(updates.parentColumns)
-  tempChildColumns.value = safeJSONClone(updates.childColumns)
+  tempParentColumns.value = safeJSONClone(
+    updates.parentColumns.map((col) => ensureColumnProperties(col))
+  )
+  tempChildColumns.value = safeJSONClone(
+    updates.childColumns.map((col) => ensureColumnProperties(col))
+  )
 }
 
 async function handleApply(): Promise<void> {
@@ -192,25 +230,13 @@ async function handleApply(): Promise<void> {
 
     // Prepare the updated columns with proper order and defaults
     const updatedParentColumns = tempParentColumns.value.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true,
-      removable: col.removable ?? true,
-      field: col.field,
-      header: col.header,
-      category: col.category,
-      type: col.type || 'string'
+      ...ensureColumnProperties(col),
+      order: index
     }))
 
     const updatedChildColumns = tempChildColumns.value.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true,
-      removable: col.removable ?? true,
-      field: col.field,
-      header: col.header,
-      category: col.category,
-      type: col.type || 'string'
+      ...ensureColumnProperties(col),
+      order: index
     }))
 
     // Create updated settings preserving all existing data
@@ -243,6 +269,19 @@ async function handleApply(): Promise<void> {
     localParentColumns.value = safeJSONClone(updatedParentColumns)
     localChildColumns.value = safeJSONClone(updatedChildColumns)
 
+    debug.log(DebugCategories.COLUMNS, 'Columns updated', {
+      parentColumns: updatedParentColumns.length,
+      childColumns: updatedChildColumns.length,
+      groups: [
+        ...new Set([
+          ...updatedParentColumns.map((c) => c.category),
+          ...updatedChildColumns.map((c) => c.category)
+        ])
+      ],
+      visibleParent: updatedParentColumns.filter((c) => c.visible).length,
+      visibleChild: updatedChildColumns.filter((c) => c.visible).length
+    })
+
     // Emit updates
     emit('update:both-columns', {
       parentColumns: localParentColumns.value,
@@ -251,7 +290,7 @@ async function handleApply(): Promise<void> {
 
     dialogOpen.value = false
   } catch (error) {
-    handleError(error as Error)
+    handleError(error)
     // Revert temp columns on error
     tempParentColumns.value = safeJSONClone(localParentColumns.value)
     tempChildColumns.value = safeJSONClone(localChildColumns.value)
@@ -286,7 +325,7 @@ function handleColumnResize(event: { element: HTMLElement }): void {
       childColumns: localChildColumns.value
     })
   } catch (error) {
-    handleError(error as Error)
+    handleError(error)
   }
 }
 
@@ -349,7 +388,7 @@ async function handleColumnReorder(event: {
 
     emit('column-reorder', { target })
   } catch (error) {
-    handleError(error as Error)
+    handleError(error)
   } finally {
     isSaving.value = false
   }
@@ -357,7 +396,7 @@ async function handleColumnReorder(event: {
 
 // Row Management Functions
 function handleRowExpand(row: unknown): void {
-  if (!isTableRowData(row)) {
+  if (!isTableRow(row)) {
     handleError(new Error('Invalid row data'))
     return
   }
@@ -370,7 +409,7 @@ function handleRowExpand(row: unknown): void {
 }
 
 function handleRowCollapse(row: unknown): void {
-  if (!isTableRowData(row)) {
+  if (!isTableRow(row)) {
     handleError(new Error('Invalid row data'))
     return
   }
@@ -399,7 +438,7 @@ onMounted(() => {
   try {
     initializeState()
   } catch (error) {
-    handleError(error as Error)
+    handleError(error)
   }
 })
 </script>

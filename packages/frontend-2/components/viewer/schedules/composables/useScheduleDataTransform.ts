@@ -1,10 +1,15 @@
 import { computed, ref, watch } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import type { ElementData, TableRowData } from '../types'
+import type {
+  ElementData,
+  TableRow,
+  ParameterValue,
+  ParameterValueState
+} from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import { debug, DebugCategories } from '../utils/debug'
-import { transformToTableRowData } from '~/components/viewer/components/tables/DataTable/composables/useTableUtils'
+import { createParameterValueState } from '../types'
 
 interface UseScheduleDataTransformOptions {
   scheduleData: Ref<ElementData[]> | ComputedRef<ElementData[]>
@@ -46,6 +51,52 @@ const isValidElementData = (
   return hasRequiredFields
 }
 
+function toParameterValue(value: unknown): ParameterValue {
+  if (value === null || value === undefined) return null
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value
+  }
+  return String(value)
+}
+
+function transformToTableRow(element: ElementData): TableRow {
+  return {
+    id: element.id,
+    mark: element.mark,
+    category: element.category,
+    type: element.type || '',
+    host: element.host,
+    parameters: Object.entries(element.parameters || {}).reduce((acc, [key, value]) => {
+      acc[key] = createParameterValueState(toParameterValue(value))
+      return acc
+    }, {} as Record<string, ParameterValueState>),
+    _visible: true,
+    isChild: element.isChild,
+    _raw: element._raw
+  }
+}
+
+function createBasicTableRow(element: ElementData): TableRow {
+  return {
+    id: element.id,
+    mark: element.mark,
+    category: element.category,
+    type: element.type || '',
+    host: element.host,
+    parameters: Object.entries(element.parameters || {}).reduce((acc, [key, value]) => {
+      acc[key] = createParameterValueState(toParameterValue(value))
+      return acc
+    }, {} as Record<string, ParameterValueState>),
+    _visible: true,
+    isChild: element.isChild,
+    _raw: element._raw
+  }
+}
+
 export function useScheduleDataTransform(options: UseScheduleDataTransformOptions) {
   const { scheduleData, evaluatedData, mergedTableColumns, mergedDetailColumns } =
     options
@@ -53,7 +104,7 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
   // Track transformation state
   const isTransformingData = ref(false)
   const hasFullTransform = ref(false)
-  const transformedData = ref<TableRowData[]>([])
+  const transformedData = ref<TableRow[]>([])
 
   // Use filtered data directly from scheduleData or evaluatedData
   const filteredData = computed(() => {
@@ -84,20 +135,14 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
       isTransformingData.value = true
       debug.startState('transformData')
 
-      // First pass: Transform essential fields
-      const basicTransform = filteredData.value.map((item) => ({
-        id: item.id,
-        mark: item.mark,
-        category: item.category,
-        type: item.type
-      }))
-
-      transformedData.value = basicTransform as TableRowData[]
+      // First pass: Transform essential fields with basic parameter states
+      const basicTransform = filteredData.value.map(createBasicTableRow)
+      transformedData.value = basicTransform
 
       // Second pass: Full transformation
       queueMicrotask(() => {
         try {
-          const fullTransform = transformToTableRowData(filteredData.value)
+          const fullTransform = filteredData.value.map(transformToTableRow)
           transformedData.value = fullTransform
           hasFullTransform.value = true
 
@@ -105,9 +150,7 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
             timestamp: new Date().toISOString(),
             inputCount: filteredData.value.length,
             outputCount: fullTransform.length,
-            withDetails: fullTransform.filter(
-              (item) => Array.isArray(item.details) && item.details.length > 0
-            ).length
+            withDetails: fullTransform.filter((item) => item.isChild === false).length
           })
         } catch (error) {
           debug.error(DebugCategories.ERROR, 'Error in full transformation:', error)
@@ -128,7 +171,7 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
   }
 
   // Computed table data with progressive loading
-  const tableData = computed<TableRowData[]>(() => {
+  const tableData = computed<TableRow[]>(() => {
     if (transformedData.value.length === 0) {
       debug.warn(DebugCategories.VALIDATION, 'No transformed data available')
       return []

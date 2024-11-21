@@ -1,6 +1,13 @@
-import type { ElementData, ParameterValue, TableRowData } from '../../types'
+import type {
+  ElementData,
+  ParameterValue,
+  TableRow,
+  ParameterValueState,
+  Parameters
+} from '../../types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import { debug, DebugCategories } from '../../utils/debug'
+import { createParameterValueState } from '../../types'
 
 // Custom error class for validation errors
 export class ValidationError extends Error {
@@ -113,10 +120,10 @@ export async function processElementParameters(
   elements: ElementData[],
   definitions: ParameterDefinition[],
   options: ProcessingOptions = {}
-): Promise<TableRowData[]> {
+): Promise<TableRow[]> {
   const opts = { ...defaultOptions, ...options }
   const batches = chunk(elements, opts.batchSize)
-  const result: TableRowData[] = []
+  const result: TableRow[] = []
   const errors: ProcessingError[] = []
   let processed = 0
   const cache = new ValueCache(opts.cacheSize)
@@ -144,13 +151,16 @@ export async function processElementParameters(
               errors.push(processedError)
 
               // Return partial data on error
+              const errorParams: Parameters = {
+                _error: createParameterValueState(
+                  error instanceof Error ? error.message : String(error)
+                )
+              }
+
               return {
                 ...element,
-                parameters: {
-                  ...element.parameters,
-                  _error: error instanceof Error ? error.message : String(error)
-                }
-              } as TableRowData
+                parameters: errorParams
+              } as TableRow
             }
           )
         )
@@ -184,8 +194,8 @@ async function processElement(
   definitions: ParameterDefinition[],
   defaultValues: Record<string, ParameterValue>,
   cache: ValueCache
-): Promise<TableRowData> {
-  const processedParams: Record<string, ParameterValue> = {}
+): Promise<TableRow> {
+  const processedParams: Record<string, ParameterValueState> = {}
 
   for (const def of definitions) {
     try {
@@ -194,7 +204,9 @@ async function processElement(
       if (value === undefined) {
         // Use default value if available
         if (def.field in defaultValues) {
-          processedParams[def.field] = defaultValues[def.field]
+          processedParams[def.field] = createParameterValueState(
+            defaultValues[def.field]
+          )
           continue
         }
         // Skip undefined parameters
@@ -205,7 +217,7 @@ async function processElement(
       const cacheKey = `${def.field}:${JSON.stringify(value)}`
       const cachedValue = cache.get(cacheKey)
       if (cachedValue !== undefined) {
-        processedParams[def.field] = cachedValue
+        processedParams[def.field] = createParameterValueState(cachedValue)
         continue
       }
 
@@ -216,7 +228,7 @@ async function processElement(
 
       const transformedValue = await transformValue(value, def)
       cache.set(cacheKey, transformedValue)
-      processedParams[def.field] = transformedValue
+      processedParams[def.field] = createParameterValueState(transformedValue)
     } catch (error) {
       if (error instanceof ValidationError) {
         throw error

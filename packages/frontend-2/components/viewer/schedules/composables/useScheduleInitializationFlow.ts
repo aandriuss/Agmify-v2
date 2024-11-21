@@ -5,11 +5,15 @@ import type { ElementData, TreeItemComponentModel } from '../types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 
 interface InitializationFlowOptions {
+  // Core data initialization
   initializeData: () => Promise<void>
-  updateRootNodes: (nodes: TreeItemComponentModel[]) => Promise<void>
   waitForData: () => Promise<ElementData[]>
+  // Tree node handling
+  updateRootNodes: (nodes: TreeItemComponentModel[]) => Promise<void>
+  // Settings and table management
   loadSettings: () => Promise<void>
   handleTableSelection: (id: string) => Promise<void>
+  // State refs
   currentTable: ComputedRef<NamedTableConfig | null>
   selectedTableId: ComputedRef<string>
   currentTableId: ComputedRef<string>
@@ -22,6 +26,11 @@ interface InitializationFlowOptions {
   projectId: ComputedRef<string>
 }
 
+/**
+ * Coordinates high-level initialization flow between viewer, parameters, and table selection.
+ * This composable orchestrates the initialization sequence while useScheduleInitialization
+ * handles the core data initialization.
+ */
 export function useScheduleInitializationFlow(options: InitializationFlowOptions) {
   const {
     initializeData,
@@ -70,32 +79,28 @@ export function useScheduleInitializationFlow(options: InitializationFlowOptions
     try {
       debug.log(DebugCategories.INITIALIZATION, 'Starting initialization flow')
 
-      // Wait for viewer initialization first
+      // Step 1: Wait for viewer initialization
       await waitForViewer()
 
-      // Validate project ID
-      if (!projectId.value) {
-        throw new Error('Project ID is required but not provided')
-      }
-
-      // Load settings first
+      // Step 2: Load user settings
       await loadSettings()
 
-      // Initialize core data
+      // Step 3: Initialize core data
       await initializeData()
+      debug.log(DebugCategories.INITIALIZATION, 'Core data initialized')
 
-      // Wait for data to be available
+      // Step 4: Wait for data and update nodes
       const data = await waitForData()
       if (data.length > 0) {
         await updateRootNodes(rootNodes.value)
       }
 
-      // Handle table selection
+      // Step 5: Handle table selection
       if (selectedTableId.value) {
         await handleTableSelection(selectedTableId.value)
       }
 
-      debug.log(DebugCategories.INITIALIZATION, 'Initialization flow complete', {
+      debug.log(DebugCategories.INITIALIZATION, 'Core initialization complete', {
         projectId: projectId.value,
         currentTable: currentTable.value,
         selectedTableId: selectedTableId.value,

@@ -1,5 +1,5 @@
 import type { ColumnDef } from './columns/types'
-import type { TableRowData } from '~/components/viewer/schedules/types'
+import type { TableRow } from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
 
 export function safeJSONClone<T>(obj: T): T {
@@ -17,7 +17,7 @@ export function validateData(
       throw new Error('Data must be an array')
     }
 
-    const invalidItems = data.filter((item) => !isTableRowData(item))
+    const invalidItems = data.filter((item) => !isTableRow(item))
     if (invalidItems.length > 0) {
       debug.warn(DebugCategories.VALIDATION, 'Invalid data items found', invalidItems)
       throw new Error(`Invalid data items found: ${invalidItems.length} items`)
@@ -41,11 +41,14 @@ export function sortColumnsByOrder(columns: ColumnDef[]): ColumnDef[] {
   })
 }
 
-export function isTableRowData(item: unknown): item is TableRowData {
+/**
+ * Type guard for TableRow
+ */
+export function isTableRow(item: unknown): item is TableRow {
   if (!item || typeof item !== 'object') return false
 
   const record = item as Record<string, unknown>
-  const requiredFields = ['id', 'mark', 'category']
+  const requiredFields = ['id', 'mark', 'category', 'parameters']
 
   const hasRequiredFields = requiredFields.every((field) => {
     const value = record[field]
@@ -60,6 +63,12 @@ export function isTableRowData(item: unknown): item is TableRowData {
         return value === undefined || value === null
       })
     })
+    return false
+  }
+
+  // Check parameters is an object with ParameterValueState values
+  const parameters = record.parameters as Record<string, unknown>
+  if (typeof parameters !== 'object' || parameters === null) {
     return false
   }
 
@@ -88,11 +97,10 @@ export function updateLocalColumns(
 }
 
 /**
- * This function has been simplified to just validate and pass through data
- * since transformation is now handled by useElementsData
+ * Validate array of TableRow objects
  */
-export function transformToTableRowData(data: unknown[]): TableRowData[] {
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Validating table data', {
+export function validateTableRows(data: unknown[]): TableRow[] {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Validating table rows', {
     timestamp: new Date().toISOString(),
     inputCount: data?.length
   })
@@ -102,16 +110,16 @@ export function transformToTableRowData(data: unknown[]): TableRowData[] {
     return []
   }
 
-  // Just validate that each item is a TableRowData
-  const validItems = data.filter((item): item is TableRowData => {
-    const isValid = isTableRowData(item)
+  // Validate each item is a TableRow
+  const validItems = data.filter((item): item is TableRow => {
+    const isValid = isTableRow(item)
     if (!isValid) {
-      debug.warn(DebugCategories.VALIDATION, 'Invalid table row data', item)
+      debug.warn(DebugCategories.VALIDATION, 'Invalid table row', item)
     }
     return isValid
   })
 
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Data validation complete', {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Validation complete', {
     timestamp: new Date().toISOString(),
     validCount: validItems.length
   })

@@ -27,8 +27,8 @@ export interface ValidationOptions {
 
 const defaultOptions: Required<ValidationOptions> = {
   strict: true,
-  allowNull: false,
-  allowUndefined: false
+  allowNull: true, // Changed to true
+  allowUndefined: true // Changed to true
 }
 
 // Create parameter validation

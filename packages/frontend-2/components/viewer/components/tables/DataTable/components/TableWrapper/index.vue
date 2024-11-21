@@ -29,6 +29,21 @@
         <div class="p-4 text-center text-gray-500">Loading data...</div>
       </template>
 
+      <template #header>
+        <div class="parameter-groups">
+          <div
+            v-for="group in groupedParentColumns"
+            :key="group.source"
+            class="group-info"
+          >
+            <span class="group-name">{{ group.source }}</span>
+            <span class="group-count">
+              {{ group.visibleCount }}/{{ group.columns.length }}
+            </span>
+          </div>
+        </div>
+      </template>
+
       <template #expansion="{ data: expandedData }">
         <div v-if="expandedData.details?.length" class="p-2 bg-gray-50">
           <DataTable
@@ -41,43 +56,76 @@
             @column-resize-end="handleColumnResize"
             @column-reorder="handleColumnReorder"
           >
-            <Column :expander="true" style="width: 3rem" />
-            <Column
-              v-for="col in sortedChildColumns"
-              :key="col.field"
-              :field="col.field"
-              :header="col.header"
-              :data-field="col.field"
-              :style="getColumnStyle(col)"
-              sortable
-            >
-              <template #body="{ data }">
-                <div class="truncate">
-                  {{ getFieldValue(data, col.field) }}
+            <template #header>
+              <div class="parameter-groups">
+                <div
+                  v-for="group in groupedChildColumns"
+                  :key="group.source"
+                  class="group-info"
+                >
+                  <span class="group-name">{{ group.source }}</span>
+                  <span class="group-count">
+                    {{ group.visibleCount }}/{{ group.columns.length }}
+                  </span>
                 </div>
-              </template>
-            </Column>
+              </div>
+            </template>
+
+            <Column :expander="true" style="width: 3rem" />
+            <template v-for="group in groupedChildColumns" :key="group.source">
+              <Column
+                v-for="col in group.columns"
+                :key="col.field"
+                :field="col.field"
+                :header="col.header"
+                :data-field="col.field"
+                :data-source="group.source"
+                :style="getColumnStyle(col)"
+                sortable
+              >
+                <template #header>
+                  <div class="column-header">
+                    <span class="header-text">{{ col.header }}</span>
+                    <span class="source-tag">{{ group.source }}</span>
+                  </div>
+                </template>
+                <template #body="{ data }">
+                  <div class="truncate">
+                    {{ getFieldValue(data, col.field) }}
+                  </div>
+                </template>
+              </Column>
+            </template>
           </DataTable>
         </div>
       </template>
 
       <Column :expander="true" style="width: 3rem" />
-      <Column
-        v-for="col in sortedParentColumns"
-        :key="col.field"
-        :field="col.field"
-        :header="col.header"
-        :header-component="col.headerComponent"
-        :data-field="col.field"
-        :style="getColumnStyle(col)"
-        sortable
-      >
-        <template #body="{ data }">
-          <div class="truncate">
-            {{ getFieldValue(data, col.field) }}
-          </div>
-        </template>
-      </Column>
+      <template v-for="group in groupedParentColumns" :key="group.source">
+        <Column
+          v-for="col in group.columns"
+          :key="col.field"
+          :field="col.field"
+          :header="col.header"
+          :header-component="col.headerComponent"
+          :data-field="col.field"
+          :data-source="group.source"
+          :style="getColumnStyle(col)"
+          sortable
+        >
+          <template #header>
+            <div class="column-header">
+              <span class="header-text">{{ col.header }}</span>
+              <span class="source-tag">{{ group.source }}</span>
+            </div>
+          </template>
+          <template #body="{ data }">
+            <div class="truncate">
+              {{ getFieldValue(data, col.field) }}
+            </div>
+          </template>
+        </Column>
+      </template>
     </DataTable>
   </div>
 </template>
@@ -87,20 +135,31 @@ import { computed } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import type {
-  DataTableColumnResizeEndEvent,
-  DataTableColumnReorderEvent,
   DataTableSortEvent,
   DataTableFilterEvent,
   DataTableFilterMeta
 } from 'primevue/datatable'
 import type { ColumnDef } from '../../composables/columns/types'
-import type { TableRowData } from '~/components/viewer/schedules/types'
+import type { TableRow, ParameterValueState } from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { isTableRow } from '../../composables/useTableUtils'
+
+// Type guard for ParameterValueState
+function isParameterValueState(value: unknown): value is ParameterValueState {
+  if (!value || typeof value !== 'object') return false
+  const state = value as Record<string, unknown>
+  return (
+    'fetchedValue' in state &&
+    'currentValue' in state &&
+    'previousValue' in state &&
+    'userValue' in state
+  )
+}
 
 interface Props {
-  modelValue: TableRowData[]
-  data: TableRowData[]
-  scheduleData: TableRowData[]
+  modelValue: TableRow[]
+  data: TableRow[]
+  scheduleData: TableRow[]
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   loading?: boolean
@@ -114,24 +173,58 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  'update:modelValue': [value: TableRowData[]]
+  'update:modelValue': [value: TableRow[]]
   'column-resize': [event: { element: HTMLElement }]
   'column-reorder': [event: { target: HTMLElement | null }]
   sort: [field: string, order: number]
   filter: [filters: Record<string, unknown>]
 }>()
 
-const sortedParentColumns = computed(() =>
-  [...props.parentColumns]
-    .filter((col) => col.visible)
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
-)
+interface ColumnGroup {
+  source: string
+  columns: ColumnDef[]
+  visibleCount: number
+}
 
-const sortedChildColumns = computed(() =>
-  [...props.childColumns]
+const groupedParentColumns = computed<ColumnGroup[]>(() => {
+  const groups = new Map<string, ColumnDef[]>()
+
+  props.parentColumns
     .filter((col) => col.visible)
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
-)
+    .forEach((col) => {
+      const source = col.source || 'Parameters'
+      if (!groups.has(source)) {
+        groups.set(source, [])
+      }
+      groups.get(source)!.push(col)
+    })
+
+  return Array.from(groups.entries()).map(([source, columns]) => ({
+    source,
+    columns: columns.sort((a, b) => (a.order || 0) - (b.order || 0)),
+    visibleCount: columns.length
+  }))
+})
+
+const groupedChildColumns = computed<ColumnGroup[]>(() => {
+  const groups = new Map<string, ColumnDef[]>()
+
+  props.childColumns
+    .filter((col) => col.visible)
+    .forEach((col) => {
+      const source = col.source || 'Parameters'
+      if (!groups.has(source)) {
+        groups.set(source, [])
+      }
+      groups.get(source)!.push(col)
+    })
+
+  return Array.from(groups.entries()).map(([source, columns]) => ({
+    source,
+    columns: columns.sort((a, b) => (a.order || 0) - (b.order || 0)),
+    visibleCount: columns.length
+  }))
+})
 
 const tableFilters = computed(() => {
   if (!props.filters) return {}
@@ -152,28 +245,48 @@ function getColumnStyle(col: ColumnDef) {
   }
 }
 
-function getFieldValue(data: TableRowData, field: string) {
+function getFieldValue(data: TableRow, field: string): unknown {
   try {
-    // Handle special fields first
-    if (field === 'mark' || field === 'category' || field === 'host') {
-      return data[field]
+    if (!isTableRow(data)) {
+      debug.error(DebugCategories.ERROR, 'Invalid table row data:', { data })
+      return undefined
     }
 
-    // Handle parameters with dot notation (e.g., 'Identity Data.Mark')
-    if (field.includes('.') && data.parameters) {
-      const [group, param] = field.split('.')
-      if (data.parameters[`${group}.${param}`]) {
-        return data.parameters[`${group}.${param}`]
+    // Handle special fields first
+    if (field === 'mark' || field === 'category' || field === 'host') {
+      return data[field as keyof TableRow]
+    }
+
+    // Handle parameters
+    if (data.parameters) {
+      // Handle parameters with dot notation (e.g., 'Identity Data.Mark')
+      if (field.includes('.')) {
+        const [group, param] = field.split('.')
+        const paramKey = `${group}.${param}`
+        const paramValue = data.parameters[paramKey]
+
+        if (isParameterValueState(paramValue)) {
+          return (
+            paramValue.userValue ?? paramValue.currentValue ?? paramValue.fetchedValue
+          )
+        }
+        return paramValue
+      }
+
+      // Handle direct parameter access
+      if (field in data.parameters) {
+        const paramValue = data.parameters[field]
+        if (isParameterValueState(paramValue)) {
+          return (
+            paramValue.userValue ?? paramValue.currentValue ?? paramValue.fetchedValue
+          )
+        }
+        return paramValue
       }
     }
 
-    // Handle direct parameter access
-    if (data.parameters && field in data.parameters) {
-      return data.parameters[field]
-    }
-
     // Handle raw data access
-    if (data._raw && typeof data._raw === 'object') {
+    if ('_raw' in data && data._raw && typeof data._raw === 'object') {
       const raw = data._raw as Record<string, unknown>
       if (field in raw) {
         return raw[field]
@@ -181,34 +294,32 @@ function getFieldValue(data: TableRowData, field: string) {
     }
 
     // Fallback to direct field access
-    return data[field]
+    return (data as Record<string, unknown>)[field]
   } catch (error) {
     debug.error(DebugCategories.ERROR, 'Error getting field value:', {
       error,
       field,
-      dataId: data.id
+      dataId: isTableRow(data) ? data.id : 'unknown',
+      parameters:
+        isTableRow(data) && data.parameters ? Object.keys(data.parameters) : [],
+      raw: isTableRow(data) && '_raw' in data ? Object.keys(data._raw as object) : []
     })
     return undefined
   }
 }
 
 function handleExpandedRowsUpdate(value: unknown) {
-  if (Array.isArray(value)) {
-    emit('update:modelValue', value as TableRowData[])
+  if (Array.isArray(value) && value.every(isTableRow)) {
+    emit('update:modelValue', value)
   }
 }
 
-function handleColumnResize(event: DataTableColumnResizeEndEvent) {
-  if (event && 'element' in event && event.element instanceof HTMLElement) {
-    emit('column-resize', { element: event.element })
-  }
+function handleColumnResize(event: { element: HTMLElement }) {
+  emit('column-resize', { element: event.element })
 }
 
-function handleColumnReorder(event: DataTableColumnReorderEvent) {
-  if (event && 'target' in event) {
-    const target = event.target instanceof HTMLElement ? event.target : null
-    emit('column-reorder', { target })
-  }
+function handleColumnReorder(event: { target: HTMLElement | null }) {
+  emit('column-reorder', { target: event.target })
 }
 
 function handleSort(event: DataTableSortEvent) {
@@ -254,6 +365,58 @@ function handleFilter(event: DataTableFilterEvent) {
   overflow: hidden;
 }
 
+.parameter-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.group-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background-color: white;
+  border-radius: 0.25rem;
+  border: 1px solid #e9ecef;
+}
+
+.group-name {
+  font-weight: 500;
+  color: #495057;
+}
+
+.group-count {
+  font-size: 0.75rem;
+  color: #6c757d;
+  background-color: #f1f3f5;
+  padding: 0.125rem 0.375rem;
+  border-radius: 1rem;
+}
+
+.column-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.header-text {
+  font-weight: 600;
+  color: #495057;
+}
+
+.source-tag {
+  font-size: 0.75rem;
+  color: #6c757d;
+  background-color: #f1f3f5;
+  padding: 0.125rem 0.375rem;
+  border-radius: 1rem;
+  max-width: fit-content;
+}
+
 :deep(.p-datatable) {
   font-family: inherit;
   font-size: 0.875rem;
@@ -262,7 +425,7 @@ function handleFilter(event: DataTableFilterEvent) {
 
 :deep(.p-datatable-header) {
   background-color: #f8f9fa;
-  padding: 0.5rem 1rem;
+  padding: 0;
   border-bottom: 1px solid #e9ecef;
 }
 

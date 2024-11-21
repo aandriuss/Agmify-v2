@@ -133,12 +133,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ColumnDef } from '../../composables/columns/types'
-import type { TableRowData } from '~/components/viewer/schedules/types'
+import type { TableRow } from '~/components/viewer/schedules/types'
 
 interface Props {
-  data: TableRowData[]
-  scheduleData: TableRowData[]
-  expandedRows: TableRowData[]
+  data: TableRow[]
+  scheduleData: TableRow[]
+  expandedRows: TableRow[]
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
 }

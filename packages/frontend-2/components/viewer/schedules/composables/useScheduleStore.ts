@@ -20,18 +20,10 @@ export async function initializeStore(
     store = createStore()
   }
 
-  // Wait for viewer state to be ready
-  await new Promise<void>((resolve) => {
-    const checkState = () => {
-      if (viewerState.projectId.value) {
-        store?.setProjectId(viewerState.projectId.value)
-        resolve()
-      } else {
-        setTimeout(checkState, 100)
-      }
-    }
-    checkState()
-  })
+  // Set project ID if available
+  if (viewerState.projectId.value) {
+    await store.setProjectId(viewerState.projectId.value)
+  }
 
   return store
 }
@@ -45,6 +37,8 @@ function createStore(): Store {
     tableData: [],
     customParameters: [],
     parameterColumns: [],
+    parentParameterColumns: [], // Added missing property
+    childParameterColumns: [], // Added missing property
     mergedParentParameters: [],
     mergedChildParameters: [],
     processedParameters: {},
@@ -78,16 +72,9 @@ function createStore(): Store {
         mutations.setLoading(true)
         mutations.setError(null)
 
-        // Ensure we have a project ID
-        if (!internalState.value.projectId) {
-          throw new Error('No project ID available')
-        }
-
-        debug.log(
-          DebugCategories.INITIALIZATION,
-          'Using project ID:',
-          internalState.value.projectId
-        )
+        debug.log(DebugCategories.INITIALIZATION, 'Store initialization starting', {
+          projectId: internalState.value.projectId
+        })
 
         // Initialize with default columns if none set
         if (!internalState.value.currentTableColumns.length) {
@@ -219,6 +206,12 @@ function createStore(): Store {
     tableData: computed(() => [...unref(internalState.value.tableData)]),
     customParameters: computed(() => [...unref(internalState.value.customParameters)]),
     parameterColumns: computed(() => [...unref(internalState.value.parameterColumns)]),
+    parentParameterColumns: computed(() => [
+      ...unref(internalState.value.parentParameterColumns)
+    ]), // Added
+    childParameterColumns: computed(() => [
+      ...unref(internalState.value.childParameterColumns)
+    ]), // Added
     mergedParentParameters: computed(() => [
       ...unref(internalState.value.mergedParentParameters)
     ]),
@@ -263,6 +256,8 @@ function createStore(): Store {
     setTableData: mutations.setTableData,
     setCustomParameters: mutations.setCustomParameters,
     setParameterColumns: mutations.setParameterColumns,
+    setParentParameterColumns: mutations.setParentParameterColumns, // Added
+    setChildParameterColumns: mutations.setChildParameterColumns, // Added
     setMergedParameters: mutations.setMergedParameters,
     setProcessedParameters: mutations.setProcessedParameters,
     setParameterDefinitions: mutations.setParameterDefinitions,

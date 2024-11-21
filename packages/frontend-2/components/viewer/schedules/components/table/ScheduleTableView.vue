@@ -2,7 +2,6 @@
   <div>
     <!-- Debug Panel -->
     <ScheduleDebugPanel
-      v-if="showDebug"
       :schedule-data="props.scheduleData"
       :evaluated-data="props.evaluatedData"
       :table-data="props.tableData"
@@ -11,10 +10,15 @@
       :selected-child-categories="props.selectedChildCategories"
       :parent-elements="parentElements"
       :child-elements="childElements"
+      :available-parent-parameters="props.availableParentParameters"
+      :available-child-parameters="props.availableChildParameters"
       :matched-elements="matchedElements"
       :orphaned-elements="orphanedElements"
-      :merged-table-columns="props.mergedTableColumns"
-      :merged-detail-columns="props.mergedDetailColumns"
+      :parent-parameter-columns="props.mergedTableColumns"
+      :child-parameter-columns="props.mergedDetailColumns"
+      :available-parent-headers="availableParentHeaders"
+      :available-child-headers="availableChildHeaders"
+      :is-visible="showDebug"
       @toggle="toggleDebug"
     />
 
@@ -77,12 +81,20 @@
             <div class="bg-gray-50 p-4 rounded">
               <h3 class="font-medium mb-2">Columns</h3>
               <div class="space-y-2">
-                <div>Table Columns: {{ props.mergedTableColumns.length }}</div>
-                <div>Detail Columns: {{ props.mergedDetailColumns.length }}</div>
                 <div>
-                  Parent Parameters: {{ props.availableParentParameters.length }}
+                  Active Table (Parent) Columns: {{ props.mergedTableColumns.length }}
                 </div>
-                <div>Child Parameters: {{ props.availableChildParameters.length }}</div>
+                <div>
+                  Active Detail (Child) Columns: {{ props.mergedDetailColumns.length }}
+                </div>
+                <div>
+                  Available Parent Parameters count:
+                  {{ props.availableParentParameters.length }}
+                </div>
+                <div>
+                  Available Child Parameters count:
+                  {{ props.availableChildParameters.length }}
+                </div>
               </div>
             </div>
 
@@ -98,34 +110,37 @@
               </div>
             </div>
 
-            <!-- Categories -->
+            <!-- Categories section in empty state -->
             <div class="bg-gray-50 p-4 rounded">
               <h3 class="font-medium mb-2">Categories</h3>
               <div class="space-y-2">
                 <div>
-                  Parent Categories: {{ props.selectedParentCategories.length }}
+                  Parent Categories selected:
+                  {{ props.selectedParentCategories.length }}
                 </div>
-                <div>Child Categories: {{ props.selectedChildCategories.length }}</div>
                 <div>
-                  Categories Selected: {{ !props.noCategoriesSelected ? 'Yes' : 'No' }}
+                  Child Categories selected: {{ props.selectedChildCategories.length }}
+                </div>
+                <div class="text-gray-600 text-sm">
+                  Categories are optional - all elements are shown as parents by default
                 </div>
               </div>
             </div>
-          </div>
 
-          <div class="mt-6 flex justify-center space-x-4">
-            <button
-              class="px-4 py-2 bg-blue-500 text-white rounded hover-bg-blue-600"
-              @click="toggleDebug"
-            >
-              Show Debug Panel
-            </button>
-            <button
-              class="px-4 py-2 bg-green-500 text-white rounded hover-bg-green-600"
-              @click="retryLoading"
-            >
-              Retry Loading
-            </button>
+            <div class="mt-6 flex justify-center space-x-4">
+              <button
+                class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                @click="toggleDebug"
+              >
+                Show Debug Panel
+              </button>
+              <button
+                class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                @click="retryLoading"
+              >
+                Retry Loading
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -134,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DataTable from '../../../components/tables/DataTable/index.vue'
 import type { ColumnDef } from '../../../components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '../../../../../composables/useUserSettings'
@@ -149,7 +164,7 @@ import ScheduleErrorState from './ScheduleErrorState.vue'
 import type {
   TableConfig,
   TableUpdatePayload,
-  TableRowData,
+  TableRow,
   ElementData
 } from '../../types'
 
@@ -167,7 +182,7 @@ interface Props {
   availableChildParameters: CustomParameter[]
   scheduleData: ElementData[]
   evaluatedData: ElementData[]
-  tableData: TableRowData[]
+  tableData: TableRow[]
   isLoading: boolean
   isLoadingAdditionalData: boolean
   noCategoriesSelected: boolean
@@ -186,12 +201,31 @@ const emit = defineEmits<{
 }>()
 
 // Debug state
-const showDebug = ref(false)
+const showDebug = ref(true)
 const debugFilter = ref('')
 
-// Add back the canShowTable computed property
+// Group columns by source
+const groupedColumns = computed(() => {
+  const groups = new Map<string, ColumnDef[]>()
+
+  props.mergedTableColumns.forEach((col) => {
+    const source = col.source || 'Parameters'
+    if (!groups.has(source)) {
+      groups.set(source, [])
+    }
+    groups.get(source)!.push(col)
+  })
+
+  return Array.from(groups.entries()).map(([source, columns]) => ({
+    source,
+    columns: columns.sort((a, b) => (a.order || 0) - (b.order || 0)),
+    visibleCount: columns.filter((c) => c.visible).length
+  }))
+})
+
+// Check if table can be shown
 const canShowTable = computed(() => {
-  // Check initialization and loading states first
+  // Basic state checks
   if (!props.isInitialized || props.isLoading || props.loadingError) {
     debug.log(DebugCategories.STATE, 'Basic state checks failed:', {
       isInitialized: props.isInitialized,
@@ -201,63 +235,40 @@ const canShowTable = computed(() => {
     return false
   }
 
-  // Check categories
-  const hasCategories = !props.noCategoriesSelected
-  if (!hasCategories) {
-    debug.log(DebugCategories.STATE, 'No categories selected:', {
-      parentCategories: props.selectedParentCategories,
-      childCategories: props.selectedChildCategories
-    })
-    return false
-  }
-
-  // Check data
+  // Basic data checks
   const hasData = props.tableData.length > 0
   const hasColumns = props.mergedTableColumns.length > 0
-  const hasVisibleColumns = props.mergedTableColumns.some((col) => col.visible)
-  const hasVisibleRows = props.tableData.some((row) => row._visible !== false)
 
-  // Add more detailed logging
   debug.log(DebugCategories.STATE, 'Table data checks:', {
     hasData,
     dataLength: props.tableData.length,
     hasColumns,
-    columnsLength: props.mergedTableColumns.length,
-    hasVisibleColumns,
-    visibleColumnsCount: props.mergedTableColumns.filter((col) => col.visible).length,
-    hasVisibleRows,
-    visibleRowsCount: props.tableData.filter((row) => row._visible !== false).length,
-    scheduleData: props.scheduleData.length,
-    evaluatedData: props.evaluatedData.length,
-    selectedParentCategories: props.selectedParentCategories,
-    selectedChildCategories: props.selectedChildCategories,
-    mergedDetailColumns: props.mergedDetailColumns.length,
-    availableParentParameters: props.availableParentParameters.length,
-    availableChildParameters: props.availableChildParameters.length
+    columnsLength: props.mergedTableColumns.length
   })
 
-  // Check if any condition fails
-  if (!hasData) {
-    debug.warn(DebugCategories.STATE, '!!! No table data available')
-    return false
-  }
-  if (!hasColumns) {
-    debug.warn(DebugCategories.STATE, '!!! No columns available')
-    return false
-  }
-  if (!hasVisibleColumns) {
-    debug.warn(DebugCategories.STATE, '!!! No visible columns')
-    return false
-  }
-  if (!hasVisibleRows) {
-    debug.warn(DebugCategories.STATE, '!!! No visible rows')
-    return false
-  }
-
-  return true
+  return hasData && hasColumns
 })
 
-// Add computed properties for relationship data
+// Computed properties for available headers
+const availableParentHeaders = computed(() =>
+  props.availableParentParameters.map((param) => ({
+    field: `param_${param.id}`,
+    header: param.name,
+    type: param.type === 'equation' ? 'number' : 'string',
+    source: param.source || 'Parameters'
+  }))
+)
+
+const availableChildHeaders = computed(() =>
+  props.availableChildParameters.map((param) => ({
+    field: `param_${param.id}`,
+    header: param.name,
+    type: param.type === 'equation' ? 'number' : 'string',
+    source: param.source || 'Parameters'
+  }))
+)
+
+// Computed properties for relationship data
 const parentElements = computed(() => props.scheduleData.filter((el) => !el.isChild))
 
 const childElements = computed(() => props.scheduleData.filter((el) => el.isChild))
@@ -291,7 +302,11 @@ const handleBothColumnsUpdate = (updates: {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
 }) => {
-  debug.log(DebugCategories.TABLE_UPDATES, 'Column update:', updates)
+  debug.log(DebugCategories.TABLE_UPDATES, 'Column update:', {
+    ...updates,
+    parentGroups: groupColumnsBySource(updates.parentColumns),
+    childGroups: groupColumnsBySource(updates.childColumns)
+  })
   emit('update:both-columns', updates)
 }
 
@@ -301,8 +316,31 @@ const handleTableUpdate = (payload: TableUpdatePayload) => {
 }
 
 const handleColumnVisibilityChange = (column: ColumnDef) => {
-  debug.log(DebugCategories.COLUMNS, 'Column visibility change:', column)
+  debug.log(DebugCategories.COLUMNS, 'Column visibility change:', {
+    column,
+    source: column.source,
+    groupStats: groupedColumns.value.find((g) => g.source === column.source)
+  })
   emit('column-visibility-change', column)
+}
+
+// Helper to group columns by source
+function groupColumnsBySource(columns: ColumnDef[]) {
+  const groups = new Map<string, ColumnDef[]>()
+
+  columns.forEach((col) => {
+    const source = col.source || 'Parameters'
+    if (!groups.has(source)) {
+      groups.set(source, [])
+    }
+    groups.get(source)!.push(col)
+  })
+
+  return Array.from(groups.entries()).map(([source, cols]) => ({
+    source,
+    total: cols.length,
+    visible: cols.filter((c) => c.visible).length
+  }))
 }
 
 // Debug panel toggle
@@ -313,6 +351,11 @@ const toggleDebug = () => {
     showDebug: showDebug.value,
     dataCount: props.tableData.length,
     columnsCount: props.mergedTableColumns.length,
+    columnGroups: groupedColumns.value.map((g) => ({
+      source: g.source,
+      total: g.columns.length,
+      visible: g.visibleCount
+    })),
     state: {
       isInitialized: props.isInitialized,
       isLoading: props.isLoading,
@@ -327,6 +370,11 @@ const toggleDebug = () => {
 const retryLoading = () => {
   window.location.reload()
 }
+
+// Mount hook to ensure debug panel is visible
+onMounted(() => {
+  debug.log(DebugCategories.DEBUG, 'Component mounted, debug panel visible')
+})
 </script>
 
 <style scoped>

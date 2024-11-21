@@ -1,5 +1,5 @@
 <template>
-  <ViewerLayoutPanel :initial-width="400" @close="handleClose">
+  <ViewerLayoutPanel :initial-width="400" v-bind="$attrs" @close="handleClose">
     <template #default>
       <!-- Loading State -->
       <div v-if="isLoading" class="flex items-center justify-center h-full">
@@ -38,6 +38,19 @@
           <ScheduleInitialization
             ref="initComponent"
             v-model:initialized="initialized"
+            :update-root-nodes="updateRootNodes"
+            :load-settings="loadSettings"
+            :handle-table-selection="handleTableSelection"
+            :current-table="currentTableConfig"
+            :selected-table-id="storeValues?.selectedTableId || ''"
+            :current-table-id="storeValues?.currentTableId || ''"
+            :loading-error="error"
+            :schedule-data="storeValues?.scheduleData || []"
+            :root-nodes="rawTreeNodes"
+            :is-initialized="initialized"
+            :selected-parent-categories="selectedParentCategories"
+            :selected-child-categories="selectedChildCategories"
+            :project-id="viewerState.projectId.value || ''"
             @settings-loaded="handleSettingsLoaded"
             @data-initialized="handleDataInitialized"
             @error="handleError"
@@ -174,26 +187,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { debug, DebugCategories } from './utils/debug'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
-import { useScheduleInitializationFlow } from './core/composables/useScheduleInitializationFlow'
 import { useScheduleValues } from './composables/useScheduleValues'
 import { useScheduleFlow } from './composables/useScheduleFlow'
 import { useProcessedHeaders } from './composables/useProcessedHeaders'
-import { useScheduleEmits } from './composables/useScheduleEmits'
 import { useElementsData } from './composables/useElementsData'
 import { useScheduleState } from './composables/useScheduleState'
+import { useScheduleEmits } from './composables/useScheduleEmits'
 import { parentCategories, childCategories } from './config/categories'
 import scheduleStore from './composables/useScheduleStore'
 import { defaultTable } from './config/defaultColumns'
+import { useBIMElements } from './composables/useBIMElements'
 
 // Types
 import type {
   ScheduleDataManagementExposed,
   ScheduleParameterHandlingExposed,
   ScheduleColumnManagementExposed,
-  ScheduleInitializationInstance
+  ScheduleInitializationInstance,
+  TreeItemComponentModel
 } from './types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
@@ -208,6 +222,16 @@ import ScheduleParameterManagerModal from './components/ScheduleParameterManager
 import ScheduleCategoryFilters from './components/ScheduleCategoryFilters.vue'
 import BIMDebugView from './components/BIMDebugView.vue'
 import { ScheduleTableView } from './components/table'
+
+// Define parameter types
+interface CustomParameter {
+  id: string
+  type: 'fixed' | 'equation'
+  name: string
+  field: string
+  header: string
+  [key: string]: unknown
+}
 
 // Get viewer state from parent
 const viewerState = useInjectedViewerState()
@@ -231,19 +255,23 @@ const dataComponent = ref<ScheduleDataManagementExposed | null>(null)
 const parameterComponent = ref<ScheduleParameterHandlingExposed | null>(null)
 const columnComponent = ref<ScheduleColumnManagementExposed | null>(null)
 
-// Initialize store values
+// Emits
+const emit = defineEmits<{
+  close: []
+}>()
+
+// Initialize composables
+const { handleClose } = useScheduleEmits({ emit })
+
 const storeValues = useScheduleValues()
 
-// Initialize flow
-const { state: flowState, initialize, retry, cleanup } = useScheduleInitializationFlow()
+const { rawTreeNodes, initializeElements } = useBIMElements()
 
-// Initialize elements data
 const elementsData = useElementsData({
   selectedParentCategories,
   selectedChildCategories
 })
 
-// Flow management
 const { tableConfig } = useScheduleFlow({
   currentTable: computed(() => defaultTable)
 })
@@ -252,7 +280,6 @@ const currentTableConfig = computed<NamedTableConfig | null>(() =>
   tableConfig.value ? { ...tableConfig.value } : null
 )
 
-// Initialize schedule state
 const scheduleState = useScheduleState({
   selectedParentCategories,
   selectedChildCategories,
@@ -260,9 +287,7 @@ const scheduleState = useScheduleState({
 })
 
 // Loading state
-const isLoading = computed(
-  () => flowState.value.isLoading || elementsData.isLoading.value
-)
+const isLoading = computed(() => elementsData.isLoading.value)
 const isUpdating = computed(
   () => scheduleState.processingState.value.isProcessingElements
 )
@@ -287,12 +312,21 @@ const { processedHeaders } = useProcessedHeaders({
 
 // Parameter handling
 const availableParentParameters = computed(() => {
-  if (!storeValues?.customParameters) {
-    return []
-  }
+  const params = storeValues?.customParameters
+  if (!Array.isArray(params)) return []
 
-  return storeValues.customParameters
-    .filter((param): param is NonNullable<typeof param> => !!param && !!param.type)
+  return params
+    .filter((param): param is CustomParameter => {
+      if (!param || typeof param !== 'object') return false
+      const p = param as Partial<CustomParameter>
+      return (
+        typeof p.id === 'string' &&
+        typeof p.type === 'string' &&
+        typeof p.name === 'string' &&
+        typeof p.field === 'string' &&
+        typeof p.header === 'string'
+      )
+    })
     .filter((param) => param.type === 'fixed')
     .map((param) => ({
       ...param,
@@ -301,12 +335,21 @@ const availableParentParameters = computed(() => {
 })
 
 const availableChildParameters = computed(() => {
-  if (!storeValues?.customParameters) {
-    return []
-  }
+  const params = storeValues?.customParameters
+  if (!Array.isArray(params)) return []
 
-  return storeValues.customParameters
-    .filter((param): param is NonNullable<typeof param> => !!param && !!param.type)
+  return params
+    .filter((param): param is CustomParameter => {
+      if (!param || typeof param !== 'object') return false
+      const p = param as Partial<CustomParameter>
+      return (
+        typeof p.id === 'string' &&
+        typeof p.type === 'string' &&
+        typeof p.name === 'string' &&
+        typeof p.field === 'string' &&
+        typeof p.header === 'string'
+      )
+    })
     .filter((param) => param.type === 'equation')
     .map((param) => ({
       ...param,
@@ -330,25 +373,23 @@ onMounted(async () => {
   try {
     debug.log(DebugCategories.INITIALIZATION, 'Mounting Schedules component')
 
-    // Initialize the flow first - this handles store initialization and project ID
-    await initialize()
+    // Initialize store first
+    await scheduleStore.lifecycle.init()
 
-    // Initialize data after flow is ready
+    // Process BIM data that's already loaded by viewer
     await elementsData.initializeData()
 
-    // Process data to ensure parameters and columns are ready
+    // Process data to ensure parameters are handled
     await scheduleStore.processData()
 
     // Set initialized after everything is ready
     initialized.value = true
+    scheduleStore.setInitialized(true)
 
     debug.log(DebugCategories.INITIALIZATION, 'Schedules component mounted', {
-      storeData: {
-        scheduleData: scheduleStore.scheduleData.value.length,
-        tableData: scheduleStore.tableData.value.length,
-        parameterColumns: scheduleStore.parameterColumns.value.length,
-        mergedTableColumns: scheduleStore.mergedTableColumns.value.length
-      }
+      storeInitialized: scheduleStore.initialized.value,
+      dataLength: scheduleStore.scheduleData.value.length,
+      columnsLength: scheduleStore.mergedTableColumns.value.length
     })
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Schedules initialization failed:', err)
@@ -356,29 +397,21 @@ onMounted(async () => {
   }
 })
 
-// Emits
-const emit = defineEmits<{
-  close: []
-}>()
-
-const { handleClose } = useScheduleEmits({ emit })
-
 // Handler functions
-function handleSettingsLoaded(settings: {
-  namedTables: Record<string, NamedTableConfig>
-}) {
-  debug.log(DebugCategories.INITIALIZATION, 'Settings loaded', { settings })
-}
-
-function handleDataInitialized() {
-  debug.log(DebugCategories.INITIALIZATION, 'Data initialized')
-}
-
-// Update handlers now ensure data is processed
 async function handleTableDataUpdate() {
   try {
-    await scheduleStore.processData()
-    debouncedInit()
+    await debouncedInit()
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+async function handleRetry() {
+  try {
+    error.value = null
+    initialized.value = false
+    await elementsData.initializeData()
+    initialized.value = true
   } catch (err) {
     handleError(err)
   }
@@ -391,6 +424,31 @@ async function handleParameterColumnsUpdate() {
   } catch (err) {
     handleError(err)
   }
+}
+
+// Add missing functions
+async function loadSettings() {
+  debug.log(DebugCategories.INITIALIZATION, 'Loading settings')
+  // Settings are loaded from store initialization
+  await scheduleStore.lifecycle.init()
+}
+
+async function handleTableSelection(id: string) {
+  debug.log(DebugCategories.INITIALIZATION, 'Handling table selection:', id)
+  try {
+    scheduleStore.setTableInfo({ selectedTableId: id })
+    await debouncedInit()
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+async function updateRootNodes(nodes: TreeItemComponentModel[]) {
+  debug.log(DebugCategories.INITIALIZATION, 'Updating root nodes:', {
+    nodeCount: nodes.length
+  })
+  // Root nodes are managed by useBIMElements
+  await initializeElements()
 }
 
 function handleMergedParentParametersUpdate() {
@@ -514,89 +572,35 @@ async function handleCategoryToggle(type: 'parent' | 'child', category: string) 
       selectedChildCategories.value
     )
 
-    // Process data to ensure parameters and columns are ready
-    await scheduleStore.processData()
-
-    // Log the update completion
-    const storeData = {
-      scheduleData: scheduleStore.scheduleData.value.length,
-      tableData: scheduleStore.tableData.value.length,
-      parameterColumns: scheduleStore.parameterColumns.value.length,
-      mergedTableColumns: scheduleStore.mergedTableColumns.value.length
-    }
-
     debug.log(DebugCategories.CATEGORIES, 'Category update complete:', {
       newState: {
         parent: selectedParentCategories.value,
         child: selectedChildCategories.value
-      },
-      storeData
+      }
     })
   } catch (err) {
     handleError(err)
   }
 }
 
-// Add retry handler
-async function handleRetry() {
-  error.value = null
-  initialized.value = false
-  await retry()
+// Add missing handlers
+function handleSettingsLoaded(settings: {
+  namedTables: Record<string, NamedTableConfig>
+}) {
+  debug.log(DebugCategories.INITIALIZATION, 'Settings loaded', { settings })
 }
 
-// Reset state
-function resetState() {
-  initialized.value = false
-  error.value = null
-  selectedParentCategories.value = defaultTable.categoryFilters.selectedParentCategories
-  selectedChildCategories.value = defaultTable.categoryFilters.selectedChildCategories
-  showCategoryOptions.value = false
-  showParameterManager.value = false
+function handleDataInitialized() {
+  debug.log(DebugCategories.INITIALIZATION, 'Data initialized')
 }
-
-// Watch for project ID changes
-watch(
-  () => viewerState.projectId.value,
-  async (newId) => {
-    if (!newId) return
-
-    debug.log(DebugCategories.INITIALIZATION, 'Project ID changed:', newId)
-    try {
-      // Reset state first
-      await resetState()
-
-      // Clean up previous state
-      await cleanup()
-
-      // Re-initialize everything through the flow
-      await initialize()
-
-      // Initialize store
-      await scheduleStore.lifecycle.init()
-
-      // Then initialize data
-      await elementsData.initializeData()
-
-      // Process data to ensure parameters and columns are ready
-      await scheduleStore.processData()
-
-      // Set initialized after everything is ready
-      initialized.value = true
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Project ID change handling failed:', err)
-      handleError(err)
-    }
-  }
-)
 
 // Clean up
 onBeforeUnmount(() => {
   elementsData.stopWorldTreeWatch()
-  cleanup()
 })
 
-// Error handling
-function handleError(err: Error | unknown) {
+// Error handling with type safety
+function handleError(err: Error | unknown): void {
   // Type guard for Error objects
   function isError(value: unknown): value is Error {
     return value instanceof Error
@@ -620,13 +624,17 @@ function handleError(err: Error | unknown) {
   debug.error(DebugCategories.ERROR, 'Schedule error:', errorDetails)
 }
 
-// Expose necessary functions
+// Expose necessary functions with type safety
 defineExpose({
-  handleError,
-  handleParameterUpdate,
-  handleBothColumnsUpdate,
-  handleTableDataUpdate,
-  handleCategoryToggle
+  handleError: (err: Error | unknown) => handleError(err),
+  handleParameterUpdate: () => handleParameterUpdate(),
+  handleBothColumnsUpdate: (updates: {
+    parentColumns: ColumnDef[]
+    childColumns: ColumnDef[]
+  }) => handleBothColumnsUpdate(updates),
+  handleTableDataUpdate: () => handleTableDataUpdate(),
+  handleCategoryToggle: (type: 'parent' | 'child', category: string) =>
+    handleCategoryToggle(type, category)
 })
 </script>
 

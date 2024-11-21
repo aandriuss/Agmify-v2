@@ -5,6 +5,7 @@ import type { ElementData, ParameterValue } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { evaluateParameter } from '../utils/parameterEvaluation'
 import { debug, DebugCategories } from '../utils/debug'
+import { getParameterGroup } from '../config/parameters'
 
 interface UseParameterManagementOptions {
   parameters: ComputedRef<CustomParameter[]> | Ref<CustomParameter[]>
@@ -27,6 +28,9 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
       const field = `param_${param.id}`
       const isVisible = parameterVisibility.value[param.id] ?? true
 
+      // Get parameter group from raw data or use Parameters as default
+      const group = param.raw ? getParameterGroup(param.name, param.raw) : 'Parameters'
+
       return {
         field,
         header: param.name,
@@ -35,15 +39,38 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
         visible: isVisible,
         order: param.order ?? index,
         parameterRef: param.id,
-        category: param.category || 'Custom Parameters',
-        source: param.source || 'Parameters',
+        category: param.category || 'Custom Parameters', // Element category
+        source: group, // Legacy support
+        fetchedGroup: param.fetchedGroup || group,
+        currentGroup: param.currentGroup || group,
+        isFetched: param.isFetched ?? false,
         description:
           param.type === 'equation'
             ? `Equation: ${param.equation || ''}`
-            : `Fixed value: ${param.value || ''}`,
+            : param.type === 'fixed'
+            ? `Fixed value: ${param.value || ''}`
+            : `${group} > ${param.name}`,
         color: param.color || 'purple'
       }
     })
+  })
+
+  // Group parameters by their group
+  const groupedParameters = computed(() => {
+    const groups = new Map<string, ColumnDef[]>()
+
+    parameterColumns.value.forEach((col) => {
+      const group = col.currentGroup || col.source || 'Parameters'
+      if (!groups.has(group)) {
+        groups.set(group, [])
+      }
+      groups.get(group)!.push(col)
+    })
+
+    return Array.from(groups.entries()).map(([group, columns]) => ({
+      group,
+      columns: columns.sort((a, b) => (a.order || 0) - (b.order || 0))
+    }))
   })
 
   // Update visibility state when parameters change
@@ -59,7 +86,14 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
 
       debug.log(DebugCategories.PARAMETERS, 'Updated parameter visibility state:', {
         parameters: newParams.length,
-        visibilityState: newVisibility
+        visibilityState: newVisibility,
+        groups: [
+          ...new Set(
+            newParams.map((p) =>
+              p.raw ? getParameterGroup(p.name, p.raw) : 'Parameters'
+            )
+          )
+        ]
       })
     }
   )
@@ -68,7 +102,8 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
   const evaluatedData = computed(() => {
     debug.log(DebugCategories.PARAMETERS, 'Evaluating parameters for data:', {
       parametersCount: options.parameters.value.length,
-      dataCount: options.data.value.length
+      dataCount: options.data.value.length,
+      groups: groupedParameters.value.map((g) => g.group)
     })
 
     return options.data.value.map((row) => {
@@ -89,7 +124,8 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
             parameter: param.name,
             field,
             value,
-            rowId: row.id
+            rowId: row.id,
+            group: param.raw ? getParameterGroup(param.name, param.raw) : 'Parameters'
           })
         } catch (error) {
           const field = `param_${param.id}`
@@ -98,6 +134,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
             parameter: param.name,
             field,
             rowId: row.id,
+            group: param.raw ? getParameterGroup(param.name, param.raw) : 'Parameters',
             error: error instanceof Error ? error.message : 'Unknown error'
           })
         }
@@ -126,7 +163,10 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
                   field,
                   value,
                   childId: child.id,
-                  parentId: row.id
+                  parentId: row.id,
+                  group: param.raw
+                    ? getParameterGroup(param.name, param.raw)
+                    : 'Parameters'
                 })
               } catch (error) {
                 const field = `param_${param.id}`
@@ -139,6 +179,9 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
                     field,
                     childId: child.id,
                     parentId: row.id,
+                    group: param.raw
+                      ? getParameterGroup(param.name, param.raw)
+                      : 'Parameters',
                     error: error instanceof Error ? error.message : 'Unknown error'
                   }
                 )
@@ -174,7 +217,8 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
         {
           parametersCount: newParams.length,
           dataCount: newData.length,
-          visibilityState: newVisibility
+          visibilityState: newVisibility,
+          groups: groupedParameters.value.map((g) => g.group)
         }
       )
     },
@@ -196,6 +240,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
   return {
     parameterColumns,
     evaluatedData,
+    groupedParameters,
     updateParameterVisibility
   }
 }

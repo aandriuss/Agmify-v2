@@ -10,7 +10,10 @@ export const defaultColumns: ColumnDef[] = [
     visible: true,
     removable: false,
     isFixed: true,
-    source: 'Basic',
+    source: 'Essential', // Legacy support
+    fetchedGroup: 'Essential',
+    currentGroup: 'Essential',
+    isFetched: false,
     description: 'Element mark identifier'
   },
   {
@@ -21,7 +24,10 @@ export const defaultColumns: ColumnDef[] = [
     visible: true,
     removable: false,
     isFixed: true,
-    source: 'Basic',
+    source: 'Essential', // Legacy support
+    fetchedGroup: 'Essential',
+    currentGroup: 'Essential',
+    isFetched: false,
     description: 'Element category'
   },
   {
@@ -31,28 +37,11 @@ export const defaultColumns: ColumnDef[] = [
     order: 2,
     visible: true,
     removable: true,
-    source: 'Basic',
+    source: 'Essential', // Legacy support
+    fetchedGroup: 'Essential',
+    currentGroup: 'Essential',
+    isFetched: false,
     description: 'Host element mark'
-  },
-  {
-    field: 'length',
-    header: 'Length',
-    type: 'number',
-    order: 4,
-    visible: true,
-    removable: true,
-    source: 'Dimensions',
-    description: 'Element length'
-  },
-  {
-    field: 'endLevelOffset',
-    header: 'End Level Offset',
-    type: 'string',
-    order: 3,
-    visible: true,
-    removable: true,
-    source: 'Constraints',
-    description: 'End level offset'
   }
 ]
 
@@ -65,7 +54,10 @@ export const defaultDetailColumns: ColumnDef[] = [
     visible: true,
     removable: false,
     isFixed: true,
-    source: 'Basic',
+    source: 'Essential', // Legacy support
+    fetchedGroup: 'Essential',
+    currentGroup: 'Essential',
+    isFetched: false,
     description: 'Element mark identifier'
   },
   {
@@ -76,7 +68,10 @@ export const defaultDetailColumns: ColumnDef[] = [
     visible: true,
     removable: false,
     isFixed: true,
-    source: 'Basic',
+    source: 'Essential', // Legacy support
+    fetchedGroup: 'Essential',
+    currentGroup: 'Essential',
+    isFetched: false,
     description: 'Element category'
   },
   {
@@ -87,18 +82,11 @@ export const defaultDetailColumns: ColumnDef[] = [
     visible: true,
     removable: false,
     isFixed: true, // Host is required for child elements
-    source: 'Basic',
+    source: 'Essential', // Legacy support
+    fetchedGroup: 'Essential',
+    currentGroup: 'Essential',
+    isFetched: false,
     description: 'Host element mark'
-  },
-  {
-    field: 'endLevelOffset',
-    header: 'End Level Offset',
-    type: 'string',
-    order: 3,
-    visible: true,
-    removable: true,
-    source: 'Constraints',
-    description: 'End level offset'
   }
 ]
 

@@ -1,6 +1,7 @@
-import type { ElementData, ParameterValueType } from '../../types'
+import type { ElementData, ParameterValueType, BIMNodeRaw } from '../../types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import { debug, DebugCategories } from '../../utils/debug'
+import { getParameterGroup } from '../../config/parameters'
 
 // Parameter discovery interface
 export interface DiscoveredParameter {
@@ -8,7 +9,10 @@ export interface DiscoveredParameter {
   name: string
   type: ParameterValueType
   header: string
-  category: string
+  category: string // Element category
+  group: string // Parameter group from raw data
+  description: string
+  visible: boolean
   frequency: number
 }
 
@@ -45,13 +49,20 @@ export async function discoverParameters(
     const definitions = convertToDefinitions(filtered)
 
     debug.log(DebugCategories.PARAMETERS, 'Parameter discovery complete', {
-      discoveredCount: definitions.length
+      discoveredCount: definitions.length,
+      groups: [...new Set(definitions.map((d) => d.category))],
+      parameterGroups: [...new Set(filtered.map((p) => p.group))],
+      visibleCount: definitions.filter((d) => d.visible).length
     })
 
     return definitions
   } catch (error) {
     debug.error(DebugCategories.PARAMETERS, 'Parameter discovery failed:', error)
-    throw error
+    throw new Error(
+      `Parameter discovery failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    )
   }
 }
 
@@ -87,16 +98,44 @@ async function analyzeParameters(
     await new Promise((resolve) => setTimeout(resolve, 0)) // Yield to event loop
 
     for (const element of batch) {
-      for (const [field, value] of Object.entries(element.parameters || {})) {
+      const params = element.parameters || {}
+      const groups =
+        (Object.getOwnPropertyDescriptor(params, '_groups')?.value as Record<
+          string,
+          string
+        >) || {}
+
+      // Get raw data for parameter group determination
+      const rawData = Object.getOwnPropertyDescriptor(element, '_raw')?.value as
+        | BIMNodeRaw
+        | undefined
+
+      for (const [field, value] of Object.entries(params)) {
+        if (field === '_groups') continue
+
+        // Use group from raw data, or get it from parameter location
+        const paramGroup =
+          groups[field] || (rawData ? getParameterGroup(field, rawData) : 'Parameters')
+
         const current = discovered.get(field) || {
           field,
           name: field,
           header: field,
           type: inferType(value),
-          category: 'Custom Parameters',
+          category: element.category || 'Parameters', // Element category
+          group: paramGroup, // Parameter group
+          description: `${paramGroup} > ${field}`,
+          visible: true, // Default visible
           frequency: 0
         }
+
+        // Update frequency and merge any new information
         current.frequency++
+        if (!current.group && paramGroup) {
+          current.group = paramGroup
+          current.description = `${paramGroup} > ${field}`
+        }
+
         discovered.set(field, current)
       }
     }
@@ -132,7 +171,9 @@ function convertToDefinitions(
     name: param.name,
     header: param.header,
     type: param.type,
-    category: param.category,
+    category: param.category, // Element category
+    source: param.group, // Parameter group as source
+    description: param.description,
     removable: true,
     visible: true
   }))

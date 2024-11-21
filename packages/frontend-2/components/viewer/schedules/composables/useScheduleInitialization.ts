@@ -2,74 +2,77 @@ import { ref, computed } from 'vue'
 import { debug, DebugCategories } from '../utils/debug'
 import type { ElementData } from '../types'
 import store from './useScheduleStore'
-import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
+import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import { defaultTable } from '../config/defaultColumns'
 
+/**
+ * Handles core data initialization for the schedule system.
+ * This composable is responsible for initializing the store with data,
+ * while useScheduleInitializationFlow handles the high-level initialization flow.
+ */
 export function useScheduleInitialization() {
   const initialized = ref(false)
   const loading = ref(false)
   const error = ref<Error | null>(null)
-  const viewer = useInjectedViewer()
+  const viewerState = useInjectedViewerState()
 
-  async function waitForViewer(maxAttempts = 10, interval = 500): Promise<void> {
-    if (!viewer) {
-      throw new Error('Viewer not available')
-    }
-
-    let attempts = 0
-    while (attempts < maxAttempts) {
-      if (viewer.init.ref.value) {
-        return
-      }
-      await new Promise((resolve) => setTimeout(resolve, interval))
-      attempts++
-    }
-    throw new Error('Timeout waiting for viewer initialization')
-  }
-
-  async function initializeData(projectId?: string) {
-    debug.log(DebugCategories.INITIALIZATION, 'Initializing schedule data')
+  async function initializeData() {
+    debug.log(DebugCategories.INITIALIZATION, 'Starting core data initialization')
     loading.value = true
     error.value = null
 
     try {
-      // Wait for viewer initialization first
-      await waitForViewer()
-
-      // Validate project ID
-      if (!projectId) {
-        throw new Error('Project ID is required but not provided')
-      }
-
-      // Set project ID in store first
-      store.setProjectId(projectId)
-
-      // Set initial categories
+      // Step 1: Set initial categories from defaults
       store.setParentCategories(defaultTable.categoryFilters.selectedParentCategories)
       store.setChildCategories(defaultTable.categoryFilters.selectedChildCategories)
 
-      // Initialize store
+      debug.log(DebugCategories.INITIALIZATION, 'Initial categories set', {
+        parent: defaultTable.categoryFilters.selectedParentCategories,
+        child: defaultTable.categoryFilters.selectedChildCategories
+      })
+
+      // Step 2: Initialize store data
       await store.lifecycle.init()
+      debug.log(DebugCategories.INITIALIZATION, 'Store lifecycle initialized')
 
-      // Wait for data to be processed
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      // Process data to ensure parameters are handled
+      // Step 3: Process data into table format
       await store.processData()
-
-      initialized.value = true
-      debug.log(DebugCategories.INITIALIZATION, 'Schedule data initialized', {
-        projectId,
-        hasViewer: !!viewer?.init.ref.value,
+      debug.log(DebugCategories.INITIALIZATION, 'Data processed', {
         dataCount: store.scheduleData.value.length,
-        parameterCount: store.parameterColumns.value.length,
         tableDataCount: store.tableData.value.length
       })
+
+      // Step 4: Set project ID if available
+      const projectId = viewerState.projectId.value
+      if (projectId) {
+        store.setProjectId(projectId)
+        debug.log(DebugCategories.INITIALIZATION, 'Project ID set:', projectId)
+      }
+
+      // Step 5: Mark initialization complete
+      store.setInitialized(true)
+      initialized.value = true
+
+      debug.log(DebugCategories.INITIALIZATION, 'Core initialization complete', {
+        projectId: store.projectId.value,
+        dataCount: store.scheduleData.value.length,
+        parameterCount: store.parameterColumns.value.length,
+        tableDataCount: store.tableData.value.length,
+        storeInitialized: store.initialized.value
+      })
     } catch (err) {
-      error.value = err instanceof Error ? err : new Error(String(err))
-      debug.error(DebugCategories.ERROR, 'Failed to initialize schedule data:', {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      error.value = new Error(`Core initialization failed: ${errorMessage}`)
+
+      debug.error(DebugCategories.ERROR, 'Core initialization failed:', {
         error: err,
-        hasViewer: !!viewer?.init.ref.value
+        storeState: {
+          projectId: store.projectId.value,
+          scheduleData: store.scheduleData.value.length,
+          tableData: store.tableData.value.length,
+          mergedTableColumns: store.mergedTableColumns.value.length,
+          initialized: store.initialized.value
+        }
       })
       throw error.value
     } finally {
@@ -77,62 +80,44 @@ export function useScheduleInitialization() {
     }
   }
 
-  async function waitForData(projectId?: string): Promise<ElementData[]> {
-    debug.log(DebugCategories.INITIALIZATION, 'Waiting for schedule data')
+  async function waitForData(): Promise<ElementData[]> {
+    debug.log(DebugCategories.INITIALIZATION, 'Waiting for core data')
+
     try {
-      // Wait for viewer initialization first
-      await waitForViewer()
-
-      // Validate project ID
-      if (!projectId) {
-        throw new Error('Project ID is required but not provided')
-      }
-
-      // Ensure project ID matches store
-      if (store.projectId.value !== projectId) {
-        throw new Error('Project ID mismatch')
-      }
-
-      // Wait for initialization
+      // Check initialization state
       if (!initialized.value) {
-        throw new Error('Schedule data not initialized')
+        throw new Error('Core data not initialized')
       }
 
       // Wait for any pending store updates
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 0))
 
-      // Ensure data is available
-      if (!store.scheduleData.value.length) {
-        await new Promise((resolve) => setTimeout(resolve, 200))
-      }
-
-      // Ensure parameters are processed
-      if (!store.parameterColumns.value.length) {
-        await store.processData()
-      }
-
-      debug.log(DebugCategories.INITIALIZATION, 'Schedule data ready', {
+      debug.log(DebugCategories.INITIALIZATION, 'Core data ready', {
         dataCount: store.scheduleData.value.length,
-        parameterCount: store.parameterColumns.value.length,
         tableDataCount: store.tableData.value.length,
-        projectId,
-        hasViewer: !!viewer?.init.ref.value
+        storeInitialized: store.initialized.value
       })
 
-      // Return current data
       return store.scheduleData.value
     } catch (err) {
-      error.value = err instanceof Error ? err : new Error(String(err))
-      debug.error(DebugCategories.ERROR, 'Failed to wait for schedule data:', {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      error.value = new Error(`Failed to get core data: ${errorMessage}`)
+
+      debug.error(DebugCategories.ERROR, 'Failed to get core data:', {
         error: err,
-        hasViewer: !!viewer?.init.ref.value
+        storeState: {
+          projectId: store.projectId.value,
+          scheduleData: store.scheduleData.value.length,
+          tableData: store.tableData.value.length,
+          initialized: store.initialized.value
+        }
       })
       throw error.value
     }
   }
 
   return {
-    initialized: computed(() => initialized.value),
+    initialized: computed(() => initialized.value && store.initialized.value),
     loading: computed(() => loading.value),
     error: computed(() => error.value),
     initializeData,

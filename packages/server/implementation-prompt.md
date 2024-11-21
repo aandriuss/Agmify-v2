@@ -1,205 +1,183 @@
-# Schedule System Implementation Task
+# BIM Schedule System - Parameter Display Phase
 
-## Current Task: Fix Blank DataTable and Debug Data
+## Context
 
-### Context
+The BIM Schedule System displays building element parameters in a structured table format. We've completed the parameter discovery and state management phases, and now need to implement the parameter display and interaction features.
 
-The Schedules component is currently not displaying data despite:
+## Current State
 
-- Basic data loading working
-- Store initialization fixed
-- Initial rendering working
-- Debug view showing data (80 rows)
+### Data Flow
 
-### Recent Changes
-
-1. Fixed data access in TableWrapper:
-
-```diff
-- <div class="truncate">{{ data.data[col.field] }}</div>
-+ <div class="truncate">{{ data[col.field] }}</div>
-```
-
-2. Updated category initialization in defaultColumns.ts:
+1. Parameter Discovery:
 
 ```typescript
-export const defaultTable: NamedTableConfig = {
-  categoryFilters: {
-    selectedParentCategories: parentCategories,
-    selectedChildCategories: childCategories
-  }
+interface ProcessedHeader {
+  field: string
+  header: string
+  fetchedGroup: string
+  currentGroup: string
+  type: ParameterValueType
+  category: string
+  description: string
+  isFetched: boolean
+  source: string
 }
 ```
 
-### Key Components
+2. Parameter Values:
 
-1. Main Component:
-
-```
-components/
-└── Schedules.vue                 // Main container
-    ├── ScheduleTableView         // Table container
-    │   └── TableWrapper         // PrimeVue table wrapper
-    └── BIMDebugView            // Debug panel
-```
-
-2. State Management:
-
-```
-composables/
-├── useScheduleStore.ts          // Central store
-├── useScheduleState.ts          // State management
-└── useScheduleSetup.ts         // Setup coordination
-```
-
-3. Data Flow:
-
-```
-Store -> ScheduleState -> Components
-  ↑          ↑              ↓
-  └── Data ──┴── Debug ─────┘
-```
-
-### Current Issues
-
-1. DataTable component not showing despite data being available
-2. Category filters missing
-3. Column management modal missing
-4. Table settings not being loaded
-
-### Files to Check
-
-1. Main Components:
-
-```
-components/tables/DataTable/index.vue        // Main table component
-components/tables/DataTable/TableWrapper.vue // Table wrapper
-```
-
-2. State Management:
-
-```
-composables/useScheduleState.ts             // State management
-composables/useScheduleStore.ts            // Store management
-```
-
-3. Data Transformation:
-
-```
-utils/dataPipeline.ts                      // Data processing
-utils/dataConversion.ts                   // Data conversion
-```
-
-### Debug Information
-
-Current debug output shows:
-
-```
-[data-transform] Table data changed: ▸ {
-  timestamp: "2024-11-18T12:42:49.1132",
-  count: 0,
-  isFullTransform: false,
-  validation: {-}
+```typescript
+interface ParameterValueState {
+  fetchedValue: ParameterValue
+  currentValue: ParameterValue
+  previousValue: ParameterValue
+  userValue: ParameterValue | null
 }
 ```
 
-### Next Steps
-
-1. Verify data flow:
-
-   - Check store initialization
-   - Verify state updates
-   - Validate data transformation
-
-2. Debug component rendering:
-
-   - Check component mounting
-   - Verify prop passing
-   - Validate template conditions
-
-3. Fix table display:
-   - Update data access
-   - Fix category filters
-   - Restore column management
-
-### Success Criteria
-
-- [ ] DataTable shows when data is available
-- [ ] Data is properly formatted
-- [ ] Sorting works
-- [ ] Filtering works
-- [ ] Category filters are visible
-- [ ] Column management works
-- [ ] Settings persist
-
-### Implementation Plan
-
-1. Check data pipeline:
-
-   - Store initialization
-   - Data transformation
-   - State updates
-
-2. Fix component rendering:
-
-   - Component mounting
-   - Prop validation
-   - Template conditions
-
-3. Restore functionality:
-   - Category filters
-   - Column management
-   - Table settings
-
-### Resources
-
-1. Key Types:
+3. Element Structure:
 
 ```typescript
-interface TableRowData {
+interface TableRow {
   id: string
   mark: string
   category: string
-  type: string
-  parameters: Record<string, unknown>
-  details?: TableRowData[]
-  _visible: boolean
-}
-
-interface ColumnDef {
-  field: string
-  header: string
-  type: string
-  visible: boolean
-  order: number
-  removable: boolean
-  isFixed?: boolean
+  type?: string
+  host?: string
+  parameters: Record<string, ParameterValueState>
+  _visible?: boolean
+  isChild?: boolean
 }
 ```
 
-2. Component Props:
+## Task Requirements
+
+1. Parameter Display
+
+- Show parameter values in DataTable cells
+- Group parameters by source (Identity Data, Constraints, Other)
+- Display parameter states (fetched, current, user modified)
+- Handle null/undefined values gracefully
+
+2. Parameter Interaction
+
+- Allow editing parameter values
+- Track value changes in ParameterValueState
+- Update UI to reflect parameter states
+- Handle validation and type conversion
+
+3. Parameter Filtering
+
+- Filter by parameter groups
+- Show/hide parameter columns
+- Remember user preferences
+- Handle dynamic updates
+
+4. Debug Features
+
+- Show parameter statistics
+- Display value state changes
+- Log parameter operations
+- Provide debugging tools
+
+## Technical Guidelines
+
+1. Type Safety
+
+- Use strict TypeScript checks
+- Implement proper type guards
+- Handle all edge cases
+- Validate data transformations
+
+2. Performance
+
+- Optimize parameter updates
+- Use computed properties effectively
+- Implement virtual scrolling
+- Batch parameter operations
+
+3. Error Handling
+
+- Add error boundaries
+- Provide clear error messages
+- Handle edge cases gracefully
+- Log debugging information
+
+4. Testing
+
+- Add unit tests for parameter handling
+- Test edge cases
+- Verify type safety
+- Test performance
+
+## Example Usage
 
 ```typescript
-interface Props {
-  tableData: TableRowData[]
-  columns: ColumnDef[]
-  loading?: boolean
-  sortField?: string
-  sortOrder?: number
-  filters?: Record<string, unknown>
+// Parameter cell display
+<template>
+  <div class="parameter-cell" :class="{ modified: isModified }">
+    <div class="value">{{ displayValue }}</div>
+    <div v-if="isModified" class="state-indicator">Modified</div>
+  </div>
+</template>
+
+// Parameter state handling
+const displayValue = computed(() => {
+  const state = props.parameter as ParameterValueState
+  return state.userValue ?? state.currentValue
+})
+
+const isModified = computed(() => {
+  const state = props.parameter as ParameterValueState
+  return state.userValue !== null
+})
+
+// Parameter updates
+function updateValue(value: ParameterValue) {
+  const state = props.parameter as ParameterValueState
+  state.previousValue = state.currentValue
+  state.currentValue = value
+  state.userValue = value
 }
 ```
 
-3. Store State:
+## Success Criteria
 
-```typescript
-interface StoreState {
-  scheduleData: ElementData[]
-  tableData: TableRowData[]
-  currentTableColumns: ColumnDef[]
-  selectedCategories: Set<string>
-  initialized: boolean
-  loading: boolean
-  error: Error | null
-}
-```
+1. Functionality
+
+- [ ] Parameters display correctly in table
+- [ ] Parameter groups are organized
+- [ ] Value states are tracked properly
+- [ ] Updates work smoothly
+
+2. Performance
+
+- [ ] Table scrolls smoothly
+- [ ] Updates are fast
+- [ ] Memory usage is optimized
+- [ ] No UI freezes
+
+3. Developer Experience
+
+- [ ] Clear error messages
+- [ ] Helpful debug output
+- [ ] Easy to maintain
+- [ ] Well documented
+
+4. User Experience
+
+- [ ] Intuitive parameter display
+- [ ] Clear state indicators
+- [ ] Smooth interactions
+- [ ] Helpful feedback
+
+## Next Steps
+
+1. Implement parameter cell component
+2. Add parameter group headers
+3. Create parameter state indicators
+4. Add parameter filtering UI
+5. Implement debug panel
+6. Add performance monitoring
+7. Create documentation
+8. Add tests

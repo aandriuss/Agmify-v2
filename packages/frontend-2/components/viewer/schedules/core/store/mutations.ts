@@ -1,105 +1,59 @@
 import { type Ref } from 'vue'
 import { debug, DebugCategories } from '../../utils/debug'
 import type { StoreState, StoreMutations } from '../types'
-import type { ElementData, TableRowData, ParameterValue } from '../../types'
+import type { ElementData, TableRow, ParameterValue, Parameters } from '../../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { defaultColumns } from '../../config/defaultColumns'
+import {
+  defaultColumns,
+  defaultDetailColumns,
+  defaultTable
+} from '../../config/defaultColumns'
+
+function isValidParameterValue(value: unknown): value is ParameterValue {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  )
+}
 
 export function createMutations(state: Ref<StoreState>): StoreMutations {
-  // Helper to validate project ID only for data operations
-  const validateProjectId = (operation: string): boolean => {
-    // Allow state management operations without project ID
-    if (
-      operation.startsWith('set') &&
-      ['setProjectId', 'setInitialized', 'setLoading', 'setError'].includes(operation)
-    ) {
-      return true
-    }
-
-    // Only validate project ID for data operations
-    if (!state.value.projectId) {
-      debug.warn(DebugCategories.STATE, `Cannot ${operation} without project ID`)
-      return false
-    }
-    return true
-  }
-
-  // Helper to ensure atomic updates
-  const atomicUpdate = <T>(operation: string, update: () => T): T | undefined => {
-    if (!validateProjectId(operation)) return
-
-    try {
-      state.value.loading = true
-      const result = update()
-      return result
-    } catch (error) {
-      debug.error(DebugCategories.ERROR, `${operation} failed:`, error)
-      throw error
-    } finally {
-      state.value.loading = false
-    }
-  }
-
   // Helper to convert unknown to ParameterValue
   const toParameterValue = (value: unknown): ParameterValue => {
-    if (value === null) return null
-    if (typeof value === 'string') return value
-    if (typeof value === 'number') return value
-    if (typeof value === 'boolean') return value
+    if (isValidParameterValue(value)) return value
     return String(value)
-  }
-
-  // Helper to process parameters and create columns
-  const processParameters = (elements: ElementData[]): ColumnDef[] => {
-    const parameterSet = new Set<string>()
-
-    // Collect all parameter names
-    elements.forEach((element) => {
-      if (element.parameters) {
-        Object.keys(element.parameters).forEach((key) => parameterSet.add(key))
-      }
-    })
-
-    // Create columns for parameters
-    return Array.from(parameterSet).map((field, index) => ({
-      field,
-      header: field,
-      type: 'string',
-      category: 'parameter',
-      description: `Parameter: ${field}`,
-      visible: true,
-      order: index,
-      removable: true,
-      source: 'Parameters'
-    }))
   }
 
   // Helper to create table data
   const createTableData = (
     elements: ElementData[],
     columns: ColumnDef[]
-  ): TableRowData[] => {
+  ): TableRow[] => {
     return elements.map((element) => {
-      const parameters: Record<string, ParameterValue> = {}
-      const data: Record<string, ParameterValue> = {}
+      const parameters: Parameters = {}
 
-      // Add special fields
-      data.mark = element.mark
-      data.category = element.category
-      data.type = element.type || ''
-      data.host = element.host || ''
-
-      // Add parameters
+      // Add parameters with state
       if (element.parameters) {
         columns.forEach((column) => {
           if (column.field in element.parameters!) {
             const value = toParameterValue(element.parameters![column.field])
-            parameters[column.field] = value
-            data[column.field] = value
+            parameters[column.field] = {
+              fetchedValue: value,
+              currentValue: value,
+              previousValue: value,
+              userValue: null
+            }
           }
         })
       }
+
+      debug.log(DebugCategories.DATA, 'Created table row', {
+        elementId: element.id,
+        parameterCount: Object.keys(element.parameters || {}).length,
+        stateParameterCount: Object.keys(parameters).length
+      })
 
       return {
         id: element.id,
@@ -108,8 +62,7 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
         type: element.type || '',
         parameters,
         _visible: true,
-        details: element.details,
-        data
+        details: element.details
       }
     })
   }
@@ -121,160 +74,133 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
       state.value.projectId = id
     },
     setScheduleData: (data: ElementData[]) => {
-      atomicUpdate('set schedule data', () => {
-        state.value.scheduleData = data
+      debug.log(DebugCategories.DATA, 'Setting schedule data', {
+        dataLength: data.length
       })
+      state.value.scheduleData = data
     },
     setEvaluatedData: (data: ElementData[]) => {
-      atomicUpdate('set evaluated data', () => {
-        state.value.evaluatedData = data
+      debug.log(DebugCategories.DATA, 'Setting evaluated data', {
+        dataLength: data.length
       })
+      state.value.evaluatedData = data
     },
-    setTableData: (data: TableRowData[]) => {
-      atomicUpdate('set table data', () => {
-        state.value.tableData = data
+    setTableData: (data: TableRow[]) => {
+      debug.log(DebugCategories.DATA, 'Setting table data', {
+        dataLength: data.length
       })
+      state.value.tableData = data
     },
 
     // Parameter mutations
     setCustomParameters: (params: CustomParameter[]) => {
-      atomicUpdate('set parameters', () => {
-        state.value.customParameters = params
-      })
+      state.value.customParameters = params
     },
     setParameterColumns: (columns: ColumnDef[]) => {
-      atomicUpdate('set parameter columns', () => {
-        state.value.parameterColumns = columns
-      })
+      state.value.parameterColumns = columns
     },
     setMergedParameters: (parent: CustomParameter[], child: CustomParameter[]) => {
-      atomicUpdate('set merged parameters', () => {
-        state.value.mergedParentParameters = parent
-        state.value.mergedChildParameters = child
-      })
+      state.value.mergedParentParameters = parent
+      state.value.mergedChildParameters = child
     },
     setProcessedParameters: (params: Record<string, unknown>) => {
-      atomicUpdate('set processed parameters', () => {
-        state.value.processedParameters = params
-      })
+      state.value.processedParameters = params
     },
     setParameterDefinitions: (defs: Record<string, unknown>) => {
-      atomicUpdate('set parameter definitions', () => {
-        state.value.parameterDefinitions = defs
-      })
+      state.value.parameterDefinitions = defs
     },
     setParameterVisibility: (parameterId: string, visible: boolean) => {
-      atomicUpdate('set parameter visibility', () => {
-        const params = state.value.customParameters.map((p) =>
-          p.id === parameterId ? { ...p, visible } : p
-        )
-        state.value.customParameters = params
-      })
+      const params = state.value.customParameters.map((p) =>
+        p.id === parameterId ? { ...p, visible } : p
+      )
+      state.value.customParameters = params
     },
     setParameterOrder: (parameterId: string, newIndex: number) => {
-      atomicUpdate('set parameter order', () => {
-        const params = [...state.value.customParameters]
-        const currentIndex = params.findIndex((p) => p.id === parameterId)
-        if (currentIndex !== -1) {
-          const [param] = params.splice(currentIndex, 1)
-          params.splice(newIndex, 0, param)
-          state.value.customParameters = params
-        }
-      })
+      const params = [...state.value.customParameters]
+      const currentIndex = params.findIndex((p) => p.id === parameterId)
+      if (currentIndex !== -1) {
+        const [param] = params.splice(currentIndex, 1)
+        params.splice(newIndex, 0, param)
+        state.value.customParameters = params
+      }
     },
 
     // Column mutations
     setCurrentColumns: (table: ColumnDef[], detail: ColumnDef[]) => {
-      atomicUpdate('set current columns', () => {
-        state.value.currentTableColumns = table
-        state.value.currentDetailColumns = detail
+      debug.log(DebugCategories.DATA, 'Setting current columns', {
+        tableLength: table.length,
+        detailLength: detail.length
       })
+      state.value.currentTableColumns = table
+      state.value.currentDetailColumns = detail
     },
     setMergedColumns: (table: ColumnDef[], detail: ColumnDef[]) => {
-      atomicUpdate('set merged columns', () => {
-        state.value.mergedTableColumns = table
-        state.value.mergedDetailColumns = detail
+      debug.log(DebugCategories.DATA, 'Setting merged columns', {
+        tableLength: table.length,
+        detailLength: detail.length
       })
+      state.value.mergedTableColumns = table
+      state.value.mergedDetailColumns = detail
     },
     setColumnVisibility: (columnId: string, visible: boolean) => {
-      atomicUpdate('set column visibility', () => {
-        const updateColumns = (columns: ColumnDef[]) =>
-          columns.map((c) => (c.field === columnId ? { ...c, visible } : c))
+      const updateColumns = (columns: ColumnDef[]) =>
+        columns.map((c) => (c.field === columnId ? { ...c, visible } : c))
 
-        state.value.currentTableColumns = updateColumns(state.value.currentTableColumns)
-        state.value.currentDetailColumns = updateColumns(
-          state.value.currentDetailColumns
-        )
-      })
+      state.value.currentTableColumns = updateColumns(state.value.currentTableColumns)
+      state.value.currentDetailColumns = updateColumns(state.value.currentDetailColumns)
     },
     setColumnOrder: (columnId: string, newIndex: number) => {
-      atomicUpdate('set column order', () => {
-        const reorderColumns = (columns: ColumnDef[]) => {
-          const currentIndex = columns.findIndex((c) => c.field === columnId)
-          if (currentIndex !== -1) {
-            const newColumns = [...columns]
-            const [column] = newColumns.splice(currentIndex, 1)
-            newColumns.splice(newIndex, 0, column)
-            return newColumns
-          }
-          return columns
+      const reorderColumns = (columns: ColumnDef[]) => {
+        const currentIndex = columns.findIndex((c) => c.field === columnId)
+        if (currentIndex !== -1) {
+          const newColumns = [...columns]
+          const [column] = newColumns.splice(currentIndex, 1)
+          newColumns.splice(newIndex, 0, column)
+          return newColumns
         }
+        return columns
+      }
 
-        state.value.currentTableColumns = reorderColumns(
-          state.value.currentTableColumns
-        )
-        state.value.currentDetailColumns = reorderColumns(
-          state.value.currentDetailColumns
-        )
-      })
+      state.value.currentTableColumns = reorderColumns(state.value.currentTableColumns)
+      state.value.currentDetailColumns = reorderColumns(
+        state.value.currentDetailColumns
+      )
     },
 
     // Category mutations
     setSelectedCategories: (categories: Set<string>) => {
-      atomicUpdate('set selected categories', () => {
-        state.value.selectedCategories = categories
-      })
+      state.value.selectedCategories = categories
     },
     setParentCategories: (categories: string[]) => {
-      atomicUpdate('set parent categories', () => {
-        state.value.selectedParentCategories = categories
-      })
+      state.value.selectedParentCategories = categories
     },
     setChildCategories: (categories: string[]) => {
-      atomicUpdate('set child categories', () => {
-        state.value.selectedChildCategories = categories
-      })
+      state.value.selectedChildCategories = categories
     },
 
     // Table mutations
     setTableInfo: (info) => {
-      // Allow table info updates without project ID
       state.value.selectedTableId = info.selectedTableId ?? state.value.selectedTableId
       state.value.tableName = info.tableName ?? state.value.tableName
       state.value.currentTableId = info.currentTableId ?? state.value.currentTableId
       state.value.tableKey = info.tableKey ?? state.value.tableKey
     },
     setTablesArray: (tables) => {
-      // Allow tables array updates without project ID
       state.value.tablesArray = tables
     },
 
     // Element mutations
     setElementVisibility: (elementId: string, visible: boolean) => {
-      atomicUpdate('set element visibility', () => {
-        state.value.scheduleData = state.value.scheduleData.map((element) =>
-          'id' in element && element.id === elementId
-            ? { ...element, _visible: visible }
-            : element
-        )
-      })
+      state.value.scheduleData = state.value.scheduleData.map((element) =>
+        'id' in element && element.id === elementId
+          ? { ...element, _visible: visible }
+          : element
+      )
     },
 
     // Header mutations
     setAvailableHeaders: (headers) => {
-      atomicUpdate('set available headers', () => {
-        state.value.availableHeaders = headers
-      })
+      state.value.availableHeaders = headers
     },
 
     // Status mutations
@@ -288,9 +214,26 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
       state.value.error = err
     },
 
+    setParentParameterColumns: (columns: ColumnDef[]) => {
+      state.value.parentParameterColumns = columns
+      // Keep backward compatibility
+      state.value.parameterColumns = [
+        ...columns,
+        ...(state.value.childParameterColumns || [])
+      ]
+    },
+    setChildParameterColumns: (columns: ColumnDef[]) => {
+      state.value.childParameterColumns = columns
+      // Keep backward compatibility
+      state.value.parameterColumns = [
+        ...(state.value.parentParameterColumns || []),
+        ...columns
+      ]
+    },
+
     // Data processing
     processData: async () => {
-      await atomicUpdate('process data', () => {
+      return new Promise<void>((resolve) => {
         debug.log(DebugCategories.DATA, 'Starting data processing', {
           scheduleDataLength: state.value.scheduleData.length,
           evaluatedDataLength: state.value.evaluatedData.length,
@@ -303,54 +246,16 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
         // Ensure all required data is present
         if (!state.value.scheduleData.length) {
           debug.warn(DebugCategories.DATA, 'No schedule data to process')
+          resolve()
           return
         }
 
-        // Step 1: Process parameters and create columns
-        const parameterColumns = processParameters(state.value.scheduleData)
-        state.value.parameterColumns = parameterColumns
-
-        debug.log(DebugCategories.DATA, 'Parameter columns processed', {
-          count: parameterColumns.length,
-          fields: parameterColumns.map((col) => col.field)
-        })
-
-        // Step 2: Ensure we have default columns
-        if (!state.value.currentTableColumns.length) {
-          state.value.currentTableColumns = [...defaultColumns]
-        }
-
-        // Step 3: Merge columns in correct order
-        const mergedColumns = [
-          ...state.value.currentTableColumns,
-          ...parameterColumns.filter(
-            (col) =>
-              !state.value.currentTableColumns.some(
-                (existing) => existing.field === col.field
-              )
-          )
-        ].map((col) => ({
-          ...col,
-          visible: col.visible !== false // Ensure visibility is set
-        }))
-
-        state.value.mergedTableColumns = mergedColumns
-
-        debug.log(DebugCategories.DATA, 'Columns merged', {
-          defaultCount: state.value.currentTableColumns.length,
-          parameterCount: parameterColumns.length,
-          mergedCount: mergedColumns.length,
-          visibleCount: mergedColumns.filter((col) => col.visible).length
-        })
-
-        // Step 4: Set visibility flags for all elements
-        state.value.scheduleData = state.value.scheduleData.map((element) => ({
-          ...element,
-          _visible: true
-        }))
-
-        // Step 5: Create table data with all parameters
-        const tableData = createTableData(state.value.scheduleData, mergedColumns)
+        // Step 1: Create table data with current columns
+        const allColumns = [
+          ...state.value.mergedTableColumns,
+          ...state.value.mergedDetailColumns
+        ]
+        const tableData = createTableData(state.value.scheduleData, allColumns)
         state.value.tableData = tableData
 
         debug.log(DebugCategories.DATA, 'Table data created', {
@@ -359,44 +264,17 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
           firstRow: tableData[0]
         })
 
-        // Step 6: Process custom parameters if needed
-        if (state.value.customParameters.length > 0) {
-          debug.log(DebugCategories.DATA, 'Processing custom parameters', {
-            customParametersLength: state.value.customParameters.length
-          })
-
-          // Add custom parameters to columns
-          state.value.customParameters.forEach((param) => {
-            if (!mergedColumns.some((col) => col.field === param.field)) {
-              mergedColumns.push({
-                field: param.field,
-                header: param.name,
-                type: 'string',
-                category: param.category,
-                description: param.description || '',
-                visible: param.visible ?? true,
-                order: param.order || mergedColumns.length,
-                removable: true,
-                source: 'Custom'
-              })
-            }
-          })
-
-          // Update merged columns after adding custom parameters
-          state.value.mergedTableColumns = mergedColumns
-        }
-
-        // Step 7: Update processed state
+        // Step 2: Update processed state
         state.value.initialized = true
 
         debug.log(DebugCategories.DATA, 'Data processing complete', {
           scheduleDataLength: state.value.scheduleData.length,
           tableDataLength: state.value.tableData.length,
-          columnsLength: mergedColumns.length,
-          visibleElements: state.value.scheduleData.filter((el) => el._visible).length,
-          visibleColumns: mergedColumns.filter((col) => col.visible).length,
-          columnFields: mergedColumns.map((col) => col.field)
+          visibleElements: state.value.scheduleData.filter((el) => el._visible).length
         })
+
+        // Allow state updates to propagate
+        setTimeout(resolve, 0)
       })
     },
 
@@ -410,23 +288,31 @@ export function createMutations(state: Ref<StoreState>): StoreMutations {
         tableData: [],
         customParameters: [],
         parameterColumns: [],
+        parentParameterColumns: [],
+        childParameterColumns: [],
         mergedParentParameters: [],
         mergedChildParameters: [],
         processedParameters: {},
-        currentTableColumns: [],
-        currentDetailColumns: [],
-        mergedTableColumns: [],
-        mergedDetailColumns: [],
+        // Preserve defaults
+        currentTableColumns: [...defaultColumns],
+        currentDetailColumns: [...defaultDetailColumns],
+        mergedTableColumns: [...defaultColumns],
+        mergedDetailColumns: [...defaultDetailColumns],
         parameterDefinitions: {},
         availableHeaders: { parent: [], child: [] },
         selectedCategories: new Set(),
-        selectedParentCategories: [],
-        selectedChildCategories: [],
+        // Preserve default categories
+        selectedParentCategories: [
+          ...defaultTable.categoryFilters.selectedParentCategories
+        ],
+        selectedChildCategories: [
+          ...defaultTable.categoryFilters.selectedChildCategories
+        ],
         tablesArray: [],
-        tableName: '',
-        selectedTableId: '',
-        currentTableId: '',
-        tableKey: '',
+        tableName: defaultTable.name,
+        selectedTableId: defaultTable.id,
+        currentTableId: defaultTable.id,
+        tableKey: '0',
         initialized: false,
         loading: false,
         error: null

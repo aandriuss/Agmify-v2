@@ -1,4 +1,4 @@
-import type { ElementData, TableRowData, AvailableHeaders } from '../types'
+import type { ElementData, TableRow, AvailableHeaders } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { ComputedRef, Ref } from 'vue'
@@ -36,11 +36,13 @@ export interface StoreState {
   projectId: string | null
   scheduleData: ElementData[]
   evaluatedData: ElementData[]
-  tableData: TableRowData[]
+  tableData: TableRow[]
 
   // Parameters
   customParameters: CustomParameter[]
-  parameterColumns: ColumnDef[]
+  parameterColumns: ColumnDef[] // Keep for backward compatibility
+  parentParameterColumns: ColumnDef[] // New: Parent-specific parameters
+  childParameterColumns: ColumnDef[] // New: Child-specific parameters
   mergedParentParameters: CustomParameter[]
   mergedChildParameters: CustomParameter[]
   processedParameters: Record<string, unknown>
@@ -78,11 +80,13 @@ export interface StoreMutations {
   setProjectId: (id: string | null) => void
   setScheduleData: (data: ElementData[]) => void
   setEvaluatedData: (data: ElementData[]) => void
-  setTableData: (data: TableRowData[]) => void
+  setTableData: (data: TableRow[]) => void
 
   // Parameter mutations
   setCustomParameters: (params: CustomParameter[]) => void
-  setParameterColumns: (columns: ColumnDef[]) => void
+  setParameterColumns: (columns: ColumnDef[]) => void // Keep for backward compatibility
+  setParentParameterColumns: (columns: ColumnDef[]) => void // New: Set parent parameters
+  setChildParameterColumns: (columns: ColumnDef[]) => void // New: Set child parameters
   setMergedParameters: (parent: CustomParameter[], child: CustomParameter[]) => void
   setProcessedParameters: (params: Record<string, unknown>) => void
   setParameterDefinitions: (defs: Record<string, unknown>) => void
@@ -141,9 +145,11 @@ export interface Store {
   projectId: ComputedRef<string | null>
   scheduleData: ComputedRef<ElementData[]>
   evaluatedData: ComputedRef<ElementData[]>
-  tableData: ComputedRef<TableRowData[]>
+  tableData: ComputedRef<TableRow[]>
   customParameters: ComputedRef<CustomParameter[]>
-  parameterColumns: ComputedRef<ColumnDef[]>
+  parameterColumns: ComputedRef<ColumnDef[]> // Keep for backward compatibility
+  parentParameterColumns: ComputedRef<ColumnDef[]> // New: Parent parameters
+  childParameterColumns: ComputedRef<ColumnDef[]> // New: Child parameters
   mergedParentParameters: ComputedRef<CustomParameter[]>
   mergedChildParameters: ComputedRef<CustomParameter[]>
   processedParameters: ComputedRef<Record<string, unknown>>
@@ -169,9 +175,11 @@ export interface Store {
   setProjectId: (id: string | null) => void
   setScheduleData: (data: ElementData[]) => void
   setEvaluatedData: (data: ElementData[]) => void
-  setTableData: (data: TableRowData[]) => void
+  setTableData: (data: TableRow[]) => void
   setCustomParameters: (params: CustomParameter[]) => void
-  setParameterColumns: (columns: ColumnDef[]) => void
+  setParameterColumns: (columns: ColumnDef[]) => void // Keep for backward compatibility
+  setParentParameterColumns: (columns: ColumnDef[]) => void // New: Set parent parameters
+  setChildParameterColumns: (columns: ColumnDef[]) => void // New: Set child parameters
   setMergedParameters: (parent: CustomParameter[], child: CustomParameter[]) => void
   setProcessedParameters: (params: Record<string, unknown>) => void
   setParameterDefinitions: (defs: Record<string, unknown>) => void

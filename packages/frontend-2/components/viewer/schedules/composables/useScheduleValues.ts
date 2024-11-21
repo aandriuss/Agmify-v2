@@ -1,5 +1,5 @@
 import { unref } from 'vue'
-import type { ElementData, TableRowData } from '../types'
+import type { ElementData, TableRow } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import scheduleStore from './useScheduleStore'
@@ -9,7 +9,7 @@ import { debug, DebugCategories } from '../utils/debug'
 interface ScheduleValues {
   scheduleData: ElementData[]
   evaluatedData: ElementData[]
-  tableData: TableRowData[]
+  tableData: TableRow[]
   customParameters: CustomParameter[]
   parameterColumns: ColumnDef[]
   currentTableColumns: ColumnDef[]
@@ -88,8 +88,8 @@ export function useScheduleValues(): ScheduleValues {
       [] as ElementData[]
     ),
     tableData: unwrapComputed(
-      () => safeStoreAccess(() => scheduleStore.tableData.value, [] as TableRowData[]),
-      [] as TableRowData[]
+      () => safeStoreAccess(() => scheduleStore.tableData.value, [] as TableRow[]),
+      [] as TableRow[]
     ),
     customParameters: unwrapComputed(
       () =>

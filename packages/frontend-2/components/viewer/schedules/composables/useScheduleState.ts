@@ -1,10 +1,5 @@
 import { ref, computed, watch, type Ref } from 'vue'
-import type {
-  ElementData,
-  AvailableHeaders,
-  ProcessingState,
-  TableRowData
-} from '../types'
+import type { ElementData, AvailableHeaders, ProcessingState, TableRow } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import { debug, DebugCategories } from '../utils/debug'
@@ -25,7 +20,7 @@ interface ScheduleStateReturn {
   state: {
     scheduleData: ElementData[]
     evaluatedData: ElementData[]
-    tableData: TableRowData[]
+    tableData: TableRow[]
     availableHeaders: AvailableHeaders
     parameterColumns: ColumnDef[]
     customParameters: CustomParameter[]
@@ -39,7 +34,7 @@ interface ScheduleStateReturn {
   initialized: Ref<boolean>
 
   // State updates
-  updateTableData: (data: TableRowData[]) => void
+  updateTableData: (data: TableRow[]) => void
   updateEvaluatedData: (data: ElementData[]) => void
   updateParameterColumns: (columns: ColumnDef[]) => void
   updateMergedParameters: (
@@ -81,7 +76,7 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
   const state = {
     scheduleData: [] as ElementData[],
     evaluatedData: [] as ElementData[],
-    tableData: [] as TableRowData[],
+    tableData: [] as TableRow[],
     availableHeaders: { parent: [], child: [] } as AvailableHeaders,
     parameterColumns: [] as ColumnDef[],
     customParameters: [] as CustomParameter[],
@@ -155,7 +150,7 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
   )
 
   // State update methods
-  function updateTableData(data: TableRowData[]) {
+  function updateTableData(data: TableRow[]) {
     state.tableData = data
   }
 

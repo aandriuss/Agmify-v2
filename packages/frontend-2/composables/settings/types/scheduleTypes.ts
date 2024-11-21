@@ -1,4 +1,5 @@
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/types'
+import type { BIMNodeRaw } from '~/components/viewer/schedules/types'
 
 export interface ColumnConfig {
   field: string
@@ -13,7 +14,10 @@ export interface BaseParameter {
   field: string
   header: string
   category?: string
-  source?: string // Parameter group (e.g., 'Identity Data', 'Constraints')
+  source?: string // Legacy parameter group (for backward compatibility)
+  fetchedGroup?: string // Group from raw data
+  currentGroup?: string // Current group (initially same as fetchedGroup)
+  isFetched?: boolean // Whether parameter was fetched from raw data or is custom
   color?: string
   description?: string
   removable?: boolean
@@ -27,6 +31,7 @@ export interface CustomParameter extends BaseParameter {
   type: 'fixed' | 'equation'
   value?: string
   equation?: string
+  raw?: BIMNodeRaw // Raw BIM data for parameter
 }
 
 export interface NamedTableConfig {

@@ -1,180 +1,166 @@
 # Schedule System Implementation Status
 
-## Current Issues (🚫 Blocking)
+## Current Progress (✅ Completed)
 
-### 1. Viewer Initialization Chain
+### 1. Parameter Architecture
 
 ```typescript
-// Error: inject() can only be used inside setup()
-const { viewer } = useInjectedViewer() // ❌ Wrong timing
+// Parameter value state tracking
+interface ParameterValueState {
+  fetchedValue: ParameterValue // Original from BIM
+  currentValue: ParameterValue // Current display value
+  previousValue: ParameterValue // For undo/redo
+  userValue: ParameterValue | null // User modifications
+}
 
-// Error: Cannot destructure property 'viewer'
-const { viewer } = useInjectedViewerState() // ❌ State not ready
+// Parameter discovery
+interface ProcessedHeader {
+  field: string // Parameter identifier
+  header: string // Display name
+  fetchedGroup: string // Original group
+  currentGroup: string // Current group
+  type: ParameterValueType
+  category: string
+  description: string
+  isFetched: boolean
+  source: string // Identity Data, Constraints, Other
+}
+```
+
+- ✅ Parameter state tracking
+- ✅ Parameter group organization
+- ✅ Parameter discovery flow
+- ✅ Type safety improvements
+
+### 2. Element Structure
+
+```typescript
+// Base element structure
+interface BaseElementData {
+  id: string
+  mark: string
+  category: string
+  type?: string
+  host?: string
+  _visible?: boolean
+  isChild?: boolean
+}
+
+// Discovery phase data
+interface ElementData extends BaseElementData {
+  parameters: ParametersWithGroups
+}
+
+// Final table data
+interface TableRow extends BaseElementData {
+  parameters: Parameters
+}
+```
+
+- ✅ Clear element hierarchy
+- ✅ Parent-child relationships
+- ✅ Parameter organization
+- ✅ Type safety
+
+### 3. Data Pipeline
+
+```typescript
+// Parameter processing chain
+Raw BIM Data -> Parameter Discovery -> Parameter States -> UI Display
+     ↓               ↓                    ↓                 ↓
+  Raw JSON     ProcessedHeaders     ParameterStates    TableRows
+```
+
+- ✅ Two-phase parameter handling
+- ✅ Clear data transformation
+- ✅ Type safety throughout
+- ✅ Error handling
+
+## Current Issues (🚫 Blocking)
+
+### 1. Parameter Display
+
+```typescript
+// Need to implement
+interface ParameterCell {
+  parameter: ParameterValueState
+  isModified: boolean
+  displayValue: string
+  onUpdate: (value: ParameterValue) => void
+}
 ```
 
 Root cause:
 
-- Viewer state injection timing issues
-- Container not properly mounted
-- State access before initialization
+- Parameter cell component not implemented
+- Value state display not handled
+- Update flow not defined
 
-### 2. Framebuffer Issues
+### 2. Parameter Groups
 
-```
-GL_INVALID_FRAMEBUFFER_OPERATION: Framebuffer incomplete
-Error: Attachment has zero size
+```typescript
+// Need to implement
+interface ParameterGroup {
+  source: string
+  parameters: ParameterValueState[]
+  visibleCount: number
+  totalCount: number
+}
 ```
 
 Root cause:
 
-- Container dimensions not established
-- Viewer initialization before container ready
-- Missing size constraints
-
-## Recent Progress (✅ Completed)
-
-### 1. Core Architecture
-
-- ✅ Identified initialization chain issues
-- ✅ Mapped state dependencies
-- ✅ Documented error patterns
-- ✅ Created implementation plan
-
-### 2. Error Handling
-
-- ✅ Added error categories
-- ✅ Improved error messages
-- ✅ Added debug utilities
-- ✅ Created recovery patterns
-
-### 3. Data Display (Updated)
-
-- ✅ Fixed data access in TableWrapper
-- ✅ Updated category initialization
-- ✅ Improved data transformation
-- ✅ Enhanced state management
-- ✅ Implemented independent element handling
-- ✅ Added host-mark relationship matching
-
-### 4. Element Relationships (New)
-
-- ✅ Independent BIM elements
-- ✅ Category-based filtering
-- ✅ Host-mark relationship matching
-- ✅ "Without Host" grouping
-- ✅ Parameter discovery per element
+- Group headers not implemented
+- Group statistics not tracked
+- Visibility state not managed
 
 ## Immediate Tasks (⏳ In Progress)
 
-### 1. Container Management
+### 1. Parameter Cell Component
 
 ```typescript
-// Add container management
-const viewerContainer = ref<HTMLElement | null>(null)
+// Parameter cell implementation
+const ParameterCell = defineComponent({
+  props: {
+    parameter: {
+      type: Object as PropType<ParameterValueState>,
+      required: true
+    }
+  },
+  setup(props) {
+    const displayValue = computed(() => {
+      return props.parameter.userValue ?? props.parameter.currentValue
+    })
 
-// Add size constraints
-<div
-  ref="viewerContainer"
-  class="viewer-container"
-  style="width: 100%; height: 100%; min-height: 400px"
->
-```
+    const isModified = computed(() => {
+      return props.parameter.userValue !== null
+    })
 
-### 2. State Initialization
-
-```typescript
-// Proper initialization order
-onMounted(async () => {
-  // 1. Ensure container
-  if (!viewerContainer.value) {
-    throw new Error('Container not mounted')
+    return { displayValue, isModified }
   }
-
-  // 2. Setup viewer state
-  useSetupViewer({ projectId })
-
-  // 3. Wait for initialization
-  await waitForInitialization()
-
-  // 4. Initialize schedule system
-  setup.value = useScheduleSetupInstance(...)
 })
 ```
 
-### 3. Error Recovery
+### 2. Parameter Group Display
 
 ```typescript
-// Add recovery mechanisms
-const handleRecovery = async () => {
-  error.value = null
-  if (viewerContainer.value) {
-    await reinitializeViewer()
-  }
-}
-```
-
-### 4. Element Processing (Updated)
-
-```typescript
-// Element relationship handling
-const processElements = async () => {
-  // 1. Extract parameters with host handling
-  const parameters = extractParameters(raw)
-  if (raw.Constraints?.Host) {
-    parameters.host = raw.Constraints.Host
-    parameterGroups.host = 'Constraints'
-  }
-
-  // 2. Create element with parameters
-  const element = createEmptyElement(
-    raw.id.toString(),
-    speckleType,
-    mark,
-    category,
-    parameters
-  )
-
-  // 3. Filter by categories
-  const { filteredElements } = filterElements({
-    allElements: toMutable(elements),
-    selectedParent: parentCats,
-    selectedChild: childCats
-  })
-
-  // 4. Process parameters
-  const { processedElements, parameterColumns, availableHeaders } =
-    await processParameters({
-      filteredElements: toMutable(filteredElements)
-    })
-
-  // 5. Update store with all data at once
-  await store.lifecycle.update({
-    scheduleData: processedElements,
-    parameterColumns: parameterColumnsWithDefaults,
-    availableHeaders: {
-      parent: availableHeaders.parent,
-      child: availableHeaders.child
+// Group header implementation
+const ParameterGroupHeader = defineComponent({
+  props: {
+    group: {
+      type: Object as PropType<ParameterGroup>,
+      required: true
     }
-  })
-}
-```
+  },
+  setup(props) {
+    const stats = computed(() => ({
+      visible: props.group.visibleCount,
+      total: props.group.totalCount,
+      percentage: Math.round((props.group.visibleCount / props.group.totalCount) * 100)
+    }))
 
-### 5. Store Updates (New)
-
-```typescript
-// Store lifecycle management
-interface StoreLifecycle {
-  init: () => Promise<void>
-  update: (state: Partial<StoreState>) => Promise<void>
-  cleanup: () => void
-}
-
-// Batch state updates
-await store.lifecycle.update({
-  selectedParentCategories: parentCategories,
-  selectedChildCategories: childCategories,
-  scheduleData: processedElements,
-  parameterColumns: parameterColumnsWithDefaults
+    return { stats }
+  }
 })
 ```
 
@@ -182,164 +168,103 @@ await store.lifecycle.update({
 
 ### 1. Short Term
 
-#### Container Management
+#### Parameter Display
 
-- [ ] Add container validation
-- [ ] Improve size handling
-- [ ] Add resize handling
-- [ ] Add container tests
+- [ ] Create ParameterCell component
+- [ ] Add value state indicators
+- [ ] Handle parameter updates
+- [ ] Add validation
 
-#### State Management
+#### Group Management
 
-- [ ] Fix injection timing
-- [ ] Add state validation
-- [ ] Improve error handling
-- [ ] Add state tests
-
-#### Error Handling
-
-- [ ] Add error boundaries
-- [ ] Improve recovery
-- [ ] Add error logging
-- [ ] Add error tests
+- [ ] Implement group headers
+- [ ] Add group statistics
+- [ ] Handle visibility
+- [ ] Add group filtering
 
 ### 2. Medium Term
 
 #### Performance
 
-- [ ] Optimize initialization
-- [ ] Add lazy loading
-- [ ] Improve state updates
-- [ ] Add benchmarks
-
-#### Testing
-
-- [ ] Add unit tests
-- [ ] Add integration tests
-- [ ] Add error tests
-- [ ] Add performance tests
-
-#### Documentation
-
-- [ ] Update architecture docs
-- [ ] Add error guides
-- [ ] Improve examples
-- [ ] Add debugging guides
+- [ ] Virtual scrolling
+- [ ] Lazy parameter loading
+- [ ] Batch updates
+- [ ] State caching
 
 ### 3. Long Term
 
-#### Monitoring
-
-- [ ] Add performance metrics
-- [ ] Add error tracking
-- [ ] Add usage analytics
-- [ ] Add debugging tools
-
 #### Developer Experience
 
-- [ ] Improve error messages
-- [ ] Add development tools
-- [ ] Enhance documentation
-- [ ] Add code examples
+- [ ] Parameter debugging tools
+- [ ] State visualization
+- [ ] Performance monitoring
+- [ ] Testing utilities
 
-## Success Metrics (Updated)
+## Success Metrics
 
-### 1. Initialization
+### Parameter Display
 
-- [ ] Container mounts successfully
-- [ ] Viewer initializes properly
-- [ ] State flows correctly
-- [ ] No timing issues
+- [ ] Values show correctly
+- [ ] States are visible
+- [ ] Updates work smoothly
+- [ ] Validation works
 
-### 2. Error Handling
+### Group Management
 
-- [ ] Clear error messages
-- [ ] Proper recovery
-- [ ] State consistency
-- [ ] User feedback
+- [ ] Groups are organized
+- [ ] Statistics are accurate
+- [ ] Filtering works
+- [ ] UI is responsive
 
-### 3. Performance
+## Current Status
 
-- [ ] Fast initialization
-- [ ] Smooth recovery
-- [ ] No memory leaks
-- [ ] Good error reporting
+### Working
 
-### 4. Data Display (New)
+- ✅ Parameter state tracking
+- ✅ Parameter discovery
+- ✅ Element relationships
+- ✅ Type safety
 
-- [x] Direct data access working
-- [x] All categories visible by default
-- [ ] Smooth data updates
-- [ ] Proper error states
+### In Progress
 
-### 4. Data Organization (New)
+- ⏳ Parameter cell component
+- ⏳ Group management
+- ⏳ Value display
+- ⏳ State indicators
 
-- [x] Elements processed independently
-- [x] Categories filtered correctly
-- [x] Host-mark relationships established
-- [x] Orphaned elements handled properly
-- [x] Parameters discovered per element
+### Pending
 
-## Current Status (Updated)
-
-### Data Organization
-
-- Element Independence: ✅ Complete
-- Category Filtering: ✅ Complete
-- Relationship Matching: ✅ Complete
-- Parameter Discovery: ✅ Complete
-- Host Parameter Extraction: ✅ Complete
-- Store Updates: ✅ Complete
-- Error Handling: 🔄 In Progress
-
-### Code Quality
-
-- Type Safety: ✅ Complete
-- Error Handling: 🔄 In Progress
-- Component Architecture: ✅ Complete
-- State Management: ✅ Complete
-- Store Lifecycle: ✅ Complete
-
-### Performance
-
-- Initial Load: 🔄 In Progress
-- Updates: ✅ Complete
-- Memory Usage: ✅ Complete
-- Error Recovery: 🔄 In Progress
-
-### Developer Experience
-
-- Type Safety: ✅ Complete
-- Error Handling: 🔄 In Progress
-- Documentation: 🔄 In Progress
-- Testing: ⏳ Pending
-
-### Data Display (New)
-
-- Data Access: ✅ Complete
-- Category Management: ✅ Complete
-- State Updates: 🔄 In Progress
-- Error States: 🔄 In Progress
+- ❌ Parameter updates
+- ❌ Group filtering
+- ❌ Performance optimization
+- ❌ Testing
 
 ## Next Development Phase
 
-### 1. Core Updates
+### 1. Core Features
 
-- Fix initialization chain
-- Add container management
-- Improve error handling
-- Add recovery mechanisms
+- Implement parameter display
+- Add group management
+- Handle parameter updates
+- Add validation
 
-### 2. Testing
+### 2. UI/UX
 
-- Add initialization tests
-- Add error tests
-- Add recovery tests
-- Add performance tests
+- Add state indicators
+- Improve group headers
+- Enhance filtering
+- Add animations
 
-### 3. Documentation
+### 3. Performance
 
-- Update architecture docs
-- Add error guides
-- Improve examples
-- Add debugging guides
+- Add virtual scrolling
+- Implement lazy loading
+- Optimize updates
+- Add caching
+
+### 4. Developer Tools
+
+- Add debugging features
+- Improve error messages
+- Add performance metrics
+- Create testing utilities

@@ -2,8 +2,8 @@
   <div
     class="debug-panel transition-all duration-300"
     :class="{
-      'h-12 overflow-hidden': !showRawData,
-      'h-auto': showRawData
+      'h-12 overflow-hidden': !isVisible,
+      'h-auto': isVisible
     }"
   >
     <div class="p-4 bg-gray-100 border-b">
@@ -15,7 +15,7 @@
         <div class="flex items-center gap-2">
           <label class="sr-only" for="debugFilter">Filter debug data</label>
           <input
-            v-if="showRawData"
+            v-if="isVisible"
             id="debugFilter"
             v-model="filterModel"
             type="text"
@@ -26,417 +26,175 @@
             class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors flex items-center gap-1"
             @click="toggle"
           >
-            <span v-if="!showRawData" class="i-mdi-chevron-down" />
+            <span v-if="!isVisible" class="i-mdi-chevron-down" />
             <span v-else class="i-mdi-chevron-up" />
-            {{ showRawData ? 'Hide' : 'Show' }}
+            {{ isVisible ? 'Hide' : 'Show' }}
           </button>
         </div>
       </div>
-      <!-- Table Data List -->
-      <div class="space-y-2">
-        <div class="flex justify-between items-center">
-          <h4 class="font-medium">Table Data:</h4>
-          <div class="flex items-center gap-2">
-            <div class="relative">
-              <label for="tableDataFilter" class="sr-only">Filter table data</label>
-              <input
-                id="tableDataFilter"
-                v-model="tableDataFilter"
-                type="text"
-                placeholder="Filter table data..."
-                class="px-2 py-1 text-xs border rounded"
-              />
-            </div>
-            <div class="relative">
-              <label for="tableDataSort" class="sr-only">Sort table data</label>
-              <select
-                id="tableDataSort"
-                v-model="tableDataSort"
-                class="text-xs border rounded px-1 py-1"
-              >
-                <option value="category">Sort by Category</option>
-                <option value="type">Sort by Type</option>
-                <option value="details">Sort by Details Count</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="bg-white p-3 rounded shadow-sm max-h-60 overflow-auto">
-          <div v-for="row in filteredSortedTableData" :key="row.id" class="mb-4">
-            <!-- Basic Info -->
-            <div class="flex items-center gap-2 mb-2">
-              <span
-                class="w-2 h-2 rounded-full"
-                :class="row.details?.length ? 'bg-green-500' : 'bg-gray-500'"
-                :title="row.details?.length ? 'Has details' : 'No details'"
-              ></span>
-              <span class="text-sm font-medium">
-                {{ row.type || 'Unknown' }} ({{ row.category }})
-              </span>
-            </div>
-
-            <!-- Basic Parameters -->
-            <div class="ml-4 mb-2">
-              <div class="text-xs font-medium text-gray-500 mb-1">
-                Basic Parameters:
-              </div>
-              <div class="grid grid-cols-2 gap-2">
-                <div class="text-xs">
-                  <span class="text-gray-600">Mark:</span>
-                  <span class="ml-1">{{ row.mark || 'N/A' }}</span>
-                </div>
-                <div v-if="row.host" class="text-xs">
-                  <span class="text-gray-600">Host:</span>
-                  <span class="ml-1">{{ row.host }}</span>
-                </div>
-                <div v-if="row.name" class="text-xs">
-                  <span class="text-gray-600">Name:</span>
-                  <span class="ml-1">{{ row.name }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Active Parameters -->
-            <div v-if="row.parameters" class="ml-4 mb-2">
-              <div class="text-xs font-medium text-gray-500 mb-1">
-                Active Parameters:
-              </div>
-              <div class="grid grid-cols-2 gap-2">
-                <template v-for="col in visibleColumns" :key="col.field">
-                  <div v-if="row.parameters[col.field]" class="text-xs">
-                    <span class="text-gray-600">{{ col.header }}:</span>
-                    <span class="ml-1">{{ row.parameters[col.field] }}</span>
-                  </div>
-                </template>
-              </div>
-            </div>
-
-            <!-- Extracted Fields -->
-            <div v-if="row.extractedFields" class="ml-4 mb-2">
-              <div class="text-xs font-medium text-gray-500 mb-1">Parameters:</div>
-              <div class="grid grid-cols-2 gap-2">
-                <div
-                  v-for="(value, key) in row.extractedFields"
-                  :key="key"
-                  class="text-xs"
-                >
-                  <span class="text-gray-600">{{ key }}:</span>
-                  <span class="ml-1">{{ value || 'N/A' }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Raw Data Groups -->
-            <div v-if="row._raw" class="ml-4">
-              <div class="text-xs font-medium text-gray-500 mb-1">Groups:</div>
-              <div class="space-y-2">
-                <template
-                  v-for="(group, groupName) in groupedRawData(row._raw)"
-                  :key="groupName"
-                >
-                  <div v-if="Object.keys(group).length > 0">
-                    <div class="text-xs font-medium text-blue-600 mb-1">
-                      {{ groupName }}:
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 ml-2">
-                      <div v-for="(value, key) in group" :key="key" class="text-xs">
-                        <span class="text-gray-600">{{ key }}:</span>
-                        <span
-                          class="ml-1"
-                          :class="{
-                            'text-blue-600':
-                              groupName === 'Constraints' && key === 'Host' && value,
-                            'text-red-600':
-                              groupName === 'Constraints' && key === 'Host' && !value
-                          }"
-                        >
-                          {{ value || 'N/A' }}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
-
-            <!-- Details Count -->
-            <div v-if="row.details?.length" class="ml-4 mt-2 text-xs text-gray-600">
-              <span class="font-medium">Details:</span>
-              <span class="ml-1">{{ row.details.length }} items</span>
-            </div>
-            <div>
-              <div class="ml-4 text-xs text-gray-600">
-                <span>Mark: {{ row.mark || 'N/A' }}</span>
-                <span v-if="row.details?.length" class="ml-2">
-                  Details: {{ row.details.length }}
-                </span>
-                <span v-if="row.host" class="ml-2">Host: {{ row.host }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-if="showRawData" class="space-y-4">
-          <!-- Data Stats with Visual Indicators -->
-          <div class="space-y-2">
-            <h4 class="font-medium">Data Stats:</h4>
-            <div class="grid grid-cols-2 gap-4">
-              <div class="bg-white p-3 rounded shadow-sm">
-                <div class="flex justify-between items-center">
-                  <span class="text-sm text-gray-600">Schedule Data</span>
-                  <span class="font-medium">{{ scheduleData.length }}</span>
-                </div>
-                <div class="mt-2 h-1 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    class="h-full bg-blue-500 transition-all duration-500"
-                    :style="{
-                      width: `${scheduleDataProgress}%`
-                    }"
-                  ></div>
-                </div>
-              </div>
-              <div class="bg-white p-3 rounded shadow-sm">
-                <div class="flex justify-between items-center">
-                  <span class="text-sm text-gray-600">Evaluated Data</span>
-                  <span class="font-medium">{{ evaluatedData.length }}</span>
-                </div>
-                <div class="mt-2 h-1 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    class="h-full bg-green-500 transition-all duration-500"
-                    :style="{
-                      width: `${evaluatedDataProgress}%`
-                    }"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Category Stats -->
-          <div class="space-y-2">
-            <h4 class="font-medium">Category Stats:</h4>
-            <div class="bg-white p-3 rounded shadow-sm">
-              <div class="space-y-2">
-                <div>
-                  <div class="text-sm font-medium mb-1">Parent Categories:</div>
-                  <div class="text-xs text-gray-600">
-                    {{ uniqueParentCategories.join(', ') || 'None' }}
-                  </div>
-                </div>
-                <div>
-                  <div class="text-sm font-medium mb-1">Child Categories:</div>
-                  <div class="text-xs text-gray-600">
-                    {{ uniqueChildCategories.join(', ') || 'None' }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Relationship Stats -->
-          <div class="space-y-2">
-            <h4 class="font-medium">Relationship Stats:</h4>
-            <div class="grid grid-cols-2 gap-4">
-              <div class="bg-white p-3 rounded shadow-sm">
-                <div class="flex justify-between items-center">
-                  <span class="text-sm text-gray-600">Parent Elements</span>
-                  <span class="font-medium">{{ parentElements.length }}</span>
-                </div>
-                <div class="mt-2 text-xs text-gray-500">
-                  With marks: {{ parentElementsWithMarks.length }}
-                  <span
-                    class="ml-1 text-xs"
-                    :class="
-                      parentElementsWithMarks.length === parentElements.length
-                        ? 'text-green-600'
-                        : 'text-red-600'
-                    "
-                  >
-                    ({{
-                      Math.round(
-                        (parentElementsWithMarks.length / parentElements.length) * 100
-                      ) || 0
-                    }}%)
-                  </span>
-                </div>
-              </div>
-              <div class="bg-white p-3 rounded shadow-sm">
-                <div class="flex justify-between items-center">
-                  <span class="text-sm text-gray-600">Child Elements</span>
-                  <span class="font-medium">{{ childElements.length }}</span>
-                </div>
-                <div class="mt-2 text-xs text-gray-500">
-                  With hosts: {{ childElementsWithHosts.length }}
-                  <span
-                    class="ml-1 text-xs"
-                    :class="
-                      childElementsWithHosts.length === childElements.length
-                        ? 'text-green-600'
-                        : 'text-red-600'
-                    "
-                  >
-                    ({{
-                      Math.round(
-                        (childElementsWithHosts.length / childElements.length) * 100
-                      ) || 0
-                    }}%)
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Parent-Child Relationships -->
-          <div class="space-y-2">
-            <h4 class="font-medium">Parent-Child Relationships:</h4>
+      <div v-if="isVisible" class="text-xs text-gray-500">
+        <!-- Parameter Stats -->
+        <div class="space-y-2">
+          <h4 class="font-medium">Parameter Stats:</h4>
+          <div class="grid grid-cols-2 gap-4">
+            <!-- Parent Element Parameters -->
             <div class="bg-white p-3 rounded shadow-sm">
               <div class="flex justify-between items-center mb-2">
-                <span class="text-sm text-gray-600">Matched Relationships</span>
-                <span class="font-medium">{{ matchedRelationships.length }}</span>
+                <span class="text-sm text-gray-600">Parent Parameters</span>
+                <span class="font-medium">{{ getParentParameterCount() }}</span>
               </div>
-              <div class="text-xs text-gray-500 space-y-1">
-                <div class="flex justify-between">
-                  <span>Orphaned children:</span>
-                  <span
-                    :class="
-                      orphanedChildren.length === 0 ? 'text-green-600' : 'text-red-600'
-                    "
-                    class="font-medium"
-                  >
-                    {{ orphanedChildren.length }}
-                  </span>
+              <div class="text-xs text-gray-500">
+                <div class="flex justify-between mb-1">
+                  <span>Raw Fetched:</span>
+                  <span class="font-medium">{{ parentRawCount }}</span>
                 </div>
-                <div class="flex justify-between">
-                  <span>Parents without children:</span>
-                  <span
-                    :class="
-                      parentsWithoutChildren.length === 0
-                        ? 'text-green-600'
-                        : 'text-red-600'
-                    "
-                    class="font-medium"
+                <div class="flex justify-between mb-1">
+                  <span>Unique:</span>
+                  <span class="font-medium">{{ availableParentHeaders.length }}</span>
+                </div>
+                <div class="flex justify-between mb-1">
+                  <span>Active:</span>
+                  <span class="font-medium">{{ getActiveParentParameterCount() }}</span>
+                </div>
+                <div class="mt-2 space-y-2">
+                  <div
+                    v-for="group in parentParameterGroups"
+                    :key="group.source"
+                    class="bg-gray-50 p-2 rounded"
                   >
-                    {{ parentsWithoutChildren.length }}
-                  </span>
+                    <div class="flex justify-between items-center">
+                      <span class="font-medium text-gray-700">
+                        {{ group.source }}
+                      </span>
+                      <span class="text-xs bg-white px-2 py-1 rounded">
+                        {{ group.visibleCount }}/{{ group.totalCount }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Child Element Parameters -->
+            <div class="bg-white p-3 rounded shadow-sm">
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-sm text-gray-600">Child Parameters</span>
+                <span class="font-medium">{{ getChildParameterCount() }}</span>
+              </div>
+              <div class="text-xs text-gray-500">
+                <div class="flex justify-between mb-1">
+                  <span>Raw Fetched:</span>
+                  <span class="font-medium">{{ childRawCount }}</span>
+                </div>
+                <div class="flex justify-between mb-1">
+                  <span>Unique:</span>
+                  <span class="font-medium">{{ availableChildHeaders.length }}</span>
+                </div>
+                <div class="flex justify-between mb-1">
+                  <span>Active:</span>
+                  <span class="font-medium">{{ getActiveChildParameterCount() }}</span>
+                </div>
+                <div class="mt-2 space-y-2">
+                  <div
+                    v-for="group in childParameterGroups"
+                    :key="group.source"
+                    class="bg-gray-50 p-2 rounded"
+                  >
+                    <div class="flex justify-between items-center">
+                      <span class="font-medium text-gray-700">
+                        {{ group.source }}
+                      </span>
+                      <span class="text-xs bg-white px-2 py-1 rounded">
+                        {{ group.visibleCount }}/{{ group.totalCount }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- Parent Elements List -->
-          <div class="space-y-2">
-            <div class="flex justify-between items-center">
-              <h4 class="font-medium">Parent Elements:</h4>
-              <div class="flex items-center gap-2">
-                <div class="relative">
-                  <label for="parentFilter" class="sr-only">Filter parents</label>
-                  <input
-                    id="parentFilter"
-                    v-model="parentFilter"
-                    type="text"
-                    placeholder="Filter parents..."
-                    class="px-2 py-1 text-xs border rounded"
-                  />
-                </div>
-                <div class="relative">
-                  <label for="parentSort" class="sr-only">Sort parents</label>
-                  <select
-                    id="parentSort"
-                    v-model="parentSort"
-                    class="text-xs border rounded px-1 py-1"
-                  >
-                    <option value="category">Sort by Category</option>
-                    <option value="mark">Sort by Mark</option>
-                    <option value="children">Sort by Children</option>
-                  </select>
-                </div>
+        <!-- DataTable Data -->
+        <div class="mt-4 space-y-2">
+          <h4 class="font-medium">DataTable Data:</h4>
+          <div class="bg-white p-3 rounded shadow-sm">
+            <div class="text-xs text-gray-500">
+              <div class="flex justify-between mb-1">
+                <span>Table Data Rows:</span>
+                <span class="font-medium">{{ tableData.length }}</span>
               </div>
-            </div>
-            <div class="bg-white p-3 rounded shadow-sm max-h-60 overflow-auto">
-              <div
-                v-for="parent in filteredSortedParents"
-                :key="parent.id"
-                class="mb-2"
-              >
-                <div class="flex items-center gap-2">
-                  <span
-                    class="w-2 h-2 rounded-full"
-                    :class="parent.mark ? 'bg-green-500' : 'bg-red-500'"
-                    :title="parent.mark ? 'Has mark' : 'Missing mark'"
-                  ></span>
-                  <span class="text-sm">{{ parent.type }} ({{ parent.category }})</span>
-                </div>
-                <div class="ml-4 text-xs text-gray-600">
-                  Mark: {{ parent.mark || 'Missing' }}
-                  <span v-if="getChildrenCount(parent)" class="ml-2">
-                    Children: {{ getChildrenCount(parent) }}
-                  </span>
-                </div>
+              <div class="flex justify-between mb-1">
+                <span>Schedule Data Elements:</span>
+                <span class="font-medium">{{ scheduleData.length }}</span>
               </div>
-            </div>
-          </div>
+              <div class="flex justify-between mb-1">
+                <span>Evaluated Data Elements:</span>
+                <span class="font-medium">{{ evaluatedData.length }}</span>
+              </div>
+              <div class="flex justify-between mb-1">
+                <span>Parent Parameter Columns:</span>
+                <span class="font-medium">{{ parentParameterColumns.length }}</span>
+              </div>
+              <div class="flex justify-between mb-1">
+                <span>Child Parameter Columns:</span>
+                <span class="font-medium">{{ childParameterColumns.length }}</span>
+              </div>
 
-          <!-- Child Elements List -->
-          <div class="space-y-2">
-            <div class="flex justify-between items-center">
-              <h4 class="font-medium">Child Elements:</h4>
-              <div class="flex items-center gap-2">
-                <div class="relative">
-                  <label for="childFilter" class="sr-only">Filter children</label>
-                  <input
-                    id="childFilter"
-                    v-model="childFilter"
-                    type="text"
-                    placeholder="Filter children..."
-                    class="px-2 py-1 text-xs border rounded"
-                  />
-                </div>
-                <div class="relative">
-                  <label for="childSort" class="sr-only">Sort children</label>
-                  <select
-                    id="childSort"
-                    v-model="childSort"
-                    class="text-xs border rounded px-1 py-1"
-                  >
-                    <option value="category">Sort by Category</option>
-                    <option value="host">Sort by Host</option>
-                    <option value="status">Sort by Status</option>
-                  </select>
-                </div>
+              <!-- New section for raw data view -->
+              <div class="mt-4">
+                <h5 class="font-medium mb-2">Data Structure:</h5>
+                <pre class="bg-gray-50 p-2 rounded overflow-auto max-h-40">
+                  <code>
+                    {
+                      "tableState": {
+                        "rowCount": {{ tableData.length }},
+                        "columnCount": {{ parentParameterColumns.length + childParameterColumns.length }},
+                        "parentColumns": {{ parentParameterColumns.length }},
+                        "childColumns": {{ childParameterColumns.length }}
+                      },
+                      "parameters": {
+                        "parent": {
+                          "raw": {{ parentRawCount }},
+                          "unique": {{ availableParentHeaders.length }},
+                          "active": {{ getActiveParentParameterCount() }},
+                          "groups": {{ parentGroupsString }}
+                        },
+                        "child": {
+                          "raw": {{ childRawCount }},
+                          "unique": {{ availableChildHeaders.length }},
+                          "active": {{ getActiveChildParameterCount() }},
+                          "groups": {{ childGroupsString }}
+                        }
+                      },
+                      "sample": {{ sampleString }}
+                    }
+                  </code>
+                </pre>
               </div>
-            </div>
-            <div class="bg-white p-3 rounded shadow-sm max-h-60 overflow-auto">
-              <div v-for="child in filteredSortedChildren" :key="child.id" class="mb-2">
-                <div class="flex items-center gap-2">
-                  <span
-                    class="w-2 h-2 rounded-full"
-                    :class="isChildMatched(child) ? 'bg-green-500' : 'bg-red-500'"
-                    :title="
-                      isChildMatched(child) ? 'Matched with parent' : 'No parent match'
-                    "
-                  ></span>
-                  <span class="text-sm">{{ child.type }} ({{ child.category }})</span>
-                </div>
-                <div class="ml-4 text-xs text-gray-600">
-                  Host: {{ child.host || 'Missing' }}
-                  <span
-                    v-if="child.host"
-                    class="ml-2"
-                    :class="isHostValid(child.host) ? 'text-green-600' : 'text-red-600'"
-                  >
-                    {{ isHostValid(child.host) ? '(Valid)' : '(Invalid)' }}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <!-- Raw Data with Search -->
-          <div v-if="filteredData.length > 0" class="space-y-2">
-            <h4 class="font-medium">Filtered Data:</h4>
-            <pre
-              class="text-xs bg-white p-2 rounded overflow-auto max-h-60 shadow-inner"
-              >{{ JSON.stringify(filteredData, null, 2) }}</pre
-            >
+              <!-- Pipeline Overview -->
+              <div class="mt-4">
+                <h5 class="font-medium mb-2">Data Pipeline:</h5>
+                <div class="bg-gray-50 p-2 rounded text-xs">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium">Raw Elements</span>
+                    <span class="text-gray-400">→</span>
+                    <span>{{ scheduleData.length }} items</span>
+                  </div>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span class="font-medium">Evaluated Data</span>
+                    <span class="text-gray-400">→</span>
+                    <span>{{ evaluatedData.length }} items</span>
+                  </div>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span class="font-medium">Table Data</span>
+                    <span class="text-gray-400">→</span>
+                    <span>{{ tableData.length }} rows</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -445,33 +203,64 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import type { ElementData, TableRowData } from '../../types'
+import { computed, watch } from 'vue'
+import type { TableRow, ParameterValueState } from '../../types'
 import { debug, DebugCategories } from '../../utils/debug'
-import { isElementData } from '../../types'
 import type { ColumnDef } from '../../../components/tables/DataTable/composables/columns/types'
+import type { CustomParameter } from '../../../../../composables/useUserSettings'
+
+interface ParameterGroup {
+  source: string
+  parameters: ColumnDef[]
+  visibleCount: number
+  totalCount: number
+  modifiedCount: number
+}
 
 interface Props {
-  scheduleData: ElementData[]
-  evaluatedData: ElementData[]
-  tableData: TableRowData[]
+  scheduleData: TableRow[]
+  evaluatedData: TableRow[]
+  tableData: TableRow[]
   debugFilter: string
   selectedParentCategories: string[]
   selectedChildCategories: string[]
-  parentElements: ElementData[]
-  childElements: ElementData[]
-  matchedElements: ElementData[]
-  orphanedElements: ElementData[]
-  mergedTableColumns: ColumnDef[] // Add this prop
-  mergedDetailColumns: ColumnDef[] // Add this prop
+  parentElements: TableRow[]
+  childElements: TableRow[]
+  matchedElements: TableRow[]
+  orphanedElements: TableRow[]
+  parentParameterColumns: ColumnDef[]
+  childParameterColumns: ColumnDef[]
+  availableParentHeaders: ColumnDef[]
+  availableChildHeaders: ColumnDef[]
+  availableParentParameters: CustomParameter[]
+  availableChildParameters: CustomParameter[]
+  isVisible: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  scheduleData: () => [],
+  evaluatedData: () => [],
+  tableData: () => [],
+  debugFilter: '',
+  selectedParentCategories: () => [],
+  selectedChildCategories: () => [],
+  parentElements: () => [],
+  childElements: () => [],
+  matchedElements: () => [],
+  orphanedElements: () => [],
+  parentParameterColumns: () => [],
+  childParameterColumns: () => [],
+  availableParentHeaders: () => [],
+  availableChildHeaders: () => [],
+  availableParentParameters: () => [],
+  availableChildParameters: () => [],
+  isVisible: false
+})
+
 const emit = defineEmits<{
   toggle: []
 }>()
 
-const showRawData = ref(false)
 const filterModel = computed({
   get: () => props.debugFilter,
   set: (value: string) => {
@@ -479,245 +268,197 @@ const filterModel = computed({
   }
 })
 
-// Filtering and sorting state
-const parentFilter = ref('')
-const childFilter = ref('')
-const parentSort = ref('category')
-const childSort = ref('category')
-
-const maxItems = 1000 // For progress bars
-
-const visibleColumns = computed(() => {
-  return [...props.mergedTableColumns, ...props.mergedDetailColumns].filter(
-    (col) => col.visible
-  )
-})
-
-const scheduleDataProgress = computed(() =>
-  Math.min((props.scheduleData.length / maxItems) * 100, 100)
-)
-
-const evaluatedDataProgress = computed(() =>
-  Math.min((props.evaluatedData.length / maxItems) * 100, 100)
-)
-
-// Parent-child relationship computeds
-const parentElements = computed(() => props.scheduleData.filter((el) => !el.isChild))
-
-const childElements = computed(() => props.scheduleData.filter((el) => el.isChild))
-
-const parentElementsWithMarks = computed(() =>
-  parentElements.value.filter((el) => el.mark)
-)
-
-const childElementsWithHosts = computed(() =>
-  childElements.value.filter((el) => el.host)
-)
-
-const uniqueParentCategories = computed(() =>
-  [...new Set(parentElements.value.map((el) => el.category))].sort()
-)
-
-const uniqueChildCategories = computed(() =>
-  [...new Set(childElements.value.map((el) => el.category))].sort()
-)
-
-const parentMarkMap = computed(() => {
-  const map = new Map<string, ElementData>()
-  parentElements.value.forEach((parent) => {
-    if (parent.mark) {
-      map.set(parent.mark, parent)
+// Helper function to count modified parameters
+function countModifiedParameters(elements: TableRow[], paramKey: string): number {
+  return elements.reduce((count, element) => {
+    const paramValue = element.parameters[paramKey]
+    if (
+      paramValue &&
+      typeof paramValue === 'object' &&
+      'userValue' in paramValue &&
+      paramValue.userValue !== null
+    ) {
+      return count + 1
     }
+    return count
+  }, 0)
+}
+
+// Computed properties for grouped parameters with null checks and modification tracking
+const parentParameterGroups = computed<ParameterGroup[]>(() => {
+  const groups = new Map<string, ColumnDef[]>()
+
+  if (!props.parentParameterColumns) return []
+
+  props.parentParameterColumns.forEach((col) => {
+    const source = col.source || 'Parameters'
+    if (!groups.has(source)) {
+      groups.set(source, [])
+    }
+    groups.get(source)!.push(col)
   })
-  return map
+
+  return Array.from(groups.entries()).map(([source, columns]) => ({
+    source,
+    parameters: columns.sort((a, b) => (a.order || 0) - (b.order || 0)),
+    visibleCount: columns.filter((c) => c.visible).length,
+    totalCount: columns.length,
+    modifiedCount: columns.reduce(
+      (count, col) => count + countModifiedParameters(props.parentElements, col.field),
+      0
+    )
+  }))
 })
 
-const matchedRelationships = computed(() =>
-  childElements.value.filter(
-    (child) => child.host && parentMarkMap.value.has(child.host)
-  )
-)
+const childParameterGroups = computed<ParameterGroup[]>(() => {
+  const groups = new Map<string, ColumnDef[]>()
 
-const orphanedChildren = computed(() =>
-  childElements.value.filter(
-    (child) => !child.host || !parentMarkMap.value.has(child.host)
-  )
-)
+  if (!props.childParameterColumns) return []
 
-const parentsWithoutChildren = computed(() =>
-  parentElements.value.filter(
-    (parent) => !childElements.value.some((child) => child.host === parent.mark)
-  )
-)
-
-// Filtered and sorted lists
-const tableDataFilter = ref('')
-const tableDataSort = ref('category')
-
-// Helper function to group raw data by prefix
-function groupedRawData(rawData: unknown): Record<string, Record<string, unknown>> {
-  if (typeof rawData !== 'object' || !rawData) return {}
-
-  const groups: Record<string, Record<string, unknown>> = {}
-
-  for (const [key, value] of Object.entries(rawData as Record<string, unknown>)) {
-    const [group, ...rest] = key.split('.')
-    if (!group || !rest.length) continue
-
-    if (!groups[group]) {
-      groups[group] = {}
+  props.childParameterColumns.forEach((col) => {
+    const source = col.source || 'Parameters'
+    if (!groups.has(source)) {
+      groups.set(source, [])
     }
+    groups.get(source)!.push(col)
+  })
 
-    groups[group][rest.join('.')] = value
-  }
+  return Array.from(groups.entries()).map(([source, columns]) => ({
+    source,
+    parameters: columns.sort((a, b) => (a.order || 0) - (b.order || 0)),
+    visibleCount: columns.filter((c) => c.visible).length,
+    totalCount: columns.length,
+    modifiedCount: columns.reduce(
+      (count, col) => count + countModifiedParameters(props.childElements, col.field),
+      0
+    )
+  }))
+})
 
-  return groups
+// Update parameter count functions with null checks
+function getParentParameterCount(): number {
+  return (
+    parentParameterGroups.value?.reduce(
+      (total, group) => total + (group?.totalCount || 0),
+      0
+    ) || 0
+  )
 }
 
-// Helper function to get only the parameters that correspond to visible columns
-function getVisibleParameters(parameters: Record<string, unknown>) {
-  const visibleColumns = [...props.mergedTableColumns, ...props.mergedDetailColumns]
-    .filter((col) => col.visible)
-    .map((col) => col.field)
-
-  return Object.entries(parameters).reduce((acc, [key, value]) => {
-    if (visibleColumns.includes(key)) {
-      acc[key] = value
-    }
-    return acc
-  }, {} as Record<string, unknown>)
+function getChildParameterCount(): number {
+  return (
+    childParameterGroups.value?.reduce(
+      (total, group) => total + (group?.totalCount || 0),
+      0
+    ) || 0
+  )
 }
 
-// Add new computed property for filtered and sorted table data
-const filteredSortedTableData = computed(() => {
-  let filtered = props.tableData
+function getActiveParentParameterCount(): number {
+  return (
+    parentParameterGroups.value?.reduce(
+      (total, group) => total + (group?.visibleCount || 0),
+      0
+    ) || 0
+  )
+}
 
-  if (tableDataFilter.value) {
-    const filter = tableDataFilter.value.toLowerCase()
-    filtered = filtered.filter((row) => {
-      const basicInfo = [row.category, row.type, row.mark, row.host]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
+function getActiveChildParameterCount(): number {
+  return (
+    childParameterGroups.value?.reduce(
+      (total, group) => total + (group?.visibleCount || 0),
+      0
+    ) || 0
+  )
+}
 
-      const parameters = row.parameters
-        ? Object.values(getVisibleParameters(row.parameters))
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase()
-        : ''
+// Computed properties for raw counts
+const parentRawCount = computed(() => {
+  return props.parentElements.reduce((count, element) => {
+    return count + Object.keys(element.parameters || {}).length
+  }, 0)
+})
 
-      const extractedFields = row.extractedFields
-        ? Object.values(row.extractedFields).filter(Boolean).join(' ').toLowerCase()
-        : ''
+const childRawCount = computed(() => {
+  return props.childElements.reduce((count, element) => {
+    return count + Object.keys(element.parameters || {}).length
+  }, 0)
+})
 
-      return (
-        basicInfo.includes(filter) ||
-        parameters.includes(filter) ||
-        extractedFields.includes(filter)
-      )
+// Add these computed properties
+const parentGroupsString = computed(() => {
+  const groups = Object.fromEntries(
+    parentParameterGroups.value.map((g) => [
+      g.source,
+      { visible: g.visibleCount, total: g.totalCount }
+    ])
+  )
+  return JSON.stringify(groups, null, 2)
+})
+
+const childGroupsString = computed(() => {
+  const groups = Object.fromEntries(
+    childParameterGroups.value.map((g) => [
+      g.source,
+      { visible: g.visibleCount, total: g.totalCount }
+    ])
+  )
+  return JSON.stringify(groups, null, 2)
+})
+
+const sampleString = computed(() => {
+  if (!props.tableData.length || !props.tableData[0]) return '"No data"'
+
+  const row = props.tableData[0]
+  return JSON.stringify(
+    {
+      id: row.id,
+      mark: row.mark,
+      category: row.category,
+      parameterCount: Object.keys(row.parameters).length,
+      parameters: row.parameters
+    },
+    null,
+    2
+  )
+})
+
+// Enhanced debug logging with null checks
+watch(
+  [
+    () => parentParameterGroups.value,
+    () => childParameterGroups.value,
+    () => props.availableParentHeaders,
+    () => props.availableChildHeaders
+  ],
+  () => {
+    debug.log(DebugCategories.DATA, 'Parameter state:', {
+      parent: {
+        available: props.availableParentHeaders?.length || 0,
+        active: getActiveParentParameterCount(),
+        groups: Object.fromEntries(
+          (parentParameterGroups.value || []).map((group) => [
+            group.source,
+            { total: group.totalCount, visible: group.visibleCount }
+          ])
+        )
+      },
+      child: {
+        available: props.availableChildHeaders?.length || 0,
+        active: getActiveChildParameterCount(),
+        groups: Object.fromEntries(
+          (childParameterGroups.value || []).map((group) => [
+            group.source,
+            { total: group.totalCount, visible: group.visibleCount }
+          ])
+        )
+      }
     })
-  }
-
-  return [...filtered].sort((a, b) => {
-    switch (tableDataSort.value) {
-      case 'category':
-        return (a.category || '').localeCompare(b.category || '')
-      case 'type':
-        return (a.type || '').localeCompare(b.type || '')
-      case 'details':
-        return (b.details?.length || 0) - (a.details?.length || 0)
-      default:
-        return 0
-    }
-  })
-})
-
-const filteredSortedParents = computed(() => {
-  let filtered = parentElements.value
-
-  if (parentFilter.value) {
-    const filter = parentFilter.value.toLowerCase()
-    filtered = filtered.filter(
-      (parent) =>
-        parent.category.toLowerCase().includes(filter) ||
-        parent.type?.toLowerCase().includes(filter) ||
-        parent.mark?.toLowerCase().includes(filter)
-    )
-  }
-
-  return [...filtered].sort((a, b) => {
-    switch (parentSort.value) {
-      case 'category':
-        return a.category.localeCompare(b.category)
-      case 'mark':
-        return (a.mark || '').localeCompare(b.mark || '')
-      case 'children':
-        return getChildrenCount(b) - getChildrenCount(a)
-      default:
-        return 0
-    }
-  })
-})
-
-const filteredSortedChildren = computed(() => {
-  let filtered = childElements.value
-
-  if (childFilter.value) {
-    const filter = childFilter.value.toLowerCase()
-    filtered = filtered.filter(
-      (child) =>
-        child.category.toLowerCase().includes(filter) ||
-        child.type?.toLowerCase().includes(filter) ||
-        child.host?.toLowerCase().includes(filter)
-    )
-  }
-
-  // Move variable declarations outside case blocks
-  const compareByStatus = (a: ElementData, b: ElementData) => {
-    const aMatched = isChildMatched(a)
-    const bMatched = isChildMatched(b)
-    return aMatched === bMatched ? 0 : aMatched ? -1 : 1
-  }
-
-  return [...filtered].sort((a, b) => {
-    switch (childSort.value) {
-      case 'category':
-        return a.category.localeCompare(b.category)
-      case 'host':
-        return (a.host || '').localeCompare(b.host || '')
-      case 'status':
-        return compareByStatus(a, b)
-      default:
-        return 0
-    }
-  })
-})
-
-// Helper functions
-function getChildrenCount(parent: ElementData): number {
-  return childElements.value.filter((child) => child.host === parent.mark).length
-}
-
-function isChildMatched(child: ElementData): boolean {
-  return child.host ? parentMarkMap.value.has(child.host) : false
-}
-
-function isHostValid(host: string): boolean {
-  return parentMarkMap.value.has(host)
-}
-
-const filteredData = computed((): ElementData[] => {
-  if (!props.debugFilter) return props.scheduleData
-  const filter = props.debugFilter.toLowerCase()
-  return props.scheduleData.filter((item) => {
-    if (!isElementData(item)) return false
-    return JSON.stringify(item).toLowerCase().includes(filter)
-  })
-})
+  },
+  { immediate: true }
+)
 
 const toggle = () => {
-  showRawData.value = !showRawData.value
   emit('toggle')
 }
 </script>
@@ -727,6 +468,12 @@ const toggle = () => {
   background-color: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 0.375rem;
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 100%;
+  max-width: 600px;
+  z-index: 50;
 }
 
 .debug-panel .bg-gray-100 {
@@ -880,6 +627,10 @@ const toggle = () => {
   margin-top: 0.5rem;
 }
 
+.debug-panel .mt-4 {
+  margin-top: 1rem;
+}
+
 .debug-panel .mb-1 {
   margin-bottom: 0.25rem;
 }
@@ -939,5 +690,13 @@ const toggle = () => {
 
 .debug-panel .items-center {
   align-items: center;
+}
+
+.debug-panel pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>
