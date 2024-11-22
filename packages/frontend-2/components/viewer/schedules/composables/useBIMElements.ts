@@ -4,11 +4,13 @@ import type {
   TreeItemComponentModel,
   BIMNodeRaw,
   WorldTreeNode,
-  ParameterValue
+  ParameterValue,
+  Parameters,
+  ParameterValueState,
+  ParameterValueType
 } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 import { ValidationError } from '../utils/validation'
-import { convertToString } from '../utils/dataConversion'
 import { getMostSpecificCategory } from '../config/categoryMapping'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import { defaultColumns } from '../config/defaultColumns'
@@ -33,7 +35,7 @@ interface NodeModel {
 }
 
 interface TreeNode {
-  model: NodeModel
+  model?: NodeModel
   children?: TreeNode[]
 }
 
@@ -83,121 +85,74 @@ async function validateWorldTree(
   throw error
 }
 
-function findMarkInObject(obj: Record<string, unknown>): string | undefined {
-  // Helper to recursively search for Mark in an object
-  function searchMark(current: unknown): string | undefined {
-    if (!current || typeof current !== 'object') return undefined
-
-    for (const [key, value] of Object.entries(current)) {
-      // Check if this is a Mark field
-      if (key === 'Mark' || key === 'mark') {
-        return convertToString(value)
-      }
-      // Recursively search nested objects
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        const found = searchMark(value)
-        if (found) return found
-      }
-    }
-    return undefined
-  }
-
-  return searchMark(obj)
+function inferType(value: unknown): ParameterValueType {
+  if (typeof value === 'boolean') return 'boolean'
+  if (
+    typeof value === 'number' ||
+    (typeof value === 'string' && !isNaN(parseFloat(value)))
+  )
+    return 'number'
+  return 'string'
 }
 
-function extractParameters(
-  raw: BIMNodeRaw,
-  activeParameters: string[] = defaultColumns.map((col) => col.field)
-): Record<string, ParameterValue> {
-  const parameters: Record<string, ParameterValue> = {}
+function transformValue(value: unknown, type: ParameterValueType): ParameterValue {
+  // Handle null/undefined
+  if (value === null || value === undefined) return null
 
-  // Only extract active parameters
-  function processGroup(group: Record<string, unknown>, prefix: string = '') {
-    Object.entries(group).forEach(([key, value]) => {
-      const paramKey = prefix ? `${prefix}.${key}` : key
+  // Unwrap speckle value
+  if (value && typeof value === 'object' && '_' in value) {
+    value = (value as { _: unknown })._
+  }
 
-      // Only process if it's an active parameter
-      if (activeParameters.includes(paramKey)) {
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-          processGroup(value as Record<string, unknown>, paramKey)
-        } else if (
-          typeof value === 'string' ||
-          typeof value === 'number' ||
-          typeof value === 'boolean'
-        ) {
-          parameters[paramKey] = value as ParameterValue
+  // Convert based on type
+  switch (type) {
+    case 'boolean':
+      return typeof value === 'boolean' ? value : null
 
-          // Special handling for Host parameter
-          if (key === 'Host') {
-            parameters.host = value as ParameterValue
-            debug.log(DebugCategories.PARAMETERS, 'Found host parameter', {
-              value,
-              source: prefix || 'Top Level'
-            })
-          }
+    case 'number':
+      if (typeof value === 'number') return isNaN(value) ? null : value
+      if (typeof value === 'string') {
+        const trimmed = value.trim()
+        // Handle percentages
+        if (trimmed.endsWith('%')) {
+          const num = parseFloat(trimmed)
+          return isNaN(num) ? null : num / 100
+        }
+        // Handle currency
+        if (trimmed.startsWith('$')) {
+          const num = parseFloat(trimmed.substring(1))
+          return isNaN(num) ? null : num
+        }
+        // Handle plain numbers
+        const num = parseFloat(trimmed)
+        return isNaN(num) ? null : num
+      }
+      return null
 
-          debug.log(DebugCategories.PARAMETERS, 'Found active parameter', {
-            key: paramKey,
-            value,
-            source: prefix || 'Top Level'
-          })
+    case 'string':
+      if (value === null || value === undefined) return null
+      if (typeof value === 'object') {
+        try {
+          const str = JSON.stringify(value)
+          return str === '{}' ? null : str
+        } catch {
+          return null
         }
       }
-    })
+      return String(value)
+
+    default:
+      return null
   }
-
-  // Process all groups and nested objects
-  Object.entries(raw).forEach(([key, value]) => {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      processGroup(value as Record<string, unknown>, key)
-    } else if (activeParameters.includes(key)) {
-      if (
-        typeof value === 'string' ||
-        typeof value === 'number' ||
-        typeof value === 'boolean'
-      ) {
-        parameters[key] = value as ParameterValue
-        debug.log(DebugCategories.PARAMETERS, 'Found top-level parameter', {
-          key,
-          value
-        })
-      }
-    }
-  })
-
-  debug.log(DebugCategories.PARAMETERS, 'Extracted active parameters', {
-    totalParameters: Object.keys(parameters).length,
-    activeParameters,
-    extractedParameters: Object.keys(parameters),
-    hasHost: 'host' in parameters,
-    hostValue: parameters.host
-  })
-
-  return parameters
 }
 
-function createEmptyElement(
-  id: string,
-  type: string,
-  mark: string,
-  category: string,
-  parameters: Record<string, ParameterValue>
-): ElementData {
-  const element: ElementData = {
-    id,
-    type,
-    mark,
-    category,
-    parameters,
-    details: [],
-    _visible: true
+function createParameterState(value: ParameterValue): ParameterValueState {
+  return {
+    fetchedValue: value,
+    currentValue: value,
+    previousValue: value,
+    userValue: null
   }
-
-  Object.entries(parameters).forEach(([key, value]) => {
-    element[key] = value
-  })
-
-  return element
 }
 
 function hasValidSpeckleType(raw: BIMNodeRaw): boolean {
@@ -230,28 +185,99 @@ function hasValidSpeckleType(raw: BIMNodeRaw): boolean {
   return false
 }
 
+function extractParameters(
+  raw: BIMNodeRaw,
+  activeParameters: string[] = defaultColumns.map((col) => col.field)
+): Parameters {
+  const result: Parameters = {}
+
+  // Initialize all active parameters with null values
+  activeParameters.forEach((paramName) => {
+    let value: unknown = null
+
+    // Try all possible sources for the value
+    if (
+      raw.parameters &&
+      typeof raw.parameters === 'object' &&
+      paramName in raw.parameters
+    ) {
+      value = raw.parameters[paramName]
+    }
+    // Try BIM-specific fields
+    else if (paramName === 'mark' && raw.Mark) {
+      value = raw.Mark
+    } else if (paramName === 'category' && raw.Other?.Category) {
+      value = raw.Other.Category
+    } else if (paramName === 'host' && raw.Constraints?.Host) {
+      value = raw.Constraints.Host
+    }
+    // Try raw object directly
+    else if (paramName in raw) {
+      value = raw[paramName]
+    }
+
+    // Transform value based on type
+    const type = inferType(value)
+    const transformedValue = transformValue(value, type)
+    result[paramName] = createParameterState(transformedValue)
+
+    debug.log(DebugCategories.PARAMETERS, 'Parameter processed', {
+      key: paramName,
+      rawValue: value,
+      transformedValue: result[paramName].currentValue,
+      source: raw.parameters?.[paramName]
+        ? 'parameters'
+        : paramName === 'mark' && raw.Mark
+        ? 'Mark'
+        : paramName === 'category' && raw.Other?.Category
+        ? 'Other.Category'
+        : paramName === 'host' && raw.Constraints?.Host
+        ? 'Constraints.Host'
+        : paramName in raw
+        ? 'raw'
+        : 'none'
+    })
+  })
+
+  debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
+    totalParameters: Object.keys(result).length,
+    activeParameters,
+    extractedParameters: Object.keys(result),
+    sampleValues: Object.entries(result).reduce((acc, [key, value]) => {
+      acc[key] = value.currentValue
+      return acc
+    }, {} as Record<string, ParameterValue>)
+  })
+
+  return result
+}
+
+function createEmptyElement(
+  id: string,
+  type: string,
+  mark: string,
+  category: string,
+  parameters: Parameters
+): ElementData {
+  return {
+    id,
+    type,
+    mark,
+    category,
+    parameters,
+    details: [],
+    _visible: true
+  }
+}
+
 function extractElementData(
   raw: BIMNodeRaw,
   activeParameters: string[]
 ): ElementData | null {
   try {
-    if (!hasValidSpeckleType(raw)) {
-      debug.log(DebugCategories.DATA, 'Skipping element without valid type', {
-        id: raw.id,
-        type: raw.type,
-        speckleType: raw.speckleType,
-        category: raw.Other?.Category
-      })
-      return null
-    }
-
-    // Use the first available type identifier
     const speckleType = raw.speckleType || raw.type || raw.Other?.Category || 'Unknown'
     const category = getMostSpecificCategory(speckleType) || 'Uncategorized'
-
-    // Find Mark in any location
-    const mark = findMarkInObject(raw) || raw.id.toString()
-
+    const mark = raw.Mark?.toString() || raw.id.toString()
     const parameters = extractParameters(raw, activeParameters)
 
     const element = createEmptyElement(
@@ -262,7 +288,7 @@ function extractElementData(
       parameters
     )
 
-    // Make _raw enumerable so it shows up in debug panel
+    // Make _raw enumerable for debug panel
     Object.defineProperty(element, '_raw', {
       value: raw,
       enumerable: true,
@@ -275,7 +301,12 @@ function extractElementData(
       category,
       mark,
       parameterCount: Object.keys(parameters).length,
-      activeParameters
+      sampleParameters: Object.entries(parameters)
+        .slice(0, 3)
+        .reduce((acc, [key, value]) => {
+          acc[key] = value.currentValue
+          return acc
+        }, {} as Record<string, ParameterValue>)
     })
 
     return element
@@ -288,7 +319,7 @@ function extractElementData(
 function processNode(
   node: TreeNode,
   activeParameters: string[],
-  stats: ProcessingStats = { totalNodes: 0, skippedNodes: 0, processedNodes: 0 }
+  stats: ProcessingStats
 ): ElementData[] {
   const elements: ElementData[] = []
 
@@ -308,7 +339,7 @@ function processNode(
       }
     }
 
-    if (node.model?.children?.length) {
+    if (node.model?.children) {
       node.model.children.forEach((child) => {
         if (child.raw) {
           stats.totalNodes++
@@ -327,7 +358,7 @@ function processNode(
       })
     }
 
-    if (node.children?.length) {
+    if (node.children) {
       node.children.forEach((child) => {
         const childElements = processNode(child, activeParameters, stats)
         elements.push(...childElements)
@@ -344,13 +375,8 @@ function processNode(
       activeParameters
     })
   } catch (err) {
-    // Create a new ValidationError with the error message
-    const error =
-      err instanceof Error
-        ? new ValidationError(err.message)
-        : new ValidationError('Unknown error processing node')
     debug.error(DebugCategories.ERROR, 'Error processing node:', {
-      error: error.message,
+      error: err instanceof Error ? err.message : String(err),
       nodeId: node.model?.raw?.id
     })
   }

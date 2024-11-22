@@ -24,16 +24,16 @@
 
     <!-- Loading State -->
     <ScheduleLoadingState
-      v-if="props.isLoading"
-      :loading-message="'Loading schedule data...'"
-      :loading-detail="'Please wait while we prepare your data'"
+      v-if="props.isLoading && !hasAnyData"
+      loading-message="Loading schedule data..."
+      loading-detail="Please wait while we prepare your data"
       :current-step="1"
       :total-steps="1"
     />
 
     <!-- Error State -->
     <ScheduleErrorState
-      v-else-if="props.loadingError"
+      v-else-if="props.loadingError && !hasAnyData"
       :error="props.loadingError"
       :show-debug="showDebug"
       @retry="retryLoading"
@@ -42,14 +42,14 @@
 
     <!-- Table -->
     <DataTable
-      v-else-if="canShowTable"
-      :key="`${props.tableKey}-${props.tableData.length}`"
+      v-else-if="hasAnyData"
+      :key="`${props.tableKey}-${props.evaluatedData.length}-${mergedColumns.length}`"
       :table-id="props.currentTableId"
       :table-name="props.tableName"
-      :data="props.tableData"
-      :schedule-data="props.scheduleData"
-      :columns="props.mergedTableColumns"
-      :detail-columns="props.mergedDetailColumns"
+      :data="props.evaluatedData"
+      :schedule-data="props.evaluatedData"
+      :columns="mergedColumns"
+      :detail-columns="mergedDetailColumns"
       :available-parent-parameters="props.availableParentParameters"
       :available-child-parameters="props.availableChildParameters"
       :loading="props.isLoadingAdditionalData"
@@ -69,10 +69,12 @@
               <h3 class="font-medium mb-2">Data</h3>
               <div class="space-y-2">
                 <div>Raw Elements: {{ props.scheduleData.length }}</div>
-                <div>Table Rows: {{ props.tableData.length }}</div>
+                <div>Evaluated Elements: {{ props.evaluatedData.length }}</div>
                 <div>
-                  Visible Rows:
-                  {{ props.tableData.filter((row) => row._visible !== false).length }}
+                  Visible Elements:
+                  {{
+                    props.evaluatedData.filter((row) => row._visible !== false).length
+                  }}
                 </div>
               </div>
             </div>
@@ -126,21 +128,6 @@
                 </div>
               </div>
             </div>
-
-            <div class="mt-6 flex justify-center space-x-4">
-              <button
-                class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                @click="toggleDebug"
-              >
-                Show Debug Panel
-              </button>
-              <button
-                class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-                @click="retryLoading"
-              >
-                Retry Loading
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -149,24 +136,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import DataTable from '../../../components/tables/DataTable/index.vue'
 import type { ColumnDef } from '../../../components/tables/DataTable/composables/columns/types'
-import type { CustomParameter } from '../../../../../composables/useUserSettings'
+import type { CustomParameter } from '~/composables/useUserSettings'
 import { debug, DebugCategories } from '../../utils/debug'
-
-// Import local components
-import ScheduleDebugPanel from './ScheduleDebugPanel.vue'
-import ScheduleLoadingState from './ScheduleLoadingState.vue'
-import ScheduleErrorState from './ScheduleErrorState.vue'
-
-// Import types
 import type {
   TableConfig,
   TableUpdatePayload,
   TableRow,
   ElementData
 } from '../../types'
+import { defaultColumns, defaultDetailColumns } from '../../config/defaultColumns'
+
+// Import local components
+import ScheduleDebugPanel from './ScheduleDebugPanel.vue'
+import ScheduleLoadingState from './ScheduleLoadingState.vue'
+import ScheduleErrorState from './ScheduleErrorState.vue'
 
 interface Props {
   selectedTableId: string
@@ -204,73 +190,79 @@ const emit = defineEmits<{
 const showDebug = ref(true)
 const debugFilter = ref('')
 
-// Group columns by source
-const groupedColumns = computed(() => {
-  const groups = new Map<string, ColumnDef[]>()
+// Ensure columns include essential fields
+const mergedColumns = computed(() => {
+  const essentialFields = ['mark', 'category', 'host']
+  const hasField = (field: string) =>
+    props.mergedTableColumns.some((col) => col.field === field)
 
-  props.mergedTableColumns.forEach((col) => {
-    const source = col.source || 'Parameters'
-    if (!groups.has(source)) {
-      groups.set(source, [])
+  const columns = [...props.mergedTableColumns]
+  essentialFields.forEach((field) => {
+    if (!hasField(field)) {
+      const defaultCol = defaultColumns.find((col) => col.field === field)
+      if (defaultCol) {
+        columns.unshift({ ...defaultCol })
+      }
     }
-    groups.get(source)!.push(col)
   })
 
-  return Array.from(groups.entries()).map(([source, columns]) => ({
-    source,
-    columns: columns.sort((a, b) => (a.order || 0) - (b.order || 0)),
-    visibleCount: columns.filter((c) => c.visible).length
-  }))
+  debug.log(DebugCategories.COLUMNS, 'Merged columns:', {
+    total: columns.length,
+    fields: columns.map((col) => col.field)
+  })
+
+  return columns
 })
 
-// Check if table can be shown
-const canShowTable = computed(() => {
-  // Basic state checks
-  if (!props.isInitialized || props.isLoading || props.loadingError) {
-    debug.log(DebugCategories.STATE, 'Basic state checks failed:', {
-      isInitialized: props.isInitialized,
-      isLoading: props.isLoading,
-      hasError: !!props.loadingError
-    })
+const mergedDetailColumns = computed(() => {
+  const essentialFields = ['mark', 'category', 'host']
+  const hasField = (field: string) =>
+    props.mergedDetailColumns.some((col) => col.field === field)
+
+  const columns = [...props.mergedDetailColumns]
+  essentialFields.forEach((field) => {
+    if (!hasField(field)) {
+      const defaultCol = defaultDetailColumns.find((col) => col.field === field)
+      if (defaultCol) {
+        columns.unshift({ ...defaultCol })
+      }
+    }
+  })
+
+  debug.log(DebugCategories.COLUMNS, 'Merged detail columns:', {
+    total: columns.length,
+    fields: columns.map((col) => col.field)
+  })
+
+  return columns
+})
+
+// Simplified table visibility check
+const hasAnyData = computed(() => {
+  // Only check data if we're initialized
+  if (!props.isInitialized) {
     return false
   }
 
-  // Basic data checks
-  const hasData = props.tableData.length > 0
-  const hasColumns = props.mergedTableColumns.length > 0
+  const hasData = props.evaluatedData.length > 0
+  const hasColumns = mergedColumns.value.length > 0
 
-  debug.log(DebugCategories.STATE, 'Table data checks:', {
+  debug.log(DebugCategories.STATE, 'zz Table data checks:', {
     hasData,
-    dataLength: props.tableData.length,
+    dataLength: props.evaluatedData.length,
     hasColumns,
-    columnsLength: props.mergedTableColumns.length
+    columnsLength: mergedColumns.value.length,
+    evaluatedData: props.evaluatedData,
+    mergedColumns: mergedColumns.value,
+    isLoading: props.isLoading,
+    isInitialized: props.isInitialized
   })
 
-  return hasData && hasColumns
+  return hasData || hasColumns
 })
-
-// Computed properties for available headers
-const availableParentHeaders = computed(() =>
-  props.availableParentParameters.map((param) => ({
-    field: `param_${param.id}`,
-    header: param.name,
-    type: param.type === 'equation' ? 'number' : 'string',
-    source: param.source || 'Parameters'
-  }))
-)
-
-const availableChildHeaders = computed(() =>
-  props.availableChildParameters.map((param) => ({
-    field: `param_${param.id}`,
-    header: param.name,
-    type: param.type === 'equation' ? 'number' : 'string',
-    source: param.source || 'Parameters'
-  }))
-)
 
 // Computed properties for relationship data
 const parentElements = computed(() => props.scheduleData.filter((el) => !el.isChild))
-
 const childElements = computed(() => props.scheduleData.filter((el) => el.isChild))
 
 const matchedElements = computed(() => {
@@ -297,84 +289,74 @@ const orphanedElements = computed(() => {
   )
 })
 
+// Computed properties for available headers with required ColumnDef properties
+const availableParentHeaders = computed(
+  () =>
+    props.availableParentParameters.map((param, index) => ({
+      field: `param_${param.id}`,
+      header: param.name,
+      type: param.type === 'equation' ? 'number' : 'string',
+      source: param.source || 'Parameters',
+      visible: true,
+      order: index
+    })) as ColumnDef[]
+)
+
+const availableChildHeaders = computed(
+  () =>
+    props.availableChildParameters.map((param, index) => ({
+      field: `param_${param.id}`,
+      header: param.name,
+      type: param.type === 'equation' ? 'number' : 'string',
+      source: param.source || 'Parameters',
+      visible: true,
+      order: index
+    })) as ColumnDef[]
+)
+
+// Watch for data changes
+watch(
+  () => props.evaluatedData,
+  (newData) => {
+    if (props.isInitialized) {
+      debug.log(DebugCategories.DATA, 'Data updated:', {
+        length: newData.length,
+        sample: newData[0],
+        columns: mergedColumns.value.length,
+        detailColumns: mergedDetailColumns.value.length,
+        isInitialized: props.isInitialized
+      })
+    }
+  },
+  { deep: true, immediate: true }
+)
+
 // Event handlers
-const handleBothColumnsUpdate = (updates: {
+function handleBothColumnsUpdate(updates: {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-}) => {
-  debug.log(DebugCategories.TABLE_UPDATES, 'Column update:', {
-    ...updates,
-    parentGroups: groupColumnsBySource(updates.parentColumns),
-    childGroups: groupColumnsBySource(updates.childColumns)
-  })
+}): void {
+  debug.log(DebugCategories.COLUMNS, 'Column update:', updates)
   emit('update:both-columns', updates)
 }
 
-const handleTableUpdate = (payload: TableUpdatePayload) => {
+function handleTableUpdate(payload: TableUpdatePayload): void {
   debug.log(DebugCategories.TABLE_UPDATES, 'Table update:', payload)
   emit('table-updated', payload)
 }
 
-const handleColumnVisibilityChange = (column: ColumnDef) => {
-  debug.log(DebugCategories.COLUMNS, 'Column visibility change:', {
-    column,
-    source: column.source,
-    groupStats: groupedColumns.value.find((g) => g.source === column.source)
-  })
+function handleColumnVisibilityChange(column: ColumnDef): void {
+  debug.log(DebugCategories.COLUMNS, 'Column visibility change:', column)
   emit('column-visibility-change', column)
 }
 
-// Helper to group columns by source
-function groupColumnsBySource(columns: ColumnDef[]) {
-  const groups = new Map<string, ColumnDef[]>()
-
-  columns.forEach((col) => {
-    const source = col.source || 'Parameters'
-    if (!groups.has(source)) {
-      groups.set(source, [])
-    }
-    groups.get(source)!.push(col)
-  })
-
-  return Array.from(groups.entries()).map(([source, cols]) => ({
-    source,
-    total: cols.length,
-    visible: cols.filter((c) => c.visible).length
-  }))
-}
-
-// Debug panel toggle
-const toggleDebug = () => {
+function toggleDebug(): void {
   showDebug.value = !showDebug.value
-  debug.log(DebugCategories.DEBUG, 'Debug panel toggled:', {
-    timestamp: new Date().toISOString(),
-    showDebug: showDebug.value,
-    dataCount: props.tableData.length,
-    columnsCount: props.mergedTableColumns.length,
-    columnGroups: groupedColumns.value.map((g) => ({
-      source: g.source,
-      total: g.columns.length,
-      visible: g.visibleCount
-    })),
-    state: {
-      isInitialized: props.isInitialized,
-      isLoading: props.isLoading,
-      hasError: !!props.loadingError,
-      hasData: props.tableData.length > 0,
-      hasColumns: props.mergedTableColumns.length > 0
-    }
-  })
 }
 
-// Retry loading
-const retryLoading = () => {
+function retryLoading(): void {
   window.location.reload()
 }
-
-// Mount hook to ensure debug panel is visible
-onMounted(() => {
-  debug.log(DebugCategories.DEBUG, 'Component mounted, debug panel visible')
-})
 </script>
 
 <style scoped>

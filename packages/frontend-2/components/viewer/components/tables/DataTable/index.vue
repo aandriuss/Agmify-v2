@@ -25,12 +25,14 @@
 
     <!-- Main Table -->
     <TableWrapper
+      v-if="isInitialized"
+      :key="`${tableKey}-${data.length}-${localParentColumns.length}`"
       v-model="expandedRows"
       :data="data"
       :schedule-data="scheduleData"
       :parent-columns="localParentColumns"
       :child-columns="localChildColumns"
-      :loading="loading"
+      :loading="loading || !isInitialized"
       :sort-field="sortField"
       :sort-order="sortOrder"
       :filters="filters"
@@ -43,7 +45,9 @@
       @error="handleError"
     >
       <template #empty>
-        <div class="p-4 text-center text-gray-500">No data available</div>
+        <div class="p-4 text-center text-gray-500">
+          {{ loading || !isInitialized ? 'Loading data...' : 'No data available' }}
+        </div>
       </template>
 
       <template #loading>
@@ -54,11 +58,14 @@
         <div class="p-4 text-center text-red-500">{{ errorMessage }}</div>
       </template>
     </TableWrapper>
+
+    <!-- Loading placeholder -->
+    <div v-else class="p-4 text-center text-gray-500">Initializing table...</div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import { useUserSettings } from '~/composables/useUserSettings'
 import ColumnManager from './components/ColumnManager/index.vue'
@@ -66,20 +73,23 @@ import TableWrapper from './components/TableWrapper/index.vue'
 import {
   safeJSONClone,
   sortColumnsByOrder,
-  isTableRow,
   updateLocalColumns as updateColumns,
   validateTableRows
 } from './composables/useTableUtils'
 import type { ColumnDef } from './composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import type { TableRow } from '~/components/viewer/schedules/types'
+import type { TableRow, ElementData } from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import type {
+  DataTableColumnReorderEvent,
+  DataTableFilterMeta
+} from 'primevue/datatable'
 
 interface Props {
   tableId: string
   tableName?: string
-  data: TableRow[]
-  scheduleData: TableRow[]
+  data: (TableRow | ElementData)[]
+  scheduleData: (TableRow | ElementData)[]
   columns: ColumnDef[]
   detailColumns: ColumnDef[]
   availableParentParameters: CustomParameter[]
@@ -90,10 +100,10 @@ interface Props {
 
 interface TableState {
   columns: ColumnDef[]
-  expandedRows: TableRow[]
+  expandedRows: (TableRow | ElementData)[]
   sortField?: string
   sortOrder?: number
-  filters?: Record<string, unknown>
+  filters?: DataTableFilterMeta
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -102,15 +112,15 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  'update:expandedRows': [value: TableRow[]]
+  'update:expandedRows': [value: (TableRow | ElementData)[]]
   'update:columns': [columns: ColumnDef[]]
   'update:detail-columns': [columns: ColumnDef[]]
   'update:both-columns': [
     updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
   ]
-  'column-reorder': [event: { target: HTMLElement | null }]
+  'column-reorder': [event: DataTableColumnReorderEvent]
   sort: [field: string, order: number]
-  filter: [filters: Record<string, unknown>]
+  filter: [filters: DataTableFilterMeta]
   error: [error: Error]
 }>()
 
@@ -124,16 +134,21 @@ const errorMessage = ref('')
 const isInitialized = ref(false)
 
 // Table State
-const expandedRows = ref<TableRow[]>([])
+const expandedRows = ref<(TableRow | ElementData)[]>([])
 const sortField = ref<string>('')
 const sortOrder = ref<number>(1)
-const filters = ref<Record<string, unknown>>({})
+const filters = ref<DataTableFilterMeta>({})
 
 // Column State
 const localParentColumns = ref<ColumnDef[]>([])
 const localChildColumns = ref<ColumnDef[]>([])
 const tempParentColumns = ref<ColumnDef[]>([])
 const tempChildColumns = ref<ColumnDef[]>([])
+
+// Computed key to force table refresh
+const tableKey = computed(() => {
+  return `${props.tableId}-${props.data.length}-${localParentColumns.value.length}-${localChildColumns.value.length}`
+})
 
 // Error Handler
 function handleError(error: Error | unknown): void {
@@ -156,7 +171,7 @@ function ensureColumnProperties(column: ColumnDef): ColumnDef {
 }
 
 // State Management Functions
-function initializeState(): void {
+async function initializeState(): Promise<void> {
   try {
     if (props.initialState) {
       // Initialize with proper defaults for each column
@@ -185,6 +200,7 @@ function initializeState(): void {
     debug.log(DebugCategories.INITIALIZATION, 'State initialized', {
       parentColumns: localParentColumns.value.length,
       childColumns: localChildColumns.value.length,
+      dataLength: props.data.length,
       groups: [
         ...new Set([
           ...localParentColumns.value.map((c) => c.category),
@@ -193,6 +209,8 @@ function initializeState(): void {
       ]
     })
 
+    // Wait for next tick to ensure data is ready
+    await nextTick()
     isInitialized.value = true
   } catch (error) {
     handleError(error)
@@ -329,33 +347,46 @@ function handleColumnResize(event: { element: HTMLElement }): void {
   }
 }
 
-async function handleColumnReorder(event: {
-  target: HTMLElement | null
-}): Promise<void> {
+// Type guard for HTMLElement
+function isHTMLElement(value: unknown): value is HTMLElement {
+  return value instanceof HTMLElement
+}
+
+async function handleColumnReorder(event: DataTableColumnReorderEvent): Promise<void> {
   try {
     isSaving.value = true
-    const { target } = event
-    const dataTable = target?.closest('.p-datatable')
-    if (!dataTable) return
+
+    // Find the datatable element from the event
+    const target = event.originalEvent?.target as HTMLElement | undefined
+    if (!target) {
+      throw new Error('Invalid reorder event target')
+    }
+
+    const dataTable = target.closest('.p-datatable')
+    if (!dataTable || !isHTMLElement(dataTable)) {
+      throw new Error('Could not find parent datatable')
+    }
 
     const isNestedTable = dataTable.classList.contains('nested-table')
-    const headers = Array.from(dataTable.querySelectorAll('th[data-field]'))
     const columns = isNestedTable ? localChildColumns : localParentColumns
 
-    const reorderedColumns = headers
-      .map((header: Element, index: number) => {
-        const field = header.getAttribute('data-field')
-        const existingColumn = columns.value.find((col) => col.field === field)
-        return existingColumn ? { ...existingColumn, order: index } : null
-      })
-      .filter((col): col is ColumnDef => col !== null)
+    // Use dragIndex and dropIndex from the event to reorder columns
+    const reorderedColumns = [...columns.value]
+    const [movedColumn] = reorderedColumns.splice(event.dragIndex, 1)
+    reorderedColumns.splice(event.dropIndex, 0, movedColumn)
+
+    // Update order property
+    const updatedColumns = reorderedColumns.map((col, index) => ({
+      ...col,
+      order: index
+    }))
 
     if (isNestedTable) {
-      localChildColumns.value = reorderedColumns
-      emit('update:detail-columns', reorderedColumns)
+      localChildColumns.value = updatedColumns
+      emit('update:detail-columns', updatedColumns)
     } else {
-      localParentColumns.value = reorderedColumns
-      emit('update:columns', reorderedColumns)
+      localParentColumns.value = updatedColumns
+      emit('update:columns', updatedColumns)
     }
 
     // Save changes using the same method as handleApply
@@ -386,7 +417,7 @@ async function handleColumnReorder(event: {
       throw new Error('Failed to save column reorder')
     }
 
-    emit('column-reorder', { target })
+    emit('column-reorder', event)
   } catch (error) {
     handleError(error)
   } finally {
@@ -396,26 +427,26 @@ async function handleColumnReorder(event: {
 
 // Row Management Functions
 function handleRowExpand(row: unknown): void {
-  if (!isTableRow(row)) {
+  if (!row || typeof row !== 'object') {
     handleError(new Error('Invalid row data'))
     return
   }
 
   const rows = expandedRows.value
-  if (!rows.includes(row)) {
-    rows.push(row)
+  if (!rows.includes(row as TableRow | ElementData)) {
+    rows.push(row as TableRow | ElementData)
     emit('update:expandedRows', rows)
   }
 }
 
 function handleRowCollapse(row: unknown): void {
-  if (!isTableRow(row)) {
+  if (!row || typeof row !== 'object') {
     handleError(new Error('Invalid row data'))
     return
   }
 
   const rows = expandedRows.value
-  const index = rows.indexOf(row)
+  const index = rows.indexOf(row as TableRow | ElementData)
   if (index > -1) {
     rows.splice(index, 1)
     emit('update:expandedRows', rows)
@@ -423,20 +454,59 @@ function handleRowCollapse(row: unknown): void {
 }
 
 // Sort and Filter Handlers
-function handleSort(field: string, order: number): void {
-  sortField.value = field
+function handleSort(field: string | ((item: unknown) => string), order: number): void {
+  // Convert function field to string representation
+  const fieldStr = typeof field === 'function' ? field.toString() : field
+  sortField.value = fieldStr
   sortOrder.value = order
-  emit('sort', field, order)
+  emit('sort', fieldStr, order)
 }
 
 function handleFilter(filters: Record<string, unknown>): void {
-  emit('filter', filters)
+  // Convert filters to DataTableFilterMeta
+  const convertedFilters: DataTableFilterMeta = {}
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== null && typeof value === 'object') {
+      convertedFilters[key] = {
+        value,
+        matchMode: 'contains'
+      }
+    } else if (typeof value === 'string') {
+      convertedFilters[key] = {
+        value,
+        matchMode: 'contains'
+      }
+    }
+  })
+  emit('filter', convertedFilters)
 }
 
+// Watch for data changes
+watch(
+  () => props.data,
+  async (newData) => {
+    debug.log(DebugCategories.DATA, 'Data updated', {
+      length: newData.length,
+      sample: newData[0],
+      isInitialized: isInitialized.value
+    })
+
+    // If we have data but aren't initialized, initialize now
+    if (newData.length > 0 && !isInitialized.value) {
+      await initializeState()
+    }
+  },
+  { deep: true, immediate: true }
+)
+
 // Initialization
-onMounted(() => {
+onMounted(async () => {
   try {
-    initializeState()
+    // Only initialize if we don't already have data
+    // (the watcher will handle initialization if data arrives later)
+    if (props.data.length === 0) {
+      await initializeState()
+    }
   } catch (error) {
     handleError(error)
   }

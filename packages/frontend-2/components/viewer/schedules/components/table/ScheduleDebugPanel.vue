@@ -204,7 +204,7 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import type { TableRow, ParameterValueState } from '../../types'
+import type { TableRow, ElementData, ParameterValueState } from '../../types'
 import { debug, DebugCategories } from '../../utils/debug'
 import type { ColumnDef } from '../../../components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '../../../../../composables/useUserSettings'
@@ -218,16 +218,16 @@ interface ParameterGroup {
 }
 
 interface Props {
-  scheduleData: TableRow[]
-  evaluatedData: TableRow[]
+  scheduleData: ElementData[]
+  evaluatedData: ElementData[]
   tableData: TableRow[]
   debugFilter: string
   selectedParentCategories: string[]
   selectedChildCategories: string[]
-  parentElements: TableRow[]
-  childElements: TableRow[]
-  matchedElements: TableRow[]
-  orphanedElements: TableRow[]
+  parentElements: ElementData[]
+  childElements: ElementData[]
+  matchedElements: ElementData[]
+  orphanedElements: ElementData[]
   parentParameterColumns: ColumnDef[]
   childParameterColumns: ColumnDef[]
   availableParentHeaders: ColumnDef[]
@@ -269,15 +269,10 @@ const filterModel = computed({
 })
 
 // Helper function to count modified parameters
-function countModifiedParameters(elements: TableRow[], paramKey: string): number {
+function countModifiedParameters(elements: ElementData[], paramKey: string): number {
   return elements.reduce((count, element) => {
     const paramValue = element.parameters[paramKey]
-    if (
-      paramValue &&
-      typeof paramValue === 'object' &&
-      'userValue' in paramValue &&
-      paramValue.userValue !== null
-    ) {
+    if (paramValue !== null && paramValue !== undefined) {
       return count + 1
     }
     return count

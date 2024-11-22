@@ -1,5 +1,4 @@
-import { ref, computed, type Ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, type Ref } from 'vue'
 import { debug, DebugCategories } from '../../utils/debug'
 import store from '../../composables/useScheduleStore'
 import { useUserSettings } from '~/composables/useUserSettings'
@@ -16,7 +15,6 @@ export interface InitializationState {
   isInitialized: boolean
   isLoading: boolean
   error: InitializationError | null
-  projectId: string | null
   settings: Record<string, NamedTableConfig> | null
 }
 
@@ -43,7 +41,7 @@ function assertStore(store: unknown): asserts store is Store {
   }
 
   const storeObj = store as Store
-  if (typeof storeObj.setProjectId !== 'function' || !storeObj.lifecycle?.init) {
+  if (!storeObj.lifecycle?.init) {
     throw new InitializationError('Store not properly initialized', false)
   }
 }
@@ -70,7 +68,6 @@ function toProcessedHeader(param: ParameterDefinition): ProcessedHeader {
 }
 
 export function useScheduleInitializationFlow(): InitializationFlow {
-  const route = useRoute()
   const viewerState = useInjectedViewerState()
   const { initializeElements, allElements } = useBIMElements()
 
@@ -79,35 +76,7 @@ export function useScheduleInitializationFlow(): InitializationFlow {
     isInitialized: false,
     isLoading: false,
     error: null,
-    projectId: null,
     settings: null
-  })
-
-  // Project ID validation - prioritize viewer state
-  const projectId = computed(() => {
-    // First try to get project ID from viewer state
-    if (viewerState.projectId?.value) {
-      debug.log(
-        DebugCategories.INITIALIZATION,
-        'Using project ID from viewer state:',
-        viewerState.projectId.value
-      )
-      return viewerState.projectId.value
-    }
-
-    // Fallback to route if needed
-    const fullPath = route.fullPath
-    const match = fullPath.match(/\/projects\/([^/]+)/)
-    const id = match ? match[1] : route.params.projectId
-
-    debug.log(DebugCategories.INITIALIZATION, 'Project ID resolution:', {
-      fromViewer: viewerState.projectId?.value,
-      fromRoute: id,
-      routeParams: route.params,
-      fullPath: route.fullPath
-    })
-
-    return typeof id === 'string' && id ? id : null
   })
 
   // Settings initialization with error handling
@@ -163,10 +132,6 @@ export function useScheduleInitializationFlow(): InitializationFlow {
 
   // Core initialization with proper error handling
   async function initializeCore(): Promise<void> {
-    if (!projectId.value) {
-      throw new InitializationError('Project ID is required but not provided', false)
-    }
-
     if (!viewerState?.viewer?.instance) {
       throw new InitializationError('Viewer state not available', false)
     }
@@ -177,9 +142,6 @@ export function useScheduleInitializationFlow(): InitializationFlow {
 
       // Validate store
       assertStore(store)
-
-      // Initialize store with project ID
-      store.setProjectId(projectId.value)
 
       // Load settings before store initialization
       const settings = await initializeSettings()
@@ -214,12 +176,10 @@ export function useScheduleInitializationFlow(): InitializationFlow {
       })
 
       // Update state
-      state.value.projectId = projectId.value
       state.value.isInitialized = true
       state.value.error = null
 
       debug.log(DebugCategories.INITIALIZATION, 'Core initialization complete', {
-        projectId: projectId.value,
         hasSettings: !!settings,
         viewerReady: !!viewerState?.viewer?.instance,
         storeInitialized: store.initialized.value,
@@ -249,7 +209,6 @@ export function useScheduleInitializationFlow(): InitializationFlow {
       debug.startState('scheduleInitialization')
       debug.log(DebugCategories.INITIALIZATION, 'Starting initialization flow', {
         timestamp: new Date().toISOString(),
-        projectId: projectId.value,
         viewerState: !!viewerState?.viewer?.instance
       })
 
@@ -301,7 +260,6 @@ export function useScheduleInitializationFlow(): InitializationFlow {
       isInitialized: false,
       isLoading: false,
       error: null,
-      projectId: null,
       settings: null
     }
 

@@ -1,5 +1,5 @@
 import { ref, computed, unref } from 'vue'
-import type { Store, StoreState } from '../core/types'
+import type { Store, StoreState } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 import { createMutations } from '../core/store/mutations'
 import type { useInjectedViewerState } from '~/lib/viewer/composables/setup'
@@ -37,8 +37,8 @@ function createStore(): Store {
     tableData: [],
     customParameters: [],
     parameterColumns: [],
-    parentParameterColumns: [], // Added missing property
-    childParameterColumns: [], // Added missing property
+    parentParameterColumns: [],
+    childParameterColumns: [],
     mergedParentParameters: [],
     mergedChildParameters: [],
     processedParameters: {},
@@ -96,11 +96,6 @@ function createStore(): Store {
           await mutations.setChildCategories(
             defaultTable.categoryFilters.selectedChildCategories
           )
-        }
-
-        // Process data if available
-        if (internalState.value.scheduleData.length > 0) {
-          await mutations.processData()
         }
 
         debug.log(DebugCategories.INITIALIZATION, 'Store initialization complete', {
@@ -172,13 +167,8 @@ function createStore(): Store {
           mutations.setTablesArray(state.tablesArray)
         }
 
-        // Re-process data if needed
-        if (
-          ('scheduleData' in state && state.scheduleData) ||
-          ('customParameters' in state && state.customParameters)
-        ) {
-          await mutations.processData()
-        }
+        // Wait for any state updates to settle
+        await new Promise((resolve) => setTimeout(resolve, 0))
 
         debug.log(DebugCategories.STATE, 'Store state updated successfully')
       } catch (error) {
@@ -208,10 +198,10 @@ function createStore(): Store {
     parameterColumns: computed(() => [...unref(internalState.value.parameterColumns)]),
     parentParameterColumns: computed(() => [
       ...unref(internalState.value.parentParameterColumns)
-    ]), // Added
+    ]),
     childParameterColumns: computed(() => [
       ...unref(internalState.value.childParameterColumns)
-    ]), // Added
+    ]),
     mergedParentParameters: computed(() => [
       ...unref(internalState.value.mergedParentParameters)
     ]),
@@ -256,8 +246,8 @@ function createStore(): Store {
     setTableData: mutations.setTableData,
     setCustomParameters: mutations.setCustomParameters,
     setParameterColumns: mutations.setParameterColumns,
-    setParentParameterColumns: mutations.setParentParameterColumns, // Added
-    setChildParameterColumns: mutations.setChildParameterColumns, // Added
+    setParentParameterColumns: mutations.setParentParameterColumns,
+    setChildParameterColumns: mutations.setChildParameterColumns,
     setMergedParameters: mutations.setMergedParameters,
     setProcessedParameters: mutations.setProcessedParameters,
     setParameterDefinitions: mutations.setParameterDefinitions,
@@ -277,7 +267,6 @@ function createStore(): Store {
     setInitialized: mutations.setInitialized,
     setLoading: mutations.setLoading,
     setError: mutations.setError,
-    processData: mutations.processData,
     reset: mutations.reset,
 
     // Lifecycle

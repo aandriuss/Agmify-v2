@@ -5,6 +5,7 @@ import type {
   ParameterValue,
   ParameterValueState
 } from '../types'
+import { isParameterValueState } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
@@ -26,8 +27,9 @@ function isValidElement(element: unknown): element is ElementData {
   const e = element as ElementData
   return (
     typeof e.id === 'string' &&
-    typeof e.category === 'string' &&
-    typeof e.parameters === 'object'
+    typeof e.parameters === 'object' &&
+    (!e.mark || typeof e.mark === 'object' || typeof e.mark === 'string') &&
+    (!e.category || typeof e.category === 'object' || typeof e.category === 'string')
   )
 }
 
@@ -35,10 +37,24 @@ function isValidElement(element: unknown): element is ElementData {
  * Convert a value to a valid ParameterValue
  */
 function toParameterValue(value: unknown): ParameterValue {
-  if (value === null) return null
+  if (value === null || value === undefined) return null
   if (typeof value === 'string') return value
   if (typeof value === 'number') return value
   if (typeof value === 'boolean') return value
+  if (isParameterValueState(value)) {
+    return value.currentValue
+  }
+  return String(value)
+}
+
+/**
+ * Convert any value to a string
+ */
+function toString(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (isParameterValueState(value)) {
+    return value.currentValue ? String(value.currentValue) : ''
+  }
   return String(value)
 }
 
@@ -60,45 +76,69 @@ function createParameterValueState(value: unknown): ParameterValueState {
  */
 function createTableRow(element: ElementData, columns: ColumnDef[]): TableRow {
   if (!isValidElement(element)) {
-    throw new Error('Invalid element data')
+    throw new Error(`Invalid element data: ${JSON.stringify(element)}`)
+  }
+
+  // Create base row with essential fields, using currentValue for mark and category if they're parameter value states
+  const baseRow = {
+    id: element.id,
+    mark: toString(element.mark),
+    category: toString(element.category),
+    type: element.type || '',
+    host: element.host || undefined,
+    _visible: true,
+    isChild: element.isChild || false,
+    _raw: element._raw
   }
 
   // Create parameters with value states
   const parameters: Record<string, ParameterValueState> = {}
 
+  // First, process all parameters from the element
+  if (element.parameters) {
+    Object.entries(element.parameters).forEach(([key, value]) => {
+      parameters[key] = createParameterValueState(value)
+    })
+  }
+
+  // Then ensure all columns have a parameter value state
   columns.forEach((column) => {
     const field = column.field
+
+    // Skip if parameter already exists
+    if (parameters[field]) return
+
     let value: unknown
 
     // Handle special fields
     if (field === 'mark') {
-      value = element.mark
+      value = baseRow.mark
     } else if (field === 'category') {
-      value = element.category
+      value = baseRow.category
     } else if (field === 'type') {
-      value = element.type || ''
+      value = element.type
     } else if (field === 'host') {
-      value = element.host || ''
-    } else if (element.parameters && field in element.parameters) {
-      value = element.parameters[field]
+      value = element.host
     } else {
-      value = ''
+      // For any other field not found in parameters, set to null
+      value = null
     }
 
-    // Create parameter value state
     parameters[field] = createParameterValueState(value)
   })
 
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Created table row', {
+    elementId: element.id,
+    mark: baseRow.mark,
+    parameterCount: Object.keys(parameters).length,
+    stateParameterCount: Object.keys(parameters).filter(
+      (key) => parameters[key].currentValue !== null
+    ).length
+  })
+
   return {
-    id: element.id,
-    mark: element.mark,
-    category: element.category,
-    type: element.type || '',
-    host: element.host,
-    parameters,
-    _visible: true,
-    isChild: element.isChild,
-    _raw: element._raw
+    ...baseRow,
+    parameters
   }
 }
 

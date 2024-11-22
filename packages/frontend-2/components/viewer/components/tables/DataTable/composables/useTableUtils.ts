@@ -1,5 +1,5 @@
 import type { ColumnDef } from './columns/types'
-import type { TableRow } from '~/components/viewer/schedules/types'
+import type { TableRow, ParameterValue } from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
 
 export function safeJSONClone<T>(obj: T): T {
@@ -17,7 +17,7 @@ export function validateData(
       throw new Error('Data must be an array')
     }
 
-    const invalidItems = data.filter((item) => !isTableRow(item))
+    const invalidItems = data.filter((item) => !isValidParameters(item))
     if (invalidItems.length > 0) {
       debug.warn(DebugCategories.VALIDATION, 'Invalid data items found', invalidItems)
       throw new Error(`Invalid data items found: ${invalidItems.length} items`)
@@ -41,38 +41,27 @@ export function sortColumnsByOrder(columns: ColumnDef[]): ColumnDef[] {
   })
 }
 
-/**
- * Type guard for TableRow
- */
-export function isTableRow(item: unknown): item is TableRow {
+function isValidParameterValue(value: unknown): value is ParameterValue {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  )
+}
+
+function isValidParameters(item: unknown): boolean {
   if (!item || typeof item !== 'object') return false
 
   const record = item as Record<string, unknown>
-  const requiredFields = ['id', 'mark', 'category', 'parameters']
+  if (!record.parameters || typeof record.parameters !== 'object') return false
 
-  const hasRequiredFields = requiredFields.every((field) => {
-    const value = record[field]
-    return value !== undefined && value !== null
-  })
-
-  if (!hasRequiredFields) {
-    debug.warn(DebugCategories.VALIDATION, 'Missing required fields', {
-      item,
-      missingFields: requiredFields.filter((field) => {
-        const value = record[field]
-        return value === undefined || value === null
-      })
-    })
-    return false
-  }
-
-  // Check parameters is an object with ParameterValueState values
   const parameters = record.parameters as Record<string, unknown>
-  if (typeof parameters !== 'object' || parameters === null) {
-    return false
-  }
-
-  return true
+  return Object.values(parameters).every(
+    (value) =>
+      isValidParameterValue(value) ||
+      (typeof value === 'object' && value !== null && 'currentValue' in value)
+  )
 }
 
 export function updateLocalColumns(
@@ -100,9 +89,10 @@ export function updateLocalColumns(
  * Validate array of TableRow objects
  */
 export function validateTableRows(data: unknown[]): TableRow[] {
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Validating table rows', {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'xx Validating table rows', {
     timestamp: new Date().toISOString(),
-    inputCount: data?.length
+    inputCount: data?.length,
+    sample: data?.[0]
   })
 
   if (!Array.isArray(data)) {
@@ -110,18 +100,19 @@ export function validateTableRows(data: unknown[]): TableRow[] {
     return []
   }
 
-  // Validate each item is a TableRow
+  // Only validate parameters exist and are valid
   const validItems = data.filter((item): item is TableRow => {
-    const isValid = isTableRow(item)
+    const isValid = isValidParameters(item)
     if (!isValid) {
-      debug.warn(DebugCategories.VALIDATION, 'Invalid table row', item)
+      debug.warn(DebugCategories.VALIDATION, 'Invalid parameters', item)
     }
     return isValid
   })
 
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Validation complete', {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'xx Validation complete', {
     timestamp: new Date().toISOString(),
-    validCount: validItems.length
+    validCount: validItems.length,
+    sample: validItems[0]
   })
 
   return validItems

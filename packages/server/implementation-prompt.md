@@ -4,6 +4,8 @@
 
 The BIM Schedule System displays building element parameters in a structured table format. We've completed the parameter discovery and state management phases, and now need to implement the parameter display and interaction features.
 
+IMPORTANT! There are separate fetches from BIM DATA. they go in parallel. We fetch unique parameters from selected categories for both parent and child elements (separately). Also we fetch bim elements by selected categories (like floors, walls, structural framing) with their active parameters and values for these parameters. so at the end we have two lists with available parameters and two element objects with parent and child elements, which hold also values for these parameters.
+
 ## Current State
 
 ### Data Flow
@@ -55,8 +57,6 @@ interface TableRow {
 1. Parameter Display
 
 - Show parameter values in DataTable cells
-- Group parameters by source (Identity Data, Constraints, Other)
-- Display parameter states (fetched, current, user modified)
 - Handle null/undefined values gracefully
 
 2. Parameter Interaction

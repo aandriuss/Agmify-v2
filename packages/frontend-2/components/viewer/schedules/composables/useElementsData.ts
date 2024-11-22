@@ -1,18 +1,13 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import type {
-  ElementsDataReturn,
   ElementData,
   ProcessingState,
   TableRow,
-  ProcessedHeader,
-  AvailableHeaders,
-  Parameters,
-  ParameterValue
+  ElementsDataReturn
 } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
 import { useBIMElements } from './useBIMElements'
-import { filterElements } from './useElementCategories'
-import { processParameters } from './useElementParameters'
+import { processDataPipeline } from '../utils/dataPipeline'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 import store from './useScheduleStore'
 
@@ -24,94 +19,6 @@ function toMutable<T>(arr: readonly T[] | T[]): T[] {
 }
 
 /**
- * Get active parameters from columns
- */
-function getActiveParameters(columns: typeof defaultColumns): string[] {
-  return columns.map((col) => col.field)
-}
-
-/**
- * Transform parameter value based on type
- */
-function transformValue(value: unknown): ParameterValue {
-  // Handle null/undefined
-  if (value === null || value === undefined) return null
-
-  // Handle strings
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-
-    // Handle percentages
-    if (trimmed.endsWith('%')) {
-      const num = parseFloat(trimmed)
-      return isNaN(num) ? null : num / 100
-    }
-
-    // Handle currency
-    if (trimmed.startsWith('$')) {
-      const num = parseFloat(trimmed.substring(1))
-      return isNaN(num) ? null : num
-    }
-
-    // Handle numbers
-    const num = parseFloat(trimmed)
-    if (!isNaN(num)) return num
-
-    return trimmed
-  }
-
-  // Handle objects
-  if (typeof value === 'object') {
-    try {
-      return JSON.stringify(value) || null
-    } catch {
-      return null
-    }
-  }
-
-  // Handle numbers and booleans
-  if (typeof value === 'number') return isNaN(value) ? null : value
-  if (typeof value === 'boolean') return value
-
-  // Default to null for unsupported types
-  return null
-}
-
-/**
- * Create table row with all active parameters
- */
-function createTableRow(element: ElementData, activeParams: string[]): TableRow {
-  // Start with basic element data
-  const row = {
-    id: element.id,
-    mark: element.mark,
-    category: element.category,
-    type: element.type || '',
-    parameters: {} as Parameters,
-    _visible: element._visible,
-    isChild: element.isChild,
-    _raw: element._raw
-  }
-
-  // Add all active parameters, with null if not in BIM data
-  activeParams.forEach((param) => {
-    const value = transformValue(element.parameters[param])
-    row.parameters[param] = {
-      fetchedValue: value,
-      currentValue: value,
-      previousValue: value,
-      userValue: null
-    }
-  })
-
-  return row
-}
-
-type ElementsDataReturnWithTableRows = Omit<ElementsDataReturn, 'tableData'> & {
-  tableData: Ref<TableRow[]>
-}
-
-/**
  * Coordinates BIM element data handling between specialized composables.
  */
 export function useElementsData({
@@ -120,7 +27,7 @@ export function useElementsData({
 }: {
   selectedParentCategories: Ref<string[]>
   selectedChildCategories: Ref<string[]>
-}): ElementsDataReturnWithTableRows {
+}): ElementsDataReturn {
   // Initialize processing state
   const processingState = ref<ProcessingState>({
     isInitializing: false,
@@ -145,10 +52,6 @@ export function useElementsData({
   const filteredElementsRef = ref<ElementData[]>([])
   const scheduleDataRef = ref<ElementData[]>([])
   const tableDataRef = ref<TableRow[]>([])
-  const availableHeadersRef = ref<AvailableHeaders>({
-    parent: [] as ProcessedHeader[],
-    child: [] as ProcessedHeader[]
-  })
 
   // Initialize with default columns
   store.lifecycle.update({
@@ -156,112 +59,58 @@ export function useElementsData({
     currentDetailColumns: toMutable(defaultDetailColumns)
   })
 
-  // Update filtered elements when source data or categories change
+  // Update data when source data or categories change
   watch(
     [allElements, selectedParentCategories, selectedChildCategories],
     async ([elements, parentCats, childCats]) => {
       try {
-        // Skip if store isn't initialized yet
         if (!store.initialized.value) {
           debug.log(
             DebugCategories.STATE,
-            'Skipping data processing - store not initialized',
-            {
-              storeInitialized: store.initialized.value,
-              hasElements: !!elements,
-              elementCount: elements?.length || 0
-            }
+            'Skipping data processing - store not initialized'
           )
           return
         }
 
-        if (!elements) {
+        if (!elements?.length) {
           debug.warn(DebugCategories.DATA, 'No elements available for processing')
           filteredElementsRef.value = []
           return
         }
 
-        // Process elements
-        debug.log(DebugCategories.DATA, 'Processing elements', {
-          elementCount: elements.length,
-          parentCategories: parentCats,
-          childCategories: childCats
-        })
+        processingState.value.isProcessingElements = true
 
-        // Step 1: Filter elements based on categories
-        const { filteredElements } = filterElements({
-          allElements: toMutable(elements),
+        // Process data through unified pipeline
+        const result = processDataPipeline({
+          allElements: elements,
           selectedParent: parentCats,
           selectedChild: childCats
         })
 
-        // Step 2: Get active parameters for each type
-        const parentParams = getActiveParameters(defaultColumns)
-        const childParams = getActiveParameters(defaultDetailColumns)
-
-        // Step 3: Process parameters separately for parent and child elements
-        const parentResult = await processParameters({
-          filteredElements: filteredElements.filter((el) => !el.isChild),
-          initialColumns: defaultColumns
-        })
-
-        const childResult = await processParameters({
-          filteredElements: filteredElements.filter((el) => el.isChild),
-          initialColumns: defaultDetailColumns
-        })
-
-        // Step 4: Combine processed elements
-        const processedElements = [
-          ...parentResult.processedElements,
-          ...childResult.processedElements
-        ]
-
-        // Step 5: Create table rows with all active parameters
-        const tableRows = processedElements.map((el) =>
-          createTableRow(el, el.isChild ? childParams : parentParams)
-        )
-
-        // Step 6: Update store
+        // Update store with processed data
         await store.lifecycle.update({
           selectedParentCategories: parentCats,
           selectedChildCategories: childCats,
-          scheduleData: processedElements,
-          evaluatedData: processedElements,
-          tableData: tableRows,
-          currentTableColumns: toMutable(parentResult.parameterColumns),
-          currentDetailColumns: toMutable(childResult.parameterColumns),
-          availableHeaders: {
-            parent: toMutable(parentResult.availableHeaders.parent),
-            child: toMutable(childResult.availableHeaders.child)
-          }
+          scheduleData: result.filteredElements,
+          evaluatedData: result.processedElements,
+          tableData: result.tableData,
+          currentTableColumns: toMutable(result.parameterColumns),
+          currentDetailColumns: toMutable(defaultDetailColumns)
         })
 
-        // Step 7: Update local refs
-        filteredElementsRef.value = processedElements
-        scheduleDataRef.value = processedElements
-        tableDataRef.value = tableRows
-        availableHeadersRef.value = {
-          parent: toMutable(parentResult.availableHeaders.parent),
-          child: toMutable(childResult.availableHeaders.child)
-        }
-
-        debug.log(DebugCategories.DATA, 'Data processing complete', {
-          processedCount: processedElements.length,
-          tableRowsCount: tableRows.length,
-          sampleRow: tableRows[0],
-          sampleParameters: tableRows[0]?.parameters,
-          activeParameters: {
-            parent: parentParams,
-            child: childParams
-          }
-        })
+        // Update local refs
+        filteredElementsRef.value = result.filteredElements
+        scheduleDataRef.value = result.filteredElements
+        tableDataRef.value = result.tableData
       } catch (error) {
-        debug.error(DebugCategories.ERROR, 'Error updating filtered elements:', error)
+        debug.error(DebugCategories.ERROR, 'Error processing data:', error)
         processingState.value.error =
           error instanceof Error ? error : new Error(String(error))
+      } finally {
+        processingState.value.isProcessingElements = false
       }
     },
-    { immediate: false } // Don't run immediately, wait for store initialization
+    { immediate: false }
   )
 
   // Initialize data with proper order
@@ -275,63 +124,30 @@ export function useElementsData({
         await store.lifecycle.init()
       }
 
-      // Step 2: Get active parameters
-      const activeParameters = getActiveParameters(defaultColumns)
+      // Step 2: Initialize BIM elements
+      await initializeElements()
 
-      // Step 3: Initialize BIM elements with active parameters
-      await initializeElements(activeParameters)
-
-      // Step 4: Process initial data
-      if (allElements.value) {
-        const { filteredElements } = filterElements({
-          allElements: toMutable(allElements.value),
+      // Step 3: Process initial data
+      if (allElements.value?.length) {
+        const result = processDataPipeline({
+          allElements: allElements.value,
           selectedParent: selectedParentCategories.value,
           selectedChild: selectedChildCategories.value
         })
 
-        const parentParams = getActiveParameters(defaultColumns)
-        const childParams = getActiveParameters(defaultDetailColumns)
-
-        const parentResult = await processParameters({
-          filteredElements: filteredElements.filter((el) => !el.isChild),
-          initialColumns: defaultColumns
-        })
-
-        const childResult = await processParameters({
-          filteredElements: filteredElements.filter((el) => el.isChild),
-          initialColumns: defaultDetailColumns
-        })
-
-        const processedElements = [
-          ...parentResult.processedElements,
-          ...childResult.processedElements
-        ]
-
-        const tableRows = processedElements.map((el) =>
-          createTableRow(el, el.isChild ? childParams : parentParams)
-        )
-
-        // Update store with initial data
+        // Update store with processed data
         await store.lifecycle.update({
-          scheduleData: processedElements,
-          evaluatedData: processedElements,
-          tableData: tableRows,
-          currentTableColumns: toMutable(parentResult.parameterColumns),
-          currentDetailColumns: toMutable(childResult.parameterColumns),
-          availableHeaders: {
-            parent: toMutable(parentResult.availableHeaders.parent),
-            child: toMutable(childResult.availableHeaders.child)
-          }
+          scheduleData: result.filteredElements,
+          evaluatedData: result.processedElements,
+          tableData: result.tableData,
+          currentTableColumns: toMutable(result.parameterColumns),
+          currentDetailColumns: toMutable(defaultDetailColumns)
         })
 
         // Update local refs
-        filteredElementsRef.value = processedElements
-        scheduleDataRef.value = processedElements
-        tableDataRef.value = tableRows
-        availableHeadersRef.value = {
-          parent: toMutable(parentResult.availableHeaders.parent),
-          child: toMutable(childResult.availableHeaders.child)
-        }
+        filteredElementsRef.value = result.filteredElements
+        scheduleDataRef.value = result.filteredElements
+        tableDataRef.value = result.tableData
       }
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error initializing data:', error)
@@ -360,77 +176,32 @@ export function useElementsData({
         return
       }
 
-      // Step 1: Update local categories
+      // Update local categories
       selectedParentCategories.value = toMutable(parentCategories)
       selectedChildCategories.value = toMutable(childCategories)
 
-      // Step 2: Filter elements with new categories
-      const { filteredElements } = filterElements({
-        allElements: toMutable(allElements.value),
+      // Process data with new categories
+      const result = processDataPipeline({
+        allElements: allElements.value,
         selectedParent: parentCategories,
         selectedChild: childCategories
       })
 
-      // Step 3: Get active parameters for each type
-      const parentParams = getActiveParameters(defaultColumns)
-      const childParams = getActiveParameters(defaultDetailColumns)
-
-      // Step 4: Process parameters
-      const parentResult = await processParameters({
-        filteredElements: filteredElements.filter((el) => !el.isChild),
-        initialColumns: defaultColumns
-      })
-
-      const childResult = await processParameters({
-        filteredElements: filteredElements.filter((el) => el.isChild),
-        initialColumns: defaultDetailColumns
-      })
-
-      // Step 5: Combine processed elements
-      const processedElements = [
-        ...parentResult.processedElements,
-        ...childResult.processedElements
-      ]
-
-      // Step 6: Create table rows with all active parameters
-      const tableRows = processedElements.map((el) =>
-        createTableRow(el, el.isChild ? childParams : parentParams)
-      )
-
-      // Step 7: Update store
+      // Update store with processed data
       await store.lifecycle.update({
         selectedParentCategories: parentCategories,
         selectedChildCategories: childCategories,
-        scheduleData: processedElements,
-        evaluatedData: processedElements,
-        tableData: tableRows,
-        currentTableColumns: toMutable(parentResult.parameterColumns),
-        currentDetailColumns: toMutable(childResult.parameterColumns),
-        availableHeaders: {
-          parent: toMutable(parentResult.availableHeaders.parent),
-          child: toMutable(childResult.availableHeaders.child)
-        }
+        scheduleData: result.filteredElements,
+        evaluatedData: result.processedElements,
+        tableData: result.tableData,
+        currentTableColumns: toMutable(result.parameterColumns),
+        currentDetailColumns: toMutable(defaultDetailColumns)
       })
 
-      // Step 8: Update local refs
-      filteredElementsRef.value = processedElements
-      scheduleDataRef.value = processedElements
-      tableDataRef.value = tableRows
-      availableHeadersRef.value = {
-        parent: toMutable(parentResult.availableHeaders.parent),
-        child: toMutable(childResult.availableHeaders.child)
-      }
-
-      debug.log(DebugCategories.DATA, 'Categories updated', {
-        processedCount: processedElements.length,
-        tableRowsCount: tableRows.length,
-        sampleRow: tableRows[0],
-        sampleParameters: tableRows[0]?.parameters,
-        activeParameters: {
-          parent: parentParams,
-          child: childParams
-        }
-      })
+      // Update local refs
+      filteredElementsRef.value = result.filteredElements
+      scheduleDataRef.value = result.filteredElements
+      tableDataRef.value = result.tableData
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error updating categories:', error)
       processingState.value.error =
@@ -441,11 +212,9 @@ export function useElementsData({
     }
   }
 
-  // Return object
   return {
     scheduleData: scheduleDataRef,
     tableData: tableDataRef,
-    availableHeaders: availableHeadersRef,
     availableCategories: computed(() => ({
       parent: new Set(selectedParentCategories.value),
       child: new Set(selectedChildCategories.value)

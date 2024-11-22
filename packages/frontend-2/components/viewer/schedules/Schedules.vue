@@ -1,6 +1,27 @@
 <template>
   <ViewerLayoutPanel :initial-width="400" v-bind="$attrs" @close="handleClose">
+    <template #header>
+      <div>Pllll</div>
+    </template>
+
     <template #default>
+      <div class="flex items-center justify-between w-full">
+        <ScheduleHeader
+          :selected-table-id="storeValues?.selectedTableId || ''"
+          :table-name="storeValues?.tableName || ''"
+          :tables="storeValues?.tablesArray || []"
+          :show-category-options="showCategoryOptions"
+          :has-changes="hasChanges"
+          :is-test-mode="isTestMode"
+          @update:selected-table-id="handleSelectedTableIdUpdate"
+          @update:table-name="handleTableNameUpdate"
+          @table-change="handleTableChange"
+          @save="handleSaveTable"
+          @manage-parameters="showParameterManager = true"
+          @toggle-category-options="showCategoryOptions = !showCategoryOptions"
+          @toggle-test-mode="isTestMode = !isTestMode"
+        />
+      </div>
       <!-- Loading State -->
       <div v-if="isLoading" class="flex items-center justify-center h-full">
         <div class="text-center">
@@ -15,7 +36,7 @@
       <div v-else-if="error" class="flex items-center justify-center h-full">
         <div class="text-center">
           <div class="text-lg font-semibold mb-2 text-red-500">
-            {{ error.message }}
+            {{ error?.message }}
           </div>
           <FormButton
             class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -67,36 +88,41 @@
             :orphaned-elements="elementsData?.orphanedElements || []"
           />
 
-          <!-- Table View -->
-          <ScheduleTableView
-            v-if="initialized && !isLoading"
-            :selected-table-id="storeValues?.selectedTableId || ''"
-            :current-table="currentTableConfig"
-            :is-initialized="initialized"
-            :table-name="storeValues?.tableName || ''"
-            :current-table-id="storeValues?.currentTableId || ''"
-            :table-key="storeValues?.tableKey || '0'"
-            :loading-error="error"
-            :merged-table-columns="storeValues?.mergedTableColumns || []"
-            :merged-detail-columns="storeValues?.mergedDetailColumns || []"
-            :available-parent-parameters="availableParentParameters"
-            :available-child-parameters="availableChildParameters"
-            :schedule-data="storeValues?.scheduleData || []"
-            :evaluated-data="storeValues?.evaluatedData || []"
-            :table-data="storeValues?.tableData || []"
-            :is-loading="isLoading"
-            :is-loading-additional-data="isUpdating"
-            :no-categories-selected="!hasSelectedCategories"
-            :selected-parent-categories="selectedParentCategories"
-            :selected-child-categories="selectedChildCategories"
-            @update:both-columns="handleBothColumnsUpdate"
-            @table-updated="handleTableDataUpdate"
-            @column-visibility-change="handleColumnVisibilityChange"
-          />
+          <!-- Conditional rendering of real or test data -->
+          <template v-if="isTestMode">
+            <TestDataTable />
+          </template>
+          <template v-else>
+            <ScheduleTableView
+              v-if="initialized && !isLoading"
+              :selected-table-id="storeValues?.selectedTableId || ''"
+              :current-table="currentTableConfig"
+              :is-initialized="initialized"
+              :table-name="storeValues?.tableName || ''"
+              :current-table-id="storeValues?.currentTableId || ''"
+              :table-key="storeValues?.tableKey || '0'"
+              :loading-error="error"
+              :merged-table-columns="storeValues?.mergedTableColumns || []"
+              :merged-detail-columns="storeValues?.mergedDetailColumns || []"
+              :available-parent-parameters="availableParentParameters"
+              :available-child-parameters="availableChildParameters"
+              :schedule-data="storeValues?.scheduleData || []"
+              :evaluated-data="storeValues?.evaluatedData || []"
+              :table-data="storeValues?.tableData || []"
+              :is-loading="isLoading"
+              :is-loading-additional-data="isUpdating"
+              :no-categories-selected="!hasSelectedCategories"
+              :selected-parent-categories="selectedParentCategories"
+              :selected-child-categories="selectedChildCategories"
+              @update:both-columns="handleBothColumnsUpdate"
+              @table-updated="handleTableDataUpdate"
+              @column-visibility-change="handleColumnVisibilityChange"
+            />
+          </template>
 
           <!-- Category Filters -->
           <ScheduleCategoryFilters
-            v-if="initialized && !isLoading"
+            v-if="initialized && !isLoading && !isTestMode"
             :show-category-options="showCategoryOptions"
             :parent-categories="parentCategories"
             :child-categories="childCategories"
@@ -108,7 +134,7 @@
 
           <!-- Data Management -->
           <ScheduleDataManagement
-            v-if="initialized && !isLoading"
+            v-if="initialized && !isLoading && !isTestMode"
             ref="dataComponent"
             :schedule-data="storeValues?.scheduleData || []"
             :evaluated-data="storeValues?.evaluatedData || []"
@@ -124,7 +150,7 @@
 
           <!-- Parameter Handling -->
           <ScheduleParameterHandling
-            v-if="initialized && !isLoading"
+            v-if="initialized && !isLoading && !isTestMode"
             ref="parameterComponent"
             :schedule-data="storeValues?.scheduleData || []"
             :custom-parameters="storeValues?.customParameters || []"
@@ -141,7 +167,7 @@
 
           <!-- Column Management -->
           <ScheduleColumnManagement
-            v-if="initialized && !isLoading"
+            v-if="initialized && !isLoading && !isTestMode"
             ref="columnComponent"
             :current-table-columns="storeValues?.currentTableColumns || []"
             :current-detail-columns="storeValues?.currentDetailColumns || []"
@@ -156,7 +182,7 @@
 
           <!-- Parameter Manager Modal -->
           <ScheduleParameterManagerModal
-            v-if="initialized && !isLoading && showParameterManager"
+            v-if="initialized && !isLoading && showParameterManager && !isTestMode"
             v-model:show="showParameterManager"
             :table-id="storeValues?.currentTableId || ''"
             @update="handleParameterUpdate"
@@ -165,23 +191,6 @@
           />
         </div>
       </template>
-    </template>
-
-    <template #header>
-      <ScheduleHeader
-        v-if="initialized && !isLoading"
-        :selected-table-id="storeValues?.selectedTableId || ''"
-        :table-name="storeValues?.tableName || ''"
-        :tables="storeValues?.tablesArray || []"
-        :show-category-options="showCategoryOptions"
-        :has-changes="hasChanges"
-        @update:selected-table-id="handleSelectedTableIdUpdate"
-        @update:table-name="handleTableNameUpdate"
-        @table-change="handleTableChange"
-        @save="handleSaveTable"
-        @manage-parameters="showParameterManager = true"
-        @toggle-category-options="showCategoryOptions = !showCategoryOptions"
-      />
     </template>
   </ViewerLayoutPanel>
 </template>
@@ -200,6 +209,7 @@ import { parentCategories, childCategories } from './config/categories'
 import scheduleStore from './composables/useScheduleStore'
 import { defaultTable } from './config/defaultColumns'
 import { useBIMElements } from './composables/useBIMElements'
+import TestDataTable from './components/test/TestDataTable.vue'
 
 // Types
 import type {
@@ -232,6 +242,9 @@ interface CustomParameter {
   header: string
   [key: string]: unknown
 }
+
+// Add test mode state
+const isTestMode = ref(false)
 
 // Get viewer state from parent
 const viewerState = useInjectedViewerState()
@@ -281,8 +294,6 @@ const currentTableConfig = computed<NamedTableConfig | null>(() =>
 )
 
 const scheduleState = useScheduleState({
-  selectedParentCategories,
-  selectedChildCategories,
   currentTable: currentTableConfig
 })
 
@@ -692,5 +703,9 @@ defineExpose({
 
 .rounded {
   border-radius: 0.25rem;
+}
+
+.ml-2 {
+  margin-left: 0.5rem;
 }
 </style>

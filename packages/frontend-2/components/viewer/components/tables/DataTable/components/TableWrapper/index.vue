@@ -1,12 +1,12 @@
 <template>
   <div class="datatable-wrapper">
     <DataTable
-      :expanded-rows="modelValue"
+      :key="`table-${data.length}-${parentColumns.length}`"
       :value="data"
       :loading="loading"
       :sort-field="sortField"
       :sort-order="sortOrder"
-      :filters="tableFilters"
+      :filters="filters"
       resizable-columns
       reorderable-columns
       striped-rows
@@ -15,157 +15,151 @@
       :rows="10"
       expand-mode="row"
       data-key="id"
-      @update:expanded-rows="handleExpandedRowsUpdate"
       @column-resize-end="handleColumnResize"
       @column-reorder="handleColumnReorder"
       @sort="handleSort"
       @filter="handleFilter"
     >
       <template #empty>
-        <div class="p-4 text-center text-gray-500">No data available</div>
+        <slot name="empty">
+          <div class="p-4 text-center text-gray-500">No data available</div>
+        </slot>
       </template>
 
       <template #loading>
-        <div class="p-4 text-center text-gray-500">Loading data...</div>
+        <slot name="loading">
+          <div class="p-4 text-center text-gray-500">Loading data...</div>
+        </slot>
       </template>
 
       <template #header>
-        <div class="parameter-groups">
-          <div
-            v-for="group in groupedParentColumns"
-            :key="group.source"
-            class="group-info"
-          >
-            <span class="group-name">{{ group.source }}</span>
-            <span class="group-count">
-              {{ group.visibleCount }}/{{ group.columns.length }}
-            </span>
+        <slot name="header">
+          <div class="parameter-groups">
+            <div
+              v-for="group in groupedParentColumns"
+              :key="group.source"
+              class="group-info"
+            >
+              <span class="group-name">{{ group.source }}</span>
+              <span class="group-count">
+                {{ group.visibleCount }}/{{ group.columns.length }}
+              </span>
+            </div>
           </div>
-        </div>
+        </slot>
       </template>
 
       <template #expansion="{ data: expandedData }">
-        <div v-if="expandedData.details?.length" class="p-2 bg-gray-50">
-          <DataTable
-            :value="expandedData.details"
-            resizable-columns
-            reorderable-columns
-            striped-rows
-            class="nested-table p-datatable-sm"
-            data-key="id"
-            @column-resize-end="handleColumnResize"
-            @column-reorder="handleColumnReorder"
-          >
-            <template #header>
-              <div class="parameter-groups">
-                <div
-                  v-for="group in groupedChildColumns"
-                  :key="group.source"
-                  class="group-info"
-                >
-                  <span class="group-name">{{ group.source }}</span>
-                  <span class="group-count">
-                    {{ group.visibleCount }}/{{ group.columns.length }}
-                  </span>
+        <slot name="expansion" :data="expandedData">
+          <div v-if="expandedData.details?.length" class="p-2 bg-gray-50">
+            <DataTable
+              :key="`nested-${expandedData.details.length}-${childColumns.length}`"
+              :value="expandedData.details"
+              resizable-columns
+              reorderable-columns
+              striped-rows
+              class="nested-table p-datatable-sm"
+              data-key="id"
+              @column-resize-end="handleColumnResize"
+              @column-reorder="handleColumnReorder"
+            >
+              <template #header>
+                <div class="parameter-groups">
+                  <div
+                    v-for="group in groupedChildColumns"
+                    :key="group.source"
+                    class="group-info"
+                  >
+                    <span class="group-name">{{ group.source }}</span>
+                    <span class="group-count">
+                      {{ group.visibleCount }}/{{ group.columns.length }}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            </template>
+              </template>
 
-            <Column :expander="true" style="width: 3rem" />
-            <template v-for="group in groupedChildColumns" :key="group.source">
-              <Column
-                v-for="col in group.columns"
-                :key="col.field"
-                :field="col.field"
-                :header="col.header"
-                :data-field="col.field"
-                :data-source="group.source"
-                :style="getColumnStyle(col)"
-                sortable
-              >
-                <template #header>
-                  <div class="column-header">
-                    <span class="header-text">{{ col.header }}</span>
-                    <span class="source-tag">{{ group.source }}</span>
-                  </div>
+              <!-- For child columns -->
+              <template v-for="group in groupedChildColumns" :key="group.source">
+                <template
+                  v-for="col in validColumnsInGroup(group.columns)"
+                  :key="col.field"
+                >
+                  <Column
+                    :field="col.field"
+                    :header="col.header"
+                    :data-field="col.field"
+                    :data-source="group.source"
+                    :style="getColumnStyle(col)"
+                    sortable
+                  >
+                    <template #header>
+                      <div class="column-header">
+                        <span class="header-text">{{ col.header }}</span>
+                        <span class="source-tag">{{ group.source }}</span>
+                      </div>
+                    </template>
+                    <template #body="{ data }">
+                      <div class="truncate">
+                        {{ getParameterValue(data, col.field) }}
+                      </div>
+                    </template>
+                  </Column>
                 </template>
-                <template #body="{ data }">
-                  <div class="truncate">
-                    {{ getFieldValue(data, col.field) }}
-                  </div>
-                </template>
-              </Column>
-            </template>
-          </DataTable>
-        </div>
+              </template>
+            </DataTable>
+          </div>
+        </slot>
       </template>
 
-      <Column :expander="true" style="width: 3rem" />
+      <!-- For parent columns -->
       <template v-for="group in groupedParentColumns" :key="group.source">
-        <Column
-          v-for="col in group.columns"
-          :key="col.field"
-          :field="col.field"
-          :header="col.header"
-          :header-component="col.headerComponent"
-          :data-field="col.field"
-          :data-source="group.source"
-          :style="getColumnStyle(col)"
-          sortable
-        >
-          <template #header>
-            <div class="column-header">
-              <span class="header-text">{{ col.header }}</span>
-              <span class="source-tag">{{ group.source }}</span>
-            </div>
-          </template>
-          <template #body="{ data }">
-            <div class="truncate">
-              {{ getFieldValue(data, col.field) }}
-            </div>
-          </template>
-        </Column>
+        <template v-for="col in validColumnsInGroup(group.columns)" :key="col.field">
+          <Column
+            :field="col.field"
+            :header="col.header"
+            :data-field="col.field"
+            :data-source="group.source"
+            :style="getColumnStyle(col)"
+            sortable
+          >
+            <template #header>
+              <div class="column-header">
+                <span class="header-text">{{ col.header }}</span>
+                <span class="source-tag">{{ group.source }}</span>
+              </div>
+            </template>
+            <template #body="{ data }">
+              <div class="truncate">
+                {{ getParameterValue(data, col.field) }}
+              </div>
+            </template>
+          </Column>
+        </template>
       </template>
     </DataTable>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch, onMounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import type {
+  DataTableColumnReorderEvent,
   DataTableSortEvent,
-  DataTableFilterEvent,
   DataTableFilterMeta
 } from 'primevue/datatable'
 import type { ColumnDef } from '../../composables/columns/types'
-import type { TableRow, ParameterValueState } from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
-import { isTableRow } from '../../composables/useTableUtils'
-
-// Type guard for ParameterValueState
-function isParameterValueState(value: unknown): value is ParameterValueState {
-  if (!value || typeof value !== 'object') return false
-  const state = value as Record<string, unknown>
-  return (
-    'fetchedValue' in state &&
-    'currentValue' in state &&
-    'previousValue' in state &&
-    'userValue' in state
-  )
-}
 
 interface Props {
-  modelValue: TableRow[]
-  data: TableRow[]
-  scheduleData: TableRow[]
+  data: unknown[]
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   loading?: boolean
   sortField?: string
   sortOrder?: number
-  filters?: Record<string, unknown>
+  filters?: DataTableFilterMeta
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -173,31 +167,104 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  'update:modelValue': [value: TableRow[]]
   'column-resize': [event: { element: HTMLElement }]
-  'column-reorder': [event: { target: HTMLElement | null }]
-  sort: [field: string, order: number]
-  filter: [filters: Record<string, unknown>]
+  'column-reorder': [event: DataTableColumnReorderEvent]
+  sort: [field: string | ((item: unknown) => string), order: number]
+  filter: [filters: DataTableFilterMeta]
 }>()
 
-interface ColumnGroup {
-  source: string
-  columns: ColumnDef[]
-  visibleCount: number
+// Event handlers
+function handleColumnResize(event: { element: HTMLElement }): void {
+  emit('column-resize', event)
 }
 
-const groupedParentColumns = computed<ColumnGroup[]>(() => {
+function handleColumnReorder(event: DataTableColumnReorderEvent): void {
+  emit('column-reorder', event)
+}
+
+function handleSort(event: DataTableSortEvent): void {
+  if (event.sortField) {
+    emit('sort', event.sortField, event.sortOrder || 1)
+  }
+}
+
+function handleFilter(event: { filters: DataTableFilterMeta }): void {
+  emit('filter', event.filters)
+}
+
+// Field value getter - only looks in parameters
+function getParameterValue(data: unknown, field: string): unknown {
+  if (!data || typeof data !== 'object') return null
+
+  const obj = data as Record<string, unknown>
+
+  // Only look in parameters
+  if (obj.parameters && typeof obj.parameters === 'object') {
+    const params = obj.parameters as Record<string, unknown>
+    if (params[field] && typeof params[field] === 'object') {
+      const param = params[field] as { currentValue?: unknown }
+      if ('currentValue' in param) {
+        debug.log(DebugCategories.DATA, 'xx Parameter value found', {
+          field,
+          value: param.currentValue,
+          fullParam: param
+        })
+        return param.currentValue
+      }
+    }
+  }
+
+  debug.log(DebugCategories.DATA, 'xx No parameter value found', {
+    field,
+    hasParameters: obj.parameters && typeof obj.parameters === 'object',
+    parameters: obj.parameters
+  })
+  return null
+}
+
+// Helper function to get valid columns from a group
+function validColumnsInGroup(columns: ColumnDef[]): ColumnDef[] {
+  return columns.filter((col): col is ColumnDef & { field: string } => {
+    const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
+    debug.log(DebugCategories.COLUMNS, 'xx Column validation', {
+      field: col.field,
+      isValid,
+      visible: col.visible,
+      fieldType: typeof col.field
+    })
+    return isValid
+  })
+}
+
+// Group columns by source - only include valid columns
+const groupedParentColumns = computed(() => {
   const groups = new Map<string, ColumnDef[]>()
 
-  props.parentColumns
-    .filter((col) => col.visible)
-    .forEach((col) => {
-      const source = col.source || 'Parameters'
-      if (!groups.has(source)) {
-        groups.set(source, [])
-      }
-      groups.get(source)!.push(col)
+  // Only include columns with valid fields
+  const validColumns = props.parentColumns.filter((col) => {
+    const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
+    debug.log(DebugCategories.COLUMNS, 'xx Column validation', {
+      field: col.field,
+      isValid,
+      visible: col.visible,
+      fieldType: typeof col.field
     })
+    return isValid
+  })
+
+  debug.log(DebugCategories.COLUMNS, 'xx Valid parent columns', {
+    total: props.parentColumns.length,
+    valid: validColumns.length,
+    columns: validColumns
+  })
+
+  validColumns.forEach((col) => {
+    const source = col.source || 'Parameters'
+    if (!groups.has(source)) {
+      groups.set(source, [])
+    }
+    groups.get(source)!.push(col)
+  })
 
   return Array.from(groups.entries()).map(([source, columns]) => ({
     source,
@@ -206,18 +273,34 @@ const groupedParentColumns = computed<ColumnGroup[]>(() => {
   }))
 })
 
-const groupedChildColumns = computed<ColumnGroup[]>(() => {
+const groupedChildColumns = computed(() => {
   const groups = new Map<string, ColumnDef[]>()
 
-  props.childColumns
-    .filter((col) => col.visible)
-    .forEach((col) => {
-      const source = col.source || 'Parameters'
-      if (!groups.has(source)) {
-        groups.set(source, [])
-      }
-      groups.get(source)!.push(col)
+  // Only include columns with valid fields
+  const validColumns = props.childColumns.filter((col) => {
+    const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
+    debug.log(DebugCategories.COLUMNS, 'xx Column validation', {
+      field: col.field,
+      isValid,
+      visible: col.visible,
+      fieldType: typeof col.field
     })
+    return isValid
+  })
+
+  debug.log(DebugCategories.COLUMNS, 'xx Valid child columns', {
+    total: props.childColumns.length,
+    valid: validColumns.length,
+    columns: validColumns
+  })
+
+  validColumns.forEach((col) => {
+    const source = col.source || 'Parameters'
+    if (!groups.has(source)) {
+      groups.set(source, [])
+    }
+    groups.get(source)!.push(col)
+  })
 
   return Array.from(groups.entries()).map(([source, columns]) => ({
     source,
@@ -226,14 +309,7 @@ const groupedChildColumns = computed<ColumnGroup[]>(() => {
   }))
 })
 
-const tableFilters = computed(() => {
-  if (!props.filters) return {}
-  return Object.entries(props.filters).reduce((acc, [key, value]) => {
-    acc[key] = { value, matchMode: 'contains' }
-    return acc
-  }, {} as Record<string, { value: unknown; matchMode: string }>)
-})
-
+// Column styling
 function getColumnStyle(col: ColumnDef) {
   return {
     width: col.width ? `${col.width}px` : 'auto',
@@ -245,109 +321,42 @@ function getColumnStyle(col: ColumnDef) {
   }
 }
 
-function getFieldValue(data: TableRow, field: string): unknown {
-  try {
-    if (!isTableRow(data)) {
-      debug.error(DebugCategories.ERROR, 'Invalid table row data:', { data })
-      return undefined
-    }
-
-    // Handle special fields first
-    if (field === 'mark' || field === 'category' || field === 'host') {
-      return data[field as keyof TableRow]
-    }
-
-    // Handle parameters
-    if (data.parameters) {
-      // Handle parameters with dot notation (e.g., 'Identity Data.Mark')
-      if (field.includes('.')) {
-        const [group, param] = field.split('.')
-        const paramKey = `${group}.${param}`
-        const paramValue = data.parameters[paramKey]
-
-        if (isParameterValueState(paramValue)) {
-          return (
-            paramValue.userValue ?? paramValue.currentValue ?? paramValue.fetchedValue
-          )
-        }
-        return paramValue
-      }
-
-      // Handle direct parameter access
-      if (field in data.parameters) {
-        const paramValue = data.parameters[field]
-        if (isParameterValueState(paramValue)) {
-          return (
-            paramValue.userValue ?? paramValue.currentValue ?? paramValue.fetchedValue
-          )
-        }
-        return paramValue
-      }
-    }
-
-    // Handle raw data access
-    if ('_raw' in data && data._raw && typeof data._raw === 'object') {
-      const raw = data._raw as Record<string, unknown>
-      if (field in raw) {
-        return raw[field]
-      }
-    }
-
-    // Fallback to direct field access
-    return (data as Record<string, unknown>)[field]
-  } catch (error) {
-    debug.error(DebugCategories.ERROR, 'Error getting field value:', {
-      error,
-      field,
-      dataId: isTableRow(data) ? data.id : 'unknown',
-      parameters:
-        isTableRow(data) && data.parameters ? Object.keys(data.parameters) : [],
-      raw: isTableRow(data) && '_raw' in data ? Object.keys(data._raw as object) : []
+// Watch for data changes
+watch(
+  () => props.data,
+  (newData) => {
+    debug.log(DebugCategories.DATA, 'TableWrapper data updated', {
+      length: newData.length,
+      sample: newData[0],
+      parentColumns: props.parentColumns.length,
+      childColumns: props.childColumns.length
     })
-    return undefined
-  }
-}
+  },
+  { deep: true, immediate: true }
+)
 
-function handleExpandedRowsUpdate(value: unknown) {
-  if (Array.isArray(value) && value.every(isTableRow)) {
-    emit('update:modelValue', value)
-  }
-}
+// Watch for column changes
+watch(
+  [() => props.parentColumns, () => props.childColumns],
+  ([newParentCols, newChildCols]) => {
+    debug.log(DebugCategories.COLUMNS, 'TableWrapper columns updated', {
+      parentColumns: newParentCols.length,
+      childColumns: newChildCols.length,
+      parentVisible: newParentCols.filter((c) => c.visible).length,
+      childVisible: newChildCols.filter((c) => c.visible).length
+    })
+  },
+  { deep: true, immediate: true }
+)
 
-function handleColumnResize(event: { element: HTMLElement }) {
-  emit('column-resize', { element: event.element })
-}
-
-function handleColumnReorder(event: { target: HTMLElement | null }) {
-  emit('column-reorder', { target: event.target })
-}
-
-function handleSort(event: DataTableSortEvent) {
-  if (
-    event &&
-    'field' in event &&
-    'order' in event &&
-    typeof event.order === 'number' &&
-    typeof event.field === 'string'
-  ) {
-    emit('sort', event.field, event.order)
-  }
-}
-
-function handleFilter(event: DataTableFilterEvent) {
-  if (event && 'filters' in event) {
-    const filters = Object.entries(event.filters as DataTableFilterMeta).reduce(
-      (acc, [key, meta]) => {
-        if (meta && typeof meta === 'object' && 'value' in meta) {
-          acc[key] = meta.value
-        }
-        return acc
-      },
-      {} as Record<string, unknown>
-    )
-    emit('filter', filters)
-  }
-}
+// Add onMounted hook to log initial data
+onMounted(() => {
+  debug.log(DebugCategories.DATA, 'Initial data', {
+    data: props.data,
+    parentColumns: props.parentColumns,
+    childColumns: props.childColumns
+  })
+})
 </script>
 
 <style scoped>

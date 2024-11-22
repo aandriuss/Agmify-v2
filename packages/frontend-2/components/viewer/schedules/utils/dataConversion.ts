@@ -3,7 +3,9 @@ import type {
   ElementData,
   BIMNode,
   ParameterValue,
-  BIMNodeRaw
+  BIMNodeRaw,
+  Parameters,
+  ParameterValueState
 } from '../types'
 import { debug, DebugCategories } from './debug'
 import { isValidBIMNodeRaw } from '../types'
@@ -38,8 +40,17 @@ function isValidTreeItem(item: unknown): item is TreeItemComponentModel {
   )
 }
 
-function extractParameters(raw: BIMNodeRaw): Record<string, ParameterValue> {
-  const parameters: Record<string, ParameterValue> = {}
+function createParameterState(value: ParameterValue): ParameterValueState {
+  return {
+    fetchedValue: value,
+    currentValue: value,
+    previousValue: value,
+    userValue: null
+  }
+}
+
+function extractParameters(raw: BIMNodeRaw): Parameters {
+  const parameters: Parameters = {}
 
   // Helper to safely convert values
   const convertValue = (value: unknown): ParameterValue => {
@@ -51,12 +62,27 @@ function extractParameters(raw: BIMNodeRaw): Record<string, ParameterValue> {
     return String(value)
   }
 
-  // Process each property
-  Object.entries(raw).forEach(([key, value]) => {
-    if (key !== '_raw' && value !== undefined) {
-      parameters[key] = convertValue(value)
-    }
-  })
+  // Only process parameters from the parameters object
+  if (raw.parameters && typeof raw.parameters === 'object') {
+    Object.entries(raw.parameters).forEach(([key, value]) => {
+      if (key === '_raw' || key === '__proto__') return
+
+      // If value is already a ParameterValueState, use it directly
+      if (
+        value &&
+        typeof value === 'object' &&
+        'fetchedValue' in value &&
+        'currentValue' in value &&
+        'previousValue' in value &&
+        'userValue' in value
+      ) {
+        parameters[key] = value as ParameterValueState
+      } else {
+        // Otherwise create a new ParameterValueState
+        parameters[key] = createParameterState(convertValue(value))
+      }
+    })
+  }
 
   return parameters
 }
@@ -67,20 +93,17 @@ function extractElementData(node: BIMNode): ElementData {
   }
 
   const raw = node.raw
-  const constraints = raw.Constraints || {}
   const other = raw.Other || {}
 
-  // Extract all parameters
+  // Extract parameters from parameters object only
   const parameters = extractParameters(raw)
 
   // Extract essential fields
   return {
     id: convertToString(raw.id),
-    mark: convertToString(raw.Mark || raw.mark || ''),
-    category: convertToString(other.Category || raw.type),
-    type: convertToString(raw.speckleType),
-    name: convertToString(raw.Name),
-    host: convertToString(constraints.Host),
+    type: convertToString(raw.speckleType || raw.type),
+    mark: convertToString(raw.Mark),
+    category: convertToString(other.Category),
     parameters,
     _visible: true
   }

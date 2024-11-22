@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type { ColumnDef as _ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import type {
   UserSettings as _UserSettings,
@@ -8,9 +8,12 @@ import type {
 } from '~/composables/useUserSettings'
 import type { InitializationState as _InitializationState } from './core/composables/useScheduleInitializationFlow'
 
+// Re-export ColumnDef
+export type ColumnDef = _ColumnDef
+
 // Value types
 export type BIMNodeValue = string | number | boolean | null | undefined
-export type ParameterValue = string | number | boolean | null
+export type ParameterValue = string | number | boolean | null | unknown
 export type ParameterValueType = 'string' | 'number' | 'boolean'
 
 // Parameter value tracking
@@ -30,19 +33,15 @@ export interface ScheduleInitializationInstance {
 }
 
 // Parameter types
-export type ParametersWithGroups = Record<string, ParameterValue>
 export type Parameters = Record<string, ParameterValueState>
 
 // Base element data types
 export interface BaseElementData {
   id: string
-  mark: string
-  category: string
   type?: string
-  host?: string
   _visible?: boolean
   isChild?: boolean
-  parameters: ParametersWithGroups | Parameters
+  parameters: Parameters
   [key: string]: unknown
 }
 
@@ -51,19 +50,16 @@ export interface ElementData extends BaseElementData {
   name?: string
   speckle_type?: string
   details?: ElementData[]
-  parameters: ParametersWithGroups
   _raw?: Record<string, unknown>
 }
 
 // Filtering phase element data
 export interface FilteredElementData extends BaseElementData {
-  parameters: ParametersWithGroups
   _raw?: Record<string, unknown>
 }
 
 // Final data phase element data
 export interface TableRow extends BaseElementData {
-  parameters: Parameters
   _raw?: Record<string, unknown>
   [key: string]: unknown
 }
@@ -197,6 +193,7 @@ export interface UseElementParametersOptions {
   filteredElements: ElementData[]
   essentialFieldsOnly?: boolean
   initialColumns?: ColumnDef[]
+  customParameters?: CustomParameter[]
 }
 
 export interface ElementsDataOptions {
@@ -208,8 +205,7 @@ export interface ElementsDataOptions {
 // Return types
 export interface ElementsDataReturn {
   scheduleData: Ref<ElementData[]>
-  tableData: Ref<ElementData[]>
-  availableHeaders: Ref<AvailableHeaders>
+  tableData: Ref<TableRow[]>
   availableCategories: Ref<{
     parent: Set<string>
     child: Set<string>
@@ -246,12 +242,7 @@ export function createParameterValueState(value: ParameterValue): ParameterValue
 export function isTableRow(value: unknown): value is TableRow {
   if (!value || typeof value !== 'object') return false
   const data = value as Record<string, unknown>
-  return (
-    typeof data.id === 'string' &&
-    typeof data.mark === 'string' &&
-    typeof data.category === 'string' &&
-    typeof data.parameters === 'object'
-  )
+  return typeof data.id === 'string' && typeof data.parameters === 'object'
 }
 
 export function isParameterValueState(value: unknown): value is ParameterValueState {
@@ -268,12 +259,7 @@ export function isParameterValueState(value: unknown): value is ParameterValueSt
 export function isElementData(value: unknown): value is ElementData {
   if (!value || typeof value !== 'object') return false
   const data = value as Record<string, unknown>
-  return (
-    typeof data.id === 'string' &&
-    typeof data.mark === 'string' &&
-    typeof data.category === 'string' &&
-    typeof data.parameters === 'object'
-  )
+  return typeof data.id === 'string' && typeof data.parameters === 'object'
 }
 
 export function isProcessedHeader(value: unknown): value is ProcessedHeader {
@@ -324,4 +310,118 @@ type _ScheduleInitializationEmits = {
     settings: { namedTables: Record<string, NamedTableConfig> }
   ): void
   (e: 'data-initialized'): void
+}
+
+// StoreState type
+export interface StoreState {
+  projectId: string | null
+  scheduleData: ElementData[]
+  evaluatedData: ElementData[]
+  tableData: TableRow[]
+  customParameters: CustomParameter[]
+  parameterColumns: ColumnDef[]
+  parentParameterColumns: ColumnDef[]
+  childParameterColumns: ColumnDef[]
+  mergedParentParameters: CustomParameter[]
+  mergedChildParameters: CustomParameter[]
+  processedParameters: Parameters
+  currentTableColumns: ColumnDef[]
+  currentDetailColumns: ColumnDef[]
+  mergedTableColumns: ColumnDef[]
+  mergedDetailColumns: ColumnDef[]
+  parameterDefinitions: Record<string, unknown>
+  availableHeaders: { parent: ProcessedHeader[]; child: ProcessedHeader[] }
+  selectedCategories: Set<string>
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
+  tablesArray: { id: string; name: string }[]
+  tableName: string
+  selectedTableId: string
+  currentTableId: string
+  tableKey: string
+  initialized: boolean
+  loading: boolean
+  error: Error | null
+}
+
+// Store type
+export interface Store {
+  // Readonly state
+  state: Ref<StoreState>
+  projectId: Ref<string | null>
+  scheduleData: Ref<ElementData[]>
+  evaluatedData: Ref<ElementData[]>
+  tableData: Ref<TableRow[]>
+  customParameters: Ref<CustomParameter[]>
+  parameterColumns: Ref<ColumnDef[]>
+  parentParameterColumns: Ref<ColumnDef[]>
+  childParameterColumns: Ref<ColumnDef[]>
+  mergedParentParameters: Ref<CustomParameter[]>
+  mergedChildParameters: Ref<CustomParameter[]>
+  processedParameters: Ref<Parameters>
+  currentTableColumns: Ref<ColumnDef[]>
+  currentDetailColumns: Ref<ColumnDef[]>
+  mergedTableColumns: Ref<ColumnDef[]>
+  mergedDetailColumns: Ref<ColumnDef[]>
+  parameterDefinitions: Ref<Record<string, unknown>>
+  availableHeaders: Ref<{ parent: ProcessedHeader[]; child: ProcessedHeader[] }>
+  selectedCategories: Ref<Set<string>>
+  selectedParentCategories: Ref<string[]>
+  selectedChildCategories: Ref<string[]>
+  tablesArray: Ref<{ id: string; name: string }[]>
+  tableName: Ref<string>
+  selectedTableId: Ref<string>
+  currentTableId: Ref<string>
+  tableKey: Ref<string>
+  initialized: Ref<boolean>
+  loading: Ref<boolean>
+  error: Ref<Error | null>
+
+  // Mutations
+  setProjectId: (id: string | null) => void
+  setScheduleData: (data: ElementData[]) => void
+  setEvaluatedData: (data: ElementData[]) => void
+  setTableData: (data: TableRow[]) => void
+  setCustomParameters: (params: CustomParameter[]) => void
+  setParameterColumns: (columns: ColumnDef[]) => void
+  setParentParameterColumns: (columns: ColumnDef[]) => void
+  setChildParameterColumns: (columns: ColumnDef[]) => void
+  setMergedParameters: (
+    parentParams: CustomParameter[],
+    childParams: CustomParameter[]
+  ) => void
+  setProcessedParameters: (params: Parameters) => void
+  setParameterDefinitions: (definitions: Record<string, unknown>) => void
+  setParameterVisibility: (field: string, visible: boolean) => void
+  setParameterOrder: (field: string, order: number) => void
+  setCurrentColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
+  setMergedColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
+  setColumnVisibility: (field: string, visible: boolean) => void
+  setColumnOrder: (field: string, order: number) => void
+  setSelectedCategories: (categories: Set<string>) => void
+  setParentCategories: (categories: string[]) => void
+  setChildCategories: (categories: string[]) => void
+  setTableInfo: (info: {
+    selectedTableId?: string
+    currentTableId?: string
+    tableName?: string
+    tableKey?: string
+  }) => void
+  setTablesArray: (tables: { id: string; name: string }[]) => void
+  setElementVisibility: (id: string, visible: boolean) => void
+  setAvailableHeaders: (headers: {
+    parent: ProcessedHeader[]
+    child: ProcessedHeader[]
+  }) => void
+  setInitialized: (value: boolean) => void
+  setLoading: (value: boolean) => void
+  setError: (error: Error | null) => void
+  reset: () => void
+
+  // Lifecycle
+  lifecycle: {
+    init: () => Promise<void>
+    update: (state: Partial<StoreState>) => Promise<void>
+    cleanup: () => void
+  }
 }

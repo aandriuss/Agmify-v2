@@ -1,110 +1,28 @@
-import type {
-  TableRow,
-  AvailableHeaders,
-  ParameterValue,
-  ParameterValueState,
-  Parameters,
-  BIMNodeRaw
-} from '../types'
+import type { TableRow, ElementData } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import { debug, DebugCategories } from './debug'
-import { filterElements } from '../composables/useElementCategories'
-import { processParameters } from '../composables/useElementParameters'
 import { parentCategories, childCategories } from '../config/categories'
+import { defaultColumns } from '../config/defaultColumns'
+import { debug, DebugCategories } from './debug'
+import { unref } from 'vue'
 
 interface PipelineResult {
   filteredElements: TableRow[]
   processedElements: TableRow[]
   tableData: TableRow[]
   parameterColumns: ColumnDef[]
-  availableHeaders: AvailableHeaders
 }
 
 interface PipelineOptions {
-  allElements: BIMNodeRaw[]
-  selectedParent: string[]
-  selectedChild: string[]
-  essentialFieldsOnly?: boolean
+  allElements: ElementData[]
+  selectedParent: string[] | Ref<string[]>
+  selectedChild: string[] | Ref<string[]>
 }
 
-function createParameterState(value: ParameterValue): ParameterValueState {
-  return {
-    fetchedValue: value,
-    currentValue: value,
-    previousValue: value,
-    userValue: null
-  }
-}
-
-function extractParameters(raw: BIMNodeRaw): Parameters {
-  const result: Parameters = {}
-
-  // Process parameters object
-  if (raw.parameters && typeof raw.parameters === 'object') {
-    Object.entries(raw.parameters).forEach(([key, value]) => {
-      if (
-        key !== '_raw' &&
-        (value === null ||
-          typeof value === 'string' ||
-          typeof value === 'number' ||
-          typeof value === 'boolean')
-      ) {
-        const paramKey = key.replace(/\s+/g, '_').toLowerCase()
-        result[paramKey] = createParameterState(value)
-      }
-    })
-  }
-
-  // Process Identity Data
-  if (raw['Identity Data'] && typeof raw['Identity Data'] === 'object') {
-    Object.entries(raw['Identity Data'] as Record<string, unknown>).forEach(
-      ([key, value]) => {
-        if (
-          value === null ||
-          typeof value === 'string' ||
-          typeof value === 'number' ||
-          typeof value === 'boolean'
-        ) {
-          const paramKey = key.replace(/\s+/g, '_').toLowerCase()
-          result[paramKey] = createParameterState(value)
-        }
-      }
-    )
-  }
-
-  // Process Constraints
-  if (raw.Constraints && typeof raw.Constraints === 'object') {
-    Object.entries(raw.Constraints as Record<string, unknown>).forEach(
-      ([key, value]) => {
-        if (
-          value === null ||
-          typeof value === 'string' ||
-          typeof value === 'number' ||
-          typeof value === 'boolean'
-        ) {
-          const paramKey = key.replace(/\s+/g, '_').toLowerCase()
-          result[paramKey] = createParameterState(value)
-        }
-      }
-    )
-  }
-
-  // Process Other
-  if (raw.Other && typeof raw.Other === 'object') {
-    Object.entries(raw.Other as Record<string, unknown>).forEach(([key, value]) => {
-      if (
-        value === null ||
-        typeof value === 'string' ||
-        typeof value === 'number' ||
-        typeof value === 'boolean'
-      ) {
-        const paramKey = key.replace(/\s+/g, '_').toLowerCase()
-        result[paramKey] = createParameterState(value)
-      }
-    })
-  }
-
-  return result
+interface DebugElementsResult {
+  parentElements: TableRow[]
+  childElements: TableRow[]
+  matchedElements: TableRow[]
+  orphanedElements: TableRow[]
 }
 
 function determineElementType(
@@ -117,7 +35,6 @@ function determineElementType(
     return 'parent'
   }
 
-  // Check if element's category is in parent or child categories
   const isParentCategory = parentCategories.includes(category)
   const isChildCategory = childCategories.includes(category)
 
@@ -135,135 +52,141 @@ function determineElementType(
   return 'parent'
 }
 
-function createTableRow(raw: BIMNodeRaw, isChild: boolean): TableRow {
-  const category = String(raw.Other?.Category || raw.type || 'Uncategorized')
-  const host = raw.Constraints?.Host
-    ? String(
-        typeof raw.Constraints.Host === 'object'
-          ? raw.Constraints.Host.Mark || raw.Constraints.Host.id
-          : raw.Constraints.Host
-      )
-    : undefined
-
-  return {
-    id: String(raw.id),
-    mark: String(raw.Mark || raw.mark || ''),
-    category,
-    type: String(raw.speckleType || ''),
-    host,
-    parameters: extractParameters(raw),
-    _visible: true,
-    isChild
-  }
-}
-
-function transformToTableData(
-  elements: BIMNodeRaw[],
+function prepareTableData(
+  elements: ElementData[],
   selectedParent: string[],
   selectedChild: string[]
 ): TableRow[] {
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Starting table data transformation', {
-    elementCount: elements.length
-  })
+  const startStats = { elementCount: elements.length }
+  debug.log(
+    DebugCategories.DATA_TRANSFORM,
+    'Preparing table data structure',
+    startStats
+  )
 
   // First pass: Create table rows and build parent map
   const parentMap = new Map<string, TableRow>()
-  const tableData = elements.map((raw) => {
-    const category = String(raw.Other?.Category || raw.type || 'Uncategorized')
-    const elementType = determineElementType(category, selectedParent, selectedChild)
-    const row = createTableRow(raw, elementType === 'child')
+  const tableData = elements
+    .map((element) => {
+      const elementType = determineElementType(
+        element.category,
+        selectedParent,
+        selectedChild
+      )
+      const isChild = elementType === 'child'
 
-    if (elementType === 'parent' && row.mark) {
-      parentMap.set(row.mark, row)
-    }
+      // Check if element matches selected categories
+      const matchesSelectedCategories =
+        elementType === 'parent'
+          ? selectedParent.length === 0 || selectedParent.includes(element.category)
+          : selectedChild.length === 0 || selectedChild.includes(element.category)
 
-    return row
-  })
+      if (!matchesSelectedCategories) {
+        return null
+      }
 
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Parent map created', {
-    parentCount: parentMap.size
-  })
+      const row: TableRow = {
+        ...element,
+        isChild,
+        _visible: true
+      }
 
-  // Second pass: Filter and link children to parents
-  const filteredTableData = tableData.filter((row) => {
-    if (row.isChild && row.host) {
+      if (!isChild && row.mark) {
+        parentMap.set(row.mark, row)
+      }
+
+      return row
+    })
+    .filter((row): row is TableRow => row !== null)
+
+  // Create "Without Host" parent for orphaned children
+  const withoutHostParent: TableRow = {
+    id: 'without-host',
+    mark: 'Without Host',
+    category: 'Uncategorized',
+    type: 'group',
+    parameters: {},
+    _visible: true,
+    isChild: false,
+    _raw: {}
+  }
+
+  // Second pass: Link children to parents or assign to "Without Host"
+  const processedData = tableData.filter((row) => {
+    if (!row.isChild) return true
+
+    if (row.host) {
       const parent = parentMap.get(row.host)
-      if (!parent) return false
-      row.host = parent.mark // Ensure host points to parent's mark
+      if (parent) {
+        row.host = parent.mark
+        return true
+      }
+      // Orphaned child - assign to "Without Host"
+      row.host = withoutHostParent.mark
       return true
     }
-    return true
+    return false
   })
 
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Table data transformation complete', {
-    rowCount: filteredTableData.length,
-    rowCategories: [...new Set(filteredTableData.map((row) => row.category))],
-    sampleRow: filteredTableData[0],
-    sampleParameters: Object.keys(filteredTableData[0]?.parameters || {})
-  })
+  // Add "Without Host" parent if there are orphaned children
+  const hasOrphanedChildren = processedData.some(
+    (row) => row.isChild && row.host === withoutHostParent.mark
+  )
+  if (hasOrphanedChildren) {
+    processedData.unshift(withoutHostParent)
+  }
 
-  return filteredTableData
+  const stats = {
+    inputCount: elements.length,
+    outputCount: processedData.length,
+    parentCount: processedData.filter((row) => !row.isChild).length,
+    childCount: processedData.filter((row) => row.isChild).length,
+    orphanedCount: hasOrphanedChildren
+      ? processedData.filter((row) => row.host === withoutHostParent.mark).length
+      : 0
+  }
+
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Table data preparation complete', stats)
+
+  return processedData
 }
 
-/**
- * Pure function to process data through the pipeline
- */
 export function processDataPipeline({
   allElements,
   selectedParent,
-  selectedChild,
-  essentialFieldsOnly = false
+  selectedChild
 }: PipelineOptions): PipelineResult {
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Starting data pipeline', {
-    totalElements: allElements.length,
-    selectedParentCategories: selectedParent,
-    selectedChildCategories: selectedChild,
-    essentialFieldsOnly
-  })
+  const startStats = { elementCount: allElements.length }
+  debug.log(DebugCategories.DATA, 'Processing data for table display', startStats)
 
-  // Step 1: Transform raw data to table rows
-  const tableRows = transformToTableData(allElements, selectedParent, selectedChild)
+  // Unwrap refs if needed
+  const unwrappedParent = Array.isArray(selectedParent)
+    ? selectedParent
+    : unref(selectedParent)
+  const unwrappedChild = Array.isArray(selectedChild)
+    ? selectedChild
+    : unref(selectedChild)
 
-  // Step 2: Filter elements
-  const { filteredElements } = filterElements({
-    allElements: tableRows,
-    selectedParent,
-    selectedChild,
-    essentialFieldsOnly
-  })
+  // Prepare table data
+  const processedData = prepareTableData(allElements, unwrappedParent, unwrappedChild)
 
-  // Step 3: Process parameters
-  const { processedElements, parameterColumns, availableHeaders } = processParameters({
-    filteredElements,
-    essentialFieldsOnly
-  })
+  const stats = {
+    rowCount: processedData.length,
+    parentCount: processedData.filter((row) => !row.isChild).length,
+    childCount: processedData.filter((row) => row.isChild).length
+  }
 
-  // Log parameter discovery results
-  debug.log(DebugCategories.PARAMETERS, 'Parameter discovery complete', {
-    parentParameters: {
-      count: availableHeaders.parent.length,
-      groups: [...new Set(availableHeaders.parent.map((h) => h.source))]
-    },
-    childParameters: {
-      count: availableHeaders.child.length,
-      groups: [...new Set(availableHeaders.child.map((h) => h.source))]
-    },
-    parameterColumns: parameterColumns.length
-  })
+  debug.log(DebugCategories.DATA, 'Table data processing complete', stats)
 
   return {
-    filteredElements,
-    processedElements,
-    tableData: processedElements,
-    parameterColumns,
-    availableHeaders
+    filteredElements: processedData,
+    processedElements: processedData,
+    tableData: processedData,
+    parameterColumns: defaultColumns
   }
 }
 
-/**
- * Pure function to process debug elements
- */
-export function processDebugElements(elements: TableRow[]) {
+export function processDebugElements(elements: TableRow[]): DebugElementsResult {
   if (!elements?.length) {
     return {
       parentElements: [],
@@ -272,11 +195,6 @@ export function processDebugElements(elements: TableRow[]) {
       orphanedElements: []
     }
   }
-
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Starting debug element processing', {
-    totalElements: elements.length,
-    elementCategories: [...new Set(elements.map((el) => el.category))]
-  })
 
   // Create a map for quick parent lookup
   const parentMap = new Map<string, TableRow>()
@@ -289,24 +207,10 @@ export function processDebugElements(elements: TableRow[]) {
   const parentElements = elements.filter((el) => !el.host)
   const childElements = elements.filter((el) => !!el.host)
   const matchedElements = elements.filter((el) => {
-    // Element is matched if it has a valid host
     return !!el.host && parentMap.has(el.host)
   })
   const orphanedElements = elements.filter((el) => {
-    // Element is orphaned if it has a host but the host doesn't exist
     return !!el.host && !parentMap.has(el.host)
-  })
-
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Debug elements processed', {
-    parentCount: parentElements.length,
-    childCount: childElements.length,
-    matchedCount: matchedElements.length,
-    orphanedCount: orphanedElements.length,
-    parentCategories: [...new Set(parentElements.map((el) => el.category))],
-    childCategories: [...new Set(childElements.map((el) => el.category))],
-    sampleParent: parentElements[0],
-    sampleChild: childElements[0],
-    sampleOrphaned: orphanedElements[0]
   })
 
   return {

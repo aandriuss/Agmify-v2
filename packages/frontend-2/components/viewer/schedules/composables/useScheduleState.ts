@@ -3,15 +3,12 @@ import type { ElementData, AvailableHeaders, ProcessingState, TableRow } from '.
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import { debug, DebugCategories } from '../utils/debug'
-import { processDataPipeline, processDebugElements } from '../utils/dataPipeline'
+import { processDebugElements } from '../utils/dataPipeline'
 import { useBIMElements } from './useBIMElements'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 import store from './useScheduleStore'
 
 interface ScheduleStateOptions {
-  allElements?: Ref<ElementData[] | null>
-  selectedParentCategories?: Ref<string[]>
-  selectedChildCategories?: Ref<string[]>
   currentTable?: Ref<{ parentColumns?: ColumnDef[]; childColumns?: ColumnDef[] } | null>
 }
 
@@ -57,19 +54,11 @@ interface ScheduleStateReturn {
 }
 
 /**
- * Manages reactive state for schedule data
+ * Manages UI state for schedule data
  */
 export function useScheduleState(options: ScheduleStateOptions): ScheduleStateReturn {
-  // Get BIM elements if not provided
-  const {
-    allElements: bimElements,
-    isLoading: bimLoading,
-    hasError: bimError
-  } = useBIMElements()
+  const { isLoading: bimLoading, hasError: bimError } = useBIMElements()
 
-  const allElements = options.allElements || bimElements
-  const selectedParentCategories = options.selectedParentCategories || ref<string[]>([])
-  const selectedChildCategories = options.selectedChildCategories || ref<string[]>([])
   const currentTable = options.currentTable || ref(null)
 
   // Initialize core state
@@ -116,7 +105,11 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
         state.currentTableColumns = newTable.parentColumns || defaultColumns
         state.currentDetailColumns = newTable.childColumns || defaultDetailColumns
 
-        debug.log(DebugCategories.COLUMNS, 'Updated columns from table:', {
+        // Update store with new columns
+        store.setMergedColumns(state.mergedTableColumns, state.mergedDetailColumns)
+        store.setCurrentColumns(state.currentTableColumns, state.currentDetailColumns)
+
+        debug.log(DebugCategories.COLUMNS, 'Updated columns from table', {
           parentColumns: state.mergedTableColumns.length,
           childColumns: state.mergedDetailColumns.length
         })
@@ -126,6 +119,10 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
         state.mergedDetailColumns = defaultDetailColumns
         state.currentTableColumns = defaultColumns
         state.currentDetailColumns = defaultDetailColumns
+
+        // Update store with default columns
+        store.setMergedColumns(defaultColumns, defaultDetailColumns)
+        store.setCurrentColumns(defaultColumns, defaultDetailColumns)
 
         debug.log(DebugCategories.COLUMNS, 'Reset to default columns')
       }
@@ -152,6 +149,12 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
   // State update methods
   function updateTableData(data: TableRow[]) {
     state.tableData = data
+    // Update debug elements
+    const debugResult = processDebugElements(data)
+    parentElements.value = debugResult.parentElements
+    childElements.value = debugResult.childElements
+    matchedElements.value = debugResult.matchedElements
+    orphanedElements.value = debugResult.orphanedElements
   }
 
   function updateEvaluatedData(data: ElementData[]) {
@@ -204,149 +207,6 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
     { immediate: true }
   )
 
-  // Process data when source elements or categories change
-  watch(
-    [allElements, selectedParentCategories, selectedChildCategories],
-    ([elements, parentCategories, childCategories]) => {
-      if (!elements) {
-        debug.warn(DebugCategories.DATA, 'No elements available for processing')
-        return
-      }
-
-      try {
-        processingState.value.isProcessingElements = true
-
-        // Process essential data first
-        const essentialResult = processDataPipeline({
-          allElements: elements,
-          selectedParent: parentCategories,
-          selectedChild: childCategories,
-          essentialFieldsOnly: true
-        })
-
-        // Update state and store with essential data
-        state.scheduleData = essentialResult.processedElements
-        state.tableData = essentialResult.tableData
-        state.parameterColumns = [
-          ...defaultColumns,
-          ...essentialResult.parameterColumns.filter(
-            (col) => !defaultColumns.find((d) => d.field === col.field)
-          )
-        ]
-        state.availableHeaders = essentialResult.availableHeaders
-
-        // Update store with essential data
-        store.setScheduleData(essentialResult.processedElements)
-        store.setTableData(essentialResult.tableData)
-        store.setParameterColumns(state.parameterColumns)
-        store.setAvailableHeaders(essentialResult.availableHeaders)
-
-        // Queue full processing
-        queueMicrotask(() => {
-          try {
-            processingState.value.isProcessingFullData = true
-
-            // Process full data
-            const fullResult = processDataPipeline({
-              allElements: elements,
-              selectedParent: parentCategories,
-              selectedChild: childCategories
-            })
-
-            // Update state with full data
-            state.scheduleData = fullResult.processedElements
-            state.tableData = fullResult.tableData
-            state.parameterColumns = [
-              ...defaultColumns,
-              ...fullResult.parameterColumns.filter(
-                (col) => !defaultColumns.find((d) => d.field === col.field)
-              )
-            ]
-            state.availableHeaders = fullResult.availableHeaders
-
-            // Update store with full data
-            store.setScheduleData(fullResult.processedElements)
-            store.setTableData(fullResult.tableData)
-            store.setParameterColumns(state.parameterColumns)
-            store.setAvailableHeaders(fullResult.availableHeaders)
-
-            debug.log(DebugCategories.DATA, 'Full data processing complete', {
-              dataCount: state.scheduleData.length,
-              tableRows: state.tableData.length,
-              columnCount: state.parameterColumns.length,
-              headers: {
-                parent: state.availableHeaders.parent.length,
-                child: state.availableHeaders.child.length
-              }
-            })
-          } catch (error) {
-            debug.error(DebugCategories.ERROR, 'Error processing full data:', error)
-            processingState.value.error =
-              error instanceof Error ? error : new Error('Failed to process full data')
-          } finally {
-            processingState.value.isProcessingFullData = false
-          }
-        })
-      } catch (error) {
-        debug.error(DebugCategories.ERROR, 'Error processing data:', error)
-        processingState.value.error =
-          error instanceof Error ? error : new Error('Failed to process data')
-      } finally {
-        processingState.value.isProcessingElements = false
-      }
-    },
-    { immediate: true }
-  )
-
-  // Watch for table changes to update columns
-  watch(
-    () => currentTable?.value,
-    (newTable) => {
-      if (newTable) {
-        // Use table columns if available, otherwise use defaults
-        state.mergedTableColumns = newTable.parentColumns || defaultColumns
-        state.mergedDetailColumns = newTable.childColumns || defaultDetailColumns
-        state.currentTableColumns = newTable.parentColumns || defaultColumns
-        state.currentDetailColumns = newTable.childColumns || defaultDetailColumns
-
-        // Update store with new columns
-        store.setMergedColumns(state.mergedTableColumns, state.mergedDetailColumns)
-        store.setCurrentColumns(state.currentTableColumns, state.currentDetailColumns)
-
-        debug.log(DebugCategories.COLUMNS, 'Updated columns from table:', {
-          parentColumns: state.mergedTableColumns.length,
-          childColumns: state.mergedDetailColumns.length
-        })
-      } else {
-        // Reset to defaults if no table
-        state.mergedTableColumns = defaultColumns
-        state.mergedDetailColumns = defaultDetailColumns
-        state.currentTableColumns = defaultColumns
-        state.currentDetailColumns = defaultDetailColumns
-
-        // Update store with default columns
-        store.setMergedColumns(defaultColumns, defaultDetailColumns)
-        store.setCurrentColumns(defaultColumns, defaultDetailColumns)
-
-        debug.log(DebugCategories.COLUMNS, 'Reset to default columns')
-      }
-    },
-    { immediate: true }
-  )
-
-  // Update debug elements when filtered elements change
-  watch(
-    () => state.scheduleData,
-    (elements) => {
-      const debugResult = processDebugElements(elements)
-      parentElements.value = debugResult.parentElements
-      childElements.value = debugResult.childElements
-      matchedElements.value = debugResult.matchedElements
-      orphanedElements.value = debugResult.orphanedElements
-    },
-    { immediate: true }
-  )
-
   return {
     // Core state
     state,
@@ -375,13 +235,7 @@ export function useScheduleState(options: ScheduleStateOptions): ScheduleStateRe
 
 // Export a function to create an instance
 export function createScheduleState(
-  selectedParentCategories: Ref<string[]>,
-  selectedChildCategories: Ref<string[]>,
   currentTable: Ref<{ parentColumns?: ColumnDef[]; childColumns?: ColumnDef[] } | null>
 ) {
-  return useScheduleState({
-    selectedParentCategories,
-    selectedChildCategories,
-    currentTable
-  })
+  return useScheduleState({ currentTable })
 }

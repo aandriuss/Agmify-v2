@@ -47,21 +47,27 @@
       </FormButton>
     </div>
 
-    <!-- Category Filter Button -->
-    <FormButton
-      text
-      size="sm"
-      color="subtle"
-      :icon-right="showCategoryOptions ? ChevronUpIcon : ChevronDownIcon"
-      @click="emit('toggle-category-options')"
-    >
-      Category filter options
-    </FormButton>
+    <div class="flex items-center gap-2">
+      <!-- Test Mode Toggle -->
+      <FormButton text size="sm" color="subtle" @click="emit('toggle-test-mode')">
+        {{ isTestMode ? 'Show Real Data' : 'Show Test Data' }}
+      </FormButton>
+
+      <!-- Category Filter Button -->
+      <FormButton
+        text
+        size="sm"
+        color="subtle"
+        :icon-right="showCategoryOptions ? ChevronUpIcon : ChevronDownIcon"
+        @click="emit('toggle-category-options')"
+      >
+        Category filter options
+      </FormButton>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { FormButton } from '@speckle/ui-components'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import { nextTick } from 'vue'
 
@@ -71,6 +77,7 @@ const props = defineProps<{
   tables: { id: string; name: string }[]
   showCategoryOptions: boolean
   hasChanges?: boolean
+  isTestMode: boolean
 }>()
 
 const emit = defineEmits<{
@@ -80,6 +87,7 @@ const emit = defineEmits<{
   save: []
   'manage-parameters': []
   'toggle-category-options': []
+  'toggle-test-mode': []
 }>()
 
 async function handleTableChange(event: Event) {

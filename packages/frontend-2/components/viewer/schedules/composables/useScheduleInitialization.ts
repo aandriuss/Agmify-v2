@@ -22,7 +22,15 @@ export function useScheduleInitialization() {
     error.value = null
 
     try {
-      // Step 1: Set initial categories from defaults
+      // Step 1: Set project ID if available
+      const projectId = viewerState.projectId.value
+      if (!projectId) {
+        throw new Error('No project ID available')
+      }
+      store.setProjectId(projectId)
+      debug.log(DebugCategories.INITIALIZATION, 'Project ID set:', projectId)
+
+      // Step 2: Set initial categories from defaults
       store.setParentCategories(defaultTable.categoryFilters.selectedParentCategories)
       store.setChildCategories(defaultTable.categoryFilters.selectedChildCategories)
 
@@ -31,25 +39,12 @@ export function useScheduleInitialization() {
         child: defaultTable.categoryFilters.selectedChildCategories
       })
 
-      // Step 2: Initialize store data
+      // Step 3: Initialize store data
+      // This will handle data processing internally
       await store.lifecycle.init()
       debug.log(DebugCategories.INITIALIZATION, 'Store lifecycle initialized')
 
-      // Step 3: Process data into table format
-      await store.processData()
-      debug.log(DebugCategories.INITIALIZATION, 'Data processed', {
-        dataCount: store.scheduleData.value.length,
-        tableDataCount: store.tableData.value.length
-      })
-
-      // Step 4: Set project ID if available
-      const projectId = viewerState.projectId.value
-      if (projectId) {
-        store.setProjectId(projectId)
-        debug.log(DebugCategories.INITIALIZATION, 'Project ID set:', projectId)
-      }
-
-      // Step 5: Mark initialization complete
+      // Step 4: Mark initialization complete
       store.setInitialized(true)
       initialized.value = true
 
