@@ -6,7 +6,7 @@ import type {
   Parameters
 } from '../../types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
-import { debug, DebugCategories } from '../../utils/debug'
+import { debug, DebugCategories } from '../../debug/useDebug'
 import { createParameterValueState } from '../../types'
 
 // Custom error class for validation errors

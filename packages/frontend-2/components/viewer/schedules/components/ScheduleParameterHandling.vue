@@ -5,7 +5,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { ElementData, ProcessedHeader } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'

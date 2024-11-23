@@ -3,6 +3,8 @@
     <DataTable
       :key="`table-${data.length}-${parentColumns.length}`"
       :value="data"
+      :model-value="modelValue"
+      :schedule-data="scheduleData"
       :loading="loading"
       :sort-field="sortField"
       :sort-order="sortOrder"
@@ -15,10 +17,14 @@
       :rows="10"
       expand-mode="row"
       data-key="id"
+      @update:model-value="$emit('update:modelValue', $event)"
       @column-resize-end="handleColumnResize"
       @column-reorder="handleColumnReorder"
       @sort="handleSort"
       @filter="handleFilter"
+      @row-expand="$emit('row-expand', $event)"
+      @row-collapse="$emit('row-collapse', $event)"
+      @error="$emit('error', $event)"
     >
       <template #empty>
         <slot name="empty">
@@ -150,10 +156,12 @@ import type {
   DataTableFilterMeta
 } from 'primevue/datatable'
 import type { ColumnDef } from '../../composables/columns/types'
-import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { useDebug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 interface Props {
   data: unknown[]
+  modelValue?: unknown[]
+  scheduleData?: unknown[]
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   loading?: boolean
@@ -173,16 +181,30 @@ interface SpeckleValue {
   _: unknown
 }
 
+interface DataWithParameters {
+  parameters?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 const props = withDefaults(defineProps<Props>(), {
-  loading: false
+  loading: false,
+  modelValue: () => [],
+  scheduleData: () => []
 })
 
 const emit = defineEmits<{
+  'update:modelValue': [value: unknown[]]
   'column-resize': [event: { element: HTMLElement }]
   'column-reorder': [event: DataTableColumnReorderEvent]
   sort: [field: string | ((item: unknown) => string), order: number]
   filter: [filters: DataTableFilterMeta]
+  'row-expand': [row: unknown]
+  'row-collapse': [row: unknown]
+  error: [error: Error]
 }>()
+
+// Initialize debug
+const debug = useDebug()
 
 // Event handlers
 function handleColumnResize(event: { element: HTMLElement }): void {
@@ -204,6 +226,10 @@ function handleFilter(event: { filters: DataTableFilterMeta }): void {
 }
 
 // Type guards
+function isDataWithParameters(value: unknown): value is DataWithParameters {
+  return typeof value === 'object' && value !== null
+}
+
 function isParameterValueState(value: unknown): value is ParameterValueState {
   return (
     typeof value === 'object' &&
@@ -219,6 +245,11 @@ function isSpeckleValue(value: unknown): value is SpeckleValue {
   return typeof value === 'object' && value !== null && '_' in value
 }
 
+// Type guard for unknown parsed JSON
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 // Extract value from stringified JSON if needed
 function extractValue(value: unknown): unknown {
   if (typeof value !== 'string') {
@@ -226,8 +257,8 @@ function extractValue(value: unknown): unknown {
   }
 
   try {
-    const parsed = JSON.parse(value)
-    if (typeof parsed !== 'object' || parsed === null) {
+    const parsed = JSON.parse(value) as unknown
+    if (!isJsonObject(parsed)) {
       return value
     }
 
@@ -249,21 +280,19 @@ function extractValue(value: unknown): unknown {
 
 // Field value getter - handles both direct fields and parameters
 function getParameterValue(data: unknown, field: string): unknown {
-  if (!data || typeof data !== 'object') return null
-
-  const obj = data as Record<string, unknown>
+  if (!isDataWithParameters(data)) return null
 
   // First check direct field access
-  if (field in obj) {
-    return extractValue(obj[field])
+  if (field in data) {
+    return extractValue(data[field])
   }
 
   // Then check parameters
-  if (obj.parameters && typeof obj.parameters === 'object') {
-    const params = obj.parameters as Record<string, unknown>
+  if (data.parameters && typeof data.parameters === 'object') {
+    const params = data.parameters
     if (field in params) {
       const value = params[field]
-      debug.log(DebugCategories.DATA, 'Parameter value found', {
+      debug.log(DebugCategories.PARAMETERS, 'Parameter value found', {
         field,
         value,
         extracted: extractValue(value)
@@ -272,10 +301,10 @@ function getParameterValue(data: unknown, field: string): unknown {
     }
   }
 
-  debug.log(DebugCategories.DATA, 'No parameter value found', {
+  debug.log(DebugCategories.PARAMETERS, 'No parameter value found', {
     field,
-    hasParameters: obj.parameters && typeof obj.parameters === 'object',
-    parameters: obj.parameters
+    hasParameters: data.parameters && typeof data.parameters === 'object',
+    parameters: data.parameters
   })
   return null
 }
@@ -284,7 +313,7 @@ function getParameterValue(data: unknown, field: string): unknown {
 function validColumnsInGroup(columns: ColumnDef[]): ColumnDef[] {
   return columns.filter((col): col is ColumnDef & { field: string } => {
     const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
-    debug.log(DebugCategories.COLUMNS, 'Column validation', {
+    debug.log(DebugCategories.COLUMN_VALIDATION, 'Column validation', {
       field: col.field,
       isValid,
       visible: col.visible,
@@ -301,7 +330,7 @@ const groupedParentColumns = computed(() => {
   // Only include columns with valid fields
   const validColumns = props.parentColumns.filter((col) => {
     const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
-    debug.log(DebugCategories.COLUMNS, 'Column validation', {
+    debug.log(DebugCategories.COLUMN_VALIDATION, 'Column validation', {
       field: col.field,
       isValid,
       visible: col.visible,
@@ -337,7 +366,7 @@ const groupedChildColumns = computed(() => {
   // Only include columns with valid fields
   const validColumns = props.childColumns.filter((col) => {
     const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
-    debug.log(DebugCategories.COLUMNS, 'Column validation', {
+    debug.log(DebugCategories.COLUMN_VALIDATION, 'Column validation', {
       field: col.field,
       isValid,
       visible: col.visible,
@@ -383,7 +412,7 @@ function getColumnStyle(col: ColumnDef) {
 watch(
   () => props.data,
   (newData) => {
-    debug.log(DebugCategories.DATA, 'TableWrapper data updated', {
+    debug.log(DebugCategories.TABLE_DATA, 'TableWrapper data updated', {
       length: newData.length,
       sample: newData[0],
       parentColumns: props.parentColumns.length,
@@ -409,7 +438,7 @@ watch(
 
 // Add onMounted hook to log initial data
 onMounted(() => {
-  debug.log(DebugCategories.DATA, 'Initial data', {
+  debug.log(DebugCategories.INITIALIZATION, 'Initial data', {
     data: props.data,
     parentColumns: props.parentColumns,
     childColumns: props.childColumns

@@ -8,7 +8,7 @@ import {
   defaultColumns,
   defaultDetailColumns
 } from '~/components/viewer/schedules/config/defaultColumns'
-import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 export interface UseColumnStateOptions {
   tableId: string

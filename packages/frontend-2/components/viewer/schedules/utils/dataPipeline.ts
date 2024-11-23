@@ -5,9 +5,12 @@ import type {
   ParameterValueState,
   Parameters
 } from '../types'
-import { debug, DebugCategories } from './debug'
+import { useDebug, DebugCategories } from '../debug/useDebug'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+
+// Initialize debug
+const debug = useDebug()
 
 interface DataPipelineResult {
   filteredElements: ElementData[]
@@ -59,31 +62,10 @@ export function processDataPipeline({
   const allColumns = [...defaultColumns, ...defaultDetailColumns]
   const activeParameters = allColumns.map((col) => col.field)
 
-  debug.log(DebugCategories.DATA, 'Starting data pipeline', {
+  debug.startState(DebugCategories.DATA_TRANSFORM, 'Starting data pipeline', {
     elementCount: allElements.length,
     selectedParent,
-    selectedChild,
-    activeParameters,
-    columns: allColumns.map((col) => ({
-      field: col.field,
-      header: col.header,
-      type: col.type,
-      order: col.order
-    }))
-  })
-
-  // Log available parameters in first few elements
-  debug.log(DebugCategories.DATA, 'Available parameters in data:', {
-    sampleElements: allElements.slice(0, 3).map((el) => ({
-      id: el.id,
-      category: el.category,
-      parameterKeys: Object.keys(el.parameters || {}),
-      activeParametersPresent: activeParameters.map((param) => ({
-        parameter: param,
-        present: param in (el.parameters || {}),
-        value: el.parameters?.[param]?.currentValue
-      }))
-    }))
+    selectedChild
   })
 
   // Step 1: Filter by categories
@@ -102,32 +84,10 @@ export function processDataPipeline({
   // Step 3: Convert to table data
   const tableData = convertToTableData(processedElements)
 
-  // Log final data structure
-  debug.log(DebugCategories.DATA, 'Data pipeline complete', {
+  debug.completeState(DebugCategories.DATA_TRANSFORM, 'Data pipeline complete', {
     filteredCount: filteredElements.length,
     processedCount: processedElements.length,
-    tableDataCount: tableData.length,
-    columnCount: parameterColumns.length,
-    activeParameters,
-    sampleRow: tableData[0]
-      ? {
-          id: tableData[0].id,
-          category: tableData[0].category,
-          parameterKeys: Object.keys(tableData[0].parameters || {}),
-          activeParametersPresent: activeParameters.map((param) => ({
-            parameter: param,
-            present: param in (tableData[0].parameters || {}),
-            value: tableData[0].parameters?.[param]?.currentValue
-          }))
-        }
-      : null,
-    columns: parameterColumns.map((col) => ({
-      field: col.field,
-      header: col.header,
-      visible: col.visible,
-      source: col.source,
-      order: col.order
-    }))
+    columnCount: parameterColumns.length
   })
 
   return {
@@ -157,13 +117,6 @@ function filterByCategories(
     return false
   })
 
-  debug.log(DebugCategories.DATA, 'Category filtering complete', {
-    inputCount: elements.length,
-    outputCount: filtered.length,
-    selectedParent,
-    selectedChild
-  })
-
   return filtered
 }
 
@@ -177,22 +130,15 @@ function processParameters(
   // Get all available columns
   const allColumns = [...defaultColumns, ...defaultDetailColumns]
 
-  // Log what parameters are actually in the data
-  const sampleElement = elements[0]
-  debug.log(DebugCategories.DATA, 'Sample element:', {
-    id: sampleElement?.id,
-    mark: sampleElement?.mark,
-    category: sampleElement?.category,
-    parameters: sampleElement?.parameters ? Object.keys(sampleElement.parameters) : [],
-    raw: sampleElement?._raw
-  })
-
   // Create columns for active parameters, preserving column properties
   const parameterColumns: ColumnDef[] = activeParameters.map((name) => {
     // Find matching default column
     const defaultColumn = allColumns.find((col) => col.field === name)
     if (!defaultColumn) {
-      debug.warn(DebugCategories.DATA, `No default column found for ${name}`)
+      debug.warn(
+        DebugCategories.COLUMN_VALIDATION,
+        `No default column found for ${name}`
+      )
     }
 
     // Use default column properties or create new ones
@@ -216,16 +162,6 @@ function processParameters(
     )
   })
 
-  // Log what columns we're creating
-  debug.log(DebugCategories.DATA, 'Creating columns:', {
-    activeParameters,
-    columns: parameterColumns.map((col) => ({
-      field: col.field,
-      header: col.header,
-      type: col.type
-    }))
-  })
-
   // Process elements
   const processedElements = elements.map((el) => {
     // Ensure required fields exist
@@ -244,15 +180,6 @@ function processParameters(
         })
       ) as Parameters
     }
-
-    // Log processed element
-    debug.log(DebugCategories.DATA, 'Processed element:', {
-      id: processed.id,
-      mark: processed.mark,
-      category: processed.category,
-      parameterCount: Object.keys(processed.parameters).length,
-      parameters: Object.keys(processed.parameters)
-    })
 
     return processed
   })
@@ -279,8 +206,7 @@ function convertToTableData(elements: ElementData[]): TableRow[] {
       mark: el.mark,
       category: el.category,
       parameters: processedParameters,
-      _visible: el._visible,
-      _raw: el._raw,
+      _visible: true,
       isChild: el.isChild,
       host: el.host,
       details: el.details?.map((child): TableRow => {
@@ -305,24 +231,6 @@ function convertToTableData(elements: ElementData[]): TableRow[] {
         }
       })
     }
-  })
-
-  debug.log(DebugCategories.DATA, 'Table data conversion complete', {
-    inputCount: elements.length,
-    outputCount: tableData.length,
-    sampleRow: tableData[0]
-      ? {
-          id: tableData[0].id,
-          parameterKeys: Object.keys(tableData[0].parameters || {}),
-          parameterValues: Object.entries(tableData[0].parameters || {}).reduce(
-            (acc, [key, value]) => {
-              acc[key] = value.currentValue
-              return acc
-            },
-            {} as Record<string, ParameterValue>
-          )
-        }
-      : null
   })
 
   return tableData

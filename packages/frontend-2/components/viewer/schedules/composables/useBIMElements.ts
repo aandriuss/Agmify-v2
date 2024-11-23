@@ -8,12 +8,15 @@ import type {
   Parameters,
   ParameterValueType,
   ParameterValueState,
-  TreeNode
+  TreeNode,
+  DeepBIMNode
 } from '../types'
-import { debug, DebugCategories } from '../utils/debug'
-import { getMostSpecificCategory } from '../config/categoryMapping'
+import { useDebug, DebugCategories } from '../debug/useDebug'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import { defaultColumns } from '../config/defaultColumns'
+
+// Initialize debug
+const debug = useDebug()
 
 // BIM parameter mapping with type information
 const parameterMapping: Record<string, { names: string[]; type: ParameterValueType }> =
@@ -54,7 +57,10 @@ interface UseBIMElementsReturn {
   rawTreeNodes: Ref<TreeItemComponentModel[]>
   isLoading: Ref<boolean>
   hasError: Ref<boolean>
-  initializeElements: (activeParameters?: string[]) => Promise<void>
+  initializeElements: (
+    activeParameters?: string[],
+    selectedChildCategories?: string[]
+  ) => Promise<void>
   stopWorldTreeWatch: () => void
 }
 
@@ -151,13 +157,6 @@ function hasValidSpeckleType(raw: BIMNodeRaw): boolean {
     return true
   }
 
-  debug.log(DebugCategories.DATA, 'Invalid type for node:', {
-    id: raw.id,
-    speckleType: raw.speckleType,
-    type: raw.type,
-    category: raw.Other?.Category
-  })
-
   return false
 }
 
@@ -222,52 +221,6 @@ function extractParameters(
       previousValue: transformedValue,
       userValue: null
     }
-
-    debug.log(DebugCategories.PARAMETERS, 'Parameter processed', {
-      key: paramName,
-      rawValue: value,
-      transformedValue: result[paramName].currentValue,
-      type,
-      source:
-        raw.parameters?.[paramName] !== undefined
-          ? 'parameters'
-          : paramName === 'mark' && raw.Mark !== undefined
-          ? 'Mark'
-          : paramName === 'category' && raw.Other?.Category !== undefined
-          ? 'Other.Category'
-          : paramName === 'host' && raw.Constraints?.Host !== undefined
-          ? 'Constraints.Host'
-          : paramName in raw
-          ? 'raw'
-          : 'none'
-    })
-  })
-
-  debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
-    totalParameters: Object.keys(result).length,
-    activeParameters,
-    extractedParameters: Object.keys(result),
-    sampleValues: Object.entries(result).reduce((acc, [key, value]) => {
-      acc[key] = {
-        currentValue: value.currentValue,
-        fetchedValue: value.fetchedValue,
-        previousValue: value.previousValue,
-        userValue: value.userValue,
-        source:
-          raw.parameters?.[key] !== undefined
-            ? 'parameters'
-            : key === 'mark' && raw.Mark !== undefined
-            ? 'Mark'
-            : key === 'category' && raw.Other?.Category !== undefined
-            ? 'Other.Category'
-            : key === 'host' && raw.Constraints?.Host !== undefined
-            ? 'Constraints.Host'
-            : key in raw
-            ? 'raw'
-            : 'none'
-      }
-      return acc
-    }, {} as Record<string, { currentValue: unknown; fetchedValue: unknown; previousValue: unknown; userValue: unknown; source: string }>)
   })
 
   return result
@@ -291,48 +244,126 @@ function createEmptyElement(
   }
 }
 
+function findPropertyInGroups(raw: BIMNodeRaw, propertyName: string): string | null {
+  // Helper to safely check group
+  function getFromGroup(group: unknown, name: string): string | null {
+    if (group && typeof group === 'object' && name in group) {
+      const value = (group as Record<string, unknown>)[name]
+      return value ? String(value) : null
+    }
+    return null
+  }
+
+  // First check Identity Data
+  const identityValue = getFromGroup(raw['Identity Data'], propertyName)
+  if (identityValue) return identityValue
+
+  // Check parameters
+  const paramValue = getFromGroup(raw.parameters, propertyName)
+  if (paramValue) return paramValue
+
+  // Check all other groups
+  for (const [key, value] of Object.entries(raw)) {
+    if (key !== 'parameters' && typeof value === 'object' && value) {
+      const groupValue = getFromGroup(value, propertyName)
+      if (groupValue) return groupValue
+    }
+  }
+
+  return null
+}
+
+function processParentChildRelationships(
+  elements: ElementData[],
+  selectedChildCategories: string[]
+): ElementData[] {
+  // Create a map of mark to element for quick lookups
+  const markToElement = new Map<string, ElementData>()
+  const processedElements: ElementData[] = []
+  const childElements: ElementData[] = []
+  const ungroupedChildren: ElementData[] = []
+
+  // First pass: identify parents and create mark lookup
+  elements.forEach((element) => {
+    const processed = { ...element }
+
+    // If element's category is in selectedChildCategories, it's always a child
+    if (selectedChildCategories.includes(element.category)) {
+      processed.isChild = true
+      childElements.push(processed)
+    } else {
+      // Not in child categories, so it's a parent
+      processed.isChild = false
+      processed.details = []
+      processedElements.push(processed)
+      // Add to mark lookup if it's a parent
+      if (processed.mark) {
+        markToElement.set(processed.mark, processed)
+      }
+    }
+  })
+
+  // Second pass: process child elements
+  childElements.forEach((child) => {
+    // If child has a host and that host exists as a parent's mark,
+    // add it to that parent's details
+    if (child.host && markToElement.has(child.host)) {
+      const hostElement = markToElement.get(child.host)
+      if (hostElement) {
+        hostElement.details.push(child)
+      }
+    } else {
+      // No valid host, add to ungrouped
+      ungroupedChildren.push(child)
+    }
+  })
+
+  // Create "Ungrouped" parent if we have any ungrouped children
+  if (ungroupedChildren.length > 0) {
+    const ungroupedParent: ElementData = {
+      id: 'ungrouped',
+      type: 'Group',
+      mark: 'Ungrouped',
+      category: 'Groups',
+      parameters: {},
+      details: ungroupedChildren,
+      _visible: true,
+      isChild: false
+    }
+    processedElements.push(ungroupedParent)
+  }
+
+  return processedElements
+}
+
 function extractElementData(
   raw: BIMNodeRaw,
   activeParameters: string[]
 ): ElementData | null {
   try {
-    const speckleType = raw.speckleType || raw.type || raw.Other?.Category || 'Unknown'
-    const category = getMostSpecificCategory(speckleType) || 'Uncategorized'
-    const mark = raw.Mark?.toString() || raw.id.toString()
+    // Get top-level properties from BIM data
+    const id = raw.id.toString()
+    const mark = findPropertyInGroups(raw, 'Mark') || id
+    const category =
+      raw.Other?.Category || findPropertyInGroups(raw, 'Category') || 'Uncategorized'
+    const host = raw.Constraints?.Host || findPropertyInGroups(raw, 'Host')
+    const type = raw.speckleType || raw.type || 'Unknown'
+
+    // Extract parameters separately
     const parameters = extractParameters(raw, activeParameters)
 
-    const element = createEmptyElement(
-      raw.id.toString(),
-      speckleType,
-      mark,
-      category,
-      parameters
-    )
+    const element = createEmptyElement(id, type, mark, category, parameters)
+
+    // Add host if found
+    if (host) {
+      element.host = host
+    }
 
     // Make _raw enumerable for debug panel
     Object.defineProperty(element, '_raw', {
       value: raw,
       enumerable: true,
       configurable: true
-    })
-
-    debug.log(DebugCategories.DATA, 'Element data extracted', {
-      id: element.id,
-      speckleType,
-      category,
-      mark,
-      parameterCount: Object.keys(parameters).length,
-      sampleParameters: Object.entries(parameters)
-        .slice(0, 3)
-        .reduce((acc, [key, value]) => {
-          acc[key] = {
-            currentValue: value.currentValue,
-            fetchedValue: value.fetchedValue,
-            previousValue: value.previousValue,
-            userValue: value.userValue
-          }
-          return acc
-        }, {} as Record<string, ParameterValueState>)
     })
 
     return element
@@ -343,11 +374,12 @@ function extractElementData(
 }
 
 function processNodeDeep(
-  node: any,
+  node: DeepBIMNode,
   activeParameters: string[],
   stats: ProcessingStats,
-  depth: number = 0,
-  maxDepth: number = 10
+  processedIds: Set<string> = new Set(),
+  depth = 0,
+  maxDepth = 10
 ): ElementData[] {
   const elements: ElementData[] = []
 
@@ -359,10 +391,19 @@ function processNodeDeep(
     // Helper function to process raw data
     const processRawData = (raw: BIMNodeRaw) => {
       stats.totalNodes++
+
+      // Skip if we've already processed this ID
+      if (raw.id && processedIds.has(raw.id.toString())) {
+        stats.skippedNodes++
+        return
+      }
+
       if (hasValidSpeckleType(raw)) {
         const element = extractElementData(raw, activeParameters)
         if (element) {
           elements.push(element)
+          // Add ID to processed set
+          processedIds.add(raw.id.toString())
           stats.processedNodes++
         } else {
           stats.skippedNodes++
@@ -373,57 +414,40 @@ function processNodeDeep(
     }
 
     // Process current node's raw data if it exists
-    if (node?.raw) {
+    if (node.raw) {
       processRawData(node.raw)
     }
-    if (node?.model?.raw) {
+
+    // Process model's raw data only if it's different from node's raw data
+    if (node.model?.raw && (!node.raw || node.model.raw.id !== node.raw.id)) {
       processRawData(node.model.raw)
     }
 
-    // Process all possible children paths
-    const childrenPaths = [
-      node?.children,
-      node?.model?.children,
-      node?.elements,
-      node?.raw?.children,
-      node?.raw?.elements
-    ]
+    // Collect unique children
+    const uniqueChildren = new Set([
+      ...(node.children || []),
+      ...(node.model?.children || []),
+      ...(node.elements || [])
+    ])
 
-    childrenPaths.forEach((children) => {
-      if (Array.isArray(children)) {
-        children.forEach((child) => {
-          const childElements = processNodeDeep(
-            child,
-            activeParameters,
-            stats,
-            depth + 1,
-            maxDepth
-          )
-          elements.push(...childElements)
-        })
+    // Process each unique child
+    for (const child of uniqueChildren) {
+      if (child) {
+        const childElements = processNodeDeep(
+          child,
+          activeParameters,
+          stats,
+          processedIds,
+          depth + 1,
+          maxDepth
+        )
+        elements.push(...childElements)
       }
-    })
-
-    debug.log(DebugCategories.DATA, `Processing node at depth ${depth}:`, {
-      totalNodes: stats.totalNodes,
-      processedNodes: stats.processedNodes,
-      skippedNodes: stats.skippedNodes,
-      nodeId: node?.id || node?.model?.raw?.id || 'unknown',
-      hasRaw: !!node?.raw || !!node?.model?.raw,
-      childrenCounts: {
-        children: Array.isArray(node?.children) ? node.children.length : 0,
-        modelChildren: Array.isArray(node?.model?.children)
-          ? node.model.children.length
-          : 0,
-        elements: Array.isArray(node?.elements) ? node.elements.length : 0,
-        rawChildren: Array.isArray(node?.raw?.children) ? node.raw.children.length : 0,
-        rawElements: Array.isArray(node?.raw?.elements) ? node.raw.elements.length : 0
-      }
-    })
+    }
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error processing node:', {
       error: err instanceof Error ? err.message : String(err),
-      nodeId: node?.id || node?.model?.raw?.id || 'unknown',
+      nodeId: node.id || node.model?.raw?.id || 'unknown',
       depth
     })
   }
@@ -434,9 +458,14 @@ function processNodeDeep(
 function processNode(
   node: TreeNode,
   activeParameters: string[],
-  stats: ProcessingStats
+  stats: ProcessingStats,
+  selectedChildCategories: string[]
 ): ElementData[] {
-  return processNodeDeep(node, activeParameters, stats)
+  const processedIds = new Set<string>()
+  // First collect all elements
+  const elements = processNodeDeep(node, activeParameters, stats, processedIds)
+  // Then process parent-child relationships
+  return processParentChildRelationships(elements, selectedChildCategories)
 }
 
 function convertViewerTreeNode(node: ViewerTree['_root']): TreeNode {
@@ -455,15 +484,20 @@ export function useBIMElements(): UseBIMElementsReturn {
   const hasError = ref(false)
   const isInitialized = ref(false)
   const viewerState = useInjectedViewerState()
+  const currentChildCategories = ref<string[]>([]) // Track current child categories
 
   async function initializeElements(
-    activeParameters: string[] = defaultColumns.map((col) => col.field)
+    activeParameters: string[] = defaultColumns.map((col) => col.field),
+    selectedChildCategories: string[] = []
   ): Promise<void> {
     try {
       isLoading.value = true
       hasError.value = false
 
-      debug.startState('BIM element initialization')
+      debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
+
+      // Update current child categories
+      currentChildCategories.value = selectedChildCategories
 
       // Get world tree from viewer
       const worldTreeValue = viewerState?.viewer?.metadata?.worldTree?.value
@@ -478,12 +512,13 @@ export function useBIMElements(): UseBIMElementsReturn {
         processedNodes: 0
       }
 
-      // Process the nodes
+      // Process the nodes with current child categories
       const processedElements = await Promise.resolve(
         processNode(
           convertViewerTreeNode(worldTreeValue._root),
           activeParameters,
-          stats
+          stats,
+          currentChildCategories.value
         )
       )
 
@@ -492,11 +527,8 @@ export function useBIMElements(): UseBIMElementsReturn {
       rawWorldTree.value = worldTreeValue
       isInitialized.value = true
 
-      debug.completeState('BIM element initialization')
-      debug.log(DebugCategories.DATA, 'Processing complete', {
+      debug.completeState(DebugCategories.INITIALIZATION, 'BIM elements initialized', {
         elementCount: processedElements.length,
-        categories: [...new Set(processedElements.map((el) => el.category))],
-        firstElement: processedElements[0],
         stats
       })
     } catch (error) {
@@ -518,12 +550,8 @@ export function useBIMElements(): UseBIMElementsReturn {
           return
         }
 
-        debug.log(DebugCategories.INITIALIZATION, 'World tree updated', {
-          hasRoot: !!worldTree._root,
-          timestamp: new Date().toISOString()
-        })
-
-        await initializeElements()
+        // Use current child categories when reinitializing
+        await initializeElements(undefined, currentChildCategories.value)
       } catch (error) {
         debug.error(DebugCategories.ERROR, 'World tree update failed:', error)
         hasError.value = true

@@ -1,25 +1,19 @@
 <template>
   <div>
     <!-- Debug Panel -->
-    <ScheduleDebugPanel
+    <DebugPanel
+      v-if="showDebug"
       :schedule-data="props.scheduleData"
       :evaluated-data="props.evaluatedData"
       :table-data="props.tableData"
-      :debug-filter="debugFilter"
-      :selected-parent-categories="props.selectedParentCategories"
-      :selected-child-categories="props.selectedChildCategories"
       :parent-elements="parentElements"
       :child-elements="childElements"
-      :available-parent-parameters="props.availableParentParameters"
-      :available-child-parameters="props.availableChildParameters"
-      :matched-elements="matchedElements"
-      :orphaned-elements="orphanedElements"
       :parent-parameter-columns="props.mergedTableColumns"
       :child-parameter-columns="props.mergedDetailColumns"
       :available-parent-headers="availableParentHeaders"
       :available-child-headers="availableChildHeaders"
-      :is-visible="showDebug"
-      @toggle="toggleDebug"
+      :available-parent-parameters="props.availableParentParameters"
+      :available-child-parameters="props.availableChildParameters"
     />
 
     <!-- Loading State -->
@@ -137,11 +131,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import DataTable from '../../../components/tables/DataTable/index.vue'
 import type { ColumnDef } from '../../../components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { debug, DebugCategories } from '../../utils/debug'
 import type {
   TableConfig,
   TableUpdatePayload,
@@ -151,7 +144,7 @@ import type {
 import { defaultColumns, defaultDetailColumns } from '../../config/defaultColumns'
 
 // Import local components
-import ScheduleDebugPanel from './ScheduleDebugPanel.vue'
+import DebugPanel from '../../debug/DebugPanel.vue'
 import ScheduleLoadingState from './ScheduleLoadingState.vue'
 import ScheduleErrorState from './ScheduleErrorState.vue'
 
@@ -202,7 +195,6 @@ const emit = defineEmits<{
 
 // Debug state
 const showDebug = ref(true)
-const debugFilter = ref('')
 
 // Ensure columns include essential fields
 const mergedColumns = computed(() => {
@@ -218,11 +210,6 @@ const mergedColumns = computed(() => {
         columns.unshift({ ...defaultCol })
       }
     }
-  })
-
-  debug.log(DebugCategories.COLUMNS, 'Merged columns:', {
-    total: columns.length,
-    fields: columns.map((col) => col.field)
   })
 
   return columns
@@ -243,11 +230,6 @@ const mergedDetailColumns = computed(() => {
     }
   })
 
-  debug.log(DebugCategories.COLUMNS, 'Merged detail columns:', {
-    total: columns.length,
-    fields: columns.map((col) => col.field)
-  })
-
   return columns
 })
 
@@ -260,17 +242,6 @@ const hasAnyData = computed(() => {
 
   const hasData = props.evaluatedData.length > 0
   const hasColumns = mergedColumns.value.length > 0
-
-  debug.log(DebugCategories.STATE, 'Table data checks:', {
-    hasData,
-    dataLength: props.evaluatedData.length,
-    hasColumns,
-    columnsLength: mergedColumns.value.length,
-    evaluatedData: props.evaluatedData,
-    mergedColumns: mergedColumns.value,
-    isLoading: props.isLoading,
-    isInitialized: props.isInitialized
-  })
 
   return hasData || hasColumns
 })
@@ -285,30 +256,6 @@ const parentElements = computed(() => {
 const childElements = computed(() => {
   return props.scheduleData.filter((el): el is ElementData => {
     return isElementData(el) && !!el.isChild
-  })
-})
-
-const matchedElements = computed(() => {
-  const parentMarkMap = new Map<string, ElementData>()
-  parentElements.value.forEach((parent) => {
-    if (parent.mark) {
-      parentMarkMap.set(parent.mark, parent)
-    }
-  })
-  return childElements.value.filter((child) => {
-    return child.host && parentMarkMap.has(child.host)
-  })
-})
-
-const orphanedElements = computed(() => {
-  const parentMarkMap = new Map<string, ElementData>()
-  parentElements.value.forEach((parent) => {
-    if (parent.mark) {
-      parentMarkMap.set(parent.mark, parent)
-    }
-  })
-  return childElements.value.filter((child) => {
-    return !child.host || !parentMarkMap.has(child.host)
   })
 })
 
@@ -337,39 +284,19 @@ const availableChildHeaders = computed(
     })) as ColumnDef[]
 )
 
-// Watch for data changes
-watch(
-  () => props.evaluatedData,
-  (newData) => {
-    if (props.isInitialized) {
-      debug.log(DebugCategories.DATA, 'Data updated:', {
-        length: newData.length,
-        sample: newData[0],
-        columns: mergedColumns.value.length,
-        detailColumns: mergedDetailColumns.value.length,
-        isInitialized: props.isInitialized
-      })
-    }
-  },
-  { deep: true, immediate: true }
-)
-
 // Event handlers
 function handleBothColumnsUpdate(updates: {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
 }): void {
-  debug.log(DebugCategories.COLUMNS, 'Column update:', updates)
   emit('update:both-columns', updates)
 }
 
 function handleTableUpdate(payload: TableUpdatePayload): void {
-  debug.log(DebugCategories.TABLE_UPDATES, 'Table update:', payload)
   emit('table-updated', payload)
 }
 
 function handleColumnVisibilityChange(column: ColumnDef): void {
-  debug.log(DebugCategories.COLUMNS, 'Column visibility change:', column)
   emit('column-visibility-change', column)
 }
 

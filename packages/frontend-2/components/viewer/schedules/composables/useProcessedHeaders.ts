@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import type { ComputedRef } from 'vue'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import type { AvailableHeaders, ProcessedHeader } from '../types'
 
 interface UseProcessedHeadersOptions {

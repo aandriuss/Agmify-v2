@@ -15,7 +15,7 @@
 import { onMounted, watch, computed } from 'vue'
 import { useScheduleInitialization } from '../composables/useScheduleInitialization'
 import { useScheduleInitializationFlow } from '../composables/useScheduleInitializationFlow'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 import type { ElementData, TreeItemComponentModel } from '../types'
 import ScheduleErrorAlert from './ScheduleErrorAlert.vue'

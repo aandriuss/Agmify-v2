@@ -116,15 +116,6 @@
               />
             </div>
           </div>
-          <!-- Debug info if in debug mode -->
-          <div v-if="debug" class="mt-2 p-2 bg-gray-50 text-xs">
-            <div>
-              Pending Changes:
-              {{ columnManager.columnState.value.pendingChanges?.length }}
-            </div>
-            <div>Active View: {{ columnManager.currentView.value }}</div>
-            <div>Is Updating: {{ columnManager.isUpdating }}</div>
-          </div>
         </div>
       </LayoutDialog>
     </div>
@@ -155,12 +146,9 @@ interface Props {
   childColumns: ColumnDef[]
   availableParentParameters: CustomParameter[]
   availableChildParameters: CustomParameter[]
-  debug?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  debug: false
-})
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]

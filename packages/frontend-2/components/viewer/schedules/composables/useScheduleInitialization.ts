@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import { useStore } from '../core/store'
 
 /**

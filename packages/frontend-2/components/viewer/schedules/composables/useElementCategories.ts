@@ -1,5 +1,5 @@
 import type { ElementData } from '../types'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import { parentCategories, childCategories } from '../config/categories'
 
 interface FilterElementsOptions {

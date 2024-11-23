@@ -1,5 +1,5 @@
 import { ref, watch } from 'vue'
-import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import { useSettingsGraphQL } from './useSettingsGraphQL'
 import { useUpdateQueue } from './useUpdateQueue'
 import { isUserSettings } from './types/scheduleTypes'

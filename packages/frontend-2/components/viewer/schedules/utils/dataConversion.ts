@@ -7,7 +7,7 @@ import type {
   Parameters,
   ParameterValueState
 } from '../types'
-import { debug, DebugCategories } from './debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import { isValidBIMNodeRaw } from '../types'
 
 export function convertToString(value: unknown): string {

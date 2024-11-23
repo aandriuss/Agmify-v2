@@ -1,6 +1,6 @@
 import type { ColumnDef } from './columns/types'
 import type { TableRow, ParameterValue } from '~/components/viewer/schedules/types'
-import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 export function safeJSONClone<T>(obj: T): T {
   const jsonString = JSON.stringify(obj)
@@ -12,6 +12,10 @@ export function validateData(
   data: unknown[],
   handleError: (error: Error) => void
 ): boolean {
+  debug.startState(DebugCategories.VALIDATION, 'Starting data validation', {
+    count: data?.length
+  })
+
   try {
     if (!Array.isArray(data)) {
       throw new Error('Data must be an array')
@@ -19,15 +23,20 @@ export function validateData(
 
     const invalidItems = data.filter((item) => !isValidParameters(item))
     if (invalidItems.length > 0) {
-      debug.warn(DebugCategories.VALIDATION, 'Invalid data items found', invalidItems)
+      debug.warn(DebugCategories.VALIDATION, 'Invalid data items found', {
+        invalidCount: invalidItems.length,
+        sampleInvalid: invalidItems[0]
+      })
       throw new Error(`Invalid data items found: ${invalidItems.length} items`)
     }
 
-    debug.log(DebugCategories.VALIDATION, 'Data validation passed', {
-      count: data.length
+    debug.completeState(DebugCategories.VALIDATION, 'Data validation passed', {
+      count: data.length,
+      sampleValid: data[0]
     })
     return true
   } catch (error) {
+    debug.error(DebugCategories.ERROR, 'Data validation failed', error)
     handleError(error as Error)
     return false
   }
@@ -68,6 +77,11 @@ export function updateLocalColumns(
   sourceColumns: ColumnDef[],
   updateFn: (columns: ColumnDef[]) => void
 ): void {
+  debug.startState(DebugCategories.COLUMNS, 'Updating local columns', {
+    count: sourceColumns.length,
+    fields: sourceColumns.map((c) => c.field)
+  })
+
   try {
     const columns = sourceColumns.map((col) => ({
       ...col,
@@ -76,9 +90,14 @@ export function updateLocalColumns(
       order: typeof col.order === 'number' ? col.order : 0 // Ensure order is always set
     }))
 
-    debug.log(DebugCategories.COLUMNS, 'Updating local columns', columns)
+    const sortedColumns = sortColumnsByOrder(columns)
+    updateFn(sortedColumns)
 
-    updateFn(sortColumnsByOrder(columns))
+    debug.completeState(DebugCategories.COLUMNS, 'Local columns updated', {
+      count: sortedColumns.length,
+      visibleCount: sortedColumns.filter((c) => c.visible).length,
+      orderedFields: sortedColumns.map((c) => c.field)
+    })
   } catch (error) {
     debug.error(DebugCategories.ERROR, 'Error updating local columns', error)
     throw error
@@ -89,14 +108,16 @@ export function updateLocalColumns(
  * Validate array of TableRow objects
  */
 export function validateTableRows(data: unknown[]): TableRow[] {
-  debug.log(DebugCategories.DATA_TRANSFORM, 'xx Validating table rows', {
-    timestamp: new Date().toISOString(),
+  debug.startState(DebugCategories.DATA_VALIDATION, 'Validating table rows', {
     inputCount: data?.length,
-    sample: data?.[0]
+    sampleInput: data?.[0]
   })
 
   if (!Array.isArray(data)) {
-    debug.warn(DebugCategories.VALIDATION, 'Invalid data format', data)
+    debug.warn(DebugCategories.VALIDATION, 'Invalid data format', {
+      received: typeof data,
+      value: data
+    })
     return []
   }
 
@@ -104,16 +125,24 @@ export function validateTableRows(data: unknown[]): TableRow[] {
   const validItems = data.filter((item): item is TableRow => {
     const isValid = isValidParameters(item)
     if (!isValid) {
-      debug.warn(DebugCategories.VALIDATION, 'Invalid parameters', item)
+      debug.warn(DebugCategories.VALIDATION, 'Invalid parameters in row', {
+        item,
+        reason: 'Parameters missing or invalid'
+      })
     }
     return isValid
   })
 
-  debug.log(DebugCategories.DATA_TRANSFORM, 'xx Validation complete', {
-    timestamp: new Date().toISOString(),
-    validCount: validItems.length,
-    sample: validItems[0]
-  })
+  debug.completeState(
+    DebugCategories.DATA_VALIDATION,
+    'Table row validation complete',
+    {
+      inputCount: data.length,
+      validCount: validItems.length,
+      invalidCount: data.length - validItems.length,
+      sampleValidRow: validItems[0]
+    }
+  )
 
   return validItems
 }

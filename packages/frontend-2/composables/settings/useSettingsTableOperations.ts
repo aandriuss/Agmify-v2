@@ -1,6 +1,6 @@
 import type { NamedTableConfig } from './types/scheduleTypes'
 import { useTableOperations } from './useTableOperations'
-import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 interface UseSettingsTableOperationsOptions {
   settings: { value: { namedTables: Record<string, NamedTableConfig> } }

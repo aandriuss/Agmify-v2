@@ -1,6 +1,6 @@
 import { ref, computed, unref } from 'vue'
 import type { Store, StoreState } from '../../types'
-import { debug, DebugCategories } from '../../utils/debug'
+import { debug, DebugCategories } from '../../debug/useDebug'
 import { createMutations } from './mutations'
 import {
   defaultColumns,

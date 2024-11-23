@@ -1,14 +1,28 @@
 import { ref, computed } from 'vue'
-import type { Store, StoreState } from './types'
-import { debug, DebugCategories } from '../utils/debug'
+import type {
+  Store,
+  StoreState,
+  ElementData,
+  TableRow,
+  ProcessedHeader
+} from '../types'
+import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type { CustomParameter } from '~/composables/useUserSettings'
+import { useDebug, DebugCategories } from '../debug/useDebug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 
+// Initialize debug
+const debug = useDebug()
+
 const initialState: StoreState = {
+  projectId: null,
   scheduleData: [],
   evaluatedData: [],
   tableData: [],
   customParameters: [],
   parameterColumns: [],
+  parentParameterColumns: [],
+  childParameterColumns: [],
   mergedParentParameters: [],
   mergedChildParameters: [],
   processedParameters: {},
@@ -18,6 +32,9 @@ const initialState: StoreState = {
   mergedDetailColumns: [],
   parameterDefinitions: {},
   availableHeaders: { parent: [], child: [] },
+  selectedCategories: new Set(),
+  selectedParentCategories: [],
+  selectedChildCategories: [],
   tablesArray: [],
   tableName: '',
   selectedTableId: '',
@@ -75,6 +92,7 @@ export function createStore(): Store {
     update: async (state: Partial<StoreState>) => {
       debug.log(DebugCategories.STATE, 'Updating store state', state)
       try {
+        await Promise.resolve() // Make async to satisfy eslint
         internalState.value = {
           ...internalState.value,
           ...state
@@ -92,16 +110,19 @@ export function createStore(): Store {
   }
 
   // Create computed properties for all state fields
-  const store = {
+  const store: Store = {
     state: computed(() => internalState.value),
     lifecycle,
 
     // Computed properties
+    projectId: computed(() => internalState.value.projectId),
     scheduleData: computed(() => internalState.value.scheduleData),
     evaluatedData: computed(() => internalState.value.evaluatedData),
     tableData: computed(() => internalState.value.tableData),
     customParameters: computed(() => internalState.value.customParameters),
     parameterColumns: computed(() => internalState.value.parameterColumns),
+    parentParameterColumns: computed(() => internalState.value.parentParameterColumns),
+    childParameterColumns: computed(() => internalState.value.childParameterColumns),
     mergedParentParameters: computed(() => internalState.value.mergedParentParameters),
     mergedChildParameters: computed(() => internalState.value.mergedChildParameters),
     processedParameters: computed(() => internalState.value.processedParameters),
@@ -111,6 +132,13 @@ export function createStore(): Store {
     mergedDetailColumns: computed(() => internalState.value.mergedDetailColumns),
     parameterDefinitions: computed(() => internalState.value.parameterDefinitions),
     availableHeaders: computed(() => internalState.value.availableHeaders),
+    selectedCategories: computed(() => internalState.value.selectedCategories),
+    selectedParentCategories: computed(
+      () => internalState.value.selectedParentCategories
+    ),
+    selectedChildCategories: computed(
+      () => internalState.value.selectedChildCategories
+    ),
     tablesArray: computed(() => internalState.value.tablesArray),
     tableName: computed(() => internalState.value.tableName),
     selectedTableId: computed(() => internalState.value.selectedTableId),
@@ -121,91 +149,37 @@ export function createStore(): Store {
     error: computed(() => internalState.value.error),
 
     // Mutations
-    setScheduleData: (data) => lifecycle.update({ scheduleData: data }),
-    setEvaluatedData: (data) => lifecycle.update({ evaluatedData: data }),
-    setTableData: (data) => lifecycle.update({ tableData: data }),
-    setCustomParameters: (params) => lifecycle.update({ customParameters: params }),
-    setParameterColumns: (columns) => lifecycle.update({ parameterColumns: columns }),
-    setMergedParameters: (parent, child) =>
+    setProjectId: (id: string | null) => lifecycle.update({ projectId: id }),
+    setScheduleData: (data: ElementData[]) => lifecycle.update({ scheduleData: data }),
+    setEvaluatedData: (data: ElementData[]) =>
+      lifecycle.update({ evaluatedData: data }),
+    setTableData: (data: TableRow[]) => lifecycle.update({ tableData: data }),
+    setCustomParameters: (params: CustomParameter[]) =>
+      lifecycle.update({ customParameters: params }),
+    setParameterColumns: (columns: ColumnDef[]) =>
+      lifecycle.update({ parameterColumns: columns }),
+    setAvailableHeaders: (headers: {
+      parent: ProcessedHeader[]
+      child: ProcessedHeader[]
+    }) => lifecycle.update({ availableHeaders: headers }),
+    setSelectedCategories: (categories: Set<string>) =>
+      lifecycle.update({ selectedCategories: categories }),
+    setParentCategories: (categories: string[]) =>
+      lifecycle.update({ selectedParentCategories: categories }),
+    setChildCategories: (categories: string[]) =>
+      lifecycle.update({ selectedChildCategories: categories }),
+    setTablesArray: (tables: { id: string; name: string }[]) =>
+      lifecycle.update({ tablesArray: tables }),
+    setTableInfo: (info: { selectedTableId?: string; tableName?: string }) =>
+      lifecycle.update(info),
+    setMergedColumns: (parentColumns: ColumnDef[], childColumns: ColumnDef[]) =>
       lifecycle.update({
-        mergedParentParameters: parent,
-        mergedChildParameters: child
+        mergedTableColumns: parentColumns,
+        mergedDetailColumns: childColumns
       }),
-    setProcessedParameters: (params) =>
-      lifecycle.update({ processedParameters: params }),
-    setCurrentColumns: (table, detail) =>
-      lifecycle.update({
-        currentTableColumns: table,
-        currentDetailColumns: detail
-      }),
-    setMergedColumns: (table, detail) =>
-      lifecycle.update({
-        mergedTableColumns: table,
-        mergedDetailColumns: detail
-      }),
-    setParameterDefinitions: (defs) => lifecycle.update({ parameterDefinitions: defs }),
-    setAvailableHeaders: (headers) => lifecycle.update({ availableHeaders: headers }),
-    setTableInfo: (info) => lifecycle.update(info),
-    setTablesArray: (tables) => lifecycle.update({ tablesArray: tables }),
-    setInitialized: (value) => lifecycle.update({ initialized: value }),
-    setLoading: (value) => lifecycle.update({ loading: value }),
-    setError: (err) => lifecycle.update({ error: err }),
-    setColumnVisibility: (columnId, visible) => {
-      const columns = [...internalState.value.currentTableColumns]
-      const column = columns.find((c) => c.field === columnId)
-      if (column) {
-        column.visible = visible
-        lifecycle.update({ currentTableColumns: columns })
-      }
-    },
-    setColumnOrder: (columnId, newIndex) => {
-      const columns = [...internalState.value.currentTableColumns]
-      const oldIndex = columns.findIndex((c) => c.field === columnId)
-      if (oldIndex !== -1) {
-        const [column] = columns.splice(oldIndex, 1)
-        columns.splice(newIndex, 0, column)
-        lifecycle.update({ currentTableColumns: columns })
-      }
-    },
-    setElementVisibility: (elementId, visible) => {
-      const data = [...internalState.value.tableData]
-      const element = data.find((e) => e.id === elementId)
-      if (element) {
-        element._visible = visible
-        lifecycle.update({ tableData: data })
-      }
-    },
-    setParameterVisibility: (parameterId, visible) => {
-      const params = [...internalState.value.parameterColumns]
-      const param = params.find((p) => p.field === parameterId)
-      if (param) {
-        param.visible = visible
-        lifecycle.update({ parameterColumns: params })
-      }
-    },
-    setParameterOrder: (parameterId, newIndex) => {
-      const params = [...internalState.value.parameterColumns]
-      const oldIndex = params.findIndex((p) => p.field === parameterId)
-      if (oldIndex !== -1) {
-        const [param] = params.splice(oldIndex, 1)
-        params.splice(newIndex, 0, param)
-        lifecycle.update({ parameterColumns: params })
-      }
-    },
-    processData: async () => {
-      try {
-        internalState.value.loading = true
-        await Promise.all([
-          // Add data processing promises here
-        ])
-      } catch (err) {
-        internalState.value.error = err instanceof Error ? err : new Error(String(err))
-        throw err
-      } finally {
-        internalState.value.loading = false
-      }
-    },
-    reset: () => lifecycle.cleanup()
+    setInitialized: (value: boolean) => lifecycle.update({ initialized: value }),
+    setLoading: (value: boolean) => lifecycle.update({ loading: value }),
+    setError: (error: Error | null) => lifecycle.update({ error })
   }
 
   return store

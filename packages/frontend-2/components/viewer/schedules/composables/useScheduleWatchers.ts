@@ -3,7 +3,7 @@ import type { Ref, ComputedRef } from 'vue'
 import type { ElementData, TableConfig, AvailableHeaders } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 
 interface UseScheduleWatchersOptions {
   currentTable: Ref<TableConfig | null>

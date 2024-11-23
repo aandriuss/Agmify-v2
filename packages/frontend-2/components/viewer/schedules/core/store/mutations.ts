@@ -1,14 +1,11 @@
 import type { Ref } from 'vue'
-import type {
-  StoreState,
-  ElementData,
-  Parameters,
-  TableRow,
-  ProcessedHeader
-} from '../../types'
+import type { StoreState, ElementData, TableRow, ProcessedHeader } from '../../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { debug, DebugCategories } from '../../utils/debug'
+import { useDebug, DebugCategories } from '../../debug/useDebug'
+
+// Initialize debug
+const debug = useDebug()
 
 export function createMutations(state: Ref<StoreState>) {
   return {
@@ -52,11 +49,11 @@ export function createMutations(state: Ref<StoreState>) {
       state.value.mergedChildParameters = [...childParams]
     },
 
-    setProcessedParameters(params: Parameters) {
+    setProcessedParameters(params: Record<string, ProcessedHeader>) {
       state.value.processedParameters = { ...params }
     },
 
-    setParameterDefinitions(definitions: Record<string, unknown>) {
+    setParameterDefinitions(definitions: Record<string, ProcessedHeader>) {
       state.value.parameterDefinitions = { ...definitions }
     },
 
@@ -112,10 +109,18 @@ export function createMutations(state: Ref<StoreState>) {
 
     setParentCategories(categories: string[]) {
       state.value.selectedParentCategories = [...categories]
+      // Category changes affect data processing, so we log them
+      debug.completeState(DebugCategories.CATEGORIES, 'Parent categories updated', {
+        count: categories.length
+      })
     },
 
     setChildCategories(categories: string[]) {
       state.value.selectedChildCategories = [...categories]
+      // Category changes affect data processing, so we log them
+      debug.completeState(DebugCategories.CATEGORIES, 'Child categories updated', {
+        count: categories.length
+      })
     },
 
     setTableInfo(info: {
@@ -161,9 +166,13 @@ export function createMutations(state: Ref<StoreState>) {
 
     setInitialized(value: boolean) {
       state.value.initialized = value
-      debug.log(DebugCategories.STATE, 'Store initialization state updated', {
-        initialized: value
-      })
+      if (value) {
+        debug.completeState(DebugCategories.INITIALIZATION, 'Store initialized', {
+          scheduleDataCount: state.value.scheduleData.length,
+          evaluatedDataCount: state.value.evaluatedData.length,
+          tableDataCount: state.value.tableData.length
+        })
+      }
     },
 
     setLoading(value: boolean) {
@@ -171,17 +180,21 @@ export function createMutations(state: Ref<StoreState>) {
     },
 
     setError(error: Error | null) {
+      if (error) {
+        debug.error(DebugCategories.ERROR, 'Store error:', error)
+      }
       state.value.error = error
     },
 
     reset() {
+      debug.startState(DebugCategories.INITIALIZATION, 'Resetting store')
       state.value = {
         ...state.value,
         initialized: false,
         loading: false,
         error: null
       }
-      debug.log(DebugCategories.STATE, 'Store state reset')
+      debug.completeState(DebugCategories.INITIALIZATION, 'Store reset complete')
     }
   }
 }

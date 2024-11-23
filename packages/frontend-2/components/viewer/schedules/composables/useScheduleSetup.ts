@@ -1,4 +1,4 @@
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import type { ViewerState } from '../types/viewer'
 import scheduleStore, { initializeStore } from './useScheduleStore'
 

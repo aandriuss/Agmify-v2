@@ -3,7 +3,7 @@ import type { Ref, ComputedRef } from 'vue'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { ProcessedHeader } from '../types'
 import { CATEGORY_SETTINGS } from '../config/constants'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 
 interface UseScheduleParametersOptions {

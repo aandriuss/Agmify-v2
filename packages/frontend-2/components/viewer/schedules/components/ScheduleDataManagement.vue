@@ -7,7 +7,7 @@
 import { computed, watch } from 'vue'
 import { useScheduleDataTransform } from '../composables/useScheduleDataTransform'
 import { useDataOrganization } from '../composables/useDataOrganization'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { ElementData, TableRow } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'

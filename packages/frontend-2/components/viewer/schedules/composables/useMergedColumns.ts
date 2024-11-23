@@ -2,7 +2,7 @@ import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 
 interface UseMergedColumnsOptions {
   currentTableColumns: ComputedRef<ColumnDef[]>

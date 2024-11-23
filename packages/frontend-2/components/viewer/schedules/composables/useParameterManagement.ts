@@ -4,7 +4,7 @@ import type { CustomParameter } from '~/composables/useUserSettings'
 import type { ElementData, ParameterValue } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { evaluateParameter } from '../utils/parameterEvaluation'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import { getParameterGroup } from '../config/parameters'
 
 interface UseParameterManagementOptions {

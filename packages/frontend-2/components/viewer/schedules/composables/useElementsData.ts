@@ -6,7 +6,7 @@ import type {
   ElementsDataReturn,
   ViewerTree
 } from '../types'
-import { debug, DebugCategories } from '../utils/debug'
+import { useDebug, DebugCategories } from '../debug/useDebug'
 import { useBIMElements } from './useBIMElements'
 import { processDataPipeline } from '../utils/dataPipeline'
 import { useStore } from '../core/store'
@@ -22,6 +22,7 @@ export function useElementsData({
   selectedParentCategories: Ref<string[]>
   selectedChildCategories: Ref<string[]>
 }): ElementsDataReturn {
+  const debug = useDebug()
   const store = useStore()
   const {
     allElements,
@@ -29,7 +30,8 @@ export function useElementsData({
     rawTreeNodes,
     isLoading: bimLoading,
     hasError: bimError,
-    stopWorldTreeWatch
+    stopWorldTreeWatch,
+    initializeElements
   } = useBIMElements()
 
   // Initialize processing state
@@ -55,7 +57,9 @@ export function useElementsData({
         return
       }
 
-      debug.startState('Data processing')
+      debug.startState(DebugCategories.DATA_TRANSFORM, 'Processing data', {
+        elementCount: elements.length
+      })
       processingState.value.isProcessingElements = true
 
       // Process data through unified pipeline
@@ -63,13 +67,6 @@ export function useElementsData({
         allElements: elements,
         selectedParent: selectedParentCategories.value,
         selectedChild: selectedChildCategories.value
-      })
-
-      debug.log(DebugCategories.DATA, 'Pipeline result:', {
-        filteredElements: result.filteredElements.length,
-        processedElements: result.processedElements.length,
-        parameterColumns: result.parameterColumns.map((c) => c.field),
-        sampleElement: result.processedElements[0]
       })
 
       // Update store with processed data
@@ -96,7 +93,11 @@ export function useElementsData({
       scheduleDataRef.value = result.filteredElements
       tableDataRef.value = result.tableData
 
-      debug.completeState('Data processing')
+      debug.completeState(DebugCategories.DATA_TRANSFORM, 'Data processing complete', {
+        filteredCount: result.filteredElements.length,
+        processedCount: result.processedElements.length,
+        columnCount: result.parameterColumns.length
+      })
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error processing data:', error)
       processingState.value.error =
@@ -124,15 +125,45 @@ export function useElementsData({
     }
   })
 
+  // Initialize data with current categories
+  async function initializeData(): Promise<void> {
+    try {
+      debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
+      processingState.value.isInitializing = true
+
+      // Initialize elements with current child categories
+      await initializeElements(undefined, selectedChildCategories.value)
+
+      if (allElements.value?.length) {
+        await updateData(allElements.value)
+      }
+
+      debug.completeState(
+        DebugCategories.INITIALIZATION,
+        'Data initialization complete'
+      )
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error initializing data:', error)
+      processingState.value.error =
+        error instanceof Error ? error : new Error('Failed to initialize data')
+      throw error
+    } finally {
+      processingState.value.isInitializing = false
+    }
+  }
+
   // Category update handler
   async function updateCategories(
     parentCategories: string[],
     childCategories: string[]
   ): Promise<void> {
     try {
-      debug.startState('Category update')
+      debug.startState(DebugCategories.CATEGORY_UPDATES, 'Updating categories')
       processingState.value.isUpdatingCategories = true
       processingState.value.error = null
+
+      // First reinitialize elements with new categories
+      await initializeElements(undefined, childCategories)
 
       if (!allElements.value?.length) {
         debug.warn(
@@ -193,7 +224,15 @@ export function useElementsData({
       scheduleDataRef.value = result.filteredElements
       tableDataRef.value = result.tableData
 
-      debug.completeState('Category update')
+      debug.completeState(
+        DebugCategories.CATEGORY_UPDATES,
+        'Category update complete',
+        {
+          parentCategories,
+          childCategories,
+          elementCount: result.filteredElements.length
+        }
+      )
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error updating categories:', error)
       processingState.value.error =
@@ -212,11 +251,7 @@ export function useElementsData({
       child: new Set(selectedChildCategories.value)
     })),
     updateCategories,
-    initializeData: async () => {
-      if (allElements.value?.length) {
-        await updateData(allElements.value)
-      }
-    },
+    initializeData,
     stopWorldTreeWatch,
     isLoading: computed(
       () => bimLoading.value || processingState.value.isProcessingElements

@@ -1,5 +1,5 @@
 import { parentCategories, childCategories } from './categories'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 
 /**
  * Maps UI category names to their corresponding IFC type patterns

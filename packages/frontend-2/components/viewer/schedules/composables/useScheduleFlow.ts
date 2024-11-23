@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import {
   defaultColumns,
   defaultDetailColumns,

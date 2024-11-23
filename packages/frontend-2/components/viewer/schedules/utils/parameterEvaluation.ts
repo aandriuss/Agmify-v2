@@ -1,6 +1,6 @@
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { ElementData, ParameterValue } from '../types'
-import { debug, DebugCategories } from './debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 
 export class EquationError extends Error {
   constructor(message: string, public details?: Record<string, unknown>) {
@@ -31,17 +31,9 @@ export function evaluateParameter(
   rowData: ElementData
 ): ParameterValue {
   try {
-    debug.startState('parameterEvaluation')
-    debug.log(DebugCategories.PARAMETERS, 'Evaluating parameter:', {
-      parameter,
-      rowData
-    })
-
     // For fixed type parameters, return value as is
     if (parameter.type === 'fixed') {
       const value = parameter.value || ''
-      debug.log(DebugCategories.PARAMETERS, 'Fixed parameter value:', value)
-      debug.completeState('parameterEvaluation')
       return value
     }
 
@@ -80,8 +72,6 @@ export function evaluateParameter(
         }
       }
 
-      debug.log(DebugCategories.PARAMETERS, 'Evaluation context:', evalContext)
-
       // Replace parameter references with context values
       const evaluatedEquation = parameter.equation.replace(
         /\${([^}]+)}/g,
@@ -98,8 +88,6 @@ export function evaluateParameter(
         }
       )
 
-      debug.log(DebugCategories.PARAMETERS, 'Evaluated equation:', evaluatedEquation)
-
       // Create a function that evaluates the equation in the context
       let fn: (context: EvalContextType) => number
       try {
@@ -107,7 +95,7 @@ export function evaluateParameter(
           context: EvalContextType
         ) => number
       } catch (error) {
-        debug.error(DebugCategories.PARAMETERS, 'Equation syntax error:', {
+        debug.error(DebugCategories.ERROR, 'Equation syntax error:', {
           equation: parameter.equation,
           error: error instanceof Error ? error.message : 'Unknown error'
         })
@@ -125,11 +113,9 @@ export function evaluateParameter(
           return NaN
         }
 
-        debug.log(DebugCategories.PARAMETERS, 'Equation result:', result)
-        debug.completeState('parameterEvaluation')
         return result
       } catch (error) {
-        debug.error(DebugCategories.PARAMETERS, 'Equation evaluation error:', {
+        debug.error(DebugCategories.ERROR, 'Equation evaluation error:', {
           equation: parameter.equation,
           evaluatedEquation,
           error: error instanceof Error ? error.message : 'Unknown error'
@@ -144,11 +130,10 @@ export function evaluateParameter(
     })
     return parameter.type === 'equation' ? NaN : ''
   } catch (error) {
-    debug.error(DebugCategories.PARAMETERS, 'Parameter evaluation error:', {
+    debug.error(DebugCategories.ERROR, 'Parameter evaluation error:', {
       parameter,
       error: error instanceof Error ? error.message : 'Unknown error'
     })
-    debug.completeState('parameterEvaluation')
     return parameter.type === 'equation' ? NaN : ''
   }
 }

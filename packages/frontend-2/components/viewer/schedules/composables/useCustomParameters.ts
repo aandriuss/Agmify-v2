@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import type { BIMNode } from '../types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import { convertToString } from '../utils/dataConversion'
 
 export interface EvaluationContext {

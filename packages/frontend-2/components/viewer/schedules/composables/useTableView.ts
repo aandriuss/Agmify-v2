@@ -1,7 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { TableRowData } from '../types'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 
 interface UseTableViewOptions {
   mergedTableColumns: ComputedRef<ColumnDef[]>

@@ -79,7 +79,7 @@ import {
 import type { ColumnDef } from './composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { TableRow, ElementData } from '~/components/viewer/schedules/types'
-import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import type {
   DataTableColumnReorderEvent,
   DataTableFilterMeta

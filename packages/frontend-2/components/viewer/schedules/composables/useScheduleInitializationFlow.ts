@@ -1,5 +1,5 @@
 import { ref, computed, type ComputedRef } from 'vue'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 import type { ElementData, TreeItemComponentModel } from '../types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'

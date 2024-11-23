@@ -1,6 +1,6 @@
 import type { ElementData, ParameterValueType, BIMNodeRaw } from '../../types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
-import { debug, DebugCategories } from '../../utils/debug'
+import { debug, DebugCategories } from '../../debug/useDebug'
 import { getParameterGroup } from '../../config/parameters'
 
 // Parameter discovery interface
@@ -9,7 +9,7 @@ export interface DiscoveredParameter {
   name: string
   type: ParameterValueType
   header: string
-  category: string // Element category
+  category: string // Element categorys
   group: string // Parameter group from raw data
   description: string
   visible: boolean

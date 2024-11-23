@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 interface QueuedUpdate<T> {
   execute: () => Promise<void>

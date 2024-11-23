@@ -1,4 +1,4 @@
-import { debug, DebugCategories } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import type { ParsedSettings, UserSettings } from './types'
 
 function isJsonString(value: unknown): value is string {

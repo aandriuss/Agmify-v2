@@ -23,7 +23,6 @@
         />
       </div>
 
-      <!-- Loading State -->
       <div v-if="isLoading" class="flex items-center justify-center h-full">
         <div class="text-center">
           <div class="text-lg font-semibold mb-2">Loading schedule data...</div>
@@ -33,7 +32,6 @@
         </div>
       </div>
 
-      <!-- Error State -->
       <div v-else-if="error" class="flex items-center justify-center h-full">
         <div class="text-center">
           <div class="text-lg font-semibold mb-2 text-red-500">
@@ -48,34 +46,20 @@
         </div>
       </div>
 
-      <!-- Content -->
-      <template v-else>
-        <!-- Main Content -->
-        <div
-          ref="viewerContainer"
-          class="viewer-container"
-          style="width: 100%; height: 100%; min-height: 400px"
-        >
-          <!-- Debug View -->
-          <BIMDebugView
-            :selected-parent-categories="selectedParentCategories"
-            :selected-child-categories="selectedChildCategories"
-            :raw-elements="elementsData?.rawElements || []"
-            :parent-elements="elementsData?.parentElements || []"
-            :child-elements="elementsData?.childElements || []"
-            :matched-elements="elementsData?.matchedElements || []"
-            :orphaned-elements="elementsData?.orphanedElements || []"
-          />
+      <div
+        v-else
+        ref="viewerContainer"
+        class="viewer-container"
+        style="width: 100%; height: 100%; min-height: 400px"
+      >
+        <TestDataTable v-if="isTestMode" />
 
-          <!-- Conditional rendering of real or test data -->
-          <template v-if="isTestMode">
-            <TestDataTable />
-          </template>
-          <template v-else>
+        <template v-else>
+          <div class="schedule-table-container">
             <ScheduleTableView
               v-if="!isLoading"
               :selected-table-id="store.selectedTableId.value || ''"
-              :current-table="currentTableConfig"
+              :current-table="null"
               :is-initialized="isInitialized"
               :table-name="store.tableName.value || ''"
               :current-table-id="store.currentTableId.value || ''"
@@ -96,12 +80,14 @@
               @update:both-columns="handleBothColumnsUpdate"
               @table-updated="handleTableDataUpdate"
               @column-visibility-change="handleColumnVisibilityChange"
+              @row-expand="handleRowExpand"
+              @row-collapse="handleRowCollapse"
+              @error="handleError"
             />
-          </template>
+          </div>
 
-          <!-- Category Filters -->
           <ScheduleCategoryFilters
-            v-if="!isLoading && !isTestMode"
+            v-if="!isLoading"
             :show-category-options="showCategoryOptions"
             :parent-categories="parentCategories"
             :child-categories="childCategories"
@@ -111,9 +97,8 @@
             @toggle-category="handleCategoryToggle"
           />
 
-          <!-- Data Management -->
           <ScheduleDataManagement
-            v-if="!isLoading && !isTestMode"
+            v-if="!isLoading"
             ref="dataComponent"
             :schedule-data="store.scheduleData.value || []"
             :evaluated-data="store.evaluatedData.value || []"
@@ -127,9 +112,8 @@
             @error="handleError"
           />
 
-          <!-- Parameter Handling -->
           <ScheduleParameterHandling
-            v-if="!isLoading && !isTestMode"
+            v-if="!isLoading"
             ref="parameterComponent"
             :schedule-data="store.scheduleData.value || []"
             :custom-parameters="store.customParameters.value || []"
@@ -144,9 +128,8 @@
             @error="handleError"
           />
 
-          <!-- Column Management -->
           <ScheduleColumnManagement
-            v-if="!isLoading && !isTestMode"
+            v-if="!isLoading"
             ref="columnComponent"
             :current-table-columns="store.currentTableColumns.value || []"
             :current-detail-columns="store.currentDetailColumns.value || []"
@@ -159,40 +142,53 @@
             @error="handleError"
           />
 
-          <!-- Parameter Manager Modal -->
           <ScheduleParameterManagerModal
-            v-if="!isLoading && showParameterManager && !isTestMode"
+            v-if="showParameterManager"
             v-model:show="showParameterManager"
             :table-id="store.currentTableId.value || ''"
             @update="handleParameterUpdate"
             @update:visibility="handleParameterVisibility"
             @update:order="handleParameterOrder"
           />
-        </div>
-      </template>
+
+          <DebugPanel
+            :schedule-data="store.scheduleData.value || []"
+            :evaluated-data="store.evaluatedData.value || []"
+            :table-data="store.tableData.value || []"
+            :parent-elements="parentElements"
+            :child-elements="childElements"
+            :parent-parameter-columns="store.mergedTableColumns.value || []"
+            :child-parameter-columns="store.mergedDetailColumns.value || []"
+            :available-parent-headers="availableParentHeaders"
+            :available-child-headers="availableChildHeaders"
+            :available-parent-parameters="availableParentParameters"
+            :available-child-parameters="availableChildParameters"
+          />
+        </template>
+      </div>
     </template>
   </ViewerLayoutPanel>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { debug, DebugCategories } from './utils/debug'
+import { ref, computed, onBeforeUnmount } from 'vue'
+import { useDebug, DebugCategories } from './debug/useDebug'
 import { useStore } from './core/store'
-import { useScheduleFlow } from './composables/useScheduleFlow'
 import { useProcessedHeaders } from './composables/useProcessedHeaders'
 import { useElementsData } from './composables/useElementsData'
 import { useScheduleEmits } from './composables/useScheduleEmits'
 import { parentCategories, childCategories } from './config/categories'
 import { defaultTable } from './config/defaultColumns'
 import TestDataTable from './components/test/TestDataTable.vue'
+import DebugPanel from './debug/DebugPanel.vue'
 
 // Types
 import type {
   ScheduleDataManagementExposed,
   ScheduleParameterHandlingExposed,
-  ScheduleColumnManagementExposed
+  ScheduleColumnManagementExposed,
+  ElementData
 } from './types'
-import type { NamedTableConfig } from '~/composables/useUserSettings'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
 // Components
@@ -202,8 +198,23 @@ import ScheduleParameterHandling from './components/ScheduleParameterHandling.vu
 import ScheduleColumnManagement from './components/ScheduleColumnManagement.vue'
 import ScheduleParameterManagerModal from './components/ScheduleParameterManagerModal.vue'
 import ScheduleCategoryFilters from './components/ScheduleCategoryFilters.vue'
-import BIMDebugView from './components/BIMDebugView.vue'
 import { ScheduleTableView } from './components/table'
+
+// Define emits
+const emit = defineEmits<{
+  close: []
+  'update:table-data': [data: unknown]
+  'update:both-columns': [
+    updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
+  ]
+  'column-visibility-change': []
+  'row-expand': [row: unknown]
+  'row-collapse': [row: unknown]
+  error: [err: Error | unknown]
+}>()
+
+// Initialize debug system
+const debug = useDebug()
 
 // Add test mode state
 const isTestMode = ref(false)
@@ -224,11 +235,6 @@ const selectedChildCategories = ref<string[]>(
 const dataComponent = ref<ScheduleDataManagementExposed | null>(null)
 const parameterComponent = ref<ScheduleParameterHandlingExposed | null>(null)
 const columnComponent = ref<ScheduleColumnManagementExposed | null>(null)
-
-// Emits
-const emit = defineEmits<{
-  close: []
-}>()
 
 // Initialize core composables first
 const { handleClose } = useScheduleEmits({ emit })
@@ -257,16 +263,6 @@ const isInitialized = computed(() => store.initialized.value)
 const isUpdating = computed(() => {
   const state = elementsData.processingState.value
   return state?.isProcessingElements || false
-})
-
-// Wait for data to be ready before showing table
-const showTable = computed(() => {
-  return (
-    !isLoading.value &&
-    !error.value &&
-    store.tableData.value?.length > 0 &&
-    store.mergedTableColumns.value?.length > 0
-  )
 })
 
 const hasSelectedCategories = computed(
@@ -307,10 +303,47 @@ const availableChildParameters = computed(() => {
     }))
 })
 
+// Computed properties for available headers with required ColumnDef properties
+const availableParentHeaders = computed(
+  () =>
+    availableParentParameters.value.map((param, index) => ({
+      field: `param_${param.id}`,
+      header: param.name,
+      type: param.type === 'equation' ? 'number' : 'string',
+      source: param.source || 'Parameters',
+      visible: true,
+      order: index
+    })) as ColumnDef[]
+)
+
+const availableChildHeaders = computed(
+  () =>
+    availableChildParameters.value.map((param, index) => ({
+      field: `param_${param.id}`,
+      header: param.name,
+      type: param.type === 'equation' ? 'number' : 'string',
+      source: param.source || 'Parameters',
+      visible: true,
+      order: index
+    })) as ColumnDef[]
+)
+
+// Computed properties for relationship data
+const parentElements = computed(() => {
+  return (store.scheduleData.value || []).filter((el): el is ElementData => {
+    return !el.isChild
+  })
+})
+
+const childElements = computed(() => {
+  return (store.scheduleData.value || []).filter((el): el is ElementData => {
+    return !!el.isChild
+  })
+})
+
 // Handler functions
-async function handleTableDataUpdate() {
+function handleTableDataUpdate() {
   try {
-    // No need to update store since data is already updated
     error.value = null
   } catch (err) {
     handleError(err)
@@ -326,9 +359,8 @@ async function handleRetry() {
   }
 }
 
-async function handleParameterColumnsUpdate() {
+function handleParameterColumnsUpdate() {
   try {
-    // No need to update store since data is already updated
     error.value = null
   } catch (err) {
     handleError(err)
@@ -383,16 +415,15 @@ function handleParameterOrder() {
   error.value = null
 }
 
-async function handleEvaluatedDataUpdate() {
+function handleEvaluatedDataUpdate() {
   try {
-    // No need to update store since data is already updated
     error.value = null
   } catch (err) {
     handleError(err)
   }
 }
 
-async function handleParameterUpdate() {
+function handleParameterUpdate() {
   try {
     error.value = null
     showParameterManager.value = false
@@ -401,18 +432,16 @@ async function handleParameterUpdate() {
   }
 }
 
-async function handleTableChange() {
+function handleTableChange() {
   try {
-    // No need to update store since data is already updated
     error.value = null
   } catch (err) {
     handleError(err)
   }
 }
 
-async function handleSaveTable() {
+function handleSaveTable() {
   try {
-    // No need to update store since data is already updated
     error.value = null
   } catch (err) {
     handleError(err)
@@ -432,16 +461,7 @@ async function handleBothColumnsUpdate(updates: {
 
 async function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   try {
-    debug.log(DebugCategories.CATEGORIES, 'Category toggle:', {
-      type,
-      category,
-      currentState: {
-        parent: selectedParentCategories.value,
-        child: selectedChildCategories.value
-      }
-    })
-
-    // Update categories
+    // Update categories first
     const categories =
       type === 'parent' ? selectedParentCategories : selectedChildCategories
     const index = categories.value.indexOf(category)
@@ -457,11 +477,9 @@ async function handleCategoryToggle(type: 'parent' | 'child', category: string) 
       selectedChildCategories.value
     )
 
-    debug.log(DebugCategories.CATEGORIES, 'Category update complete:', {
-      newState: {
-        parent: selectedParentCategories.value,
-        child: selectedChildCategories.value
-      }
+    debug.completeState(DebugCategories.CATEGORIES, 'Category update complete', {
+      parent: selectedParentCategories.value,
+      child: selectedChildCategories.value
     })
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error updating categories:', err)
@@ -474,6 +492,14 @@ onBeforeUnmount(() => {
   elementsData.stopWorldTreeWatch()
 })
 
+function handleRowExpand(row: unknown) {
+  emit('row-expand', row)
+}
+
+function handleRowCollapse(row: unknown) {
+  emit('row-collapse', row)
+}
+
 // Error handling with type safety
 function handleError(err: Error | unknown): void {
   // Type guard for Error objects
@@ -482,17 +508,17 @@ function handleError(err: Error | unknown): void {
   }
 
   // Create a safe error object
-  const errorValue = isError(err)
+  const safeError = isError(err)
     ? err
     : new Error(typeof err === 'string' ? err : 'Unknown error occurred')
 
   // Set error state
-  error.value = errorValue
+  error.value = safeError
 
   // Safe error logging with type guards
   const errorDetails = {
     name: isError(err) ? err.name : 'Error',
-    message: errorValue.message,
+    message: safeError.message,
     stack: isError(err) && typeof err.stack === 'string' ? err.stack : undefined
   }
 
@@ -541,6 +567,10 @@ defineExpose({
 .viewer-container {
   position: relative;
   overflow: hidden;
+}
+
+.schedule-table-container {
+  display: block;
 }
 
 .px-4 {

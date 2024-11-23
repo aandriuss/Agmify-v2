@@ -64,7 +64,7 @@ import { computed } from 'vue'
 import DataTable from '../../../components/tables/DataTable/index.vue'
 import { dummyTableRows, dummyColumns } from '../../mock/dummyData'
 import type { ColumnDef } from '../../../components/tables/DataTable/composables/columns/types'
-import { debug, DebugCategories } from '../../utils/debug'
+import { debug, DebugCategories } from '../../debug/useDebug'
 
 // Import CustomParameter type
 import type { CustomParameter } from '../../types'

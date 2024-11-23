@@ -1,5 +1,5 @@
 import { computed, ref, watch, type Ref, type ComputedRef } from 'vue'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 import {

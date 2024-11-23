@@ -6,7 +6,7 @@ import type {
   ParameterValueState
 } from '../types'
 import { isParameterValueState } from '../types'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
 interface UseDataTransformationOptions {

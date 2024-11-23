@@ -1,9 +1,8 @@
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import type { TreeItemComponentModel, BIMNode } from '../types'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 
 export function useDataOrganization() {
-  debug.startState('dataOrganization')
   const rootNodes = ref<TreeItemComponentModel[]>([])
   let isInitialized = false
 
@@ -30,6 +29,7 @@ export function useDataOrganization() {
 
     // First pass: create maps for quick lookup
     nodes.forEach((node) => {
+      if (!node.rawNode) return
       const { mark, host } = getHostInfo(node.rawNode)
 
       if (mark) {
@@ -50,6 +50,7 @@ export function useDataOrganization() {
     // Second pass: organize nodes
     const organizedNodes: TreeItemComponentModel[] = []
     nodes.forEach((node) => {
+      if (!node.rawNode) return
       const { mark, host } = getHostInfo(node.rawNode)
 
       if (!host) {
@@ -66,6 +67,8 @@ export function useDataOrganization() {
     // Handle orphaned nodes
     if (orphanedNodes.length > 0) {
       const ungroupedParent: TreeItemComponentModel = {
+        id: 'ungrouped',
+        label: 'Ungrouped',
         rawNode: {
           raw: {
             id: 'ungrouped',
@@ -79,32 +82,14 @@ export function useDataOrganization() {
       organizedNodes.push(ungroupedParent)
     }
 
-    debug.log(DebugCategories.DATA, 'Nodes organized by host:', {
-      totalNodes: nodes.length,
-      parentNodes: organizedNodes.length,
-      orphanedNodes: orphanedNodes.length,
-      hostRelationships: Array.from(hostToChildrenMap.entries()).map(
-        ([host, children]) => ({
-          host,
-          childrenCount: children.length
-        })
-      )
-    })
-
     return organizedNodes
   }
 
   // Function to update root nodes
   const updateRootNodes = async (nodes: TreeItemComponentModel[]): Promise<void> => {
-    debug.startState('updateRootNodes')
+    debug.startState(DebugCategories.DATA_TRANSFORM, 'Starting node organization')
 
     try {
-      debug.log(DebugCategories.DATA, 'Updating root nodes:', {
-        nodesLength: nodes?.length,
-        firstNode: nodes?.[0],
-        isArray: Array.isArray(nodes)
-      })
-
       if (!nodes || !Array.isArray(nodes)) {
         throw new Error('Invalid nodes provided to updateRootNodes')
       }
@@ -132,59 +117,49 @@ export function useDataOrganization() {
       // Mark as initialized after first successful update
       if (!isInitialized) {
         isInitialized = true
-        debug.log(DebugCategories.INITIALIZATION, 'Data organization initialized', {
-          nodesCount: rootNodes.value.length,
-          nodeCategories: rootNodes.value.map(
-            (node) => getHostInfo(node.rawNode).category
-          )
-        })
+        debug.completeState(
+          DebugCategories.INITIALIZATION,
+          'BIM elements initialized',
+          {
+            nodesCount: rootNodes.value.length,
+            orphanedCount:
+              rootNodes.value.find((n) => n.id === 'ungrouped')?.children?.length || 0
+          }
+        )
       }
-
-      debug.log(DebugCategories.DATA, 'Root nodes updated:', {
-        nodesLength: rootNodes.value.length,
-        nodeCategories: rootNodes.value.map(
-          (node) => getHostInfo(node.rawNode).category
-        ),
-        hostRelationships: rootNodes.value.map((node) => ({
-          mark: getHostInfo(node.rawNode).mark,
-          childrenCount: node.children?.length || 0
-        }))
-      })
 
       // Wait for Vue to update the DOM
       await new Promise((resolve) => setTimeout(resolve, 0))
 
-      debug.completeState('updateRootNodes')
+      debug.completeState(
+        DebugCategories.DATA_TRANSFORM,
+        'Node organization complete',
+        {
+          totalNodes: nodes.length,
+          validNodes: validNodes.length,
+          organizedNodes: organizedNodes.length,
+          orphanedNodes:
+            organizedNodes.find((n) => n.id === 'ungrouped')?.children?.length || 0
+        }
+      )
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Error updating root nodes:', err)
+      debug.error(DebugCategories.ERROR, 'Error organizing nodes:', err)
       throw err
     }
   }
 
-  onMounted(() => {
-    debug.log(
-      DebugCategories.INITIALIZATION,
-      'useDataOrganization mounted, current rootNodes:',
-      {
-        nodesLength: rootNodes.value.length,
-        hasNodes: rootNodes.value.length > 0,
-        isInitialized
-      }
-    )
-  })
-
   // Function to check if data is ready
   const isDataReady = () => {
     const ready = isInitialized && rootNodes.value.length > 0
-    debug.log(DebugCategories.STATE, 'Checking data readiness:', {
-      isInitialized,
-      hasNodes: rootNodes.value.length > 0,
-      isReady: ready
-    })
+    if (!ready) {
+      debug.warn(DebugCategories.STATE, 'Data not ready', {
+        isInitialized,
+        hasNodes: rootNodes.value.length > 0
+      })
+    }
     return ready
   }
 
-  debug.completeState('dataOrganization')
   return {
     rootNodes,
     updateRootNodes,

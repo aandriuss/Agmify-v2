@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import type { Ref } from 'vue'
 import type { TreeItemComponentModel, ProcessedHeader, BIMNodeRaw } from '../types'
-import { debug, DebugCategories } from '../utils/debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import { getAllGroupParameters } from '../config/parameters'
 import { convertToString } from '../utils/dataConversion'
 import {

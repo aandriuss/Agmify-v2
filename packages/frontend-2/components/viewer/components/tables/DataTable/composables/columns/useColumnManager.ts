@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import type { ColumnDef, ColumnGroup } from './types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import { debug } from '~/components/viewer/schedules/utils/debug'
+import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 type View = 'parent' | 'child'
 type ColumnOperation =
@@ -103,13 +103,14 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           return (a.type || 'string').localeCompare(b.type || 'string')
         case 'fixed':
           return (a.isFixed ? 0 : 1) - (b.isFixed ? 0 : 1)
-        case 'group':
+        case 'group': {
           // Sort by source (group) first, then by header
           const sourceA = a.source || 'Ungrouped'
           const sourceB = b.source || 'Ungrouped'
           return sourceA === sourceB
             ? a.header.localeCompare(b.header)
             : sourceA.localeCompare(sourceB)
+        }
         default:
           return 0
       }
@@ -150,6 +151,12 @@ export function useColumnManager(options: UseColumnManagerOptions) {
 
   // View management
   function setView(view: View) {
+    debug.log(DebugCategories.COLUMN_UPDATES, 'View changed', {
+      from: currentView.value,
+      to: view,
+      activeColumns: activeColumns.value.length,
+      availableParameters: availableParameters.value.length
+    })
     currentView.value = view
   }
 
@@ -171,6 +178,12 @@ export function useColumnManager(options: UseColumnManagerOptions) {
 
   // Column operations
   function handleColumnOperation(operation: ColumnOperation): void {
+    debug.startState(DebugCategories.COLUMN_UPDATES, 'Processing column operation', {
+      type: operation.type,
+      view: currentView.value,
+      pendingChanges: columnState.value.pendingChanges.length
+    })
+
     isUpdating.value = true
     try {
       const columns = currentView.value === 'parent' ? parentColumns : childColumns
@@ -184,10 +197,11 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           columns.value.push(newColumn)
           columnState.value.pendingChanges.push(operation)
 
-          debug.log('Column added:', {
+          debug.log(DebugCategories.COLUMN_UPDATES, 'Column added', {
             field: newColumn.field,
             source: newColumn.source,
-            category: newColumn.category
+            category: newColumn.category,
+            view: currentView.value
           })
           break
         }
@@ -197,10 +211,11 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           )
           columnState.value.pendingChanges.push(operation)
 
-          debug.log('Column removed:', {
+          debug.log(DebugCategories.COLUMN_UPDATES, 'Column removed', {
             field: operation.column.field,
             source: operation.column.source,
-            category: operation.column.category
+            category: operation.column.category,
+            view: currentView.value
           })
           break
         }
@@ -213,11 +228,12 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             columnState.value.visibility.set(column.field, operation.visible)
             columnState.value.pendingChanges.push(operation)
 
-            debug.log('Column visibility changed:', {
+            debug.log(DebugCategories.COLUMN_UPDATES, 'Column visibility changed', {
               field: column.field,
               visible: operation.visible,
               source: column.source,
-              category: column.category
+              category: column.category,
+              view: currentView.value
             })
           }
           break
@@ -227,27 +243,35 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           columns.value.splice(operation.toIndex, 0, removed)
           columnState.value.pendingChanges.push(operation)
 
-          debug.log('Column reordered:', {
+          debug.log(DebugCategories.COLUMN_UPDATES, 'Column reordered', {
             field: removed.field,
             fromIndex: operation.fromIndex,
             toIndex: operation.toIndex,
             source: removed.source,
-            category: removed.category
+            category: removed.category,
+            view: currentView.value
           })
           break
         }
       }
 
       updateColumns()
-      debug.log('Column operation completed:', {
-        operation,
-        tableId,
-        currentView: currentView.value,
-        groupCounts: groupedColumns.value.reduce((acc, group) => {
-          acc[group.category] = group.columns.length
-          return acc
-        }, {} as Record<string, number>)
-      })
+      debug.completeState(
+        DebugCategories.COLUMN_UPDATES,
+        'Column operation completed',
+        {
+          operation,
+          tableId,
+          currentView: currentView.value,
+          groupCounts: groupedColumns.value.reduce((acc, group) => {
+            acc[group.category] = group.columns.length
+            return acc
+          }, {} as Record<string, number>)
+        }
+      )
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Column operation failed', error)
+      throw error
     } finally {
       isUpdating.value = false
     }
@@ -269,6 +293,11 @@ export function useColumnManager(options: UseColumnManagerOptions) {
 
   // Save changes
   function saveChanges() {
+    debug.startState(DebugCategories.STATE, 'Saving column changes', {
+      tableId,
+      pendingChanges: columnState.value.pendingChanges.length
+    })
+
     isUpdating.value = true
     try {
       // Update both parent and child columns
@@ -285,7 +314,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
       // Clear pending changes after successful save
       columnState.value.pendingChanges = []
 
-      debug.log('Saved column changes:', {
+      debug.completeState(DebugCategories.STATE, 'Column changes saved', {
         tableId,
         parentColumns: parentColumns.value.length,
         childColumns: childColumns.value.length,
@@ -300,7 +329,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
         childColumns: childColumns.value
       }
     } catch (error) {
-      debug.error('Error saving changes:', error)
+      debug.error(DebugCategories.ERROR, 'Error saving column changes', error)
       return false
     } finally {
       isUpdating.value = false
