@@ -1,185 +1,50 @@
-import type { Ref } from 'vue'
-import type { ColumnDef as _ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
-import type {
-  UserSettings as _UserSettings,
-  NamedTableConfig,
-  CustomParameter
-} from '~/composables/useUserSettings'
-import type { InitializationState as _InitializationState } from './core/composables/useScheduleInitializationFlow'
+import type { Ref, ComputedRef } from 'vue'
+import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type { CustomParameter } from '~/composables/useUserSettings'
 
-// Re-export ColumnDef
-export type ColumnDef = _ColumnDef
-
-// Value types
-export type BIMNodeValue = string | number | boolean | null | undefined
-export type ParameterValue = string | number | boolean | null | unknown
-export type ParameterValueType = 'string' | 'number' | 'boolean'
-
-// Parameter value tracking
-export interface ParameterValueState {
-  fetchedValue: ParameterValue
-  currentValue: ParameterValue
-  previousValue: ParameterValue
-  userValue: ParameterValue | null
+// Core BIM Types
+export interface BIMNode {
+  raw: BIMNodeRaw
+  children?: BIMNode[]
 }
 
-// Component instance types
-export interface ScheduleInitializationInstance {
-  initialized: Ref<boolean>
-  loading: Ref<boolean>
-  error: Ref<Error | null>
-  handleRetry: () => Promise<void>
-}
-
-// Parameter types
-export type Parameters = Record<string, ParameterValueState>
-
-// Base element data types
-export interface BaseElementData {
-  id: string
-  type?: string
-  _visible?: boolean
-  isChild?: boolean
-  parameters: Parameters
-  [key: string]: unknown
-}
-
-// Discovery phase element data
-export interface ElementData extends BaseElementData {
-  name?: string
-  speckle_type?: string
-  details?: ElementData[]
-  _raw?: Record<string, unknown>
-}
-
-// Filtering phase element data
-export interface FilteredElementData extends BaseElementData {
-  _raw?: Record<string, unknown>
-}
-
-// Final data phase element data
-export interface TableRow extends BaseElementData {
-  _raw?: Record<string, unknown>
-  [key: string]: unknown
-}
-
-// BIM types
-export interface BIMNodeConstraints {
-  Host?: string | number | { id?: string | number; Mark?: string; Tag?: string }
-  [key: string]: unknown
+export interface DeepBIMNode {
+  id?: string
+  raw?: BIMNodeRaw
+  model?: {
+    raw?: BIMNodeRaw
+    children?: DeepBIMNode[]
+  }
+  children?: DeepBIMNode[]
+  elements?: DeepBIMNode[]
+  atomic?: boolean
+  subtreeId?: number
+  renderView?: unknown
 }
 
 export interface BIMNodeRaw {
-  id: string | number
-  type?: string
-  Name?: string
-  Mark?: string
+  id: string
   speckleType?: string
-  Constraints?: BIMNodeConstraints
+  type?: string
+  Mark?: string
+  parameters?: Record<string, unknown>
   Other?: {
     Category?: string
-    [key: string]: unknown
   }
-  parameters?: Record<string, unknown>
+  Constraints?: {
+    Host?: string
+  }
   [key: string]: unknown
 }
 
-export interface BIMNode {
-  raw: BIMNodeRaw
+// Type guard for BIMNodeRaw
+export function isValidBIMNodeRaw(value: unknown): value is BIMNodeRaw {
+  if (!value || typeof value !== 'object') return false
+  const node = value as Record<string, unknown>
+  return typeof node.id === 'string'
 }
 
-export interface TreeItemComponentModel {
-  rawNode: BIMNode
-  children?: TreeItemComponentModel[]
-}
-
-export interface WorldTreeNode {
-  _root?: {
-    type?: string
-    children?: TreeItemComponentModel[]
-  }
-}
-
-// Header types
-export interface ProcessedHeader {
-  field: string
-  header: string
-  fetchedGroup: string // Group from raw data
-  currentGroup: string // Current group (initially same as fetchedGroup)
-  type: ParameterValueType
-  category: string
-  description: string
-  isFetched: boolean // Whether parameter was fetched from raw data or is custom
-  source: string
-}
-
-export interface HeaderInfo {
-  field: string
-  header: string
-  fetchedGroup: string
-}
-
-export interface AvailableHeaders {
-  parent: ProcessedHeader[]
-  child: ProcessedHeader[]
-}
-
-// Table types
-export interface TableConfig {
-  id?: string
-  name: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-  categoryFilters?: {
-    selectedParentCategories: string[]
-    selectedChildCategories: string[]
-  }
-  customParameters?: ParameterDefinition[]
-  lastUpdateTimestamp?: number
-}
-
-export interface TableUpdatePayload {
-  tableId: string
-  tableName: string
-}
-
-export interface TableState {
-  selectedTableId: string
-  tableName: string
-  showCategoryOptions: boolean
-  showParameterManager: boolean
-  expandedRows: string[]
-  tableKey: string
-  initialized: boolean
-  loadingError: Error | null
-}
-
-// Component types
-export interface ScheduleDataManagementExposed {
-  tableData: Ref<ElementData[]>
-  updateRootNodes: (nodes: TreeItemComponentModel[]) => void
-}
-
-export interface ScheduleParameterHandlingExposed {
-  parameterColumns: Ref<ColumnDef[]>
-  evaluatedData: Ref<ElementData[]>
-  availableParentParameters: Ref<CustomParameter[]>
-  availableChildParameters: Ref<CustomParameter[]>
-  mergedParentParameters: Ref<CustomParameter[]>
-  mergedChildParameters: Ref<CustomParameter[]>
-  updateParameterVisibility: (field: string, visible: boolean) => Promise<void>
-}
-
-export interface ScheduleColumnManagementExposed {
-  currentTableColumns: Ref<ColumnDef[]>
-  currentDetailColumns: Ref<ColumnDef[]>
-  parameterColumns: Ref<ColumnDef[]>
-  updateMergedTableColumns: (columns: ColumnDef[]) => void
-  updateMergedDetailColumns: (columns: ColumnDef[]) => void
-}
-
-// State types
+// Processing State
 export interface ProcessingState {
   isInitializing: boolean
   isProcessingElements: boolean
@@ -188,21 +53,7 @@ export interface ProcessingState {
   error: Error | null
 }
 
-// Options types
-export interface UseElementParametersOptions {
-  filteredElements: ElementData[]
-  essentialFieldsOnly?: boolean
-  initialColumns?: ColumnDef[]
-  customParameters?: CustomParameter[]
-}
-
-export interface ElementsDataOptions {
-  currentTableColumns: { value: ColumnDef[] }
-  currentDetailColumns: { value: ColumnDef[] }
-  customParameters?: ParameterDefinition[]
-}
-
-// Return types
+// Element Data Types
 export interface ElementsDataReturn {
   scheduleData: Ref<ElementData[]>
   tableData: Ref<TableRow[]>
@@ -219,7 +70,7 @@ export interface ElementsDataReturn {
   isLoading: Ref<boolean>
   hasError: Ref<boolean>
   processingState: Ref<ProcessingState>
-  rawWorldTree: Ref<WorldTreeNode | null>
+  rawWorldTree: Ref<ViewerTree | null>
   rawTreeNodes: Ref<TreeItemComponentModel[]>
   rawElements: Ref<ElementData[]>
   parentElements: Ref<ElementData[]>
@@ -228,7 +79,46 @@ export interface ElementsDataReturn {
   orphanedElements: Ref<ElementData[]>
 }
 
-// Helper functions
+// Base interface for both ElementData and TableRow
+interface BaseElement {
+  id: string
+  type: string
+  mark: string
+  category: string
+  parameters: Parameters
+  _visible: boolean
+  _raw?: BIMNodeRaw
+  isChild?: boolean
+  host?: string
+}
+
+// ElementData extends base with required details array
+export interface ElementData extends BaseElement {
+  details: ElementData[]
+}
+
+// TableRow extends base with optional details array
+export interface TableRow extends BaseElement {
+  details?: TableRow[]
+}
+
+// Parameter Types
+export interface Parameters {
+  [key: string]: ParameterValueState
+}
+
+export interface ParameterValueState {
+  fetchedValue: ParameterValue
+  currentValue: ParameterValue
+  previousValue: ParameterValue
+  userValue: ParameterValue
+}
+
+export type ParameterValue = string | number | boolean | null
+
+export type ParameterValueType = 'string' | 'number' | 'boolean'
+
+// Helper to create parameter value state
 export function createParameterValueState(value: ParameterValue): ParameterValueState {
   return {
     fetchedValue: value,
@@ -238,81 +128,72 @@ export function createParameterValueState(value: ParameterValue): ParameterValue
   }
 }
 
-// Type guards
-export function isTableRow(value: unknown): value is TableRow {
-  if (!value || typeof value !== 'object') return false
-  const data = value as Record<string, unknown>
-  return typeof data.id === 'string' && typeof data.parameters === 'object'
+// Header Types
+export interface ProcessedHeader {
+  field: string
+  header: string
+  type: ParameterValueType
+  category: string
+  description: string
+  fetchedGroup: string
+  currentGroup: string
+  isFetched: boolean
+  source: string
 }
 
-export function isParameterValueState(value: unknown): value is ParameterValueState {
-  if (!value || typeof value !== 'object') return false
-  const state = value as Record<string, unknown>
-  return (
-    'fetchedValue' in state &&
-    'currentValue' in state &&
-    'previousValue' in state &&
-    'userValue' in state
-  )
+export interface AvailableHeaders {
+  parent: ProcessedHeader[]
+  child: ProcessedHeader[]
 }
 
-export function isElementData(value: unknown): value is ElementData {
-  if (!value || typeof value !== 'object') return false
-  const data = value as Record<string, unknown>
-  return typeof data.id === 'string' && typeof data.parameters === 'object'
+// Tree Types
+export interface TreeNode {
+  model?: NodeModel
+  children?: TreeNode[]
 }
 
-export function isProcessedHeader(value: unknown): value is ProcessedHeader {
-  if (!value || typeof value !== 'object') return false
-  const header = value as Record<string, unknown>
-  return (
-    typeof header.field === 'string' &&
-    typeof header.header === 'string' &&
-    typeof header.fetchedGroup === 'string' &&
-    typeof header.currentGroup === 'string' &&
-    typeof header.type === 'string' &&
-    typeof header.category === 'string' &&
-    typeof header.description === 'string' &&
-    typeof header.isFetched === 'boolean'
-  )
+export interface NodeModel {
+  raw?: BIMNodeRaw
+  children?: NodeModel[]
+  atomic?: boolean
+  id?: string
+  speckle_type?: string
+  type?: string
 }
 
-export function isBIMNodeValue(value: unknown): value is BIMNodeValue {
-  return (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    value === null ||
-    value === undefined
-  )
+export interface TreeItemComponentModel {
+  id: string
+  label: string
+  children?: TreeItemComponentModel[]
+  data?: unknown
+  rawNode?: BIMNode
 }
 
-export function isValidBIMNodeRaw(node: unknown): node is BIMNodeRaw {
-  if (!node || typeof node !== 'object') return false
-  const bimNode = node as Record<string, unknown>
-  return (
-    (typeof bimNode.id === 'string' || typeof bimNode.id === 'number') &&
-    bimNode.id !== undefined
-  )
+// Viewer Tree Types
+export interface ViewerTree {
+  _root: {
+    model?: {
+      raw?: BIMNodeRaw
+      children?: NodeModel[]
+    }
+    children?: TreeNode[]
+    isRoot?: () => boolean
+    hasChildren?: () => boolean
+  }
+  getRenderTree: () => unknown
+  init?: {
+    ref?: {
+      value?: boolean
+    }
+  }
+  metadata?: {
+    worldTree?: {
+      value?: ViewerTree
+    }
+  }
 }
 
-// Component props
-interface _ScheduleInitializationProps {
-  initialized: boolean
-}
-
-// Component emit events
-type _ScheduleInitializationEmits = {
-  (e: 'error', error: Error): void
-  (e: 'update:initialized', value: boolean): void
-  (
-    e: 'settings-loaded',
-    settings: { namedTables: Record<string, NamedTableConfig> }
-  ): void
-  (e: 'data-initialized'): void
-}
-
-// StoreState type
+// Store Types
 export interface StoreState {
   projectId: string | null
   scheduleData: ElementData[]
@@ -324,13 +205,16 @@ export interface StoreState {
   childParameterColumns: ColumnDef[]
   mergedParentParameters: CustomParameter[]
   mergedChildParameters: CustomParameter[]
-  processedParameters: Parameters
+  processedParameters: Record<string, ProcessedHeader>
   currentTableColumns: ColumnDef[]
   currentDetailColumns: ColumnDef[]
   mergedTableColumns: ColumnDef[]
   mergedDetailColumns: ColumnDef[]
-  parameterDefinitions: Record<string, unknown>
-  availableHeaders: { parent: ProcessedHeader[]; child: ProcessedHeader[] }
+  parameterDefinitions: Record<string, ProcessedHeader>
+  availableHeaders: {
+    parent: ProcessedHeader[]
+    child: ProcessedHeader[]
+  }
   selectedCategories: Set<string>
   selectedParentCategories: string[]
   selectedChildCategories: string[]
@@ -344,38 +228,40 @@ export interface StoreState {
   error: Error | null
 }
 
-// Store type
 export interface Store {
-  // Readonly state
-  state: Ref<StoreState>
-  projectId: Ref<string | null>
-  scheduleData: Ref<ElementData[]>
-  evaluatedData: Ref<ElementData[]>
-  tableData: Ref<TableRow[]>
-  customParameters: Ref<CustomParameter[]>
-  parameterColumns: Ref<ColumnDef[]>
-  parentParameterColumns: Ref<ColumnDef[]>
-  childParameterColumns: Ref<ColumnDef[]>
-  mergedParentParameters: Ref<CustomParameter[]>
-  mergedChildParameters: Ref<CustomParameter[]>
-  processedParameters: Ref<Parameters>
-  currentTableColumns: Ref<ColumnDef[]>
-  currentDetailColumns: Ref<ColumnDef[]>
-  mergedTableColumns: Ref<ColumnDef[]>
-  mergedDetailColumns: Ref<ColumnDef[]>
-  parameterDefinitions: Ref<Record<string, unknown>>
-  availableHeaders: Ref<{ parent: ProcessedHeader[]; child: ProcessedHeader[] }>
-  selectedCategories: Ref<Set<string>>
-  selectedParentCategories: Ref<string[]>
-  selectedChildCategories: Ref<string[]>
-  tablesArray: Ref<{ id: string; name: string }[]>
-  tableName: Ref<string>
-  selectedTableId: Ref<string>
-  currentTableId: Ref<string>
-  tableKey: Ref<string>
-  initialized: Ref<boolean>
-  loading: Ref<boolean>
-  error: Ref<Error | null>
+  // State
+  state: ComputedRef<StoreState>
+  projectId: ComputedRef<string | null>
+  scheduleData: ComputedRef<ElementData[]>
+  evaluatedData: ComputedRef<ElementData[]>
+  tableData: ComputedRef<TableRow[]>
+  customParameters: ComputedRef<CustomParameter[]>
+  parameterColumns: ComputedRef<ColumnDef[]>
+  parentParameterColumns: ComputedRef<ColumnDef[]>
+  childParameterColumns: ComputedRef<ColumnDef[]>
+  mergedParentParameters: ComputedRef<CustomParameter[]>
+  mergedChildParameters: ComputedRef<CustomParameter[]>
+  processedParameters: ComputedRef<Record<string, ProcessedHeader>>
+  currentTableColumns: ComputedRef<ColumnDef[]>
+  currentDetailColumns: ComputedRef<ColumnDef[]>
+  mergedTableColumns: ComputedRef<ColumnDef[]>
+  mergedDetailColumns: ComputedRef<ColumnDef[]>
+  parameterDefinitions: ComputedRef<Record<string, ProcessedHeader>>
+  availableHeaders: ComputedRef<{
+    parent: ProcessedHeader[]
+    child: ProcessedHeader[]
+  }>
+  selectedCategories: ComputedRef<Set<string>>
+  selectedParentCategories: ComputedRef<string[]>
+  selectedChildCategories: ComputedRef<string[]>
+  tablesArray: ComputedRef<{ id: string; name: string }[]>
+  tableName: ComputedRef<string>
+  selectedTableId: ComputedRef<string>
+  currentTableId: ComputedRef<string>
+  tableKey: ComputedRef<string>
+  initialized: ComputedRef<boolean>
+  loading: ComputedRef<boolean>
+  error: ComputedRef<Error | null>
 
   // Mutations
   setProjectId: (id: string | null) => void
@@ -384,39 +270,19 @@ export interface Store {
   setTableData: (data: TableRow[]) => void
   setCustomParameters: (params: CustomParameter[]) => void
   setParameterColumns: (columns: ColumnDef[]) => void
-  setParentParameterColumns: (columns: ColumnDef[]) => void
-  setChildParameterColumns: (columns: ColumnDef[]) => void
-  setMergedParameters: (
-    parentParams: CustomParameter[],
-    childParams: CustomParameter[]
-  ) => void
-  setProcessedParameters: (params: Parameters) => void
-  setParameterDefinitions: (definitions: Record<string, unknown>) => void
-  setParameterVisibility: (field: string, visible: boolean) => void
-  setParameterOrder: (field: string, order: number) => void
-  setCurrentColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
-  setMergedColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
-  setColumnVisibility: (field: string, visible: boolean) => void
-  setColumnOrder: (field: string, order: number) => void
-  setSelectedCategories: (categories: Set<string>) => void
-  setParentCategories: (categories: string[]) => void
-  setChildCategories: (categories: string[]) => void
-  setTableInfo: (info: {
-    selectedTableId?: string
-    currentTableId?: string
-    tableName?: string
-    tableKey?: string
-  }) => void
-  setTablesArray: (tables: { id: string; name: string }[]) => void
-  setElementVisibility: (id: string, visible: boolean) => void
   setAvailableHeaders: (headers: {
     parent: ProcessedHeader[]
     child: ProcessedHeader[]
   }) => void
+  setSelectedCategories: (categories: Set<string>) => void
+  setParentCategories: (categories: string[]) => void
+  setChildCategories: (categories: string[]) => void
+  setTablesArray: (tables: { id: string; name: string }[]) => void
+  setTableInfo: (info: { selectedTableId?: string; tableName?: string }) => void
+  setMergedColumns: (parentColumns: ColumnDef[], childColumns: ColumnDef[]) => void
   setInitialized: (value: boolean) => void
   setLoading: (value: boolean) => void
   setError: (error: Error | null) => void
-  reset: () => void
 
   // Lifecycle
   lifecycle: {
@@ -424,4 +290,40 @@ export interface Store {
     update: (state: Partial<StoreState>) => Promise<void>
     cleanup: () => void
   }
+}
+
+// Component interfaces
+export interface ScheduleDataManagementExposed {
+  updateData: () => Promise<void>
+}
+
+export interface ScheduleParameterHandlingExposed {
+  updateParameters: () => Promise<void>
+}
+
+export interface ScheduleColumnManagementExposed {
+  updateColumns: () => Promise<void>
+}
+
+export interface ScheduleInitializationInstance {
+  initialize: () => Promise<void>
+}
+
+// Table Types
+export interface TableConfig {
+  id: string
+  name: string
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+  categoryFilters?: {
+    selectedParentCategories: string[]
+    selectedChildCategories: string[]
+  }
+  customParameters?: CustomParameter[]
+}
+
+export interface TableUpdatePayload {
+  tableId: string
+  tableName: string
+  data?: unknown
 }

@@ -1,121 +1,62 @@
 import { ref, computed } from 'vue'
 import { debug, DebugCategories } from '../utils/debug'
-import type { ElementData } from '../types'
-import store from './useScheduleStore'
-import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
-import { defaultTable } from '../config/defaultColumns'
+import { useStore } from '../core/store'
 
 /**
- * Handles core data initialization for the schedule system.
- * This composable is responsible for initializing the store with data,
- * while useScheduleInitializationFlow handles the high-level initialization flow.
+ * Handles initial setup of the schedule system.
+ * Since we're inside the viewer component, data is already loaded.
  */
 export function useScheduleInitialization() {
   const initialized = ref(false)
   const loading = ref(false)
   const error = ref<Error | null>(null)
-  const viewerState = useInjectedViewerState()
+  const store = useStore()
 
   async function initializeData() {
-    debug.log(DebugCategories.INITIALIZATION, 'Starting core data initialization')
+    debug.startState('Schedule initialization')
     loading.value = true
     error.value = null
 
     try {
-      // Step 1: Set project ID if available
-      const projectId = viewerState.projectId.value
-      if (!projectId) {
-        throw new Error('No project ID available')
+      // Only initialize if not already initialized
+      if (!store.initialized.value) {
+        // Initialize store
+        await store.lifecycle.update({})
+        initialized.value = true
+
+        debug.log(DebugCategories.INITIALIZATION, 'Schedule initialization complete', {
+          storeInitialized: store.initialized.value,
+          scheduleInitialized: initialized.value,
+          dataLength: store.scheduleData.value?.length || 0,
+          columnsLength: store.mergedTableColumns.value?.length || 0
+        })
       }
-      store.setProjectId(projectId)
-      debug.log(DebugCategories.INITIALIZATION, 'Project ID set:', projectId)
-
-      // Step 2: Set initial categories from defaults
-      store.setParentCategories(defaultTable.categoryFilters.selectedParentCategories)
-      store.setChildCategories(defaultTable.categoryFilters.selectedChildCategories)
-
-      debug.log(DebugCategories.INITIALIZATION, 'Initial categories set', {
-        parent: defaultTable.categoryFilters.selectedParentCategories,
-        child: defaultTable.categoryFilters.selectedChildCategories
-      })
-
-      // Step 3: Initialize store data
-      // This will handle data processing internally
-      await store.lifecycle.init()
-      debug.log(DebugCategories.INITIALIZATION, 'Store lifecycle initialized')
-
-      // Step 4: Mark initialization complete
-      store.setInitialized(true)
-      initialized.value = true
-
-      debug.log(DebugCategories.INITIALIZATION, 'Core initialization complete', {
-        projectId: store.projectId.value,
-        dataCount: store.scheduleData.value.length,
-        parameterCount: store.parameterColumns.value.length,
-        tableDataCount: store.tableData.value.length,
-        storeInitialized: store.initialized.value
-      })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
-      error.value = new Error(`Core initialization failed: ${errorMessage}`)
+      error.value = new Error(`Initialization failed: ${errorMessage}`)
 
-      debug.error(DebugCategories.ERROR, 'Core initialization failed:', {
+      debug.error(DebugCategories.ERROR, 'Initialization failed:', {
         error: err,
         storeState: {
-          projectId: store.projectId.value,
-          scheduleData: store.scheduleData.value.length,
-          tableData: store.tableData.value.length,
-          mergedTableColumns: store.mergedTableColumns.value.length,
-          initialized: store.initialized.value
+          initialized: store.initialized.value,
+          scheduleInitialized: initialized.value,
+          dataLength: store.scheduleData.value?.length || 0
         }
       })
       throw error.value
     } finally {
       loading.value = false
+      debug.completeState('Schedule initialization')
     }
   }
 
-  async function waitForData(): Promise<ElementData[]> {
-    debug.log(DebugCategories.INITIALIZATION, 'Waiting for core data')
-
-    try {
-      // Check initialization state
-      if (!initialized.value) {
-        throw new Error('Core data not initialized')
-      }
-
-      // Wait for any pending store updates
-      await new Promise((resolve) => setTimeout(resolve, 0))
-
-      debug.log(DebugCategories.INITIALIZATION, 'Core data ready', {
-        dataCount: store.scheduleData.value.length,
-        tableDataCount: store.tableData.value.length,
-        storeInitialized: store.initialized.value
-      })
-
-      return store.scheduleData.value
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
-      error.value = new Error(`Failed to get core data: ${errorMessage}`)
-
-      debug.error(DebugCategories.ERROR, 'Failed to get core data:', {
-        error: err,
-        storeState: {
-          projectId: store.projectId.value,
-          scheduleData: store.scheduleData.value.length,
-          tableData: store.tableData.value.length,
-          initialized: store.initialized.value
-        }
-      })
-      throw error.value
-    }
-  }
+  // Initialize immediately since data is already loaded
+  initializeData()
 
   return {
     initialized: computed(() => initialized.value && store.initialized.value),
     loading: computed(() => loading.value),
     error: computed(() => error.value),
-    initializeData,
-    waitForData
+    initializeData
   }
 }

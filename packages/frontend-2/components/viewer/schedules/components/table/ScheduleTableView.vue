@@ -47,6 +47,7 @@
       :table-id="props.currentTableId"
       :table-name="props.tableName"
       :data="props.evaluatedData"
+      :value="props.evaluatedData"
       :schedule-data="props.evaluatedData"
       :columns="mergedColumns"
       :detail-columns="mergedDetailColumns"
@@ -154,6 +155,19 @@ import ScheduleDebugPanel from './ScheduleDebugPanel.vue'
 import ScheduleLoadingState from './ScheduleLoadingState.vue'
 import ScheduleErrorState from './ScheduleErrorState.vue'
 
+// Type guard for ElementData
+function isElementData(value: unknown): value is ElementData {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    'mark' in value &&
+    'category' in value &&
+    'parameters' in value &&
+    '_visible' in value
+  )
+}
+
 interface Props {
   selectedTableId: string
   currentTable: TableConfig | null
@@ -247,7 +261,7 @@ const hasAnyData = computed(() => {
   const hasData = props.evaluatedData.length > 0
   const hasColumns = mergedColumns.value.length > 0
 
-  debug.log(DebugCategories.STATE, 'zz Table data checks:', {
+  debug.log(DebugCategories.STATE, 'Table data checks:', {
     hasData,
     dataLength: props.evaluatedData.length,
     hasColumns,
@@ -262,8 +276,17 @@ const hasAnyData = computed(() => {
 })
 
 // Computed properties for relationship data
-const parentElements = computed(() => props.scheduleData.filter((el) => !el.isChild))
-const childElements = computed(() => props.scheduleData.filter((el) => el.isChild))
+const parentElements = computed(() => {
+  return props.scheduleData.filter((el): el is ElementData => {
+    return isElementData(el) && !el.isChild
+  })
+})
+
+const childElements = computed(() => {
+  return props.scheduleData.filter((el): el is ElementData => {
+    return isElementData(el) && !!el.isChild
+  })
+})
 
 const matchedElements = computed(() => {
   const parentMarkMap = new Map<string, ElementData>()
@@ -272,9 +295,9 @@ const matchedElements = computed(() => {
       parentMarkMap.set(parent.mark, parent)
     }
   })
-  return childElements.value.filter(
-    (child) => child.host && parentMarkMap.has(child.host)
-  )
+  return childElements.value.filter((child) => {
+    return child.host && parentMarkMap.has(child.host)
+  })
 })
 
 const orphanedElements = computed(() => {
@@ -284,9 +307,9 @@ const orphanedElements = computed(() => {
       parentMarkMap.set(parent.mark, parent)
     }
   })
-  return childElements.value.filter(
-    (child) => !child.host || !parentMarkMap.has(child.host)
-  )
+  return childElements.value.filter((child) => {
+    return !child.host || !parentMarkMap.has(child.host)
+  })
 })
 
 // Computed properties for available headers with required ColumnDef properties

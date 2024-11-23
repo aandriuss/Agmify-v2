@@ -11,7 +11,12 @@ export const defaultColumns: ColumnDef[] = [
     visible: true,
     order: 4,
     removable: true,
-    source: 'Parameters'
+    source: 'Parameters',
+    isFetched: true,
+    isFixed: false,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
   },
   {
     field: 'height',
@@ -22,7 +27,28 @@ export const defaultColumns: ColumnDef[] = [
     visible: true,
     order: 5,
     removable: true,
-    source: 'Parameters'
+    source: 'Parameters',
+    isFetched: true,
+    isFixed: false,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
+  },
+  {
+    field: 'family',
+    header: 'Family',
+    type: 'string',
+    category: 'other',
+    description: 'Element family',
+    visible: true,
+    order: 6,
+    removable: true,
+    source: 'Parameters',
+    isFetched: true,
+    isFixed: false,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
   },
   {
     field: 'length',
@@ -31,9 +57,14 @@ export const defaultColumns: ColumnDef[] = [
     category: 'dimensions',
     description: 'Element length',
     visible: true,
-    order: 6,
+    order: 7,
     removable: true,
-    source: 'Parameters'
+    source: 'Parameters',
+    isFetched: true,
+    isFixed: false,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
   }
 ]
 
@@ -46,7 +77,12 @@ export const defaultDetailColumns: ColumnDef[] = [
     visible: true,
     removable: true,
     isFixed: false,
-    description: 'Element mark identifier'
+    description: 'Element mark identifier',
+    source: 'Parameters',
+    isFetched: true,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
   },
   {
     field: 'category',
@@ -56,7 +92,12 @@ export const defaultDetailColumns: ColumnDef[] = [
     visible: true,
     removable: true,
     isFixed: false,
-    description: 'Element category'
+    description: 'Element category',
+    source: 'Parameters',
+    isFetched: true,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
   },
   {
     field: 'width',
@@ -66,7 +107,12 @@ export const defaultDetailColumns: ColumnDef[] = [
     visible: true,
     removable: true,
     isFixed: false,
-    description: 'Element width'
+    description: 'Element width',
+    source: 'Parameters',
+    isFetched: true,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
   },
   {
     field: 'host',
@@ -76,7 +122,12 @@ export const defaultDetailColumns: ColumnDef[] = [
     visible: true,
     removable: true,
     isFixed: false,
-    description: 'Host element mark'
+    description: 'Host element mark',
+    source: 'Parameters',
+    isFetched: true,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
   }
 ]
 

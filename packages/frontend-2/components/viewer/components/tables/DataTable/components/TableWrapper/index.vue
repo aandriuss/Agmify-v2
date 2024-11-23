@@ -162,6 +162,17 @@ interface Props {
   filters?: DataTableFilterMeta
 }
 
+interface ParameterValueState {
+  currentValue: unknown
+  fetchedValue: unknown
+  previousValue: unknown
+  userValue: unknown
+}
+
+interface SpeckleValue {
+  _: unknown
+}
+
 const props = withDefaults(defineProps<Props>(), {
   loading: false
 })
@@ -192,29 +203,76 @@ function handleFilter(event: { filters: DataTableFilterMeta }): void {
   emit('filter', event.filters)
 }
 
-// Field value getter - only looks in parameters
+// Type guards
+function isParameterValueState(value: unknown): value is ParameterValueState {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'currentValue' in value &&
+    'fetchedValue' in value &&
+    'previousValue' in value &&
+    'userValue' in value
+  )
+}
+
+function isSpeckleValue(value: unknown): value is SpeckleValue {
+  return typeof value === 'object' && value !== null && '_' in value
+}
+
+// Extract value from stringified JSON if needed
+function extractValue(value: unknown): unknown {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  try {
+    const parsed = JSON.parse(value)
+    if (typeof parsed !== 'object' || parsed === null) {
+      return value
+    }
+
+    // Check for ParameterValueState
+    if (isParameterValueState(parsed)) {
+      return parsed.currentValue
+    }
+
+    // Check for Speckle value
+    if (isSpeckleValue(parsed)) {
+      return parsed._
+    }
+
+    return value
+  } catch {
+    return value
+  }
+}
+
+// Field value getter - handles both direct fields and parameters
 function getParameterValue(data: unknown, field: string): unknown {
   if (!data || typeof data !== 'object') return null
 
   const obj = data as Record<string, unknown>
 
-  // Only look in parameters
+  // First check direct field access
+  if (field in obj) {
+    return extractValue(obj[field])
+  }
+
+  // Then check parameters
   if (obj.parameters && typeof obj.parameters === 'object') {
     const params = obj.parameters as Record<string, unknown>
-    if (params[field] && typeof params[field] === 'object') {
-      const param = params[field] as { currentValue?: unknown }
-      if ('currentValue' in param) {
-        debug.log(DebugCategories.DATA, 'xx Parameter value found', {
-          field,
-          value: param.currentValue,
-          fullParam: param
-        })
-        return param.currentValue
-      }
+    if (field in params) {
+      const value = params[field]
+      debug.log(DebugCategories.DATA, 'Parameter value found', {
+        field,
+        value,
+        extracted: extractValue(value)
+      })
+      return extractValue(value)
     }
   }
 
-  debug.log(DebugCategories.DATA, 'xx No parameter value found', {
+  debug.log(DebugCategories.DATA, 'No parameter value found', {
     field,
     hasParameters: obj.parameters && typeof obj.parameters === 'object',
     parameters: obj.parameters
@@ -226,7 +284,7 @@ function getParameterValue(data: unknown, field: string): unknown {
 function validColumnsInGroup(columns: ColumnDef[]): ColumnDef[] {
   return columns.filter((col): col is ColumnDef & { field: string } => {
     const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
-    debug.log(DebugCategories.COLUMNS, 'xx Column validation', {
+    debug.log(DebugCategories.COLUMNS, 'Column validation', {
       field: col.field,
       isValid,
       visible: col.visible,
@@ -243,7 +301,7 @@ const groupedParentColumns = computed(() => {
   // Only include columns with valid fields
   const validColumns = props.parentColumns.filter((col) => {
     const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
-    debug.log(DebugCategories.COLUMNS, 'xx Column validation', {
+    debug.log(DebugCategories.COLUMNS, 'Column validation', {
       field: col.field,
       isValid,
       visible: col.visible,
@@ -252,7 +310,7 @@ const groupedParentColumns = computed(() => {
     return isValid
   })
 
-  debug.log(DebugCategories.COLUMNS, 'xx Valid parent columns', {
+  debug.log(DebugCategories.COLUMNS, 'Valid parent columns', {
     total: props.parentColumns.length,
     valid: validColumns.length,
     columns: validColumns
@@ -279,7 +337,7 @@ const groupedChildColumns = computed(() => {
   // Only include columns with valid fields
   const validColumns = props.childColumns.filter((col) => {
     const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
-    debug.log(DebugCategories.COLUMNS, 'xx Column validation', {
+    debug.log(DebugCategories.COLUMNS, 'Column validation', {
       field: col.field,
       isValid,
       visible: col.visible,
@@ -288,7 +346,7 @@ const groupedChildColumns = computed(() => {
     return isValid
   })
 
-  debug.log(DebugCategories.COLUMNS, 'xx Valid child columns', {
+  debug.log(DebugCategories.COLUMNS, 'Valid child columns', {
     total: props.childColumns.length,
     valid: validColumns.length,
     columns: validColumns

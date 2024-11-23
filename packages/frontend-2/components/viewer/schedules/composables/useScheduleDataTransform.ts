@@ -1,15 +1,10 @@
 import { computed, ref, watch } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import type {
-  ElementData,
-  TableRow,
-  ParameterValue,
-  ParameterValueState
-} from '../types'
+import type { ElementData, TableRow, ParameterValueState } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import { debug, DebugCategories } from '../utils/debug'
-import { createParameterValueState } from '../types'
+import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 
 interface UseScheduleDataTransformOptions {
   scheduleData: Ref<ElementData[]> | ComputedRef<ElementData[]>
@@ -51,29 +46,75 @@ const isValidElementData = (
   return hasRequiredFields
 }
 
-function toParameterValue(value: unknown): ParameterValue {
-  if (value === null || value === undefined) return null
-  if (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
+function extractParameterValue(value: unknown): unknown {
+  // If it's not a string, return as is
+  if (typeof value !== 'string') {
     return value
   }
-  return String(value)
+
+  try {
+    // Try to parse as JSON
+    const parsed = JSON.parse(value)
+
+    // If it's a ParameterValueState, return its currentValue
+    if (parsed && typeof parsed === 'object' && 'currentValue' in parsed) {
+      // If currentValue is itself a stringified JSON, parse it recursively
+      if (typeof parsed.currentValue === 'string') {
+        return extractParameterValue(parsed.currentValue)
+      }
+      return parsed.currentValue
+    }
+
+    // If it's a plain object/array, return the original string
+    return value
+  } catch {
+    // If parsing fails, return original value
+    return value
+  }
 }
 
 function transformToTableRow(element: ElementData): TableRow {
+  // Create a proxy object that will return extracted currentValue for parameter access
+  const parameters = new Proxy(element.parameters || {}, {
+    get(target, prop) {
+      if (typeof prop !== 'string') return undefined
+      const value = target[prop]
+      if (!value) return null
+
+      // Extract the actual value from ParameterValueState
+      if (typeof value === 'object' && 'currentValue' in value) {
+        return extractParameterValue(value.currentValue)
+      }
+
+      return extractParameterValue(value)
+    }
+  })
+
+  // Log parameter values for debugging
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Parameter values:', {
+    id: element.id,
+    mark: element.mark,
+    parameterKeys: Object.keys(element.parameters || {}),
+    sampleValues: Object.entries(element.parameters || {})
+      .slice(0, 3)
+      .reduce((acc, [key, value]) => {
+        acc[key] = {
+          currentValue: value.currentValue,
+          fetchedValue: value.fetchedValue,
+          previousValue: value.previousValue,
+          userValue: value.userValue
+        }
+        return acc
+      }, {} as Record<string, ParameterValueState>)
+  })
+
   return {
     id: element.id,
     mark: element.mark,
     category: element.category,
     type: element.type || '',
     host: element.host,
-    parameters: Object.entries(element.parameters || {}).reduce((acc, [key, value]) => {
-      acc[key] = createParameterValueState(toParameterValue(value))
-      return acc
-    }, {} as Record<string, ParameterValueState>),
+    parameters,
     _visible: true,
     isChild: element.isChild,
     _raw: element._raw
@@ -81,47 +122,108 @@ function transformToTableRow(element: ElementData): TableRow {
 }
 
 function createBasicTableRow(element: ElementData): TableRow {
-  return {
-    id: element.id,
-    mark: element.mark,
-    category: element.category,
-    type: element.type || '',
-    host: element.host,
-    parameters: Object.entries(element.parameters || {}).reduce((acc, [key, value]) => {
-      acc[key] = createParameterValueState(toParameterValue(value))
-      return acc
-    }, {} as Record<string, ParameterValueState>),
-    _visible: true,
-    isChild: element.isChild,
-    _raw: element._raw
-  }
+  // Use the same transformation as full transform for consistency
+  return transformToTableRow(element)
+}
+
+function mergeColumns(columns: ColumnDef[], defaultCols: ColumnDef[]): ColumnDef[] {
+  const result: ColumnDef[] = []
+  const usedFields = new Set<string>()
+
+  // First add essential columns from defaults in their original order
+  defaultCols.forEach((defaultCol) => {
+    const existingCol = columns.find((col) => col.field === defaultCol.field)
+    if (existingCol) {
+      result.push({
+        ...defaultCol,
+        ...existingCol,
+        visible: existingCol.visible ?? defaultCol.visible,
+        order: existingCol.order ?? defaultCol.order
+      })
+    } else {
+      result.push({ ...defaultCol })
+    }
+    usedFields.add(defaultCol.field)
+  })
+
+  // Then add any remaining columns that weren't in defaults
+  columns.forEach((col) => {
+    if (!usedFields.has(col.field)) {
+      result.push({ ...col })
+      usedFields.add(col.field)
+    }
+  })
+
+  return result.sort((a, b) => (a.order || 0) - (b.order || 0))
 }
 
 export function useScheduleDataTransform(options: UseScheduleDataTransformOptions) {
-  const { scheduleData, evaluatedData, mergedTableColumns, mergedDetailColumns } =
-    options
+  const {
+    scheduleData,
+    evaluatedData,
+    mergedTableColumns,
+    mergedDetailColumns,
+    isInitialized
+  } = options
 
   // Track transformation state
   const isTransformingData = ref(false)
   const hasFullTransform = ref(false)
   const transformedData = ref<TableRow[]>([])
 
+  // Merge default columns with parameter columns
+  const finalTableColumns = computed(() =>
+    mergeColumns(mergedTableColumns.value, defaultColumns)
+  )
+
+  const finalDetailColumns = computed(() =>
+    mergeColumns(mergedDetailColumns.value, defaultDetailColumns)
+  )
+
   // Use filtered data directly from scheduleData or evaluatedData
   const filteredData = computed(() => {
+    // Wait for initialization
+    if (!isInitialized?.value) {
+      debug.warn(DebugCategories.STATE, 'Waiting for initialization')
+      return []
+    }
+
     const sourceData =
       evaluatedData.value.length > 0 ? evaluatedData.value : scheduleData.value
 
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Using filtered data:', {
-      timestamp: new Date().toISOString(),
-      source: evaluatedData.value.length > 0 ? 'evaluated' : 'schedule',
+    // Log column configuration
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Column configuration:', {
+      columns: finalTableColumns.value?.map((col) => ({
+        field: col.field,
+        header: col.header,
+        visible: col.visible,
+        source: col.source,
+        type: col.type,
+        order: col.order
+      }))
+    })
+
+    // Log data structure
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Source data structure:', {
       count: sourceData.length,
-      validation: {
-        hasData: sourceData.length > 0,
-        firstItemValid: sourceData[0] && isValidElementData(sourceData[0]),
-        allItemsValid: sourceData.every((item) =>
-          isValidElementData(item, ['id', 'mark', 'category'])
-        )
-      }
+      firstItem: sourceData[0]
+        ? {
+            id: sourceData[0].id,
+            mark: sourceData[0].mark,
+            parameterKeys: Object.keys(sourceData[0].parameters || {}),
+            sampleValues: Object.entries(sourceData[0].parameters || {})
+              .slice(0, 3)
+              .reduce((acc, [key, value]) => {
+                acc[key] = {
+                  currentValue: value.currentValue,
+                  fetchedValue: value.fetchedValue,
+                  previousValue: value.previousValue,
+                  userValue: value.userValue
+                }
+                return acc
+              }, {} as Record<string, ParameterValueState>)
+          }
+        : null
     })
 
     return sourceData
@@ -129,40 +231,67 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
 
   // Transform data progressively
   function transformData() {
-    if (isTransformingData.value || filteredData.value.length === 0) return
+    if (!isInitialized?.value) {
+      debug.warn(DebugCategories.STATE, 'Cannot transform data before initialization')
+      return
+    }
+
+    if (isTransformingData.value) {
+      debug.warn(DebugCategories.STATE, 'Data transformation already in progress')
+      return
+    }
+
+    if (filteredData.value.length === 0) {
+      debug.warn(DebugCategories.VALIDATION, 'No data available for transformation')
+      return
+    }
 
     try {
       isTransformingData.value = true
       debug.startState('transformData')
 
       // First pass: Transform essential fields with basic parameter states
-      const basicTransform = filteredData.value.map(createBasicTableRow)
+      const basicTransform = filteredData.value.map((el) => createBasicTableRow(el))
       transformedData.value = basicTransform
 
       // Second pass: Full transformation
       queueMicrotask(() => {
         try {
-          const fullTransform = filteredData.value.map(transformToTableRow)
+          const fullTransform = filteredData.value.map((el) => transformToTableRow(el))
           transformedData.value = fullTransform
           hasFullTransform.value = true
 
-          debug.log(DebugCategories.DATA_TRANSFORM, 'Full transformation complete:', {
-            timestamp: new Date().toISOString(),
-            inputCount: filteredData.value.length,
-            outputCount: fullTransform.length,
-            withDetails: fullTransform.filter((item) => item.isChild === false).length
+          // Log transformed data structure
+          debug.log(DebugCategories.DATA_TRANSFORM, 'Transformed data structure:', {
+            count: fullTransform.length,
+            firstItem: fullTransform[0]
+              ? {
+                  id: fullTransform[0].id,
+                  mark: fullTransform[0].mark,
+                  parameterKeys: Object.keys(fullTransform[0].parameters || {}),
+                  sampleValues: Object.entries(fullTransform[0].parameters || {})
+                    .slice(0, 3)
+                    .reduce((acc, [key, value]) => {
+                      acc[key] = value
+                      return acc
+                    }, {} as Record<string, unknown>)
+                }
+              : null,
+            columns: finalTableColumns.value?.map((col) => ({
+              field: col.field,
+              header: col.header,
+              visible: col.visible,
+              source: col.source,
+              type: col.type,
+              order: col.order
+            }))
           })
         } catch (error) {
           debug.error(DebugCategories.ERROR, 'Error in full transformation:', error)
         } finally {
           isTransformingData.value = false
+          debug.completeState('transformData')
         }
-      })
-
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Basic transformation complete:', {
-        timestamp: new Date().toISOString(),
-        count: basicTransform.length,
-        fields: Object.keys(basicTransform[0] || {})
       })
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error transforming data:', error)
@@ -170,56 +299,75 @@ export function useScheduleDataTransform(options: UseScheduleDataTransformOption
     }
   }
 
-  // Computed table data with progressive loading
-  const tableData = computed<TableRow[]>(() => {
-    if (transformedData.value.length === 0) {
-      debug.warn(DebugCategories.VALIDATION, 'No transformed data available')
-      return []
-    }
-
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Returning table data:', {
-      timestamp: new Date().toISOString(),
-      count: transformedData.value.length,
-      isFullTransform: hasFullTransform.value,
-      firstItem: transformedData.value[0],
-      availableFields: Object.keys(transformedData.value[0] || {})
-    })
-
-    return transformedData.value
-  })
-
   // Watch for data changes
   watch(
     [filteredData, mergedTableColumns, mergedDetailColumns],
-    () => {
+    ([newData]) => {
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Data dependencies changed:', {
+        dataLength: newData?.length || 0,
+        columnsLength: finalTableColumns.value?.length || 0,
+        detailColumnsLength: finalDetailColumns.value?.length || 0,
+        isInitialized: isInitialized?.value,
+        sampleData: newData?.[0]
+          ? {
+              id: newData[0].id,
+              mark: newData[0].mark,
+              parameterKeys: Object.keys(newData[0].parameters || {}),
+              sampleValues: Object.entries(newData[0].parameters || {})
+                .slice(0, 3)
+                .reduce((acc, [key, value]) => {
+                  acc[key] = {
+                    currentValue: value.currentValue,
+                    fetchedValue: value.fetchedValue,
+                    previousValue: value.previousValue,
+                    userValue: value.userValue
+                  }
+                  return acc
+                }, {} as Record<string, ParameterValueState>)
+            }
+          : null
+      })
+
       hasFullTransform.value = false
       transformData()
     },
     { immediate: true }
   )
 
-  // Debug watchers
-  watch(
-    () => tableData.value,
-    (newData) => {
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Table data changed:', {
-        timestamp: new Date().toISOString(),
-        count: newData.length,
-        isFullTransform: hasFullTransform.value,
-        validation: {
-          hasData: newData.length > 0,
-          firstItemValid: newData[0] && isValidElementData(newData[0]),
-          allItemsValid: newData.every((item) =>
-            isValidElementData(item, ['id', 'mark', 'category'])
-          )
-        }
-      })
-    },
-    { immediate: true }
-  )
-
   return {
-    tableData,
+    tableData: computed(() => {
+      if (!transformedData.value.length) return []
+
+      // Log final data structure being sent to table
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Final table data structure:', {
+        count: transformedData.value.length,
+        firstItem: transformedData.value[23]
+          ? {
+              id: transformedData.value[0].id,
+              mark: transformedData.value[0].mark,
+              parameterKeys: Object.keys(transformedData.value[0].parameters || {}),
+              sampleValues: Object.entries(transformedData.value[0].parameters || {})
+                .slice(0, 3)
+                .reduce((acc, [key, value]) => {
+                  acc[key] = value
+                  return acc
+                }, {} as Record<string, unknown>)
+            }
+          : null,
+        columns: finalTableColumns.value?.map((col) => ({
+          field: col.field,
+          header: col.header,
+          visible: col.visible,
+          source: col.source,
+          type: col.type,
+          order: col.order
+        }))
+      })
+
+      return transformedData.value
+    }),
+    columns: finalTableColumns,
+    detailColumns: finalDetailColumns,
     isValidElementData,
     filteredData,
     isTransformingData,

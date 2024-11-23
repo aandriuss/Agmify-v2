@@ -3,40 +3,59 @@ import type {
   ElementData,
   TreeItemComponentModel,
   BIMNodeRaw,
-  WorldTreeNode,
+  ViewerTree,
   ParameterValue,
   Parameters,
+  ParameterValueType,
   ParameterValueState,
-  ParameterValueType
+  TreeNode
 } from '../types'
 import { debug, DebugCategories } from '../utils/debug'
-import { ValidationError } from '../utils/validation'
 import { getMostSpecificCategory } from '../config/categoryMapping'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import { defaultColumns } from '../config/defaultColumns'
 
+// BIM parameter mapping with type information
+const parameterMapping: Record<string, { names: string[]; type: ParameterValueType }> =
+  {
+    width: {
+      names: ['width', 'Width', 'b', 'B', 'Width Parameter'],
+      type: 'number'
+    },
+    height: {
+      names: ['height', 'Height', 'h', 'H', 'Height Parameter'],
+      type: 'number'
+    },
+    length: {
+      names: ['length', 'Length', 'l', 'L', 'Length Parameter'],
+      type: 'number'
+    },
+    family: {
+      names: ['family', 'Family', 'familyName', 'FamilyName', 'Family Type'],
+      type: 'string'
+    },
+    mark: {
+      names: ['mark', 'Mark', 'markId', 'MarkId'],
+      type: 'string'
+    },
+    category: {
+      names: ['category', 'Category', 'elementCategory', 'ElementCategory'],
+      type: 'string'
+    },
+    host: {
+      names: ['host', 'Host', 'hostId', 'HostId', 'hostElement', 'HostElement'],
+      type: 'string'
+    }
+  }
+
 interface UseBIMElementsReturn {
   allElements: Ref<ElementData[]>
-  rawWorldTree: Ref<WorldTreeNode | null>
+  rawWorldTree: Ref<ViewerTree | null>
   rawTreeNodes: Ref<TreeItemComponentModel[]>
   isLoading: Ref<boolean>
   hasError: Ref<boolean>
   initializeElements: (activeParameters?: string[]) => Promise<void>
   stopWorldTreeWatch: () => void
-}
-
-interface NodeModel {
-  raw?: BIMNodeRaw
-  children?: NodeModel[]
-  atomic?: boolean
-  id?: string
-  speckle_type?: string
-  type?: string
-}
-
-interface TreeNode {
-  model?: NodeModel
-  children?: TreeNode[]
 }
 
 interface ProcessingStats {
@@ -45,47 +64,13 @@ interface ProcessingStats {
   processedNodes: number
 }
 
-async function validateWorldTree(
-  viewer: ReturnType<typeof useInjectedViewerState>['viewer'],
-  maxAttempts = 10,
-  interval = 500
-): Promise<void> {
-  if (!viewer.instance) {
-    debug.error(DebugCategories.VALIDATION, 'Viewer instance not available')
-    throw new ValidationError('Viewer instance not available')
+function inferType(paramName: string, value: unknown): ParameterValueType {
+  // If we have a type defined in the mapping, use it
+  if (paramName in parameterMapping) {
+    return parameterMapping[paramName].type
   }
 
-  let attempts = 0
-  while (attempts < maxAttempts) {
-    if (viewer.metadata.worldTree.value) {
-      const tree = viewer.metadata.worldTree.value as unknown as { _root: unknown }
-      if (tree._root) {
-        debug.log(DebugCategories.VALIDATION, 'WorldTree validation successful', {
-          hasRoot: true,
-          attempt: attempts + 1
-        })
-        return
-      }
-    }
-    debug.log(DebugCategories.VALIDATION, 'Waiting for WorldTree', {
-      attempt: attempts + 1,
-      maxAttempts
-    })
-    await new Promise((resolve) => setTimeout(resolve, interval))
-    attempts++
-  }
-
-  const error = new ValidationError('Timeout waiting for WorldTree initialization')
-  debug.error(DebugCategories.VALIDATION, 'WorldTree validation failed:', {
-    attempts,
-    maxAttempts,
-    hasWorldTree: !!viewer.metadata.worldTree.value,
-    error
-  })
-  throw error
-}
-
-function inferType(value: unknown): ParameterValueType {
+  // Otherwise infer from value
   if (typeof value === 'boolean') return 'boolean'
   if (
     typeof value === 'number' ||
@@ -146,15 +131,6 @@ function transformValue(value: unknown, type: ParameterValueType): ParameterValu
   }
 }
 
-function createParameterState(value: ParameterValue): ParameterValueState {
-  return {
-    fetchedValue: value,
-    currentValue: value,
-    previousValue: value,
-    userValue: null
-  }
-}
-
 function hasValidSpeckleType(raw: BIMNodeRaw): boolean {
   // Check speckleType first
   if (typeof raw.speckleType === 'string' && raw.speckleType.trim() !== '') {
@@ -185,6 +161,37 @@ function hasValidSpeckleType(raw: BIMNodeRaw): boolean {
   return false
 }
 
+function findParameterValue(raw: BIMNodeRaw, paramName: string): unknown {
+  // Get possible parameter names and type for this field
+  const mapping = parameterMapping[paramName] || { names: [paramName], type: 'string' }
+
+  // Try each possible name
+  for (const name of mapping.names) {
+    // Check in parameters
+    if (raw.parameters?.[name] !== undefined) {
+      return raw.parameters[name]
+    }
+
+    // Check special cases
+    if (name === 'mark' && raw.Mark !== undefined) {
+      return raw.Mark
+    }
+    if (name === 'category' && raw.Other?.Category !== undefined) {
+      return raw.Other.Category
+    }
+    if (name === 'host' && raw.Constraints?.Host !== undefined) {
+      return raw.Constraints.Host
+    }
+
+    // Check direct property
+    if (name in raw) {
+      return raw[name]
+    }
+  }
+
+  return null
+}
+
 function extractParameters(
   raw: BIMNodeRaw,
   activeParameters: string[] = defaultColumns.map((col) => col.field)
@@ -193,49 +200,46 @@ function extractParameters(
 
   // Initialize all active parameters with null values
   activeParameters.forEach((paramName) => {
-    let value: unknown = null
+    // Try to get value from BIM data
+    let value = findParameterValue(raw, paramName)
 
-    // Try all possible sources for the value
-    if (
-      raw.parameters &&
-      typeof raw.parameters === 'object' &&
-      paramName in raw.parameters
-    ) {
-      value = raw.parameters[paramName]
-    }
-    // Try BIM-specific fields
-    else if (paramName === 'mark' && raw.Mark) {
-      value = raw.Mark
-    } else if (paramName === 'category' && raw.Other?.Category) {
-      value = raw.Other.Category
-    } else if (paramName === 'host' && raw.Constraints?.Host) {
-      value = raw.Constraints.Host
-    }
-    // Try raw object directly
-    else if (paramName in raw) {
-      value = raw[paramName]
+    // If value is already a ParameterValueState, extract its currentValue
+    if (value && typeof value === 'object' && 'currentValue' in value) {
+      const paramState = value as ParameterValueState
+      value = paramState.currentValue
     }
 
-    // Transform value based on type
-    const type = inferType(value)
+    // Get the parameter type
+    const type = inferType(paramName, value)
+
+    // Transform the value according to the type
     const transformedValue = transformValue(value, type)
-    result[paramName] = createParameterState(transformedValue)
+
+    // Create clean ParameterValueState
+    result[paramName] = {
+      fetchedValue: transformedValue,
+      currentValue: transformedValue,
+      previousValue: transformedValue,
+      userValue: null
+    }
 
     debug.log(DebugCategories.PARAMETERS, 'Parameter processed', {
       key: paramName,
       rawValue: value,
       transformedValue: result[paramName].currentValue,
-      source: raw.parameters?.[paramName]
-        ? 'parameters'
-        : paramName === 'mark' && raw.Mark
-        ? 'Mark'
-        : paramName === 'category' && raw.Other?.Category
-        ? 'Other.Category'
-        : paramName === 'host' && raw.Constraints?.Host
-        ? 'Constraints.Host'
-        : paramName in raw
-        ? 'raw'
-        : 'none'
+      type,
+      source:
+        raw.parameters?.[paramName] !== undefined
+          ? 'parameters'
+          : paramName === 'mark' && raw.Mark !== undefined
+          ? 'Mark'
+          : paramName === 'category' && raw.Other?.Category !== undefined
+          ? 'Other.Category'
+          : paramName === 'host' && raw.Constraints?.Host !== undefined
+          ? 'Constraints.Host'
+          : paramName in raw
+          ? 'raw'
+          : 'none'
     })
   })
 
@@ -244,9 +248,26 @@ function extractParameters(
     activeParameters,
     extractedParameters: Object.keys(result),
     sampleValues: Object.entries(result).reduce((acc, [key, value]) => {
-      acc[key] = value.currentValue
+      acc[key] = {
+        currentValue: value.currentValue,
+        fetchedValue: value.fetchedValue,
+        previousValue: value.previousValue,
+        userValue: value.userValue,
+        source:
+          raw.parameters?.[key] !== undefined
+            ? 'parameters'
+            : key === 'mark' && raw.Mark !== undefined
+            ? 'Mark'
+            : key === 'category' && raw.Other?.Category !== undefined
+            ? 'Other.Category'
+            : key === 'host' && raw.Constraints?.Host !== undefined
+            ? 'Constraints.Host'
+            : key in raw
+            ? 'raw'
+            : 'none'
+      }
       return acc
-    }, {} as Record<string, ParameterValue>)
+    }, {} as Record<string, { currentValue: unknown; fetchedValue: unknown; previousValue: unknown; userValue: unknown; source: string }>)
   })
 
   return result
@@ -304,9 +325,14 @@ function extractElementData(
       sampleParameters: Object.entries(parameters)
         .slice(0, 3)
         .reduce((acc, [key, value]) => {
-          acc[key] = value.currentValue
+          acc[key] = {
+            currentValue: value.currentValue,
+            fetchedValue: value.fetchedValue,
+            previousValue: value.previousValue,
+            userValue: value.userValue
+          }
           return acc
-        }, {} as Record<string, ParameterValue>)
+        }, {} as Record<string, ParameterValueState>)
     })
 
     return element
@@ -316,18 +342,25 @@ function extractElementData(
   }
 }
 
-function processNode(
-  node: TreeNode,
+function processNodeDeep(
+  node: any,
   activeParameters: string[],
-  stats: ProcessingStats
+  stats: ProcessingStats,
+  depth: number = 0,
+  maxDepth: number = 10
 ): ElementData[] {
   const elements: ElementData[] = []
 
+  if (depth >= maxDepth) {
+    return elements
+  }
+
   try {
-    if (node.model?.raw) {
+    // Helper function to process raw data
+    const processRawData = (raw: BIMNodeRaw) => {
       stats.totalNodes++
-      if (hasValidSpeckleType(node.model.raw)) {
-        const element = extractElementData(node.model.raw, activeParameters)
+      if (hasValidSpeckleType(raw)) {
+        const element = extractElementData(raw, activeParameters)
         if (element) {
           elements.push(element)
           stats.processedNodes++
@@ -339,58 +372,89 @@ function processNode(
       }
     }
 
-    if (node.model?.children) {
-      node.model.children.forEach((child) => {
-        if (child.raw) {
-          stats.totalNodes++
-          if (hasValidSpeckleType(child.raw)) {
-            const element = extractElementData(child.raw, activeParameters)
-            if (element) {
-              elements.push(element)
-              stats.processedNodes++
-            } else {
-              stats.skippedNodes++
-            }
-          } else {
-            stats.skippedNodes++
-          }
-        }
-      })
+    // Process current node's raw data if it exists
+    if (node?.raw) {
+      processRawData(node.raw)
+    }
+    if (node?.model?.raw) {
+      processRawData(node.model.raw)
     }
 
-    if (node.children) {
-      node.children.forEach((child) => {
-        const childElements = processNode(child, activeParameters, stats)
-        elements.push(...childElements)
-      })
-    }
+    // Process all possible children paths
+    const childrenPaths = [
+      node?.children,
+      node?.model?.children,
+      node?.elements,
+      node?.raw?.children,
+      node?.raw?.elements
+    ]
 
-    debug.log(DebugCategories.DATA, 'Node processing stats', {
+    childrenPaths.forEach((children) => {
+      if (Array.isArray(children)) {
+        children.forEach((child) => {
+          const childElements = processNodeDeep(
+            child,
+            activeParameters,
+            stats,
+            depth + 1,
+            maxDepth
+          )
+          elements.push(...childElements)
+        })
+      }
+    })
+
+    debug.log(DebugCategories.DATA, `Processing node at depth ${depth}:`, {
       totalNodes: stats.totalNodes,
       processedNodes: stats.processedNodes,
       skippedNodes: stats.skippedNodes,
-      processingRatio: `${((stats.processedNodes / stats.totalNodes) * 100).toFixed(
-        2
-      )}%`,
-      activeParameters
+      nodeId: node?.id || node?.model?.raw?.id || 'unknown',
+      hasRaw: !!node?.raw || !!node?.model?.raw,
+      childrenCounts: {
+        children: Array.isArray(node?.children) ? node.children.length : 0,
+        modelChildren: Array.isArray(node?.model?.children)
+          ? node.model.children.length
+          : 0,
+        elements: Array.isArray(node?.elements) ? node.elements.length : 0,
+        rawChildren: Array.isArray(node?.raw?.children) ? node.raw.children.length : 0,
+        rawElements: Array.isArray(node?.raw?.elements) ? node.raw.elements.length : 0
+      }
     })
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error processing node:', {
       error: err instanceof Error ? err.message : String(err),
-      nodeId: node.model?.raw?.id
+      nodeId: node?.id || node?.model?.raw?.id || 'unknown',
+      depth
     })
   }
 
   return elements
 }
 
+function processNode(
+  node: TreeNode,
+  activeParameters: string[],
+  stats: ProcessingStats
+): ElementData[] {
+  return processNodeDeep(node, activeParameters, stats)
+}
+
+function convertViewerTreeNode(node: ViewerTree['_root']): TreeNode {
+  // Handle potentially undefined model more gracefully
+  return {
+    model: node.model || {},
+    children: node.children || []
+  }
+}
+
 export function useBIMElements(): UseBIMElementsReturn {
-  const { viewer } = useInjectedViewerState()
   const allElements = ref<ElementData[]>([])
-  const rawWorldTree = ref<WorldTreeNode | null>(null)
+  const rawWorldTree = ref<ViewerTree | null>(null)
   const rawTreeNodes = ref<TreeItemComponentModel[]>([])
   const isLoading = ref(false)
   const hasError = ref(false)
+  const isInitialized = ref(false)
+  const viewerState = useInjectedViewerState()
 
   async function initializeElements(
     activeParameters: string[] = defaultColumns.map((col) => col.field)
@@ -399,83 +463,73 @@ export function useBIMElements(): UseBIMElementsReturn {
       isLoading.value = true
       hasError.value = false
 
-      debug.log(DebugCategories.INITIALIZATION, 'Starting BIM element initialization', {
-        activeParameters
-      })
+      debug.startState('BIM element initialization')
 
-      await validateWorldTree(viewer)
-
-      if (!viewer.metadata.worldTree.value) {
-        debug.error(DebugCategories.VALIDATION, 'WorldTree is null')
-        throw new ValidationError('WorldTree is null')
+      // Get world tree from viewer
+      const worldTreeValue = viewerState?.viewer?.metadata?.worldTree?.value
+      if (!worldTreeValue?._root) {
+        debug.warn(DebugCategories.STATE, 'World tree not available')
+        return
       }
 
-      const tree = viewer.metadata.worldTree.value as unknown as {
-        _root: TreeNode
-      }
-
-      const stats: ProcessingStats = {
+      const stats = {
         totalNodes: 0,
         skippedNodes: 0,
         processedNodes: 0
       }
-      const processedElements = processNode(tree._root, activeParameters, stats)
 
-      if (!processedElements.length) {
-        debug.error(DebugCategories.VALIDATION, 'No elements processed from WorldTree')
-        throw new ValidationError('No elements processed from WorldTree')
-      }
+      // Process the nodes
+      const processedElements = await Promise.resolve(
+        processNode(
+          convertViewerTreeNode(worldTreeValue._root),
+          activeParameters,
+          stats
+        )
+      )
 
+      // Update refs with processed data
       allElements.value = processedElements
-      rawWorldTree.value = viewer.metadata.worldTree.value as WorldTreeNode
+      rawWorldTree.value = worldTreeValue
+      isInitialized.value = true
 
-      debug.log(DebugCategories.INITIALIZATION, 'BIM element initialization complete', {
+      debug.completeState('BIM element initialization')
+      debug.log(DebugCategories.DATA, 'Processing complete', {
         elementCount: processedElements.length,
         categories: [...new Set(processedElements.map((el) => el.category))],
-        activeParameters,
-        stats: {
-          totalNodes: stats.totalNodes,
-          processedNodes: stats.processedNodes,
-          skippedNodes: stats.skippedNodes,
-          processingRatio: `${((stats.processedNodes / stats.totalNodes) * 100).toFixed(
-            2
-          )}%`
-        }
+        firstElement: processedElements[0],
+        stats
       })
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'BIM element initialization failed:', error)
       hasError.value = true
-      allElements.value = []
-      throw error
+      throw error // Propagate error for proper handling
     } finally {
       isLoading.value = false
     }
   }
 
+  // Watch for world tree updates
   const stopWorldTreeWatch = watch(
-    () => viewer.metadata.worldTree.value,
-    async (newWorldTree) => {
-      if (newWorldTree && viewer.init.ref.value) {
-        try {
-          const tree = newWorldTree as unknown as { _root: TreeNode }
-          if (!tree._root) {
-            debug.error(DebugCategories.VALIDATION, 'Invalid WorldTree structure')
-            return
-          }
-
-          debug.log(DebugCategories.DATA, 'WorldTree updated', {
-            hasRoot: true,
-            rootChildren: tree._root?.children?.length || 0,
-            rootModel: !!tree._root?.model
-          })
-
-          await initializeElements()
-        } catch (error) {
-          debug.error(DebugCategories.ERROR, 'WorldTree update failed:', error)
+    () => viewerState?.viewer?.metadata?.worldTree?.value,
+    async (worldTree) => {
+      try {
+        if (!worldTree?._root) {
+          debug.warn(DebugCategories.STATE, 'World tree not available')
+          return
         }
+
+        debug.log(DebugCategories.INITIALIZATION, 'World tree updated', {
+          hasRoot: !!worldTree._root,
+          timestamp: new Date().toISOString()
+        })
+
+        await initializeElements()
+      } catch (error) {
+        debug.error(DebugCategories.ERROR, 'World tree update failed:', error)
+        hasError.value = true
       }
     },
-    { deep: true }
+    { immediate: true }
   )
 
   return {
@@ -485,6 +539,6 @@ export function useBIMElements(): UseBIMElementsReturn {
     isLoading,
     hasError,
     initializeElements,
-    stopWorldTreeWatch: () => stopWorldTreeWatch()
+    stopWorldTreeWatch
   }
 }

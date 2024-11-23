@@ -1,134 +1,251 @@
-import { computed } from 'vue'
-import { state, initialState } from './store'
-import { createMutations } from './mutations'
-import type { Store, StoreState } from '../types'
+import { ref, computed, unref } from 'vue'
+import type { Store, StoreState } from '../../types'
 import { debug, DebugCategories } from '../../utils/debug'
+import { createMutations } from './mutations'
+import {
+  defaultColumns,
+  defaultDetailColumns,
+  defaultTable
+} from '../../config/defaultColumns'
 
-// Create mutations
-const mutations = createMutations(state)
+// Store singleton instance
+let store: Store | null = null
 
-// Helper function for type-safe state updates
-function updateStateValue<K extends keyof StoreState>(
-  key: K,
-  value: StoreState[K]
-): void {
-  state.value[key] = value
-}
+// Initialize store
+export function createStore(): Store {
+  // Internal mutable state
+  const internalState = ref<StoreState>({
+    projectId: null,
+    scheduleData: [],
+    evaluatedData: [],
+    tableData: [],
+    customParameters: [],
+    parameterColumns: [],
+    parentParameterColumns: [],
+    childParameterColumns: [],
+    mergedParentParameters: [],
+    mergedChildParameters: [],
+    processedParameters: {},
+    currentTableColumns: defaultColumns,
+    currentDetailColumns: defaultDetailColumns,
+    mergedTableColumns: defaultColumns,
+    mergedDetailColumns: defaultDetailColumns,
+    parameterDefinitions: {},
+    availableHeaders: { parent: [], child: [] },
+    selectedCategories: new Set(),
+    selectedParentCategories: defaultTable.categoryFilters.selectedParentCategories,
+    selectedChildCategories: defaultTable.categoryFilters.selectedChildCategories,
+    tablesArray: [],
+    tableName: defaultTable.name,
+    selectedTableId: defaultTable.id,
+    currentTableId: defaultTable.id,
+    tableKey: '0',
+    initialized: false,
+    loading: false,
+    error: null
+  })
 
-// Create store
-export function useStore(): Store {
-  return {
-    // State
-    state: computed(() => state.value),
-    projectId: computed(() => state.value.projectId),
-    scheduleData: computed(() => state.value.scheduleData),
-    evaluatedData: computed(() => state.value.evaluatedData),
-    tableData: computed(() => state.value.tableData),
-    customParameters: computed(() => state.value.customParameters),
-    parameterColumns: computed(() => state.value.parameterColumns),
-    mergedParentParameters: computed(() => state.value.mergedParentParameters),
-    mergedChildParameters: computed(() => state.value.mergedChildParameters),
-    processedParameters: computed(() => state.value.processedParameters),
-    currentTableColumns: computed(() => state.value.currentTableColumns),
-    currentDetailColumns: computed(() => state.value.currentDetailColumns),
-    mergedTableColumns: computed(() => state.value.mergedTableColumns),
-    mergedDetailColumns: computed(() => state.value.mergedDetailColumns),
-    parameterDefinitions: computed(() => state.value.parameterDefinitions),
-    availableHeaders: computed(() => state.value.availableHeaders),
-    selectedCategories: computed(() => state.value.selectedCategories),
-    selectedParentCategories: computed(() => state.value.selectedParentCategories),
-    selectedChildCategories: computed(() => state.value.selectedChildCategories),
-    tablesArray: computed(() => state.value.tablesArray),
-    tableName: computed(() => state.value.tableName),
-    selectedTableId: computed(() => state.value.selectedTableId),
-    currentTableId: computed(() => state.value.currentTableId),
-    tableKey: computed(() => state.value.tableKey),
-    initialized: computed(() => state.value.initialized),
-    loading: computed(() => state.value.loading),
-    error: computed(() => state.value.error),
+  // Create mutations
+  const mutations = createMutations(internalState)
 
-    // Mutations
-    setProjectId: mutations.setProjectId,
-    setScheduleData: mutations.setScheduleData,
-    setEvaluatedData: mutations.setEvaluatedData,
-    setTableData: mutations.setTableData,
-    setCustomParameters: mutations.setCustomParameters,
-    setParameterColumns: mutations.setParameterColumns,
-    setMergedParameters: mutations.setMergedParameters,
-    setProcessedParameters: mutations.setProcessedParameters,
-    setParameterDefinitions: mutations.setParameterDefinitions,
-    setParameterVisibility: mutations.setParameterVisibility,
-    setParameterOrder: mutations.setParameterOrder,
-    setCurrentColumns: mutations.setCurrentColumns,
-    setMergedColumns: mutations.setMergedColumns,
-    setColumnVisibility: mutations.setColumnVisibility,
-    setColumnOrder: mutations.setColumnOrder,
-    setSelectedCategories: mutations.setSelectedCategories,
-    setParentCategories: mutations.setParentCategories,
-    setChildCategories: mutations.setChildCategories,
-    setTableInfo: mutations.setTableInfo,
-    setTablesArray: mutations.setTablesArray,
-    setElementVisibility: mutations.setElementVisibility,
-    setAvailableHeaders: mutations.setAvailableHeaders,
-    setInitialized: mutations.setInitialized,
-    setLoading: mutations.setLoading,
-    setError: mutations.setError,
-    processData: mutations.processData,
-    reset: mutations.reset,
+  // Lifecycle
+  const lifecycle = {
+    init: async () => {
+      debug.startState('Store initialization')
+      try {
+        await mutations.setLoading(true)
+        await mutations.setError(null)
 
-    // Lifecycle
-    lifecycle: {
-      init: async () => {
-        debug.log(DebugCategories.INITIALIZATION, 'Initializing store')
-        try {
-          mutations.setLoading(true)
-          mutations.setError(null)
+        // Initialize with default state
+        if (!internalState.value.initialized) {
+          debug.log(DebugCategories.INITIALIZATION, 'Initializing store state', {
+            hasScheduleData: internalState.value.scheduleData.length > 0,
+            hasTableData: internalState.value.tableData.length > 0
+          })
 
-          // Validate project ID
-          if (!state.value.projectId) {
-            throw new Error('Project ID is required but not provided')
-          }
+          // Set initial state
+          await mutations.setInitialized(true)
 
-          // Wait for any async initialization tasks
-          await Promise.resolve()
-
-          debug.log(DebugCategories.INITIALIZATION, 'Store initialization complete')
-          mutations.setInitialized(true)
-        } catch (error) {
-          debug.error(DebugCategories.ERROR, 'Store initialization failed:', error)
-          mutations.setError(error instanceof Error ? error : new Error(String(error)))
-          throw error
-        } finally {
-          mutations.setLoading(false)
+          debug.log(DebugCategories.STATE, 'Store state initialized', {
+            scheduleDataLength: internalState.value.scheduleData.length,
+            tableDataLength: internalState.value.tableData.length,
+            columnsLength: internalState.value.mergedTableColumns.length
+          })
         }
-      },
-      update: async (newState: Partial<StoreState>) => {
-        debug.log(DebugCategories.STATE, 'Updating store state', newState)
-        try {
-          mutations.setLoading(true)
 
-          // Process updates sequentially to maintain consistency
-          for (const [key, value] of Object.entries(newState)) {
-            const typedKey = key as keyof StoreState
-            if (typedKey in state.value) {
-              // Ensure type safety with the helper function
-              updateStateValue(typedKey, value as StoreState[typeof typedKey])
-              // Add a small delay to ensure Vue reactivity
-              await new Promise((resolve) => setTimeout(resolve, 0))
-            }
-          }
-        } catch (error) {
-          debug.error(DebugCategories.ERROR, 'Store update failed:', error)
-          mutations.setError(error instanceof Error ? error : new Error(String(error)))
-          throw error
-        } finally {
-          mutations.setLoading(false)
-        }
-      },
-      cleanup: () => {
-        debug.log(DebugCategories.STATE, 'Cleaning up store')
-        state.value = { ...initialState }
+        debug.completeState('Store initialization')
+      } catch (error) {
+        debug.error(DebugCategories.ERROR, 'Store initialization failed:', error)
+        await mutations.setError(
+          error instanceof Error ? error : new Error(String(error))
+        )
+        throw error
+      } finally {
+        await mutations.setLoading(false)
       }
+    },
+
+    update: async (state: Partial<StoreState>) => {
+      debug.startState('Store update')
+      try {
+        await mutations.setLoading(true)
+
+        debug.log(DebugCategories.STATE, 'Updating store state', {
+          updateKeys: Object.keys(state),
+          currentState: {
+            hasScheduleData: internalState.value.scheduleData.length > 0,
+            hasTableData: internalState.value.tableData.length > 0,
+            initialized: internalState.value.initialized
+          }
+        })
+
+        // Initialize if we have data but not initialized
+        if (
+          !internalState.value.initialized &&
+          (state.scheduleData?.length || state.tableData?.length)
+        ) {
+          await mutations.setInitialized(true)
+        }
+
+        // Handle each state property explicitly with proper type checks
+        if ('projectId' in state && state.projectId !== undefined) {
+          await mutations.setProjectId(state.projectId)
+        }
+
+        if ('scheduleData' in state && state.scheduleData) {
+          await mutations.setScheduleData(state.scheduleData)
+        }
+
+        if ('evaluatedData' in state && state.evaluatedData) {
+          await mutations.setEvaluatedData(state.evaluatedData)
+        }
+
+        if ('tableData' in state && state.tableData) {
+          await mutations.setTableData(state.tableData)
+        }
+
+        if ('customParameters' in state && state.customParameters) {
+          await mutations.setCustomParameters(state.customParameters)
+        }
+
+        if ('parameterColumns' in state && state.parameterColumns) {
+          await mutations.setParameterColumns(state.parameterColumns)
+        }
+
+        if ('availableHeaders' in state && state.availableHeaders) {
+          await mutations.setAvailableHeaders(state.availableHeaders)
+        }
+
+        if ('selectedCategories' in state && state.selectedCategories) {
+          await mutations.setSelectedCategories(state.selectedCategories)
+        }
+
+        if ('selectedParentCategories' in state && state.selectedParentCategories) {
+          await mutations.setParentCategories(state.selectedParentCategories)
+        }
+
+        if ('selectedChildCategories' in state && state.selectedChildCategories) {
+          await mutations.setChildCategories(state.selectedChildCategories)
+        }
+
+        if ('tablesArray' in state && state.tablesArray) {
+          await mutations.setTablesArray(state.tablesArray)
+        }
+
+        debug.log(DebugCategories.STATE, 'Store update complete', {
+          updatedState: {
+            hasScheduleData: internalState.value.scheduleData.length > 0,
+            hasTableData: internalState.value.tableData.length > 0,
+            initialized: internalState.value.initialized
+          }
+        })
+
+        debug.completeState('Store update')
+      } catch (error) {
+        debug.error(DebugCategories.ERROR, 'Store update failed:', error)
+        await mutations.setError(
+          error instanceof Error ? error : new Error(String(error))
+        )
+        throw error
+      } finally {
+        await mutations.setLoading(false)
+      }
+    },
+
+    cleanup: () => {
+      debug.log(DebugCategories.STATE, 'Cleaning up store')
+      mutations.reset()
+      store = null
     }
   }
+
+  return {
+    // Readonly state
+    state: computed(() => internalState.value),
+    projectId: computed(() => internalState.value.projectId),
+    scheduleData: computed(() => [...unref(internalState.value.scheduleData)]),
+    evaluatedData: computed(() => [...unref(internalState.value.evaluatedData)]),
+    tableData: computed(() => [...unref(internalState.value.tableData)]),
+    customParameters: computed(() => [...unref(internalState.value.customParameters)]),
+    parameterColumns: computed(() => [...unref(internalState.value.parameterColumns)]),
+    parentParameterColumns: computed(() => [
+      ...unref(internalState.value.parentParameterColumns)
+    ]),
+    childParameterColumns: computed(() => [
+      ...unref(internalState.value.childParameterColumns)
+    ]),
+    mergedParentParameters: computed(() => [
+      ...unref(internalState.value.mergedParentParameters)
+    ]),
+    mergedChildParameters: computed(() => [
+      ...unref(internalState.value.mergedChildParameters)
+    ]),
+    processedParameters: computed(() => internalState.value.processedParameters),
+    currentTableColumns: computed(() => [
+      ...unref(internalState.value.currentTableColumns)
+    ]),
+    currentDetailColumns: computed(() => [
+      ...unref(internalState.value.currentDetailColumns)
+    ]),
+    mergedTableColumns: computed(() => [
+      ...unref(internalState.value.mergedTableColumns)
+    ]),
+    mergedDetailColumns: computed(() => [
+      ...unref(internalState.value.mergedDetailColumns)
+    ]),
+    parameterDefinitions: computed(() => internalState.value.parameterDefinitions),
+    availableHeaders: computed(() => internalState.value.availableHeaders),
+    selectedCategories: computed(() => internalState.value.selectedCategories),
+    selectedParentCategories: computed(
+      () => internalState.value.selectedParentCategories
+    ),
+    selectedChildCategories: computed(
+      () => internalState.value.selectedChildCategories
+    ),
+    tablesArray: computed(() => internalState.value.tablesArray),
+    tableName: computed(() => internalState.value.tableName),
+    selectedTableId: computed(() => internalState.value.selectedTableId),
+    currentTableId: computed(() => internalState.value.currentTableId),
+    tableKey: computed(() => internalState.value.tableKey),
+    initialized: computed(() => internalState.value.initialized),
+    loading: computed(() => internalState.value.loading),
+    error: computed(() => internalState.value.error),
+
+    // Mutations
+    ...mutations,
+
+    // Lifecycle
+    lifecycle
+  }
 }
+
+// Get or create store instance
+export function useStore(): Store {
+  if (!store) {
+    store = createStore()
+  }
+  return store
+}
+
+// Export default instance
+export default useStore

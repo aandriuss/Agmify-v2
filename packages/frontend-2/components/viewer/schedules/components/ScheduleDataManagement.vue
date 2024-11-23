@@ -9,7 +9,7 @@ import { useScheduleDataTransform } from '../composables/useScheduleDataTransfor
 import { useDataOrganization } from '../composables/useDataOrganization'
 import { debug, DebugCategories } from '../utils/debug'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import type { ElementData, TableRowData } from '../types'
+import type { ElementData, TableRow } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
 const props = defineProps<{
@@ -24,12 +24,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'update:tableData': [value: TableRowData[]]
+  'update:tableData': [value: TableRow[]]
   error: [error: Error]
 }>()
-
-// Data Organization
-const { updateRootNodes } = useDataOrganization()
 
 // Initialize data transform with selected categories
 const { tableData, filteredData } = useScheduleDataTransform({
@@ -43,20 +40,35 @@ const { tableData, filteredData } = useScheduleDataTransform({
   isInitialized: computed(() => props.isInitialized)
 })
 
+// Only initialize data organization when we have data
+const { updateRootNodes } = props.isInitialized
+  ? useDataOrganization()
+  : { updateRootNodes: () => {} }
+
 // Watch for data changes
 watch(
   () => tableData.value,
   (newData) => {
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Table data updated', {
-      count: newData?.length || 0,
-      filteredCount: filteredData.value.length,
-      timestamp: new Date().toISOString(),
-      categories: {
-        parent: props.selectedParentCategories,
-        child: props.selectedChildCategories
+    try {
+      if (!props.isInitialized) {
+        debug.warn(DebugCategories.STATE, 'Waiting for initialization')
+        return
       }
-    })
-    emit('update:tableData', newData || [])
+
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Table data updated', {
+        count: newData?.length || 0,
+        filteredCount: filteredData.value.length,
+        timestamp: new Date().toISOString(),
+        categories: {
+          parent: props.selectedParentCategories,
+          child: props.selectedChildCategories
+        }
+      })
+      emit('update:tableData', newData || [])
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error updating table data:', error)
+      emit('error', error instanceof Error ? error : new Error(String(error)))
+    }
   },
   { immediate: true }
 )
@@ -65,6 +77,11 @@ watch(
 watch(
   [() => props.selectedParentCategories, () => props.selectedChildCategories],
   ([newParentCats, newChildCats]) => {
+    if (!props.isInitialized) {
+      debug.warn(DebugCategories.STATE, 'Waiting for initialization')
+      return
+    }
+
     debug.log(DebugCategories.CATEGORIES, 'Categories changed', {
       parent: newParentCats,
       child: newChildCats,

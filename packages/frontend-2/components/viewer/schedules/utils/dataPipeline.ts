@@ -1,222 +1,329 @@
-import type { TableRow, ElementData } from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import { parentCategories, childCategories } from '../config/categories'
-import { defaultColumns } from '../config/defaultColumns'
+import type {
+  ElementData,
+  TableRow,
+  ParameterValue,
+  ParameterValueState,
+  Parameters
+} from '../types'
 import { debug, DebugCategories } from './debug'
-import { unref } from 'vue'
+import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
+import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
-interface PipelineResult {
-  filteredElements: TableRow[]
-  processedElements: TableRow[]
+interface DataPipelineResult {
+  filteredElements: ElementData[]
+  processedElements: ElementData[]
   tableData: TableRow[]
   parameterColumns: ColumnDef[]
 }
 
-interface PipelineOptions {
+interface DataPipelineInput {
   allElements: ElementData[]
-  selectedParent: string[] | Ref<string[]>
-  selectedChild: string[] | Ref<string[]>
-}
-
-interface DebugElementsResult {
-  parentElements: TableRow[]
-  childElements: TableRow[]
-  matchedElements: TableRow[]
-  orphanedElements: TableRow[]
-}
-
-function determineElementType(
-  category: string,
-  selectedParent: string[],
+  selectedParent: string[]
   selectedChild: string[]
-): 'parent' | 'child' {
-  // If no categories are selected, treat all elements as parents
-  if (selectedParent.length === 0 && selectedChild.length === 0) {
-    return 'parent'
-  }
-
-  const isParentCategory = parentCategories.includes(category)
-  const isChildCategory = childCategories.includes(category)
-
-  // If element's category is in parent categories or is Uncategorized, treat as parent
-  if (isParentCategory || category === 'Uncategorized') {
-    return 'parent'
-  }
-
-  // If element's category is in child categories, treat as child
-  if (isChildCategory) {
-    return 'child'
-  }
-
-  // Default to parent for any other cases
-  return 'parent'
 }
 
-function prepareTableData(
-  elements: ElementData[],
-  selectedParent: string[],
-  selectedChild: string[]
-): TableRow[] {
-  const startStats = { elementCount: elements.length }
-  debug.log(
-    DebugCategories.DATA_TRANSFORM,
-    'Preparing table data structure',
-    startStats
+function isParameterValueState(value: unknown): value is ParameterValueState {
+  if (!value || typeof value !== 'object') return false
+
+  const candidate = value as Record<string, unknown>
+  return (
+    'currentValue' in candidate &&
+    'fetchedValue' in candidate &&
+    'previousValue' in candidate &&
+    'userValue' in candidate
   )
-
-  // First pass: Create table rows and build parent map
-  const parentMap = new Map<string, TableRow>()
-  const tableData = elements
-    .map((element) => {
-      const elementType = determineElementType(
-        element.category,
-        selectedParent,
-        selectedChild
-      )
-      const isChild = elementType === 'child'
-
-      // Check if element matches selected categories
-      const matchesSelectedCategories =
-        elementType === 'parent'
-          ? selectedParent.length === 0 || selectedParent.includes(element.category)
-          : selectedChild.length === 0 || selectedChild.includes(element.category)
-
-      if (!matchesSelectedCategories) {
-        return null
-      }
-
-      const row: TableRow = {
-        ...element,
-        isChild,
-        _visible: true
-      }
-
-      if (!isChild && row.mark) {
-        parentMap.set(row.mark, row)
-      }
-
-      return row
-    })
-    .filter((row): row is TableRow => row !== null)
-
-  // Create "Without Host" parent for orphaned children
-  const withoutHostParent: TableRow = {
-    id: 'without-host',
-    mark: 'Without Host',
-    category: 'Uncategorized',
-    type: 'group',
-    parameters: {},
-    _visible: true,
-    isChild: false,
-    _raw: {}
-  }
-
-  // Second pass: Link children to parents or assign to "Without Host"
-  const processedData = tableData.filter((row) => {
-    if (!row.isChild) return true
-
-    if (row.host) {
-      const parent = parentMap.get(row.host)
-      if (parent) {
-        row.host = parent.mark
-        return true
-      }
-      // Orphaned child - assign to "Without Host"
-      row.host = withoutHostParent.mark
-      return true
-    }
-    return false
-  })
-
-  // Add "Without Host" parent if there are orphaned children
-  const hasOrphanedChildren = processedData.some(
-    (row) => row.isChild && row.host === withoutHostParent.mark
-  )
-  if (hasOrphanedChildren) {
-    processedData.unshift(withoutHostParent)
-  }
-
-  const stats = {
-    inputCount: elements.length,
-    outputCount: processedData.length,
-    parentCount: processedData.filter((row) => !row.isChild).length,
-    childCount: processedData.filter((row) => row.isChild).length,
-    orphanedCount: hasOrphanedChildren
-      ? processedData.filter((row) => row.host === withoutHostParent.mark).length
-      : 0
-  }
-
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Table data preparation complete', stats)
-
-  return processedData
 }
 
+function createParameterState(value: ParameterValue): ParameterValueState {
+  return {
+    fetchedValue: value,
+    currentValue: value,
+    previousValue: value,
+    userValue: null
+  }
+}
+
+/**
+ * Unified data processing pipeline that handles:
+ * - Category filtering
+ * - Parent/child relationships
+ * - Parameter processing
+ * - Table data conversion
+ */
 export function processDataPipeline({
   allElements,
   selectedParent,
   selectedChild
-}: PipelineOptions): PipelineResult {
-  const startStats = { elementCount: allElements.length }
-  debug.log(DebugCategories.DATA, 'Processing data for table display', startStats)
+}: DataPipelineInput): DataPipelineResult {
+  // Get active parameters from both default columns
+  const allColumns = [...defaultColumns, ...defaultDetailColumns]
+  const activeParameters = allColumns.map((col) => col.field)
 
-  // Unwrap refs if needed
-  const unwrappedParent = Array.isArray(selectedParent)
-    ? selectedParent
-    : unref(selectedParent)
-  const unwrappedChild = Array.isArray(selectedChild)
-    ? selectedChild
-    : unref(selectedChild)
+  debug.log(DebugCategories.DATA, 'Starting data pipeline', {
+    elementCount: allElements.length,
+    selectedParent,
+    selectedChild,
+    activeParameters,
+    columns: allColumns.map((col) => ({
+      field: col.field,
+      header: col.header,
+      type: col.type,
+      order: col.order
+    }))
+  })
 
-  // Prepare table data
-  const processedData = prepareTableData(allElements, unwrappedParent, unwrappedChild)
+  // Log available parameters in first few elements
+  debug.log(DebugCategories.DATA, 'Available parameters in data:', {
+    sampleElements: allElements.slice(0, 3).map((el) => ({
+      id: el.id,
+      category: el.category,
+      parameterKeys: Object.keys(el.parameters || {}),
+      activeParametersPresent: activeParameters.map((param) => ({
+        parameter: param,
+        present: param in (el.parameters || {}),
+        value: el.parameters?.[param]?.currentValue
+      }))
+    }))
+  })
 
-  const stats = {
-    rowCount: processedData.length,
-    parentCount: processedData.filter((row) => !row.isChild).length,
-    childCount: processedData.filter((row) => row.isChild).length
-  }
+  // Step 1: Filter by categories
+  const filteredElements = filterByCategories(
+    allElements,
+    selectedParent,
+    selectedChild
+  )
 
-  debug.log(DebugCategories.DATA, 'Table data processing complete', stats)
+  // Step 2: Process parameters and create columns
+  const { processedElements, parameterColumns } = processParameters(
+    filteredElements,
+    activeParameters
+  )
+
+  // Step 3: Convert to table data
+  const tableData = convertToTableData(processedElements)
+
+  // Log final data structure
+  debug.log(DebugCategories.DATA, 'Data pipeline complete', {
+    filteredCount: filteredElements.length,
+    processedCount: processedElements.length,
+    tableDataCount: tableData.length,
+    columnCount: parameterColumns.length,
+    activeParameters,
+    sampleRow: tableData[0]
+      ? {
+          id: tableData[0].id,
+          category: tableData[0].category,
+          parameterKeys: Object.keys(tableData[0].parameters || {}),
+          activeParametersPresent: activeParameters.map((param) => ({
+            parameter: param,
+            present: param in (tableData[0].parameters || {}),
+            value: tableData[0].parameters?.[param]?.currentValue
+          }))
+        }
+      : null,
+    columns: parameterColumns.map((col) => ({
+      field: col.field,
+      header: col.header,
+      visible: col.visible,
+      source: col.source,
+      order: col.order
+    }))
+  })
 
   return {
-    filteredElements: processedData,
-    processedElements: processedData,
-    tableData: processedData,
-    parameterColumns: defaultColumns
+    filteredElements,
+    processedElements,
+    tableData,
+    parameterColumns
   }
 }
 
-export function processDebugElements(elements: TableRow[]): DebugElementsResult {
-  if (!elements?.length) {
-    return {
-      parentElements: [],
-      childElements: [],
-      matchedElements: [],
-      orphanedElements: []
-    }
-  }
+function filterByCategories(
+  elements: ElementData[],
+  selectedParent: string[],
+  selectedChild: string[]
+): ElementData[] {
+  const filtered = elements.filter((el) => {
+    const isParent = !el.isChild
+    const isChild = el.isChild
 
-  // Create a map for quick parent lookup
-  const parentMap = new Map<string, TableRow>()
-  elements.forEach((el) => {
-    if (el.mark) {
-      parentMap.set(el.mark, el)
-    }
+    // If no categories selected, show all
+    if (!selectedParent.length && !selectedChild.length) return true
+
+    // Filter based on category and parent/child status
+    if (isParent && selectedParent.includes(el.category)) return true
+    if (isChild && selectedChild.includes(el.category)) return true
+
+    return false
   })
 
-  const parentElements = elements.filter((el) => !el.host)
-  const childElements = elements.filter((el) => !!el.host)
-  const matchedElements = elements.filter((el) => {
-    return !!el.host && parentMap.has(el.host)
+  debug.log(DebugCategories.DATA, 'Category filtering complete', {
+    inputCount: elements.length,
+    outputCount: filtered.length,
+    selectedParent,
+    selectedChild
   })
-  const orphanedElements = elements.filter((el) => {
-    return !!el.host && !parentMap.has(el.host)
+
+  return filtered
+}
+
+function processParameters(
+  elements: ElementData[],
+  activeParameters: string[]
+): {
+  processedElements: ElementData[]
+  parameterColumns: ColumnDef[]
+} {
+  // Get all available columns
+  const allColumns = [...defaultColumns, ...defaultDetailColumns]
+
+  // Log what parameters are actually in the data
+  const sampleElement = elements[0]
+  debug.log(DebugCategories.DATA, 'Sample element:', {
+    id: sampleElement?.id,
+    mark: sampleElement?.mark,
+    category: sampleElement?.category,
+    parameters: sampleElement?.parameters ? Object.keys(sampleElement.parameters) : [],
+    raw: sampleElement?._raw
+  })
+
+  // Create columns for active parameters, preserving column properties
+  const parameterColumns: ColumnDef[] = activeParameters.map((name) => {
+    // Find matching default column
+    const defaultColumn = allColumns.find((col) => col.field === name)
+    if (!defaultColumn) {
+      debug.warn(DebugCategories.DATA, `No default column found for ${name}`)
+    }
+
+    // Use default column properties or create new ones
+    return (
+      defaultColumn || {
+        field: name,
+        header: name,
+        type: 'parameter',
+        sortable: true,
+        visible: true,
+        source: 'Parameters',
+        order: 0,
+        category: 'Parameters',
+        fetchedGroup: 'Parameters',
+        currentGroup: 'Parameters',
+        isFetched: true,
+        description: `Parameter ${name}`,
+        isFixed: false,
+        isCustomParameter: false
+      }
+    )
+  })
+
+  // Log what columns we're creating
+  debug.log(DebugCategories.DATA, 'Creating columns:', {
+    activeParameters,
+    columns: parameterColumns.map((col) => ({
+      field: col.field,
+      header: col.header,
+      type: col.type
+    }))
+  })
+
+  // Process elements
+  const processedElements = elements.map((el) => {
+    // Ensure required fields exist
+    const processed = {
+      ...el,
+      mark: el.mark || el.id,
+      category: el.category || 'Uncategorized',
+      parameters: Object.fromEntries(
+        Object.entries(el.parameters || {}).map(([key, value]) => {
+          // If it's already a ParameterValueState, use it directly
+          if (isParameterValueState(value)) {
+            return [key, value]
+          }
+          // Otherwise create a new ParameterValueState
+          return [key, createParameterState(value as ParameterValue)]
+        })
+      ) as Parameters
+    }
+
+    // Log processed element
+    debug.log(DebugCategories.DATA, 'Processed element:', {
+      id: processed.id,
+      mark: processed.mark,
+      category: processed.category,
+      parameterCount: Object.keys(processed.parameters).length,
+      parameters: Object.keys(processed.parameters)
+    })
+
+    return processed
   })
 
   return {
-    parentElements,
-    childElements,
-    matchedElements,
-    orphanedElements
+    processedElements,
+    parameterColumns
   }
+}
+
+function convertToTableData(elements: ElementData[]): TableRow[] {
+  const tableData = elements.map((el): TableRow => {
+    // Process parameters to extract just the values
+    const processedParameters = Object.fromEntries(
+      Object.entries(el.parameters || {}).map(([key, value]) => {
+        // Keep the ParameterValueState structure as is
+        return [key, value]
+      })
+    ) as Parameters
+
+    return {
+      id: el.id,
+      type: el.type,
+      mark: el.mark,
+      category: el.category,
+      parameters: processedParameters,
+      _visible: el._visible,
+      _raw: el._raw,
+      isChild: el.isChild,
+      host: el.host,
+      details: el.details?.map((child): TableRow => {
+        // Process child parameters
+        const childProcessedParameters = Object.fromEntries(
+          Object.entries(child.parameters || {}).map(([key, value]) => {
+            // Keep the ParameterValueState structure as is
+            return [key, value]
+          })
+        ) as Parameters
+
+        return {
+          id: child.id,
+          type: child.type,
+          mark: child.mark,
+          category: child.category,
+          parameters: childProcessedParameters,
+          _visible: child._visible,
+          _raw: child._raw,
+          isChild: child.isChild,
+          host: child.host
+        }
+      })
+    }
+  })
+
+  debug.log(DebugCategories.DATA, 'Table data conversion complete', {
+    inputCount: elements.length,
+    outputCount: tableData.length,
+    sampleRow: tableData[0]
+      ? {
+          id: tableData[0].id,
+          parameterKeys: Object.keys(tableData[0].parameters || {}),
+          parameterValues: Object.entries(tableData[0].parameters || {}).reduce(
+            (acc, [key, value]) => {
+              acc[key] = value.currentValue
+              return acc
+            },
+            {} as Record<string, ParameterValue>
+          )
+        }
+      : null
+  })
+
+  return tableData
 }
