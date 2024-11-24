@@ -163,22 +163,7 @@ const isSaving = ref(false)
 const errorMessage = ref('')
 const isInitialized = ref(false)
 
-// Table State
-const expandedRows = computed({
-  get: () => props.initialState?.expandedRows || [],
-  set: (value) => {
-    if (Array.isArray(value)) {
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
-        rowCount: value.length,
-        rows: value.map((row) => ({
-          id: (row as TableRow).id,
-          hasDetails: !!(row as TableRow).details?.length
-        }))
-      })
-      emit('update:expandedRows', value as (TableRow | ElementData)[])
-    }
-  }
-})
+const expandedRowsState = ref<(TableRow | ElementData)[]>([])
 
 const sortField = ref<string>('')
 const sortOrder = ref<number>(1)
@@ -202,20 +187,149 @@ function handleError(error: Error | unknown): void {
   emit('error', err)
 }
 
-// Event handlers
+function isTableRowOrElementData(value: unknown): value is TableRow | ElementData {
+  if (!value || typeof value !== 'object') return false
+
+  const candidate = value as Record<string, unknown>
+
+  // First check if it has the base properties
+  const hasBaseProperties =
+    typeof candidate.id === 'string' &&
+    typeof candidate.type === 'string' &&
+    typeof candidate.mark === 'string' &&
+    typeof candidate.category === 'string' &&
+    typeof candidate._visible === 'boolean' &&
+    typeof candidate.parameters === 'object' &&
+    candidate.parameters !== null
+
+  if (!hasBaseProperties) return false
+
+  // Then check details property
+  if ('details' in candidate) {
+    // If details exists, it must be an array
+    if (!Array.isArray(candidate.details)) return false
+
+    // For ElementData, details is required and must be an array
+    // For TableRow, details is optional but must be an array if present
+    return true
+  }
+
+  // If no details property, it's still a valid TableRow
+  return true
+}
+
+// Update handleExpandedRowsUpdate to properly handle both types
 function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): void {
   if (Array.isArray(value)) {
+    const validRows = value.filter((row): row is TableRow | ElementData => {
+      const isValid = isTableRowOrElementData(row)
+      if (!isValid) {
+        // Create a type for the debug info
+        type DebugRowInfo = {
+          row: unknown
+          type: string
+          hasId: boolean
+          hasType: boolean
+          hasMark: boolean
+          hasCategory: boolean
+          hasVisible: boolean
+          hasParameters: boolean
+        }
+
+        // Cast row to Record for safe property checks
+        const candidate = row as Record<string, unknown>
+        const debugInfo: DebugRowInfo = {
+          row,
+          type: typeof row,
+          hasId: typeof candidate.id === 'string',
+          hasType: typeof candidate.type === 'string',
+          hasMark: typeof candidate.mark === 'string',
+          hasCategory: typeof candidate.category === 'string',
+          hasVisible: typeof candidate._visible === 'boolean',
+          hasParameters:
+            typeof candidate.parameters === 'object' && candidate.parameters !== null
+        }
+
+        debug.log(DebugCategories.TABLE_DATA, 'Invalid row in expanded rows', debugInfo)
+      }
+      return isValid
+    })
+
     debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
-      rowCount: value.length,
-      rows: value.map((row) => ({
-        id: (row as TableRow).id,
-        hasDetails: !!(row as TableRow).details?.length
+      inputRows: value.length,
+      validRows: validRows.length,
+      rows: validRows.map((row) => ({
+        id: row.id,
+        mark: row.mark,
+        type: row.type,
+        hasDetails:
+          'details' in row && Array.isArray(row.details) && row.details.length > 0
       }))
     })
-    expandedRows.value = value as (TableRow | ElementData)[]
-    emit('update:expandedRows', expandedRows.value)
+    expandedRowsState.value = validRows
+    emit('update:expandedRows', validRows)
   }
 }
+
+// Update expandedRows computed with proper validation
+const expandedRows = computed<(TableRow | ElementData)[]>({
+  get: () => expandedRowsState.value,
+  set: (value) => {
+    if (Array.isArray(value)) {
+      const validRows = value.filter((row): row is TableRow | ElementData => {
+        const isValid = isTableRowOrElementData(row)
+        if (!isValid) {
+          // Create a type for the debug info
+          type DebugRowInfo = {
+            row: unknown
+            type: string
+            hasId: boolean
+            hasType: boolean
+            hasMark: boolean
+            hasCategory: boolean
+            hasVisible: boolean
+            hasParameters: boolean
+          }
+
+          // Cast row to Record for safe property checks
+          const candidate = row as Record<string, unknown>
+          const debugInfo: DebugRowInfo = {
+            row,
+            type: typeof row,
+            hasId: typeof candidate.id === 'string',
+            hasType: typeof candidate.type === 'string',
+            hasMark: typeof candidate.mark === 'string',
+            hasCategory: typeof candidate.category === 'string',
+            hasVisible: typeof candidate._visible === 'boolean',
+            hasParameters:
+              typeof candidate.parameters === 'object' && candidate.parameters !== null
+          }
+
+          debug.log(
+            DebugCategories.TABLE_DATA,
+            'Invalid row in expanded rows',
+            debugInfo
+          )
+        }
+        return isValid
+      })
+
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Setting expanded rows', {
+        inputRows: value.length,
+        validRows: validRows.length,
+        rows: validRows.map((row) => ({
+          id: row.id,
+          mark: row.mark,
+          type: row.type,
+          hasDetails:
+            'details' in row && Array.isArray(row.details) && row.details.length > 0
+        }))
+      })
+      expandedRowsState.value = validRows
+      emit('update:expandedRows', validRows)
+    }
+  }
+})
 
 function handleRowExpand(row: TableRow | ElementData): void {
   debug.log(DebugCategories.DATA_TRANSFORM, 'Row expanded', {
@@ -248,6 +362,7 @@ function ensureColumnProperties(column: ColumnDef): ColumnDef {
   }
 }
 
+// Update initialization to properly type expanded rows
 async function initializeState(): Promise<void> {
   try {
     if (props.initialState) {
@@ -263,8 +378,16 @@ async function initializeState(): Promise<void> {
       )
       localChildColumns.value = safeJSONClone(sortColumnsByOrder(initialChildColumns))
 
-      // Transform expanded rows
-      expandedRows.value = validateTableRows(props.initialState.expandedRows)
+      // Set initial expanded rows with proper validation
+      const validRows = validateTableRows(props.initialState.expandedRows)
+      expandedRowsState.value = validRows
+      debug.log(DebugCategories.INITIALIZATION, 'Initial expanded rows set', {
+        count: validRows.length,
+        rows: validRows.map((row) => ({
+          id: row.id,
+          hasDetails: !!(row as TableRow).details?.length
+        }))
+      })
 
       sortField.value = props.initialState.sortField || ''
       sortOrder.value = props.initialState.sortOrder || 1
@@ -285,6 +408,7 @@ async function initializeState(): Promise<void> {
       parentColumns: localParentColumns.value.length,
       childColumns: localChildColumns.value.length,
       dataLength: props.data.length,
+      expandedRows: expandedRowsState.value.length,
       groups: [
         ...new Set([
           ...localParentColumns.value.map((c) => c.category),

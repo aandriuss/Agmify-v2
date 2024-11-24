@@ -18,6 +18,7 @@ export const dummyTableRows: TableRow[] = [
   {
     id: 'wall-1',
     type: 'Basic Wall',
+    mark: 'WALL-001',
     host: undefined,
     _visible: true,
     isChild: false,
@@ -32,6 +33,7 @@ export const dummyTableRows: TableRow[] = [
   {
     id: 'wall-2',
     type: 'Basic Wall',
+    mark: 'WALL-002',
     host: undefined,
     _visible: true,
     isChild: false,

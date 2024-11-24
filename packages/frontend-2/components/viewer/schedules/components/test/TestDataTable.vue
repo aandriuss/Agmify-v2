@@ -47,6 +47,7 @@
       :loading="false"
       :initial-state="{
         columns: dummyColumns,
+        detailColumns: dummyColumns,
         expandedRows: [],
         sortField: 'mark',
         sortOrder: 1,

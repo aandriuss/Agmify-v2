@@ -156,6 +156,7 @@
             :style="getColumnStyle(col)"
             sortable
             :expander="col.expander"
+            expander-type="row"
           >
             <template #header>
               <div class="column-header">
@@ -237,24 +238,10 @@ const props = withDefaults(defineProps<Props>(), {
   scheduleData: () => []
 })
 
-const expandedRowsModel = computed({
-  get: () => props.expandedRows || [],
-  set: (value) => {
-    if (Array.isArray(value)) {
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
-        rowCount: value.length,
-        rows: value.map((row) => ({
-          id: (row as TableRow)?.id,
-          hasDetails: !!(row as TableRow)?.details?.length
-        }))
-      })
-      emit('update:expandedRows', value)
-    }
-  }
-})
-
+// Update emit type definition to include update:expandedRows
 const emit = defineEmits<{
   'update:expandedRows': [value: unknown[]]
+  'update:expanded-rows': [value: unknown[]] // Add this for v-model compatibility
   'column-resize': [event: { element: HTMLElement }]
   'column-reorder': [event: DataTableColumnReorderEvent]
   sort: [field: string | ((item: unknown) => string), order: number]
@@ -265,6 +252,26 @@ const emit = defineEmits<{
   'column-visibility-change': []
   error: [error: Error | unknown]
 }>()
+
+// Update expandedRowsModel to handle both emit types
+const expandedRowsModel = computed({
+  get: () => props.expandedRows || [],
+  set: (value) => {
+    if (Array.isArray(value)) {
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Setting expanded rows', {
+        rowCount: value.length,
+        rows: value.map((row) => ({
+          id: (row as TableRow)?.id,
+          hasDetails: !!(row as TableRow)?.details?.length,
+          details: (row as TableRow)?.details
+        }))
+      })
+      // Emit both for compatibility
+      emit('update:expandedRows', value)
+      emit('update:expanded-rows', value)
+    }
+  }
+})
 
 // Initialize debug
 const debug = useDebug()
@@ -314,7 +321,49 @@ function isTableRowOrElementData(value: unknown): value is TableRow | ElementDat
   return true
 }
 
-// Helper function to check if row has details
+//  Debug logging for data prop changes
+watch(
+  () => props.data,
+  (newData) => {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Data prop updated', {
+      count: newData?.length,
+      sample: newData?.[0],
+      withDetails: newData?.filter(
+        (row) => isTableRowOrElementData(row) && (row as TableRow).details?.length > 0
+      ).length,
+      detailsSample: newData?.find(
+        (row) => isTableRowOrElementData(row) && (row as TableRow).details?.length > 0
+      )
+    })
+  },
+  { immediate: true, deep: true }
+)
+
+// Update watch for expanded rows
+watch(
+  () => props.expandedRows,
+  (newRows) => {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
+      count: newRows?.length,
+      rows: newRows
+        ?.map((row) => {
+          if (!isTableRowOrElementData(row)) return null
+          const typedRow = row as TableRow
+          const details = typedRow.details || []
+          return {
+            id: typedRow.id,
+            mark: typedRow.mark,
+            hasDetails: details.length > 0,
+            detailsCount: details.length
+          }
+        })
+        .filter(Boolean)
+    })
+  },
+  { immediate: true, deep: true }
+)
+
+// Update hasDetails function
 function hasDetails(data: unknown): boolean {
   if (!isTableRowOrElementData(data)) {
     debug.log(DebugCategories.TABLE_DATA, 'Invalid data type for details check', {
@@ -324,17 +373,18 @@ function hasDetails(data: unknown): boolean {
     return false
   }
 
-  const hasDetailsArray = Array.isArray((data as TableRow | ElementData).details)
-  const detailsLength = hasDetailsArray
-    ? (data as TableRow | ElementData).details!.length
-    : 0
+  const typedData = data as TableRow
+  const details = typedData.details || []
+  const hasDetailsArray = Array.isArray(details)
+  const detailsLength = hasDetailsArray ? details.length : 0
 
   debug.log(DebugCategories.TABLE_DATA, 'Details check', {
-    id: (data as TableRow | ElementData).id,
-    mark: (data as TableRow | ElementData).mark,
+    id: typedData.id,
+    mark: typedData.mark,
     hasDetailsArray,
     detailsLength,
-    details: (data as TableRow | ElementData).details
+    details,
+    fullData: data
   })
 
   return hasDetailsArray && detailsLength > 0
@@ -374,6 +424,14 @@ function toggleRow(data: unknown): void {
     return
   }
 
+  debug.log(DebugCategories.TABLE_DATA, 'Toggle row attempt', {
+    id: data.id,
+    mark: data.mark,
+    hasDetails: hasDetails(data),
+    details: data.details,
+    currentExpanded: expandedRowsModel.value
+  })
+
   const currentExpanded = Array.isArray(expandedRowsModel.value)
     ? [...expandedRowsModel.value]
     : []
@@ -381,18 +439,19 @@ function toggleRow(data: unknown): void {
     (row) => isTableRowOrElementData(row) && row.id === data.id
   )
 
-  debug.log(DebugCategories.TABLE_DATA, 'Toggle row', {
-    id: data.id,
-    mark: data.mark,
-    wasExpanded: index !== -1,
-    hasDetails: hasDetails(data),
-    details: data.details
-  })
-
   if (index === -1) {
+    debug.log(DebugCategories.TABLE_DATA, 'Expanding row', {
+      id: data.id,
+      mark: data.mark,
+      details: data.details
+    })
     currentExpanded.push(data)
     handleRowExpand(data)
   } else {
+    debug.log(DebugCategories.TABLE_DATA, 'Collapsing row', {
+      id: data.id,
+      mark: data.mark
+    })
     currentExpanded.splice(index, 1)
     handleRowCollapse(data)
   }
@@ -404,6 +463,7 @@ function toggleRow(data: unknown): void {
 // Separate expanded state for child rows
 const childExpandedRows = ref<(TableRow | ElementData)[]>([])
 
+// Update handleExpandedRowsUpdate function
 function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): void {
   // Ensure value is an array and contains valid rows
   if (!Array.isArray(value)) {
@@ -427,39 +487,71 @@ function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): voi
   })
 
   // Check if any of the valid rows are child rows
-  const hasChildRows = validRows.some((row) => row.isChild)
+  const hasChildRows = validRows.some((row) => (row as TableRow).isChild)
+
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows update attempt', {
+    inputRows: value.length,
+    validRows: validRows.length,
+    hasChildRows,
+    rows: validRows.map((row) => {
+      const typedRow = row as TableRow
+      const details = typedRow.details || []
+      return {
+        id: typedRow.id,
+        mark: typedRow.mark,
+        hasDetails: hasDetails(typedRow),
+        detailsCount: details.length,
+        isChild: typedRow.isChild,
+        host: typedRow.host,
+        category: typedRow.category
+      }
+    })
+  })
 
   if (hasChildRows) {
     debug.log(DebugCategories.DATA_TRANSFORM, 'Child expanded rows updated', {
       rowCount: validRows.length,
-      rows: validRows.map((row) => ({
-        id: row.id,
-        mark: row.mark,
-        hasDetails: hasDetails(row),
-        isChild: row.isChild
-      }))
+      rows: validRows.map((row) => {
+        const typedRow = row as TableRow
+        return {
+          id: typedRow.id,
+          mark: typedRow.mark,
+          hasDetails: hasDetails(typedRow),
+          isChild: typedRow.isChild
+        }
+      })
     })
     childExpandedRows.value = validRows
   } else {
     debug.log(DebugCategories.DATA_TRANSFORM, 'Parent expanded rows updated', {
       rowCount: validRows.length,
-      rows: validRows.map((row) => ({
-        id: row.id,
-        mark: row.mark,
-        hasDetails: hasDetails(row),
-        isChild: row.isChild
-      }))
+      rows: validRows.map((row) => {
+        const typedRow = row as TableRow
+        return {
+          id: typedRow.id,
+          mark: typedRow.mark,
+          hasDetails: hasDetails(typedRow),
+          isChild: typedRow.isChild
+        }
+      })
     })
+    // Emit both for compatibility
     emit('update:expandedRows', validRows)
+    emit('update:expanded-rows', validRows)
   }
 }
 
 function handleRowExpand(data: unknown): void {
   if (isTableRowOrElementData(data)) {
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Row expanded', {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Row expand attempt', {
       id: data.id,
       type: data.type,
-      hasDetails: hasDetails(data)
+      hasDetails: hasDetails(data),
+      details: data.details,
+      isChild: data.isChild,
+      mark: data.mark,
+      host: data.host,
+      category: data.category
     })
     emit('row-expand', data)
   }

@@ -157,7 +157,16 @@ export function processDataPipeline({
     parentColumnCount: parentColumns.length,
     childColumnCount: childColumns.length,
     parentCount: tableData.filter((row) => !row.isChild).length,
-    childCount: tableData.filter((row) => row.isChild).length,
+    // Count all elements in details arrays recursively
+    childCount: tableData.reduce((acc, row) => {
+      const countChildren = (r: TableRow): number => {
+        return (
+          (r.details?.length || 0) +
+          (r.details?.reduce((sum, child) => sum + countChildren(child), 0) || 0)
+        )
+      }
+      return acc + countChildren(row)
+    }, 0),
     withDetails: tableData.filter((row) => row.details && row.details.length > 0)
       .length,
     // Add more detailed counts
@@ -168,12 +177,20 @@ export function processDataPipeline({
           acc[row.category] = (acc[row.category] || 0) + 1
           return acc
         }, {} as Record<string, number>),
-      children: tableData
-        .filter((row) => row.isChild)
-        .reduce((acc, row) => {
-          acc[row.category] = (acc[row.category] || 0) + 1
-          return acc
-        }, {} as Record<string, number>),
+      children: tableData.reduce((acc, row) => {
+        // Count children in details arrays
+        const countChildrenByCategory = (r: TableRow) => {
+          if (r.details?.length) {
+            r.details.forEach((child) => {
+              acc[child.category] = (acc[child.category] || 0) + 1
+              // Recursively count grandchildren
+              countChildrenByCategory(child)
+            })
+          }
+        }
+        countChildrenByCategory(row)
+        return acc
+      }, {} as Record<string, number>),
       details: tableData.reduce((acc, row) => {
         if (row.details?.length) {
           acc[row.category] = (acc[row.category] || 0) + row.details.length
@@ -197,18 +214,72 @@ function splitElementsByCategory(
   selectedParent: string[],
   selectedChild: string[]
 ): { parents: ElementData[]; children: ElementData[] } {
-  // If no categories selected, treat all elements as parents
-  if (!selectedParent.length && !selectedChild.length) {
-    return {
-      parents: elements.map((el) => ({ ...el, isChild: false, details: [] })),
-      children: []
+  // Create maps to track potential parents and children
+  const elementsByMark = new Map<string, ElementData>()
+  const elementsByHost = new Map<string, ElementData[]>()
+
+  // First pass: organize elements by mark and host
+  elements.forEach((element) => {
+    const elementCopy = { ...element, details: [] }
+
+    // Track by mark for potential parents
+    if (element.mark) {
+      elementsByMark.set(element.mark, elementCopy)
     }
+
+    // Track by host for potential children
+    if (element.host) {
+      if (!elementsByHost.has(element.host)) {
+        elementsByHost.set(element.host, [])
+      }
+      elementsByHost.get(element.host)!.push(elementCopy)
+    }
+  })
+
+  // If no categories selected, use host relationships to determine parents/children
+  if (!selectedParent.length && !selectedChild.length) {
+    const parents: ElementData[] = []
+    const children: ElementData[] = []
+
+    elements.forEach((element) => {
+      const elementCopy = { ...element, details: [] }
+
+      // If element has a host, it's a child
+      if (element.host) {
+        elementCopy.isChild = true
+        children.push(elementCopy)
+      }
+      // If element has children referencing it by host, it's a parent
+      else if (element.mark && elementsByHost.has(element.mark)) {
+        elementCopy.isChild = false
+        parents.push(elementCopy)
+      }
+      // If element has neither host nor children, treat as parent
+      else {
+        elementCopy.isChild = false
+        parents.push(elementCopy)
+      }
+    })
+
+    debug.log(DebugCategories.CATEGORIES, 'Split elements by host relationships', {
+      totalElements: elements.length,
+      parentCount: parents.length,
+      childCount: children.length,
+      hostRelationships: Array.from(elementsByHost.entries()).map(
+        ([host, children]) => ({
+          host,
+          childCount: children.length
+        })
+      )
+    })
+
+    return { parents, children }
   }
 
+  // If categories are selected, use them to determine parents/children
   const parents: ElementData[] = []
   const children: ElementData[] = []
 
-  // Split elements based on selected categories
   elements.forEach((element) => {
     const elementCopy = { ...element, details: [] }
 
@@ -454,7 +525,7 @@ function convertToTableData(elements: ElementData[]): TableRow[] {
       category: el.category,
       parameters: processedParameters,
       _visible: true,
-      isChild: el.isChild,
+      isChild: el.isChild || false,
       host: el.host,
       details: [] // Initialize details array
     }
@@ -495,7 +566,7 @@ function convertToTableData(elements: ElementData[]): TableRow[] {
           parameters: childParameters,
           _visible: child._visible ?? true,
           _raw: child._raw,
-          isChild: true,
+          isChild: true, // Always set isChild to true for elements in details
           host: child.host,
           details: [] // Initialize details array for potential grandchildren
         }
