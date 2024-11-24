@@ -17,6 +17,7 @@ export interface ColumnDef {
   isCustomParameter?: boolean
   parameterRef?: string
   color?: string
+  expander?: boolean // Whether this column should show expand/collapse controls
 }
 
 export interface ColumnGroup {
@@ -65,6 +66,7 @@ export function isColumnDef(value: unknown): value is ColumnDef {
     (col.source === undefined || typeof col.source === 'string') &&
     (col.fetchedGroup === undefined || typeof col.fetchedGroup === 'string') &&
     (col.currentGroup === undefined || typeof col.currentGroup === 'string') &&
-    (col.isFetched === undefined || typeof col.isFetched === 'boolean')
+    (col.isFetched === undefined || typeof col.isFetched === 'boolean') &&
+    (col.expander === undefined || typeof col.expander === 'boolean')
   )
 }

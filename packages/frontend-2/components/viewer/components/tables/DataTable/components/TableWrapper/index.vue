@@ -3,7 +3,7 @@
     <DataTable
       :key="`table-${data.length}-${parentColumns.length}`"
       :value="data"
-      :model-value="modelValue"
+      :expanded-rows="expandedRows"
       :schedule-data="scheduleData"
       :loading="loading"
       :sort-field="sortField"
@@ -17,13 +17,14 @@
       :rows="10"
       expand-mode="row"
       data-key="id"
-      @update:model-value="$emit('update:modelValue', $event)"
+      expandable
+      @update:expanded-rows="handleExpandedRowsUpdate"
       @column-resize-end="handleColumnResize"
       @column-reorder="handleColumnReorder"
       @sort="handleSort"
       @filter="handleFilter"
-      @row-expand="$emit('row-expand', $event)"
-      @row-collapse="$emit('row-collapse', $event)"
+      @row-expand="(event) => handleRowExpand(event.data)"
+      @row-collapse="(event) => handleRowCollapse(event.data)"
       @error="$emit('error', $event)"
     >
       <template #empty>
@@ -61,13 +62,19 @@
             <DataTable
               :key="`nested-${expandedData.details.length}-${childColumns.length}`"
               :value="expandedData.details"
+              :expanded-rows="childExpandedRows"
               resizable-columns
               reorderable-columns
               striped-rows
               class="nested-table p-datatable-sm"
               data-key="id"
+              expand-mode="row"
+              expandable
+              @update:expanded-rows="handleExpandedRowsUpdate"
               @column-resize-end="handleColumnResize"
               @column-reorder="handleColumnReorder"
+              @row-expand="(event) => handleRowExpand(event.data)"
+              @row-collapse="(event) => handleRowCollapse(event.data)"
             >
               <template #header>
                 <div class="parameter-groups">
@@ -96,6 +103,7 @@
                     :data-field="col.field"
                     :data-source="group.source"
                     :style="getColumnStyle(col)"
+                    :expander="col.expander"
                     sortable
                   >
                     <template #header>
@@ -105,8 +113,28 @@
                       </div>
                     </template>
                     <template #body="{ data }">
-                      <div class="truncate">
-                        {{ getParameterValue(data, col.field) }}
+                      <div class="truncate" :class="{ 'has-expander': col.expander }">
+                        <div
+                          v-if="col.expander && hasDetails(data)"
+                          class="expander-cell"
+                        >
+                          <button
+                            class="p-row-toggler"
+                            :class="{ 'p-row-expanded': isRowExpanded(data) }"
+                            :data-pr-expandable="true"
+                            :aria-expanded="isRowExpanded(data)"
+                            :aria-label="
+                              isRowExpanded(data) ? 'Collapse row' : 'Expand row'
+                            "
+                            @click.prevent="toggleRow(data)"
+                            @keydown.enter="toggleRow(data)"
+                            @keydown.space.prevent="toggleRow(data)"
+                          >
+                            <i class="pi pi-chevron-right" aria-hidden="true" />
+                            <span>{{ getParameterValue(data, col.field) }}</span>
+                          </button>
+                        </div>
+                        <span v-else>{{ getParameterValue(data, col.field) }}</span>
                       </div>
                     </template>
                   </Column>
@@ -127,6 +155,7 @@
             :data-source="group.source"
             :style="getColumnStyle(col)"
             sortable
+            :expander="col.expander"
           >
             <template #header>
               <div class="column-header">
@@ -135,8 +164,23 @@
               </div>
             </template>
             <template #body="{ data }">
-              <div class="truncate">
-                {{ getParameterValue(data, col.field) }}
+              <div class="truncate" :class="{ 'has-expander': col.expander }">
+                <div v-if="col.expander && hasDetails(data)" class="expander-cell">
+                  <button
+                    class="p-row-toggler"
+                    :class="{ 'p-row-expanded': isRowExpanded(data) }"
+                    :data-pr-expandable="true"
+                    :aria-expanded="isRowExpanded(data)"
+                    :aria-label="isRowExpanded(data) ? 'Collapse row' : 'Expand row'"
+                    @click.prevent="toggleRow(data)"
+                    @keydown.enter="toggleRow(data)"
+                    @keydown.space.prevent="toggleRow(data)"
+                  >
+                    <i class="pi pi-chevron-right" aria-hidden="true" />
+                    <span>{{ getParameterValue(data, col.field) }}</span>
+                  </button>
+                </div>
+                <span v-else>{{ getParameterValue(data, col.field) }}</span>
               </div>
             </template>
           </Column>
@@ -147,20 +191,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { computed } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import type {
   DataTableColumnReorderEvent,
   DataTableSortEvent,
-  DataTableFilterMeta
+  DataTableFilterMeta,
+  DataTableExpandedRows
 } from 'primevue/datatable'
 import type { ColumnDef } from '../../composables/columns/types'
+import type {
+  TableRow,
+  ElementData,
+  BaseElement
+} from '~/components/viewer/schedules/types'
 import { useDebug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 interface Props {
   data: unknown[]
-  modelValue?: unknown[]
+  expandedRows?: unknown[]
   scheduleData?: unknown[]
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
@@ -170,43 +220,262 @@ interface Props {
   filters?: DataTableFilterMeta
 }
 
-interface ParameterValueState {
-  currentValue: unknown
-  fetchedValue: unknown
-  previousValue: unknown
-  userValue: unknown
-}
-
-interface SpeckleValue {
-  _: unknown
-}
-
 interface DataWithParameters {
   parameters?: Record<string, unknown>
   [key: string]: unknown
 }
 
+interface ColumnGroup {
+  source: string
+  columns: ColumnDef[]
+  visibleCount: number
+}
+
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
-  modelValue: () => [],
+  expandedRows: () => [],
   scheduleData: () => []
 })
 
+const expandedRowsModel = computed({
+  get: () => props.expandedRows || [],
+  set: (value) => {
+    if (Array.isArray(value)) {
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
+        rowCount: value.length,
+        rows: value.map((row) => ({
+          id: (row as TableRow)?.id,
+          hasDetails: !!(row as TableRow)?.details?.length
+        }))
+      })
+      emit('update:expandedRows', value)
+    }
+  }
+})
+
 const emit = defineEmits<{
-  'update:modelValue': [value: unknown[]]
+  'update:expandedRows': [value: unknown[]]
   'column-resize': [event: { element: HTMLElement }]
   'column-reorder': [event: DataTableColumnReorderEvent]
   sort: [field: string | ((item: unknown) => string), order: number]
   filter: [filters: DataTableFilterMeta]
-  'row-expand': [row: unknown]
-  'row-collapse': [row: unknown]
-  error: [error: Error]
+  'row-expand': [row: TableRow | ElementData]
+  'row-collapse': [row: TableRow | ElementData]
+  'table-updated': []
+  'column-visibility-change': []
+  error: [error: Error | unknown]
 }>()
 
 // Initialize debug
 const debug = useDebug()
 
+// Type guards
+function isDataWithParameters(value: unknown): value is DataWithParameters {
+  return typeof value === 'object' && value !== null
+}
+
+interface BaseElementShape {
+  id: string
+  type: string
+  mark: string
+  category: string
+  _visible: boolean
+  parameters: Record<string, unknown>
+}
+
+function hasRequiredBaseElementProperties(value: unknown): value is BaseElementShape {
+  if (!value || typeof value !== 'object') return false
+
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.type === 'string' &&
+    typeof candidate.mark === 'string' &&
+    typeof candidate.category === 'string' &&
+    typeof candidate._visible === 'boolean' &&
+    typeof candidate.parameters === 'object' &&
+    candidate.parameters !== null
+  )
+}
+
+function isBaseElement(value: unknown): value is BaseElement {
+  return hasRequiredBaseElementProperties(value)
+}
+
+function isTableRowOrElementData(value: unknown): value is TableRow | ElementData {
+  if (!isBaseElement(value)) return false
+
+  // Then check details property
+  if ('details' in value) {
+    return Array.isArray((value as { details?: unknown }).details)
+  }
+
+  // If it's a TableRow, details is optional
+  return true
+}
+
+// Helper function to check if row has details
+function hasDetails(data: unknown): boolean {
+  if (!isTableRowOrElementData(data)) {
+    debug.log(DebugCategories.TABLE_DATA, 'Invalid data type for details check', {
+      data,
+      type: typeof data
+    })
+    return false
+  }
+
+  const hasDetailsArray = Array.isArray((data as TableRow | ElementData).details)
+  const detailsLength = hasDetailsArray
+    ? (data as TableRow | ElementData).details!.length
+    : 0
+
+  debug.log(DebugCategories.TABLE_DATA, 'Details check', {
+    id: (data as TableRow | ElementData).id,
+    mark: (data as TableRow | ElementData).mark,
+    hasDetailsArray,
+    detailsLength,
+    details: (data as TableRow | ElementData).details
+  })
+
+  return hasDetailsArray && detailsLength > 0
+}
+
+// Helper function to check if row is expanded
+function isRowExpanded(data: unknown): boolean {
+  if (!isTableRowOrElementData(data)) {
+    debug.log(DebugCategories.TABLE_DATA, 'Invalid data type for expansion check', {
+      data,
+      type: typeof data
+    })
+    return false
+  }
+
+  const isExpanded =
+    Array.isArray(props.expandedRows) &&
+    props.expandedRows.some((row) => isTableRowOrElementData(row) && row.id === data.id)
+
+  debug.log(DebugCategories.TABLE_DATA, 'Expansion check', {
+    id: (data as TableRow | ElementData).id,
+    mark: (data as TableRow | ElementData).mark,
+    isExpanded,
+    expandedRows: props.expandedRows
+  })
+
+  return isExpanded
+}
+
+// Helper function to toggle row expansion
+function toggleRow(data: unknown): void {
+  if (!isTableRowOrElementData(data)) {
+    debug.log(DebugCategories.TABLE_DATA, 'Invalid data type for toggle', {
+      data,
+      type: typeof data
+    })
+    return
+  }
+
+  const currentExpanded = Array.isArray(expandedRowsModel.value)
+    ? [...expandedRowsModel.value]
+    : []
+  const index = currentExpanded.findIndex(
+    (row) => isTableRowOrElementData(row) && row.id === data.id
+  )
+
+  debug.log(DebugCategories.TABLE_DATA, 'Toggle row', {
+    id: data.id,
+    mark: data.mark,
+    wasExpanded: index !== -1,
+    hasDetails: hasDetails(data),
+    details: data.details
+  })
+
+  if (index === -1) {
+    currentExpanded.push(data)
+    handleRowExpand(data)
+  } else {
+    currentExpanded.splice(index, 1)
+    handleRowCollapse(data)
+  }
+
+  expandedRowsModel.value = currentExpanded
+}
+
 // Event handlers
+// Separate expanded state for child rows
+const childExpandedRows = ref<(TableRow | ElementData)[]>([])
+
+function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): void {
+  // Ensure value is an array and contains valid rows
+  if (!Array.isArray(value)) {
+    debug.warn(DebugCategories.TABLE_DATA, 'Invalid expanded rows value', {
+      value,
+      type: typeof value
+    })
+    return
+  }
+
+  // Filter and type check the rows
+  const validRows = value.filter((row): row is TableRow | ElementData => {
+    const isValid = isTableRowOrElementData(row)
+    if (!isValid) {
+      debug.warn(DebugCategories.TABLE_DATA, 'Invalid row in expanded rows', {
+        row,
+        type: typeof row
+      })
+    }
+    return isValid
+  })
+
+  // Check if any of the valid rows are child rows
+  const hasChildRows = validRows.some((row) => row.isChild)
+
+  if (hasChildRows) {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Child expanded rows updated', {
+      rowCount: validRows.length,
+      rows: validRows.map((row) => ({
+        id: row.id,
+        mark: row.mark,
+        hasDetails: hasDetails(row),
+        isChild: row.isChild
+      }))
+    })
+    childExpandedRows.value = validRows
+  } else {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Parent expanded rows updated', {
+      rowCount: validRows.length,
+      rows: validRows.map((row) => ({
+        id: row.id,
+        mark: row.mark,
+        hasDetails: hasDetails(row),
+        isChild: row.isChild
+      }))
+    })
+    emit('update:expandedRows', validRows)
+  }
+}
+
+function handleRowExpand(data: unknown): void {
+  if (isTableRowOrElementData(data)) {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Row expanded', {
+      id: data.id,
+      type: data.type,
+      hasDetails: hasDetails(data)
+    })
+    emit('row-expand', data)
+  }
+}
+
+function handleRowCollapse(data: unknown): void {
+  if (isTableRowOrElementData(data)) {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Row collapsed', {
+      id: data.id,
+      type: data.type,
+      hasDetails: hasDetails(data)
+    })
+    emit('row-collapse', data)
+  }
+}
+
 function handleColumnResize(event: { element: HTMLElement }): void {
   emit('column-resize', event)
 }
@@ -223,26 +492,6 @@ function handleSort(event: DataTableSortEvent): void {
 
 function handleFilter(event: { filters: DataTableFilterMeta }): void {
   emit('filter', event.filters)
-}
-
-// Type guards
-function isDataWithParameters(value: unknown): value is DataWithParameters {
-  return typeof value === 'object' && value !== null
-}
-
-function isParameterValueState(value: unknown): value is ParameterValueState {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'currentValue' in value &&
-    'fetchedValue' in value &&
-    'previousValue' in value &&
-    'userValue' in value
-  )
-}
-
-function isSpeckleValue(value: unknown): value is SpeckleValue {
-  return typeof value === 'object' && value !== null && '_' in value
 }
 
 // Type guard for unknown parsed JSON
@@ -262,14 +511,21 @@ function extractValue(value: unknown): unknown {
       return value
     }
 
-    // Check for ParameterValueState
-    if (isParameterValueState(parsed)) {
-      return parsed.currentValue
+    // Check for parameter value state
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'currentValue' in parsed &&
+      'fetchedValue' in parsed &&
+      'previousValue' in parsed &&
+      'userValue' in parsed
+    ) {
+      return (parsed as { currentValue: unknown }).currentValue
     }
 
     // Check for Speckle value
-    if (isSpeckleValue(parsed)) {
-      return parsed._
+    if (typeof parsed === 'object' && parsed !== null && '_' in parsed) {
+      return (parsed as { _: unknown })._
     }
 
     return value
@@ -324,7 +580,7 @@ function validColumnsInGroup(columns: ColumnDef[]): ColumnDef[] {
 }
 
 // Group columns by source - only include valid columns
-const groupedParentColumns = computed(() => {
+const groupedParentColumns = computed<ColumnGroup[]>(() => {
   const groups = new Map<string, ColumnDef[]>()
 
   // Only include columns with valid fields
@@ -360,7 +616,7 @@ const groupedParentColumns = computed(() => {
   }))
 })
 
-const groupedChildColumns = computed(() => {
+const groupedChildColumns = computed<ColumnGroup[]>(() => {
   const groups = new Map<string, ColumnDef[]>()
 
   // Only include columns with valid fields
@@ -408,41 +664,12 @@ function getColumnStyle(col: ColumnDef) {
   }
 }
 
-// Watch for data changes
-watch(
-  () => props.data,
-  (newData) => {
-    debug.log(DebugCategories.TABLE_DATA, 'TableWrapper data updated', {
-      length: newData.length,
-      sample: newData[0],
-      parentColumns: props.parentColumns.length,
-      childColumns: props.childColumns.length
-    })
-  },
-  { deep: true, immediate: true }
-)
-
-// Watch for column changes
-watch(
-  [() => props.parentColumns, () => props.childColumns],
-  ([newParentCols, newChildCols]) => {
-    debug.log(DebugCategories.COLUMNS, 'TableWrapper columns updated', {
-      parentColumns: newParentCols.length,
-      childColumns: newChildCols.length,
-      parentVisible: newParentCols.filter((c) => c.visible).length,
-      childVisible: newChildCols.filter((c) => c.visible).length
-    })
-  },
-  { deep: true, immediate: true }
-)
-
-// Add onMounted hook to log initial data
-onMounted(() => {
-  debug.log(DebugCategories.INITIALIZATION, 'Initial data', {
-    data: props.data,
-    parentColumns: props.parentColumns,
-    childColumns: props.childColumns
-  })
+// Export the component
+defineExpose({
+  getColumnStyle,
+  validColumnsInGroup,
+  groupedParentColumns,
+  groupedChildColumns
 })
 </script>
 
@@ -561,5 +788,104 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.has-expander {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+:deep(.p-datatable-tbody > tr > td.p-column-expander) {
+  width: 3rem;
+  text-align: center;
+}
+
+:deep(.p-row-toggler) {
+  width: 2rem;
+  height: 2rem;
+  color: var(--text-color);
+  border: 0 none;
+  background: transparent;
+  border-radius: 50%;
+  transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
+  margin-right: 0.5rem;
+  cursor: pointer;
+}
+
+:deep(.p-row-toggler:hover) {
+  color: var(--text-color);
+  border-color: transparent;
+  background: var(--surface-hover);
+}
+
+:deep(.p-row-toggler:focus) {
+  outline: 0 none;
+  outline-offset: 0;
+  box-shadow: 0 0 0 0.2rem var(--focus-ring);
+}
+
+:deep(.p-row-toggler.p-row-toggler-expanded) {
+  transform: rotate(90deg);
+}
+
+:deep(.p-datatable-tbody > tr > td.p-column-expander .p-row-toggler) {
+  visibility: hidden;
+}
+
+:deep(
+    .p-datatable-tbody
+      > tr
+      > td.p-column-expander
+      .p-row-toggler[data-pr-expandable='true']
+  ) {
+  visibility: visible;
+}
+
+.expander-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.p-row-toggler {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--text-color);
+  border: 0 none;
+  background: transparent;
+  border-radius: 50%;
+  transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+
+.p-row-toggler:hover {
+  color: var(--text-color);
+  border-color: transparent;
+  background: var(--surface-hover);
+}
+
+.p-row-toggler:focus {
+  outline: 0 none;
+  outline-offset: 0;
+  box-shadow: 0 0 0 0.2rem var(--focus-ring);
+}
+
+.p-row-expanded .pi-chevron-right {
+  transform: rotate(90deg);
+}
+
+.pi {
+  font-family: PrimeIcons, sans-serif;
+  font-style: normal;
+}
+
+.pi-chevron-right::before {
+  content: '\e900';
 }
 </style>

@@ -6,15 +6,12 @@ import type {
   ElementsDataReturn,
   ViewerTree
 } from '../types'
+import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { useDebug, DebugCategories } from '../debug/useDebug'
 import { useBIMElements } from './useBIMElements'
 import { processDataPipeline } from '../utils/dataPipeline'
 import { useStore } from '../core/store'
 
-/**
- * Coordinates BIM element data handling between viewer and store.
- * Since we're inside the viewer component, BIM data is already loaded.
- */
 export function useElementsData({
   selectedParentCategories,
   selectedChildCategories
@@ -58,7 +55,9 @@ export function useElementsData({
       }
 
       debug.startState(DebugCategories.DATA_TRANSFORM, 'Processing data', {
-        elementCount: elements.length
+        elementCount: elements.length,
+        selectedParent: selectedParentCategories.value,
+        selectedChild: selectedChildCategories.value
       })
       processingState.value.isProcessingElements = true
 
@@ -69,16 +68,70 @@ export function useElementsData({
         selectedChild: selectedChildCategories.value
       })
 
+      // Helper to preserve column settings
+      const preserveColumnSettings = (
+        newColumns: ColumnDef[],
+        existingColumns: ColumnDef[]
+      ): ColumnDef[] => {
+        return newColumns.map((newCol) => {
+          const existingCol = existingColumns.find((col) => col.field === newCol.field)
+          if (existingCol) {
+            return {
+              ...newCol,
+              visible: existingCol.visible ?? true,
+              order: existingCol.order ?? 0,
+              isFetched: existingCol.isFetched ?? true,
+              isFixed: existingCol.isFixed ?? false,
+              isCustomParameter: existingCol.isCustomParameter ?? false
+            }
+          }
+          return {
+            ...newCol,
+            visible: true,
+            order: 0,
+            isFetched: true,
+            isFixed: false,
+            isCustomParameter: false
+          }
+        })
+      }
+
+      // Get current column settings
+      const currentParentColumns = store.parentVisibleColumns.value || []
+      const currentChildColumns = store.childVisibleColumns.value || []
+
+      // Create available columns (base + custom)
+      const parentAvailableColumns = preserveColumnSettings(
+        result.parentColumns,
+        currentParentColumns
+      )
+      const childAvailableColumns = preserveColumnSettings(
+        result.childColumns,
+        currentChildColumns
+      )
+
+      // Create visible columns (initially same as available)
+      const parentVisibleColumns = parentAvailableColumns.map((col) => ({
+        ...col,
+        visible: true
+      }))
+      const childVisibleColumns = childAvailableColumns.map((col) => ({
+        ...col,
+        visible: true
+      }))
+
       // Update store with processed data
       await store.lifecycle.update({
         scheduleData: result.filteredElements,
         evaluatedData: result.processedElements,
         tableData: result.tableData,
-        parameterColumns: result.parameterColumns,
-        currentTableColumns: result.parameterColumns,
-        mergedTableColumns: result.parameterColumns,
-        currentDetailColumns: result.parameterColumns,
-        mergedDetailColumns: result.parameterColumns,
+        // Update all column-related fields
+        parentBaseColumns: result.parentColumns,
+        parentAvailableColumns,
+        parentVisibleColumns,
+        childBaseColumns: result.childColumns,
+        childAvailableColumns,
+        childVisibleColumns,
         // Preserve table settings
         selectedTableId: store.selectedTableId.value,
         currentTableId: store.currentTableId.value,
@@ -93,10 +146,31 @@ export function useElementsData({
       scheduleDataRef.value = result.filteredElements
       tableDataRef.value = result.tableData
 
+      // Count children correctly by looking at details arrays
+      const totalChildren = result.tableData.reduce(
+        (acc, row) => acc + (row.details?.length || 0),
+        0
+      )
+
       debug.completeState(DebugCategories.DATA_TRANSFORM, 'Data processing complete', {
         filteredCount: result.filteredElements.length,
         processedCount: result.processedElements.length,
-        columnCount: result.parameterColumns.length
+        parentColumnCount: parentAvailableColumns.length,
+        childColumnCount: childAvailableColumns.length,
+        parents: result.tableData.filter((row) => !row.isChild).length,
+        children: totalChildren,
+        childrenByParent: result.tableData
+          .filter((row) => row.details?.length)
+          .map((row) => ({
+            parentMark: row.mark,
+            childCount: row.details?.length || 0,
+            children: row.details?.map((child) => ({
+              mark: child.mark,
+              category: child.category
+            }))
+          })),
+        parentColumns: parentAvailableColumns.map((c) => c.field),
+        childColumns: childAvailableColumns.map((c) => c.field)
       })
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error processing data:', error)
@@ -119,20 +193,28 @@ export function useElementsData({
   )
 
   // Watch for category changes
-  watch([selectedParentCategories, selectedChildCategories], async (_categories) => {
-    if (allElements.value?.length) {
-      await updateData(allElements.value)
-    }
-  })
+  watch(
+    [selectedParentCategories, selectedChildCategories],
+    async ([parentCats, childCats]) => {
+      debug.log(DebugCategories.CATEGORIES, 'Categories changed', {
+        parent: parentCats,
+        child: childCats
+      })
+      if (allElements.value?.length) {
+        await updateData(allElements.value)
+      }
+    },
+    { deep: true }
+  )
 
-  // Initialize data with current categories
-  async function initializeData(): Promise<void> {
+  // Initialize data
+  const initializeData = async (): Promise<void> => {
     try {
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
       processingState.value.isInitializing = true
 
-      // Initialize elements with current child categories
-      await initializeElements(undefined, selectedChildCategories.value)
+      // Initialize elements without any category assumptions
+      await initializeElements()
 
       if (allElements.value?.length) {
         await updateData(allElements.value)
@@ -153,17 +235,17 @@ export function useElementsData({
   }
 
   // Category update handler
-  async function updateCategories(
+  const updateCategories = async (
     parentCategories: string[],
     childCategories: string[]
-  ): Promise<void> {
+  ): Promise<void> => {
     try {
-      debug.startState(DebugCategories.CATEGORY_UPDATES, 'Updating categories')
+      debug.startState(DebugCategories.CATEGORY_UPDATES, 'Updating categories', {
+        parent: parentCategories,
+        child: childCategories
+      })
       processingState.value.isUpdatingCategories = true
       processingState.value.error = null
-
-      // First reinitialize elements with new categories
-      await initializeElements(undefined, childCategories)
 
       if (!allElements.value?.length) {
         debug.warn(
@@ -173,66 +255,9 @@ export function useElementsData({
         return
       }
 
-      // Process data with new categories
-      const result = processDataPipeline({
-        allElements: allElements.value,
-        selectedParent: parentCategories,
-        selectedChild: childCategories
-      })
+      await updateData(allElements.value)
 
-      // Preserve existing column settings
-      const mergedColumns = result.parameterColumns.map((newCol) => {
-        const existingCol = store.mergedTableColumns.value.find(
-          (col) => col.field === newCol.field
-        )
-        if (existingCol) {
-          return {
-            ...newCol,
-            visible: existingCol.visible,
-            order: existingCol.order,
-            isFetched: existingCol.isFetched,
-            isFixed: existingCol.isFixed,
-            isCustomParameter: existingCol.isCustomParameter
-          }
-        }
-        return newCol
-      })
-
-      // Update store with processed data in one batch while preserving settings
-      await store.lifecycle.update({
-        selectedParentCategories: parentCategories,
-        selectedChildCategories: childCategories,
-        scheduleData: result.filteredElements,
-        evaluatedData: result.processedElements,
-        tableData: result.tableData,
-        parameterColumns: mergedColumns,
-        // Preserve existing column configurations
-        currentTableColumns: store.currentTableColumns.value,
-        currentDetailColumns: store.currentDetailColumns.value,
-        mergedTableColumns: store.mergedTableColumns.value,
-        mergedDetailColumns: store.mergedDetailColumns.value,
-        // Preserve table settings
-        selectedTableId: store.selectedTableId.value,
-        currentTableId: store.currentTableId.value,
-        tableName: store.tableName.value,
-        tableKey: store.tableKey.value,
-        tablesArray: store.tablesArray.value
-      })
-
-      // Update local refs
-      filteredElementsRef.value = result.filteredElements
-      scheduleDataRef.value = result.filteredElements
-      tableDataRef.value = result.tableData
-
-      debug.completeState(
-        DebugCategories.CATEGORY_UPDATES,
-        'Category update complete',
-        {
-          parentCategories,
-          childCategories,
-          elementCount: result.filteredElements.length
-        }
-      )
+      debug.completeState(DebugCategories.CATEGORY_UPDATES, 'Category update complete')
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error updating categories:', error)
       processingState.value.error =
@@ -243,6 +268,7 @@ export function useElementsData({
     }
   }
 
+  // Return object with corrected child element computations
   return {
     scheduleData: scheduleDataRef,
     tableData: tableDataRef,
@@ -262,18 +288,61 @@ export function useElementsData({
     rawTreeNodes,
     rawElements: allElements,
     parentElements: computed(() =>
-      filteredElementsRef.value.filter((el) => !el.isChild)
-    ),
-    childElements: computed(() => filteredElementsRef.value.filter((el) => el.isChild)),
-    matchedElements: computed(() =>
-      filteredElementsRef.value.filter(
-        (el) => el.isChild && el.host && el.host !== 'Without Host'
-      )
-    ),
-    orphanedElements: computed(() =>
-      filteredElementsRef.value.filter(
-        (el) => el.isChild && (!el.host || el.host === 'Without Host')
-      )
-    )
+      tableDataRef.value
+        .filter((row) => !row.isChild)
+        .map((row) => ({
+          ...row,
+          details: row.details || [] // Ensure details is always an array
+        }))
+    ) as Ref<ElementData[]>,
+    // Get child elements from details arrays
+    childElements: computed(() => {
+      const children: ElementData[] = []
+      tableDataRef.value.forEach((row) => {
+        if (row.details?.length) {
+          children.push(
+            ...row.details.map((child) => ({
+              ...child,
+              details: child.details || [] // Ensure details is always an array
+            }))
+          )
+        }
+      })
+      return children
+    }) as Ref<ElementData[]>,
+    // Get matched elements from details arrays with valid hosts
+    matchedElements: computed(() => {
+      const matched: ElementData[] = []
+      tableDataRef.value.forEach((row) => {
+        if (row.details?.length) {
+          matched.push(
+            ...row.details
+              .filter((child) => child.host && child.host !== 'Without Host')
+              .map((child) => ({
+                ...child,
+                details: child.details || [] // Ensure details is always an array
+              }))
+          )
+        }
+      })
+      return matched
+    }) as Ref<ElementData[]>,
+    // Get orphaned elements from details arrays with invalid hosts
+    orphanedElements: computed(() => {
+      const orphaned: ElementData[] = []
+      tableDataRef.value.forEach((row) => {
+        if (row.details?.length) {
+          orphaned.push(
+            ...row.details
+              .filter((child) => !child.host || child.host === 'Without Host')
+              .map((child) => ({
+                ...child,
+                details: child.details || [] // Ensure details is always an array
+              }))
+          )
+        }
+      })
+      return orphaned
+    }) as Ref<ElementData[]>
   }
 }

@@ -27,8 +27,8 @@
     <TableWrapper
       v-if="isInitialized"
       :key="`${tableKey}-${data.length}-${localParentColumns.length}`"
-      v-model="expandedRows"
       :data="data"
+      :expanded-rows="expandedRows"
       :schedule-data="scheduleData"
       :parent-columns="localParentColumns"
       :child-columns="localChildColumns"
@@ -36,26 +36,33 @@
       :sort-field="sortField"
       :sort-order="sortOrder"
       :filters="filters"
+      @update:expanded-rows="handleExpandedRowsUpdate"
       @column-resize="handleColumnResize"
       @column-reorder="handleColumnReorder"
       @sort="handleSort"
       @filter="handleFilter"
       @row-expand="handleRowExpand"
       @row-collapse="handleRowCollapse"
+      @table-updated="$emit('table-updated')"
+      @column-visibility-change="$emit('column-visibility-change')"
       @error="handleError"
     >
       <template #empty>
-        <div class="p-4 text-center text-gray-500">
-          {{ loading || !isInitialized ? 'Loading data...' : 'No data available' }}
-        </div>
+        <slot name="empty">
+          <div class="p-4 text-center text-gray-500">No data available</div>
+        </slot>
       </template>
 
       <template #loading>
-        <div class="p-4 text-center text-gray-500">Loading data...</div>
+        <slot name="loading">
+          <div class="p-4 text-center text-gray-500">Loading data...</div>
+        </slot>
       </template>
 
       <template #error>
-        <div class="p-4 text-center text-red-500">{{ errorMessage }}</div>
+        <slot name="error">
+          <div class="p-4 text-center text-red-500">{{ errorMessage }}</div>
+        </slot>
       </template>
     </TableWrapper>
 
@@ -82,7 +89,8 @@ import type { TableRow, ElementData } from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import type {
   DataTableColumnReorderEvent,
-  DataTableFilterMeta
+  DataTableFilterMeta,
+  DataTableExpandedRows
 } from 'primevue/datatable'
 
 interface Props {
@@ -99,11 +107,29 @@ interface Props {
 }
 
 interface TableState {
-  columns: ColumnDef[]
+  columns: ColumnDef[] // Parent columns
+  detailColumns: ColumnDef[] // Child columns
   expandedRows: (TableRow | ElementData)[]
   sortField?: string
   sortOrder?: number
   filters?: DataTableFilterMeta
+}
+
+interface TableSettings {
+  namedTables: Record<
+    string,
+    {
+      id: string
+      name: string
+      parentColumns: ColumnDef[]
+      childColumns: ColumnDef[]
+      categoryFilters: {
+        selectedParentCategories: string[]
+        selectedChildCategories: string[]
+      }
+      lastUpdateTimestamp: number
+    }
+  >
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -119,12 +145,16 @@ const emit = defineEmits<{
     updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
   ]
   'column-reorder': [event: DataTableColumnReorderEvent]
+  'row-expand': [row: TableRow | ElementData]
+  'row-collapse': [row: TableRow | ElementData]
+  'table-updated': []
+  'column-visibility-change': []
   sort: [field: string, order: number]
   filter: [filters: DataTableFilterMeta]
   error: [error: Error]
 }>()
 
-// State Management
+// Initialize settings
 const { settings, saveSettings } = useUserSettings()
 
 // UI State
@@ -134,7 +164,22 @@ const errorMessage = ref('')
 const isInitialized = ref(false)
 
 // Table State
-const expandedRows = ref<(TableRow | ElementData)[]>([])
+const expandedRows = computed({
+  get: () => props.initialState?.expandedRows || [],
+  set: (value) => {
+    if (Array.isArray(value)) {
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
+        rowCount: value.length,
+        rows: value.map((row) => ({
+          id: (row as TableRow).id,
+          hasDetails: !!(row as TableRow).details?.length
+        }))
+      })
+      emit('update:expandedRows', value as (TableRow | ElementData)[])
+    }
+  }
+})
+
 const sortField = ref<string>('')
 const sortOrder = ref<number>(1)
 const filters = ref<DataTableFilterMeta>({})
@@ -157,6 +202,39 @@ function handleError(error: Error | unknown): void {
   emit('error', err)
 }
 
+// Event handlers
+function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): void {
+  if (Array.isArray(value)) {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
+      rowCount: value.length,
+      rows: value.map((row) => ({
+        id: (row as TableRow).id,
+        hasDetails: !!(row as TableRow).details?.length
+      }))
+    })
+    expandedRows.value = value as (TableRow | ElementData)[]
+    emit('update:expandedRows', expandedRows.value)
+  }
+}
+
+function handleRowExpand(row: TableRow | ElementData): void {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Row expanded', {
+    id: row.id,
+    type: row.type,
+    hasDetails: 'details' in row && Array.isArray(row.details)
+  })
+  emit('row-expand', row)
+}
+
+function handleRowCollapse(row: TableRow | ElementData): void {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Row collapsed', {
+    id: row.id,
+    type: row.type,
+    hasDetails: 'details' in row && Array.isArray(row.details)
+  })
+  emit('row-collapse', row)
+}
+
 // Helper function to ensure column properties
 function ensureColumnProperties(column: ColumnDef): ColumnDef {
   return {
@@ -170,15 +248,20 @@ function ensureColumnProperties(column: ColumnDef): ColumnDef {
   }
 }
 
-// State Management Functions
 async function initializeState(): Promise<void> {
   try {
     if (props.initialState) {
-      // Initialize with proper defaults for each column
-      const initialColumns = props.initialState.columns.map((col) =>
+      // Initialize parent columns with proper defaults
+      const initialParentColumns = props.initialState.columns.map((col) =>
         ensureColumnProperties(col)
       )
-      localParentColumns.value = safeJSONClone(sortColumnsByOrder(initialColumns))
+      localParentColumns.value = safeJSONClone(sortColumnsByOrder(initialParentColumns))
+
+      // Initialize child columns with proper defaults
+      const initialChildColumns = (props.initialState.detailColumns || []).map((col) =>
+        ensureColumnProperties(col)
+      )
+      localChildColumns.value = safeJSONClone(sortColumnsByOrder(initialChildColumns))
 
       // Transform expanded rows
       expandedRows.value = validateTableRows(props.initialState.expandedRows)
@@ -192,8 +275,9 @@ async function initializeState(): Promise<void> {
         props.columns.map((col) => ensureColumnProperties(col)),
         (cols) => (localParentColumns.value = cols)
       )
-      localChildColumns.value = safeJSONClone(
-        props.detailColumns.map((col) => ensureColumnProperties(col))
+      updateColumns(
+        props.detailColumns.map((col) => ensureColumnProperties(col)),
+        (cols) => (localChildColumns.value = cols)
       )
     }
 
@@ -243,7 +327,7 @@ function handleColumnsUpdate(updates: {
 async function handleApply(): Promise<void> {
   try {
     isSaving.value = true
-    const currentSettings = settings.value || { namedTables: {} }
+    const currentSettings = (settings.value || { namedTables: {} }) as TableSettings
     const existingTable = currentSettings.namedTables[props.tableId]
 
     // Prepare the updated columns with proper order and defaults
@@ -258,7 +342,7 @@ async function handleApply(): Promise<void> {
     }))
 
     // Create updated settings preserving all existing data
-    const updatedSettings = {
+    const updatedSettings: TableSettings = {
       ...currentSettings,
       namedTables: {
         ...currentSettings.namedTables,
@@ -390,10 +474,10 @@ async function handleColumnReorder(event: DataTableColumnReorderEvent): Promise<
     }
 
     // Save changes using the same method as handleApply
-    const currentSettings = settings.value || { namedTables: {} }
+    const currentSettings = (settings.value || { namedTables: {} }) as TableSettings
     const existingTable = currentSettings.namedTables[props.tableId]
 
-    const updatedSettings = {
+    const updatedSettings: TableSettings = {
       ...currentSettings,
       namedTables: {
         ...currentSettings.namedTables,
@@ -422,34 +506,6 @@ async function handleColumnReorder(event: DataTableColumnReorderEvent): Promise<
     handleError(error)
   } finally {
     isSaving.value = false
-  }
-}
-
-// Row Management Functions
-function handleRowExpand(row: unknown): void {
-  if (!row || typeof row !== 'object') {
-    handleError(new Error('Invalid row data'))
-    return
-  }
-
-  const rows = expandedRows.value
-  if (!rows.includes(row as TableRow | ElementData)) {
-    rows.push(row as TableRow | ElementData)
-    emit('update:expandedRows', rows)
-  }
-}
-
-function handleRowCollapse(row: unknown): void {
-  if (!row || typeof row !== 'object') {
-    handleError(new Error('Invalid row data'))
-    return
-  }
-
-  const rows = expandedRows.value
-  const index = rows.indexOf(row as TableRow | ElementData)
-  if (index > -1) {
-    rows.splice(index, 1)
-    emit('update:expandedRows', rows)
   }
 }
 

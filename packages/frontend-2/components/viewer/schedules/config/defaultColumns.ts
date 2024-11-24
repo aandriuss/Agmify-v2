@@ -1,7 +1,42 @@
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { NamedTableConfig } from '~/composables/useUserSettings'
 
+// Common columns that should appear in both parent and child tables
+const commonColumns: ColumnDef[] = [
+  {
+    field: 'mark',
+    header: 'Mark',
+    type: 'string',
+    order: 0,
+    visible: true,
+    removable: false, // Mark column should not be removable since it's used for identification
+    isFixed: true,
+    description: 'Element mark identifier',
+    source: 'Parameters',
+    isFetched: true,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
+  },
+  {
+    field: 'category',
+    header: 'Category',
+    type: 'string',
+    order: 1,
+    visible: true,
+    removable: true,
+    isFixed: false,
+    description: 'Element category',
+    source: 'Parameters',
+    isFetched: true,
+    isCustomParameter: false,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
+  }
+]
+
 export const defaultColumns: ColumnDef[] = [
+  ...commonColumns,
   {
     field: 'width',
     header: 'Width',
@@ -69,41 +104,12 @@ export const defaultColumns: ColumnDef[] = [
 ]
 
 export const defaultDetailColumns: ColumnDef[] = [
-  {
-    field: 'mark',
-    header: 'Mark',
-    type: 'string',
-    order: 0,
-    visible: true,
-    removable: true,
-    isFixed: false,
-    description: 'Element mark identifier',
-    source: 'Parameters',
-    isFetched: true,
-    isCustomParameter: false,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
-  },
-  {
-    field: 'category',
-    header: 'Category',
-    type: 'string',
-    order: 1,
-    visible: true,
-    removable: true,
-    isFixed: false,
-    description: 'Element category',
-    source: 'Parameters',
-    isFetched: true,
-    isCustomParameter: false,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
-  },
+  ...commonColumns,
   {
     field: 'width',
     header: 'Width',
     type: 'string',
-    order: 1,
+    order: 3,
     visible: true,
     removable: true,
     isFixed: false,

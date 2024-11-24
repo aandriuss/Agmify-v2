@@ -20,26 +20,32 @@ const initialState: StoreState = {
   evaluatedData: [],
   tableData: [],
   customParameters: [],
-  parameterColumns: [],
-  parentParameterColumns: [],
-  childParameterColumns: [],
+  // Parent table columns
+  parentBaseColumns: [], // Base columns from PostgreSQL
+  parentAvailableColumns: [], // All available columns (including custom)
+  parentVisibleColumns: [], // Currently visible columns
+  // Child table columns
+  childBaseColumns: [], // Base columns from PostgreSQL
+  childAvailableColumns: [], // All available columns (including custom)
+  childVisibleColumns: [], // Currently visible columns
+  // Parameters
   mergedParentParameters: [],
   mergedChildParameters: [],
   processedParameters: {},
-  currentTableColumns: [],
-  currentDetailColumns: [],
-  mergedTableColumns: [],
-  mergedDetailColumns: [],
   parameterDefinitions: {},
+  // Headers
   availableHeaders: { parent: [], child: [] },
+  // Categories
   selectedCategories: new Set(),
   selectedParentCategories: [],
   selectedChildCategories: [],
+  // Table info
   tablesArray: [],
   tableName: '',
   selectedTableId: '',
   currentTableId: '',
   tableKey: '',
+  // State
   initialized: false,
   loading: false,
   error: null
@@ -120,18 +126,22 @@ export function createStore(): Store {
     evaluatedData: computed(() => internalState.value.evaluatedData),
     tableData: computed(() => internalState.value.tableData),
     customParameters: computed(() => internalState.value.customParameters),
-    parameterColumns: computed(() => internalState.value.parameterColumns),
-    parentParameterColumns: computed(() => internalState.value.parentParameterColumns),
-    childParameterColumns: computed(() => internalState.value.childParameterColumns),
+    // Parent table columns
+    parentBaseColumns: computed(() => internalState.value.parentBaseColumns),
+    parentAvailableColumns: computed(() => internalState.value.parentAvailableColumns),
+    parentVisibleColumns: computed(() => internalState.value.parentVisibleColumns),
+    // Child table columns
+    childBaseColumns: computed(() => internalState.value.childBaseColumns),
+    childAvailableColumns: computed(() => internalState.value.childAvailableColumns),
+    childVisibleColumns: computed(() => internalState.value.childVisibleColumns),
+    // Parameters
     mergedParentParameters: computed(() => internalState.value.mergedParentParameters),
     mergedChildParameters: computed(() => internalState.value.mergedChildParameters),
     processedParameters: computed(() => internalState.value.processedParameters),
-    currentTableColumns: computed(() => internalState.value.currentTableColumns),
-    currentDetailColumns: computed(() => internalState.value.currentDetailColumns),
-    mergedTableColumns: computed(() => internalState.value.mergedTableColumns),
-    mergedDetailColumns: computed(() => internalState.value.mergedDetailColumns),
     parameterDefinitions: computed(() => internalState.value.parameterDefinitions),
+    // Headers
     availableHeaders: computed(() => internalState.value.availableHeaders),
+    // Categories
     selectedCategories: computed(() => internalState.value.selectedCategories),
     selectedParentCategories: computed(
       () => internalState.value.selectedParentCategories
@@ -139,11 +149,13 @@ export function createStore(): Store {
     selectedChildCategories: computed(
       () => internalState.value.selectedChildCategories
     ),
+    // Table info
     tablesArray: computed(() => internalState.value.tablesArray),
     tableName: computed(() => internalState.value.tableName),
     selectedTableId: computed(() => internalState.value.selectedTableId),
     currentTableId: computed(() => internalState.value.currentTableId),
     tableKey: computed(() => internalState.value.tableKey),
+    // State
     initialized: computed(() => internalState.value.initialized),
     loading: computed(() => internalState.value.loading),
     error: computed(() => internalState.value.error),
@@ -156,8 +168,6 @@ export function createStore(): Store {
     setTableData: (data: TableRow[]) => lifecycle.update({ tableData: data }),
     setCustomParameters: (params: CustomParameter[]) =>
       lifecycle.update({ customParameters: params }),
-    setParameterColumns: (columns: ColumnDef[]) =>
-      lifecycle.update({ parameterColumns: columns }),
     setAvailableHeaders: (headers: {
       parent: ProcessedHeader[]
       child: ProcessedHeader[]
@@ -172,11 +182,24 @@ export function createStore(): Store {
       lifecycle.update({ tablesArray: tables }),
     setTableInfo: (info: { selectedTableId?: string; tableName?: string }) =>
       lifecycle.update(info),
-    setMergedColumns: (parentColumns: ColumnDef[], childColumns: ColumnDef[]) =>
-      lifecycle.update({
-        mergedTableColumns: parentColumns,
-        mergedDetailColumns: childColumns
-      }),
+    setColumns: (
+      parentColumns: ColumnDef[],
+      childColumns: ColumnDef[],
+      type: 'base' | 'available' | 'visible'
+    ) => {
+      const updates: Partial<StoreState> = {}
+      if (type === 'base') {
+        updates.parentBaseColumns = parentColumns
+        updates.childBaseColumns = childColumns
+      } else if (type === 'available') {
+        updates.parentAvailableColumns = parentColumns
+        updates.childAvailableColumns = childColumns
+      } else {
+        updates.parentVisibleColumns = parentColumns
+        updates.childVisibleColumns = childColumns
+      }
+      return lifecycle.update(updates)
+    },
     setInitialized: (value: boolean) => lifecycle.update({ initialized: value }),
     setLoading: (value: boolean) => lifecycle.update({ loading: value }),
     setError: (error: Error | null) => lifecycle.update({ error })

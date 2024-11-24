@@ -65,8 +65,12 @@
               :current-table-id="store.currentTableId.value || ''"
               :table-key="store.tableKey.value || '0'"
               :loading-error="error"
-              :merged-table-columns="store.mergedTableColumns.value || []"
-              :merged-detail-columns="store.mergedDetailColumns.value || []"
+              :parent-base-columns="store.parentBaseColumns.value || []"
+              :parent-available-columns="store.parentAvailableColumns.value || []"
+              :parent-visible-columns="store.parentVisibleColumns.value || []"
+              :child-base-columns="store.childBaseColumns.value || []"
+              :child-available-columns="store.childAvailableColumns.value || []"
+              :child-visible-columns="store.childVisibleColumns.value || []"
               :available-parent-parameters="availableParentParameters"
               :available-child-parameters="availableChildParameters"
               :schedule-data="store.scheduleData.value || []"
@@ -103,8 +107,8 @@
             :schedule-data="store.scheduleData.value || []"
             :evaluated-data="store.evaluatedData.value || []"
             :custom-parameters="store.customParameters.value || []"
-            :merged-table-columns="store.mergedTableColumns.value || []"
-            :merged-detail-columns="store.mergedDetailColumns.value || []"
+            :merged-table-columns="store.parentAvailableColumns.value || []"
+            :merged-detail-columns="store.childAvailableColumns.value || []"
             :selected-parent-categories="selectedParentCategories"
             :selected-child-categories="selectedChildCategories"
             :is-initialized="isInitialized"
@@ -131,9 +135,9 @@
           <ScheduleColumnManagement
             v-if="!isLoading"
             ref="columnComponent"
-            :current-table-columns="store.currentTableColumns.value || []"
-            :current-detail-columns="store.currentDetailColumns.value || []"
-            :parameter-columns="store.parameterColumns.value || []"
+            :current-table-columns="store.parentVisibleColumns.value || []"
+            :current-detail-columns="store.childVisibleColumns.value || []"
+            :parameter-columns="store.parentBaseColumns.value || []"
             :is-initialized="isInitialized"
             @update:merged-table-columns="handleMergedTableColumnsUpdate"
             @update:merged-detail-columns="handleMergedDetailColumnsUpdate"
@@ -157,8 +161,8 @@
             :table-data="store.tableData.value || []"
             :parent-elements="parentElements"
             :child-elements="childElements"
-            :parent-parameter-columns="store.mergedTableColumns.value || []"
-            :child-parameter-columns="store.mergedDetailColumns.value || []"
+            :parent-parameter-columns="store.parentAvailableColumns.value || []"
+            :child-parameter-columns="store.childAvailableColumns.value || []"
             :available-parent-headers="availableParentHeaders"
             :available-child-headers="availableChildHeaders"
             :available-parent-parameters="availableParentParameters"
@@ -187,7 +191,8 @@ import type {
   ScheduleDataManagementExposed,
   ScheduleParameterHandlingExposed,
   ScheduleColumnManagementExposed,
-  ElementData
+  ElementData,
+  TableRow
 } from './types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
@@ -208,8 +213,8 @@ const emit = defineEmits<{
     updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
   ]
   'column-visibility-change': []
-  'row-expand': [row: unknown]
-  'row-collapse': [row: unknown]
+  'row-expand': [row: TableRow | ElementData]
+  'row-collapse': [row: TableRow | ElementData]
   error: [err: Error | unknown]
 }>()
 
@@ -453,7 +458,7 @@ async function handleBothColumnsUpdate(updates: {
   childColumns: ColumnDef[]
 }) {
   try {
-    await store.setMergedColumns(updates.parentColumns, updates.childColumns)
+    await store.setColumns(updates.parentColumns, updates.childColumns, 'available')
   } catch (err) {
     handleError(err)
   }
@@ -492,11 +497,23 @@ onBeforeUnmount(() => {
   elementsData.stopWorldTreeWatch()
 })
 
-function handleRowExpand(row: unknown) {
+function handleRowExpand(row: TableRow | ElementData) {
+  debug.log(DebugCategories.TABLE_DATA, 'Row expanded', {
+    id: row.id,
+    type: row.type,
+    isChild: row.isChild,
+    hasDetails: 'details' in row && Array.isArray(row.details)
+  })
   emit('row-expand', row)
 }
 
-function handleRowCollapse(row: unknown) {
+function handleRowCollapse(row: TableRow | ElementData) {
+  debug.log(DebugCategories.TABLE_DATA, 'Row collapsed', {
+    id: row.id,
+    type: row.type,
+    isChild: row.isChild,
+    hasDetails: 'details' in row && Array.isArray(row.details)
+  })
   emit('row-collapse', row)
 }
 

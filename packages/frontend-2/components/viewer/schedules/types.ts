@@ -80,7 +80,7 @@ export interface ElementsDataReturn {
 }
 
 // Base interface for both ElementData and TableRow
-interface BaseElement {
+export interface BaseElement {
   id: string
   type: string
   mark: string
@@ -200,29 +200,35 @@ export interface StoreState {
   evaluatedData: ElementData[]
   tableData: TableRow[]
   customParameters: CustomParameter[]
-  parameterColumns: ColumnDef[]
-  parentParameterColumns: ColumnDef[]
-  childParameterColumns: ColumnDef[]
+  // Parent table columns
+  parentBaseColumns: ColumnDef[] // Base columns from PostgreSQL
+  parentAvailableColumns: ColumnDef[] // All available columns (including custom)
+  parentVisibleColumns: ColumnDef[] // Currently visible columns
+  // Child table columns
+  childBaseColumns: ColumnDef[] // Base columns from PostgreSQL
+  childAvailableColumns: ColumnDef[] // All available columns (including custom)
+  childVisibleColumns: ColumnDef[] // Currently visible columns
+  // Parameters
   mergedParentParameters: CustomParameter[]
   mergedChildParameters: CustomParameter[]
   processedParameters: Record<string, ProcessedHeader>
-  currentTableColumns: ColumnDef[]
-  currentDetailColumns: ColumnDef[]
-  mergedTableColumns: ColumnDef[]
-  mergedDetailColumns: ColumnDef[]
   parameterDefinitions: Record<string, ProcessedHeader>
+  // Headers
   availableHeaders: {
     parent: ProcessedHeader[]
     child: ProcessedHeader[]
   }
+  // Categories
   selectedCategories: Set<string>
   selectedParentCategories: string[]
   selectedChildCategories: string[]
+  // Table info
   tablesArray: { id: string; name: string }[]
   tableName: string
   selectedTableId: string
   currentTableId: string
   tableKey: string
+  // State
   initialized: boolean
   loading: boolean
   error: Error | null
@@ -236,29 +242,35 @@ export interface Store {
   evaluatedData: ComputedRef<ElementData[]>
   tableData: ComputedRef<TableRow[]>
   customParameters: ComputedRef<CustomParameter[]>
-  parameterColumns: ComputedRef<ColumnDef[]>
-  parentParameterColumns: ComputedRef<ColumnDef[]>
-  childParameterColumns: ComputedRef<ColumnDef[]>
+  // Parent table columns
+  parentBaseColumns: ComputedRef<ColumnDef[]>
+  parentAvailableColumns: ComputedRef<ColumnDef[]>
+  parentVisibleColumns: ComputedRef<ColumnDef[]>
+  // Child table columns
+  childBaseColumns: ComputedRef<ColumnDef[]>
+  childAvailableColumns: ComputedRef<ColumnDef[]>
+  childVisibleColumns: ComputedRef<ColumnDef[]>
+  // Parameters
   mergedParentParameters: ComputedRef<CustomParameter[]>
   mergedChildParameters: ComputedRef<CustomParameter[]>
   processedParameters: ComputedRef<Record<string, ProcessedHeader>>
-  currentTableColumns: ComputedRef<ColumnDef[]>
-  currentDetailColumns: ComputedRef<ColumnDef[]>
-  mergedTableColumns: ComputedRef<ColumnDef[]>
-  mergedDetailColumns: ComputedRef<ColumnDef[]>
   parameterDefinitions: ComputedRef<Record<string, ProcessedHeader>>
+  // Headers
   availableHeaders: ComputedRef<{
     parent: ProcessedHeader[]
     child: ProcessedHeader[]
   }>
+  // Categories
   selectedCategories: ComputedRef<Set<string>>
   selectedParentCategories: ComputedRef<string[]>
   selectedChildCategories: ComputedRef<string[]>
+  // Table info
   tablesArray: ComputedRef<{ id: string; name: string }[]>
   tableName: ComputedRef<string>
   selectedTableId: ComputedRef<string>
   currentTableId: ComputedRef<string>
   tableKey: ComputedRef<string>
+  // State
   initialized: ComputedRef<boolean>
   loading: ComputedRef<boolean>
   error: ComputedRef<Error | null>
@@ -269,7 +281,6 @@ export interface Store {
   setEvaluatedData: (data: ElementData[]) => void
   setTableData: (data: TableRow[]) => void
   setCustomParameters: (params: CustomParameter[]) => void
-  setParameterColumns: (columns: ColumnDef[]) => void
   setAvailableHeaders: (headers: {
     parent: ProcessedHeader[]
     child: ProcessedHeader[]
@@ -279,7 +290,11 @@ export interface Store {
   setChildCategories: (categories: string[]) => void
   setTablesArray: (tables: { id: string; name: string }[]) => void
   setTableInfo: (info: { selectedTableId?: string; tableName?: string }) => void
-  setMergedColumns: (parentColumns: ColumnDef[], childColumns: ColumnDef[]) => void
+  setColumns: (
+    parentColumns: ColumnDef[],
+    childColumns: ColumnDef[],
+    type: 'base' | 'available' | 'visible'
+  ) => void
   setInitialized: (value: boolean) => void
   setLoading: (value: boolean) => void
   setError: (error: Error | null) => void

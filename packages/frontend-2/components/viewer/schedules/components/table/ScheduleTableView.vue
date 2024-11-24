@@ -1,21 +1,5 @@
 <template>
   <div>
-    <!-- Debug Panel -->
-    <DebugPanel
-      v-if="showDebug"
-      :schedule-data="props.scheduleData"
-      :evaluated-data="props.evaluatedData"
-      :table-data="props.tableData"
-      :parent-elements="parentElements"
-      :child-elements="childElements"
-      :parent-parameter-columns="props.mergedTableColumns"
-      :child-parameter-columns="props.mergedDetailColumns"
-      :available-parent-headers="availableParentHeaders"
-      :available-child-headers="availableChildHeaders"
-      :available-parent-parameters="props.availableParentParameters"
-      :available-child-parameters="props.availableChildParameters"
-    />
-
     <!-- Loading State -->
     <ScheduleLoadingState
       v-if="props.isLoading && !hasAnyData"
@@ -37,94 +21,38 @@
     <!-- Table -->
     <DataTable
       v-else-if="hasAnyData"
-      :key="`${props.tableKey}-${props.evaluatedData.length}-${mergedColumns.length}`"
+      :key="`${props.tableKey}-${props.tableData.length}-${parentVisibleColumns.length}`"
       :table-id="props.currentTableId"
       :table-name="props.tableName"
-      :data="props.evaluatedData"
-      :value="props.evaluatedData"
-      :schedule-data="props.evaluatedData"
-      :columns="mergedColumns"
-      :detail-columns="mergedDetailColumns"
+      :data="props.tableData"
+      :schedule-data="props.scheduleData"
+      :columns="parentVisibleColumns"
+      :detail-columns="childVisibleColumns"
       :available-parent-parameters="props.availableParentParameters"
       :available-child-parameters="props.availableChildParameters"
       :loading="props.isLoadingAdditionalData"
+      :initial-state="{
+        columns: parentVisibleColumns,
+        detailColumns: childVisibleColumns,
+        expandedRows: expandedRows,
+        sortField: 'mark',
+        sortOrder: 1,
+        filters: {}
+      }"
       @update:both-columns="handleBothColumnsUpdate"
-      @table-updated="handleTableUpdate"
-      @column-visibility-change="handleColumnVisibilityChange"
+      @update:expanded-rows="handleExpandedRowsUpdate"
+      @row-expand="handleRowExpand"
+      @row-collapse="handleRowCollapse"
+      @table-updated="$emit('table-updated')"
+      @column-visibility-change="$emit('column-visibility-change')"
+      @error="$emit('error', $event)"
     />
 
     <!-- Empty State -->
-    <div v-else class="p-4">
-      <div class="text-center">
-        <div class="text-lg font-semibold mb-2">Schedule Status</div>
-        <div class="mt-4 text-left inline-block">
-          <div class="grid grid-cols-2 gap-4">
-            <!-- Data Status -->
-            <div class="bg-gray-50 p-4 rounded">
-              <h3 class="font-medium mb-2">Data</h3>
-              <div class="space-y-2">
-                <div>Raw Elements: {{ props.scheduleData.length }}</div>
-                <div>Evaluated Elements: {{ props.evaluatedData.length }}</div>
-                <div>
-                  Visible Elements:
-                  {{
-                    props.evaluatedData.filter((row) => row._visible !== false).length
-                  }}
-                </div>
-              </div>
-            </div>
-
-            <!-- Column Status -->
-            <div class="bg-gray-50 p-4 rounded">
-              <h3 class="font-medium mb-2">Columns</h3>
-              <div class="space-y-2">
-                <div>
-                  Active Table (Parent) Columns: {{ props.mergedTableColumns.length }}
-                </div>
-                <div>
-                  Active Detail (Child) Columns: {{ props.mergedDetailColumns.length }}
-                </div>
-                <div>
-                  Available Parent Parameters count:
-                  {{ props.availableParentParameters.length }}
-                </div>
-                <div>
-                  Available Child Parameters count:
-                  {{ props.availableChildParameters.length }}
-                </div>
-              </div>
-            </div>
-
-            <!-- Initialization Status -->
-            <div class="bg-gray-50 p-4 rounded">
-              <h3 class="font-medium mb-2">Initialization</h3>
-              <div class="space-y-2">
-                <div>Component: {{ props.isInitialized ? 'Ready' : 'Waiting' }}</div>
-                <div>Loading: {{ props.isLoading ? 'Yes' : 'No' }}</div>
-                <div>
-                  Additional Loading: {{ props.isLoadingAdditionalData ? 'Yes' : 'No' }}
-                </div>
-              </div>
-            </div>
-
-            <!-- Categories section in empty state -->
-            <div class="bg-gray-50 p-4 rounded">
-              <h3 class="font-medium mb-2">Categories</h3>
-              <div class="space-y-2">
-                <div>
-                  Parent Categories selected:
-                  {{ props.selectedParentCategories.length }}
-                </div>
-                <div>
-                  Child Categories selected: {{ props.selectedChildCategories.length }}
-                </div>
-                <div class="text-gray-600 text-sm">
-                  Categories are optional - all elements are shown as parents by default
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div v-else class="p-4 text-center">
+      <div class="text-lg font-semibold mb-2">No Data Available</div>
+      <div class="text-gray-500">
+        Select categories or add parameters to view schedule data
       </div>
     </div>
   </div>
@@ -135,31 +63,12 @@ import { ref, computed } from 'vue'
 import DataTable from '../../../components/tables/DataTable/index.vue'
 import type { ColumnDef } from '../../../components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
-import type {
-  TableConfig,
-  TableUpdatePayload,
-  TableRow,
-  ElementData
-} from '../../types'
-import { defaultColumns, defaultDetailColumns } from '../../config/defaultColumns'
+import type { TableConfig, TableRow, ElementData } from '../../types'
+import { useDebug, DebugCategories } from '../../debug/useDebug'
 
 // Import local components
-import DebugPanel from '../../debug/DebugPanel.vue'
 import ScheduleLoadingState from './ScheduleLoadingState.vue'
 import ScheduleErrorState from './ScheduleErrorState.vue'
-
-// Type guard for ElementData
-function isElementData(value: unknown): value is ElementData {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    'mark' in value &&
-    'category' in value &&
-    'parameters' in value &&
-    '_visible' in value
-  )
-}
 
 interface Props {
   selectedTableId: string
@@ -169,13 +78,22 @@ interface Props {
   currentTableId: string
   tableKey: string
   loadingError: Error | null
-  mergedTableColumns: ColumnDef[]
-  mergedDetailColumns: ColumnDef[]
+  // Parent columns
+  parentBaseColumns: ColumnDef[] // Base columns from PostgreSQL
+  parentAvailableColumns: ColumnDef[] // All available columns (including custom)
+  parentVisibleColumns: ColumnDef[] // Currently visible columns
+  // Child columns
+  childBaseColumns: ColumnDef[] // Base columns from PostgreSQL
+  childAvailableColumns: ColumnDef[] // All available columns (including custom)
+  childVisibleColumns: ColumnDef[] // Currently visible columns
+  // Parameters
   availableParentParameters: CustomParameter[]
   availableChildParameters: CustomParameter[]
+  // Data
   scheduleData: ElementData[]
   evaluatedData: ElementData[]
   tableData: TableRow[]
+  // State
   isLoading: boolean
   isLoadingAdditionalData: boolean
   noCategoriesSelected: boolean
@@ -189,100 +107,41 @@ const emit = defineEmits<{
   'update:both-columns': [
     updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
   ]
-  'table-updated': [payload: TableUpdatePayload]
-  'column-visibility-change': [column: ColumnDef]
+  'row-expand': [row: TableRow | ElementData]
+  'row-collapse': [row: TableRow | ElementData]
+  'table-updated': []
+  'column-visibility-change': []
+  error: [error: Error | unknown]
 }>()
+
+// Initialize debug
+const debug = useDebug()
 
 // Debug state
 const showDebug = ref(true)
 
-// Ensure columns include essential fields
-const mergedColumns = computed(() => {
-  const essentialFields = ['mark', 'category', 'host']
-  const hasField = (field: string) =>
-    props.mergedTableColumns.some((col) => col.field === field)
-
-  const columns = [...props.mergedTableColumns]
-  essentialFields.forEach((field) => {
-    if (!hasField(field)) {
-      const defaultCol = defaultColumns.find((col) => col.field === field)
-      if (defaultCol) {
-        columns.unshift({ ...defaultCol })
-      }
-    }
-  })
-
-  return columns
-})
-
-const mergedDetailColumns = computed(() => {
-  const essentialFields = ['mark', 'category', 'host']
-  const hasField = (field: string) =>
-    props.mergedDetailColumns.some((col) => col.field === field)
-
-  const columns = [...props.mergedDetailColumns]
-  essentialFields.forEach((field) => {
-    if (!hasField(field)) {
-      const defaultCol = defaultDetailColumns.find((col) => col.field === field)
-      if (defaultCol) {
-        columns.unshift({ ...defaultCol })
-      }
-    }
-  })
-
-  return columns
-})
+// Track expanded rows
+const expandedRows = ref<(TableRow | ElementData)[]>([])
 
 // Simplified table visibility check
 const hasAnyData = computed(() => {
-  // Only check data if we're initialized
   if (!props.isInitialized) {
     return false
   }
 
-  const hasData = props.evaluatedData.length > 0
-  const hasColumns = mergedColumns.value.length > 0
+  // Only show table if we have both data and columns
+  const hasData = props.tableData.length > 0
+  const hasColumns = props.parentVisibleColumns.length > 0
 
-  return hasData || hasColumns
-})
-
-// Computed properties for relationship data
-const parentElements = computed(() => {
-  return props.scheduleData.filter((el): el is ElementData => {
-    return isElementData(el) && !el.isChild
+  debug.log(DebugCategories.TABLE_DATA, 'Table visibility check', {
+    hasData,
+    hasColumns,
+    dataLength: props.tableData.length,
+    columnLength: props.parentVisibleColumns.length
   })
+
+  return hasData && hasColumns
 })
-
-const childElements = computed(() => {
-  return props.scheduleData.filter((el): el is ElementData => {
-    return isElementData(el) && !!el.isChild
-  })
-})
-
-// Computed properties for available headers with required ColumnDef properties
-const availableParentHeaders = computed(
-  () =>
-    props.availableParentParameters.map((param, index) => ({
-      field: `param_${param.id}`,
-      header: param.name,
-      type: param.type === 'equation' ? 'number' : 'string',
-      source: param.source || 'Parameters',
-      visible: true,
-      order: index
-    })) as ColumnDef[]
-)
-
-const availableChildHeaders = computed(
-  () =>
-    props.availableChildParameters.map((param, index) => ({
-      field: `param_${param.id}`,
-      header: param.name,
-      type: param.type === 'equation' ? 'number' : 'string',
-      source: param.source || 'Parameters',
-      visible: true,
-      order: index
-    })) as ColumnDef[]
-)
 
 // Event handlers
 function handleBothColumnsUpdate(updates: {
@@ -292,12 +151,34 @@ function handleBothColumnsUpdate(updates: {
   emit('update:both-columns', updates)
 }
 
-function handleTableUpdate(payload: TableUpdatePayload): void {
-  emit('table-updated', payload)
+function handleExpandedRowsUpdate(rows: (TableRow | ElementData)[]): void {
+  debug.log(DebugCategories.TABLE_DATA, 'Expanded rows updated', {
+    count: rows.length,
+    rows: rows.map((row) => ({
+      id: row.id,
+      mark: row.mark,
+      hasDetails: 'details' in row && Array.isArray(row.details)
+    }))
+  })
+  expandedRows.value = rows
 }
 
-function handleColumnVisibilityChange(column: ColumnDef): void {
-  emit('column-visibility-change', column)
+function handleRowExpand(row: TableRow | ElementData): void {
+  debug.log(DebugCategories.TABLE_DATA, 'Row expanded', {
+    id: row.id,
+    mark: row.mark,
+    hasDetails: 'details' in row && Array.isArray(row.details)
+  })
+  emit('row-expand', row)
+}
+
+function handleRowCollapse(row: TableRow | ElementData): void {
+  debug.log(DebugCategories.TABLE_DATA, 'Row collapsed', {
+    id: row.id,
+    mark: row.mark,
+    hasDetails: 'details' in row && Array.isArray(row.details)
+  })
+  emit('row-collapse', row)
 }
 
 function toggleDebug(): void {
@@ -310,52 +191,12 @@ function retryLoading(): void {
 </script>
 
 <style scoped>
-.grid {
-  display: grid;
-}
-
-.grid-cols-2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.gap-4 {
-  gap: 1rem;
-}
-
 .p-4 {
   padding: 1rem;
 }
 
-.bg-gray-50 {
-  background-color: rgb(249 250 251);
-}
-
-.rounded {
-  border-radius: 0.25rem;
-}
-
-.space-y-2 > * + * {
-  margin-top: 0.5rem;
-}
-
-.space-x-4 > * + * {
-  margin-left: 1rem;
-}
-
-.mt-6 {
-  margin-top: 1.5rem;
-}
-
 .text-center {
   text-align: center;
-}
-
-.text-left {
-  text-align: left;
-}
-
-.font-medium {
-  font-weight: 500;
 }
 
 .text-lg {
@@ -363,23 +204,15 @@ function retryLoading(): void {
   line-height: 1.75rem;
 }
 
-.bg-blue-500 {
-  background-color: rgb(59 130 246);
+.font-semibold {
+  font-weight: 600;
 }
 
-.bg-green-500 {
-  background-color: rgb(34 197 94);
+.mb-2 {
+  margin-bottom: 0.5rem;
 }
 
-.text-white {
-  color: rgb(255 255 255);
-}
-
-.hover-bg-blue-600:hover {
-  background-color: rgb(37 99 235);
-}
-
-.hover-bg-green-600:hover {
-  background-color: rgb(22 163 74);
+.text-gray-500 {
+  color: rgb(107 114 128);
 }
 </style>
