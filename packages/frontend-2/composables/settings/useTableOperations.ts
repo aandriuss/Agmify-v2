@@ -22,22 +22,39 @@ export function useTableOperations(options: TableOperationsOptions) {
     tableId: string,
     updates: Partial<NamedTableConfig>
   ): Promise<NamedTableConfig> {
-    debug.log(DebugCategories.TABLE_UPDATES, 'Queueing table update', {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Updating table', {
       tableId,
       updates
     })
 
     return queueUpdate(async () => {
       try {
-        const updatedTable = await updateNamedTable(tableId, {
+        // Ensure we have a valid table ID
+        if (!tableId) {
+          throw new Error('Table ID is required')
+        }
+
+        // Add timestamp to updates
+        const updatesWithTimestamp = {
           ...updates,
           lastUpdateTimestamp: Date.now()
+        }
+
+        debug.log(DebugCategories.TABLE_UPDATES, 'Applying table updates', {
+          tableId,
+          updates: updatesWithTimestamp
         })
 
-        debug.log(DebugCategories.TABLE_UPDATES, 'Table updated successfully', {
-          tableId,
-          updatedTable
-        })
+        const updatedTable = await updateNamedTable(tableId, updatesWithTimestamp)
+
+        debug.completeState(
+          DebugCategories.TABLE_UPDATES,
+          'Table updated successfully',
+          {
+            tableId,
+            updatedTable
+          }
+        )
 
         return updatedTable
       } catch (err) {
@@ -54,26 +71,45 @@ export function useTableOperations(options: TableOperationsOptions) {
     name: string,
     config: Omit<NamedTableConfig, 'id' | 'name'>
   ): Promise<{ id: string; config: NamedTableConfig }> {
-    debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table', {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Creating new table', {
       name,
       config
     })
 
     return queueUpdate(async () => {
       try {
-        const tableId = await createNamedTable(name, config)
+        // Ensure we have a valid name
+        if (!name?.trim()) {
+          throw new Error('Table name is required')
+        }
 
-        const newTable: NamedTableConfig = {
-          id: tableId,
-          name,
+        // Add timestamp to config
+        const configWithTimestamp = {
           ...config,
           lastUpdateTimestamp: Date.now()
         }
 
-        debug.log(DebugCategories.TABLE_UPDATES, 'Table created successfully', {
-          tableId,
-          newTable
+        debug.log(DebugCategories.TABLE_UPDATES, 'Creating table with config', {
+          name,
+          config: configWithTimestamp
         })
+
+        const tableId = await createNamedTable(name, configWithTimestamp)
+
+        const newTable: NamedTableConfig = {
+          id: tableId,
+          name,
+          ...configWithTimestamp
+        }
+
+        debug.completeState(
+          DebugCategories.TABLE_UPDATES,
+          'Table created successfully',
+          {
+            tableId,
+            newTable
+          }
+        )
 
         return { id: tableId, config: newTable }
       } catch (err) {
@@ -91,7 +127,7 @@ export function useTableOperations(options: TableOperationsOptions) {
     parentCategories: string[],
     childCategories: string[]
   ): Promise<NamedTableConfig> {
-    debug.log(DebugCategories.CATEGORIES, 'Updating table categories', {
+    debug.startState(DebugCategories.CATEGORIES, 'Updating table categories', {
       tableId,
       parentCategories,
       childCategories
@@ -110,7 +146,7 @@ export function useTableOperations(options: TableOperationsOptions) {
     parentColumns: ColumnDef[],
     childColumns: ColumnDef[]
   ): Promise<NamedTableConfig> {
-    debug.log(DebugCategories.COLUMNS, 'Updating table columns', {
+    debug.startState(DebugCategories.COLUMNS, 'Updating table columns', {
       tableId,
       parentColumnsCount: parentColumns.length,
       childColumnsCount: childColumns.length

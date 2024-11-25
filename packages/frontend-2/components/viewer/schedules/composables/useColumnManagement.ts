@@ -13,11 +13,18 @@ interface ColumnManagementOptions {
   }
   updateMergedColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
   updateCurrentColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
+  updateParameterVisibility?: (paramId: string, visible: boolean) => void
   handleError: (error: Error) => void
 }
 
 export function useColumnManagement(options: ColumnManagementOptions) {
-  const { state, updateMergedColumns, updateCurrentColumns, handleError } = options
+  const {
+    state,
+    updateMergedColumns,
+    updateCurrentColumns,
+    updateParameterVisibility,
+    handleError
+  } = options
 
   // Helper to ensure column properties
   function ensureColumnProperties(column: ColumnDef): ColumnDef {
@@ -44,6 +51,15 @@ export function useColumnManagement(options: ColumnManagementOptions) {
     try {
       if (!('field' in column)) {
         throw new Error('Invalid column definition')
+      }
+
+      // Handle parameter visibility if configured
+      if (
+        updateParameterVisibility &&
+        'parameterRef' in column &&
+        typeof column.parameterRef === 'string'
+      ) {
+        updateParameterVisibility(column.parameterRef, column.visible ?? true)
       }
 
       // Update visibility in merged columns

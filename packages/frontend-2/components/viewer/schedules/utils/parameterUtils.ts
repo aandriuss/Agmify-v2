@@ -1,4 +1,11 @@
-import type { ParameterValue, BIMNodeRaw } from '../types'
+import type {
+  ParameterValue,
+  BIMNodeRaw,
+  ElementData,
+  ParameterValueState
+} from '../types'
+import { createParameterValueState } from '../types'
+import { debug, DebugCategories } from '../debug/useDebug'
 
 /**
  * Transform raw value to appropriate type for table calculations
@@ -48,9 +55,10 @@ export function transformParameterValue(value: unknown): ParameterValue {
     if (
       'currentValue' in value &&
       'fetchedValue' in value &&
-      'previousValue' in value
+      'previousValue' in value &&
+      'userValue' in value
     ) {
-      return (value as { currentValue: unknown }).currentValue
+      return (value as ParameterValueState).currentValue
     }
 
     // Try to get value from common properties
@@ -131,4 +139,50 @@ export function safeStringify(value: unknown): string {
   } catch {
     return '[Unknown]'
   }
+}
+
+/**
+ * Validate if an object is a valid ElementData
+ */
+export function isValidElement(element: unknown): element is ElementData {
+  if (!element || typeof element !== 'object') return false
+  const e = element as ElementData
+  return (
+    typeof e.id === 'string' &&
+    typeof e.parameters === 'object' &&
+    (!e.mark || typeof e.mark === 'object' || typeof e.mark === 'string') &&
+    (!e.category || typeof e.category === 'object' || typeof e.category === 'string')
+  )
+}
+
+/**
+ * Update parameter value state
+ */
+export function updateParameterState(
+  parameters: Record<string, ParameterValueState>,
+  parameterId: string,
+  value: ParameterValue
+): Record<string, ParameterValueState> {
+  const updatedParameters = { ...parameters }
+  const parameter = updatedParameters[parameterId]
+
+  if (parameter) {
+    updatedParameters[parameterId] = {
+      ...parameter,
+      currentValue: value,
+      previousValue: parameter.currentValue,
+      userValue: value
+    }
+
+    debug.log(DebugCategories.PARAMETERS, 'Parameter value updated', {
+      parameterId,
+      oldValue: parameter.currentValue,
+      newValue: value
+    })
+  } else {
+    // If parameter doesn't exist, create it
+    updatedParameters[parameterId] = createParameterValueState(value)
+  }
+
+  return updatedParameters
 }

@@ -362,10 +362,6 @@ export interface ScheduleColumnManagementExposed {
   updateColumns: () => Promise<void>
 }
 
-export interface ScheduleInitializationInstance {
-  initialize: () => Promise<void>
-}
-
 // Table Types
 export interface TableConfig {
   id: string
@@ -383,4 +379,13 @@ export interface TableUpdatePayload {
   tableId: string
   tableName: string
   data?: unknown
+}
+
+export interface ScheduleInitializationInstance {
+  initialize: () => Promise<void>
+  createNamedTable: (
+    name: string,
+    config: Omit<TableConfig, 'id' | 'name'>
+  ) => Promise<TableConfig>
+  updateNamedTable: (id: string, config: Partial<TableConfig>) => Promise<TableConfig>
 }

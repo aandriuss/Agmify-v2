@@ -11,9 +11,18 @@
     </div>
 
     <div class="debug-content">
+      <!-- Test Mode Toggle -->
+      <div class="debug-section">
+        <h4>Test Mode</h4>
+        <FormButton text size="sm" color="subtle" @click="toggleTestMode">
+          {{ isTestMode ? 'Show Real Data' : 'Show Test Data' }}
+        </FormButton>
+      </div>
+
       <!-- Categories -->
       <div class="debug-section">
         <h4>Categories</h4>
+        <!-- Rest of the categories section remains unchanged -->
         <div class="category-groups">
           <!-- Core -->
           <div class="category-group">
@@ -256,7 +265,12 @@ interface Props {
   childParameterColumns?: ColumnDef[]
   availableParentHeaders?: ColumnDef[]
   availableChildHeaders?: ColumnDef[]
+  isTestMode: boolean
 }
+
+const emit = defineEmits<{
+  'update:isTestMode': [value: boolean]
+}>()
 
 const props = withDefaults(defineProps<Props>(), {
   scheduleData: () => [],
@@ -267,8 +281,13 @@ const props = withDefaults(defineProps<Props>(), {
   parentParameterColumns: () => [],
   childParameterColumns: () => [],
   availableParentHeaders: () => [],
-  availableChildHeaders: () => []
+  availableChildHeaders: () => [],
+  isTestMode: false
 })
+
+function toggleTestMode() {
+  emit('update:isTestMode', !props.isTestMode)
+}
 
 // Limit displayed logs for performance
 const MAX_DISPLAYED_LOGS = 100

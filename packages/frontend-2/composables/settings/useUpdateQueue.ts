@@ -5,7 +5,12 @@ interface QueuedUpdate<T> {
   execute: () => Promise<void>
   resolve: (value: T) => void
   reject: (reason?: unknown) => void
+  retryCount: number
 }
+
+const MAX_RETRIES = 3
+const RETRY_DELAY = 1000 // 1 second
+const UPDATE_DELAY = 500 // 0.5 seconds between updates
 
 export function useUpdateQueue() {
   const isProcessing = ref(false)
@@ -18,22 +23,45 @@ export function useUpdateQueue() {
     const update = updateQueue.value[0]
 
     try {
+      debug.startState(DebugCategories.STATE, 'Processing queued update', {
+        queueLength: updateQueue.value.length,
+        retryCount: update.retryCount
+      })
+
       await update.execute()
       updateQueue.value.shift() // Remove processed update
 
-      debug.log(DebugCategories.STATE, 'Update processed successfully', {
+      debug.completeState(DebugCategories.STATE, 'Update processed successfully', {
         remainingUpdates: updateQueue.value.length
       })
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to process update', err)
-      update.reject(err)
-      updateQueue.value.shift() // Remove failed update
+
+      // Retry logic
+      if (update.retryCount < MAX_RETRIES) {
+        update.retryCount++
+        debug.log(DebugCategories.STATE, 'Retrying update', {
+          retryCount: update.retryCount,
+          maxRetries: MAX_RETRIES
+        })
+
+        // Move to end of queue and retry after delay
+        updateQueue.value.shift()
+        updateQueue.value.push(update)
+        setTimeout(processQueue, RETRY_DELAY)
+      } else {
+        debug.error(DebugCategories.ERROR, 'Max retries exceeded, rejecting update', {
+          error: err
+        })
+        update.reject(err)
+        updateQueue.value.shift() // Remove failed update
+      }
     } finally {
       isProcessing.value = false
 
       // Process next update if any
       if (updateQueue.value.length > 0) {
-        setTimeout(processQueue, 500) // Add delay between updates
+        setTimeout(processQueue, UPDATE_DELAY)
       }
     }
   }
@@ -50,7 +78,8 @@ export function useUpdateQueue() {
           }
         },
         resolve,
-        reject
+        reject,
+        retryCount: 0
       }
 
       updateQueue.value.push(queuedUpdate as QueuedUpdate<unknown>)
@@ -68,7 +97,7 @@ export function useUpdateQueue() {
   }
 
   function clearQueue() {
-    debug.log(DebugCategories.STATE, 'Clearing update queue', {
+    debug.startState(DebugCategories.STATE, 'Clearing update queue', {
       queueLength: updateQueue.value.length
     })
 
@@ -79,12 +108,19 @@ export function useUpdateQueue() {
 
     updateQueue.value = []
     isProcessing.value = false
+
+    debug.completeState(DebugCategories.STATE, 'Update queue cleared')
   }
 
   return {
     isProcessing,
     queueUpdate,
     clearQueue,
-    queueLength: () => updateQueue.value.length
+    queueLength: () => updateQueue.value.length,
+    // Expose for testing
+    _queue: updateQueue,
+    _setProcessing: (value: boolean) => {
+      isProcessing.value = value
+    }
   }
 }

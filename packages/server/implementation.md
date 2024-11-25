@@ -2,79 +2,182 @@
 
 ## Current Progress (✅ Completed)
 
-### 1. Parameter Architecture
+### 1. Schedule Interactions
 
 ```typescript
+// Schedule interactions composable
+interface ScheduleInteractionsState {
+  selectedTableId: string
+  tableName: string
+  currentTable: TableConfig | null
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
+  currentTableColumns: ColumnDef[]
+  currentDetailColumns: ColumnDef[]
+}
+
+const useScheduleInteractions = (options: ScheduleInteractionsOptions) => {
+  // UI State
+  const showCategoryOptions = ref(false)
+  const showParameterManager = ref(false)
+
+  // UI Toggles
+  const toggleCategoryOptions = () => {
+    showCategoryOptions.value = !showCategoryOptions.value
+  }
+
+  const toggleParameterManager = () => {
+    showParameterManager.value = !showParameterManager.value
+  }
+
+  // Event Handlers
+  const handleSaveTable = async () => {
+    try {
+      // Validate table name
+      if (!state.tableName) {
+        throw new Error('Table name is required')
+      }
+
+      // Create initial config
+      const baseConfig: Omit<TableConfig, 'id' | 'name'> = {
+        parentColumns: state.currentTableColumns,
+        childColumns: state.currentDetailColumns,
+        categoryFilters: {
+          selectedParentCategories: state.selectedParentCategories,
+          selectedChildCategories: state.selectedChildCategories
+        },
+        customParameters: []
+      }
+
+      // Create or update table
+      const result = !state.selectedTableId
+        ? await createNamedTable(state.tableName, baseConfig)
+        : await updateNamedTable(state.selectedTableId, {
+            ...baseConfig,
+            name: state.tableName
+          })
+
+      if (!isTableConfig(result)) {
+        throw new Error('Invalid table configuration returned')
+      }
+    } catch (err) {
+      handleError(err)
+    }
+  }
+
+  return {
+    showCategoryOptions,
+    showParameterManager,
+    toggleCategoryOptions,
+    toggleParameterManager,
+    handleSaveTable,
+    handleBothColumnsUpdate
+  }
+}
+```
+
+- ✅ Type-safe state management
+- ✅ Error boundaries with proper recovery
+- ✅ Proper ref handling
+- ✅ Type guards for runtime checks
+
+### 2. Parameter State Management
+
+```typescript
+// Type guard for TableConfig
+function isTableConfig(value: unknown): value is TableConfig {
+  if (!value || typeof value !== 'object') return false
+  const config = value as Record<string, unknown>
+  return (
+    typeof config.id === 'string' &&
+    typeof config.name === 'string' &&
+    Array.isArray(config.parentColumns) &&
+    Array.isArray(config.childColumns)
+  )
+}
+
 // Parameter value state tracking
 interface ParameterValueState {
-  fetchedValue: ParameterValue // Original from BIM
-  currentValue: ParameterValue // Current display value
-  previousValue: ParameterValue // For undo/redo
-  userValue: ParameterValue | null // User modifications
+  fetchedValue: ParameterValue
+  currentValue: ParameterValue
+  previousValue: ParameterValue
+  userValue: ParameterValue | null
 }
 
-// Parameter discovery
-interface ProcessedHeader {
-  field: string // Parameter identifier
-  header: string // Display name
-  fetchedGroup: string // Original group
-  currentGroup: string // Current group
-  type: ParameterValueType
-  category: string
-  description: string
-  isFetched: boolean
-  source: string // Identity Data, Constraints, Other
+// Helper to create parameter value state
+function createParameterValueState(value: ParameterValue): ParameterValueState {
+  return {
+    fetchedValue: value,
+    currentValue: value,
+    previousValue: value,
+    userValue: null
+  }
 }
 ```
 
-- ✅ Parameter state tracking
-- ✅ Parameter group organization
-- ✅ Parameter discovery flow
-- ✅ Type safety improvements
+- ✅ Type-safe parameter states
+- ✅ Proper value tracking
+- ✅ State initialization helpers
+- ✅ Type guards for validation
 
-### 2. Element Structure
+### 3. Store Integration
 
 ```typescript
-// Base element structure
-interface BaseElementData {
-  id: string
-  mark: string
-  category: string
-  type?: string
-  host?: string
-  _visible?: boolean
-  isChild?: boolean
+// Store state types
+interface StoreState {
+  // Core data
+  scheduleData: ElementData[]
+  evaluatedData: ElementData[]
+  tableData: TableRow[]
+  customParameters: CustomParameter[]
+
+  // UI state
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
+  tablesArray: { id: string; name: string }[]
+  tableName: string
+  selectedTableId: string
+  currentTableId: string
+
+  // Loading states
+  initialized: boolean
+  loading: boolean
+  error: Error | null
 }
 
-// Discovery phase data
-interface ElementData extends BaseElementData {
-  parameters: ParametersWithGroups
-}
+// Store mutations
+const mutations = {
+  setTableInfo: (info: { selectedTableId?: string; tableName?: string }) => {
+    if (info.selectedTableId) {
+      store.selectedTableId = info.selectedTableId
+      store.currentTableId = info.selectedTableId
+    }
+    if (info.tableName) {
+      store.tableName = info.tableName
+    }
+  },
 
-// Final table data
-interface TableRow extends BaseElementData {
-  parameters: Parameters
+  setColumns: async (
+    parentColumns: ColumnDef[],
+    childColumns: ColumnDef[],
+    type: 'base' | 'available' | 'visible'
+  ) => {
+    try {
+      await store.lifecycle.update({
+        [`parent${type}Columns`]: parentColumns,
+        [`child${type}Columns`]: childColumns
+      })
+    } catch (err) {
+      handleError(err)
+    }
+  }
 }
 ```
 
-- ✅ Clear element hierarchy
-- ✅ Parent-child relationships
-- ✅ Parameter organization
-- ✅ Type safety
-
-### 3. Data Pipeline
-
-```typescript
-// Parameter processing chain
-Raw BIM Data -> Parameter Discovery -> Parameter States -> UI Display
-     ↓               ↓                    ↓                 ↓
-  Raw JSON     ProcessedHeaders     ParameterStates    TableRows
-```
-
-- ✅ Two-phase parameter handling
-- ✅ Clear data transformation
-- ✅ Type safety throughout
-- ✅ Error handling
+- ✅ Type-safe store state
+- ✅ Proper mutation handling
+- ✅ Error boundaries
+- ✅ State synchronization
 
 ## Current Issues (🚫 Blocking)
 
@@ -220,10 +323,12 @@ const ParameterGroupHeader = defineComponent({
 
 ### Working
 
+- ✅ Schedule interactions
 - ✅ Parameter state tracking
-- ✅ Parameter discovery
 - ✅ Element relationships
 - ✅ Type safety
+- ✅ Store integration
+- ✅ Error handling
 
 ### In Progress
 

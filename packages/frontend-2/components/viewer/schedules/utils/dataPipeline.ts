@@ -8,6 +8,7 @@ import type {
 import { useDebug, DebugCategories } from '../debug/useDebug'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import { createColumnsFromParameters, mergeColumns } from './columnUtils'
 
 const debug = useDebug()
 
@@ -17,6 +18,7 @@ interface DataPipelineResult {
   tableData: TableRow[]
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
+  isProcessingComplete: boolean
 }
 
 interface DataPipelineInput {
@@ -50,51 +52,139 @@ function createParameterState(value: ParameterValue): ParameterValueState {
   }
 }
 
-export function processDataPipeline({
-  allElements,
-  selectedParent,
-  selectedChild
-}: DataPipelineInput): DataPipelineResult {
-  // Use default columns as initial active parameters
-  const activeParentParameters = defaultColumns.map((col) => col.field)
-  const activeChildParameters = defaultDetailColumns.map((col) => col.field)
+export async function processDataPipeline(
+  input: DataPipelineInput
+): Promise<DataPipelineResult> {
+  debug.startState(DebugCategories.DATA_TRANSFORM, 'Starting data pipeline')
 
-  debug.startState(DebugCategories.DATA_TRANSFORM, 'Starting data pipeline', {
-    elementCount: allElements.length,
-    selectedParent,
-    selectedChild,
-    activeParentParams: activeParentParameters,
-    activeChildParams: activeChildParameters
+  // Step 1: Quick initial processing
+  const quickResult = processQuickPass(input)
+
+  // Return quick result through Promise.resolve to maintain async contract
+  // but allow immediate access to initial data
+  Promise.resolve({
+    ...quickResult,
+    isProcessingComplete: false
   })
 
-  // Step 1: Split elements by category
+  // Step 2: Schedule full processing
+  const fullResult = await new Promise<DataPipelineResult>((resolve) => {
+    queueMicrotask(() => {
+      const result = processFullPass(quickResult)
+      debug.completeState(
+        DebugCategories.DATA_TRANSFORM,
+        'Full data processing complete',
+        {
+          elementCount: input.allElements.length,
+          filteredCount: result.filteredElements.length,
+          processedCount: result.processedElements.length,
+          tableDataCount: result.tableData.length
+        }
+      )
+      resolve({
+        ...result,
+        isProcessingComplete: true
+      })
+    })
+  })
+
+  return fullResult
+}
+
+function processQuickPass(
+  input: DataPipelineInput
+): Omit<DataPipelineResult, 'isProcessingComplete'> {
+  const { allElements, selectedParent, selectedChild } = input
+
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Quick pass processing', {
+    elementCount: allElements.length,
+    selectedParent,
+    selectedChild
+  })
+
+  // Step 1: Split elements by category (basic)
   const { parents, children } = splitElementsByCategory(
     allElements,
     selectedParent,
     selectedChild
   )
 
-  // Step 2: Process parameters and get columns
-  const { processedElements, parentColumns, childColumns } = processParameters(
-    parents,
-    children,
+  // Step 2: Basic parameter processing
+  const activeParentParameters = defaultColumns.map((col) => col.field)
+  const activeChildParameters = defaultDetailColumns.map((col) => col.field)
+
+  const parentColumns = createColumnsFromParameters(
     activeParentParameters,
-    activeChildParameters
+    defaultColumns
+  )
+  const childColumns = createColumnsFromParameters(
+    activeChildParameters,
+    defaultDetailColumns
   )
 
-  // Step 3: Establish relationships and convert to table data
-  const tableData = establishRelationships(parents, children)
+  // Step 3: Basic element processing
+  const processedElements = [...parents, ...children].map(
+    (el): ElementData => ({
+      ...el,
+      mark: el.mark || el.id,
+      category: el.category || 'Uncategorized',
+      parameters: {},
+      details: []
+    })
+  )
 
-  debug.completeState(DebugCategories.DATA_TRANSFORM, 'Data pipeline complete', {
-    filteredCount: parents.length + children.length,
-    processedCount: processedElements.length,
-    tableDataCount: tableData.length,
-    parentColumnCount: parentColumns.length,
-    childColumnCount: childColumns.length
-  })
+  // Step 4: Basic relationship establishment
+  const tableData = establishBasicRelationships(parents, children)
 
   return {
     filteredElements: [...parents, ...children],
+    processedElements,
+    tableData,
+    parentColumns,
+    childColumns
+  }
+}
+
+function processFullPass(
+  quickResult: Omit<DataPipelineResult, 'isProcessingComplete'>
+): Omit<DataPipelineResult, 'isProcessingComplete'> {
+  const {
+    filteredElements,
+    parentColumns: baseParentCols,
+    childColumns: baseChildCols
+  } = quickResult
+
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Full pass processing', {
+    elementCount: filteredElements.length
+  })
+
+  // Step 1: Full parameter processing
+  const processedElements = filteredElements.map(
+    (el): ElementData => ({
+      ...el,
+      parameters: Object.fromEntries(
+        Object.entries(el.parameters || {}).map(([key, value]) => [
+          key,
+          isParameterValueState(value)
+            ? value
+            : createParameterState(value as ParameterValue)
+        ])
+      ) as Parameters,
+      details: el.details || []
+    })
+  )
+
+  // Step 2: Full column processing
+  const parentColumns = mergeColumns(baseParentCols, defaultColumns)
+  const childColumns = mergeColumns(baseChildCols, defaultDetailColumns)
+
+  // Step 3: Full relationship establishment
+  const parents = processedElements.filter((el) => !el.isChild)
+  const children = processedElements.filter((el) => el.isChild)
+  const tableData = establishFullRelationships(parents, children)
+
+  return {
+    filteredElements,
     processedElements,
     tableData,
     parentColumns,
@@ -146,66 +236,33 @@ function splitElementsByCategory(
   )
 }
 
-function processParameters(
-  parents: ElementData[],
-  children: ElementData[],
-  activeParentParameters: string[],
-  activeChildParameters: string[]
-): {
-  processedElements: ElementData[]
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-} {
-  // Create columns from active parameters
-  const createColumns = (parameters: string[], defaultCols: ColumnDef[]): ColumnDef[] =>
-    parameters.map((name, index) => ({
-      ...(defaultCols.find((col) => col.field === name) || {}),
-      field: name,
-      header: name,
-      type: 'parameter',
-      sortable: true,
-      visible: true,
-      source: 'Parameters',
-      order: index,
-      category: 'Parameters',
-      fetchedGroup: 'Parameters',
-      currentGroup: 'Parameters',
-      isFetched: true,
-      description: `Parameter ${name}`,
-      isFixed: false,
-      isCustomParameter: false,
-      expander: index === 0
-    }))
-
-  const parentColumns = createColumns(activeParentParameters, defaultColumns)
-  const childColumns = createColumns(activeChildParameters, defaultDetailColumns)
-
-  // Process elements
-  const processedElements = [...parents, ...children].map(
-    (el): ElementData => ({
-      ...el,
-      mark: el.mark || el.id,
-      category: el.category || 'Uncategorized',
-      parameters: Object.fromEntries(
-        Object.entries(el.parameters || {}).map(([key, value]) => [
-          key,
-          isParameterValueState(value)
-            ? value
-            : createParameterState(value as ParameterValue)
-        ])
-      ) as Parameters,
-      details: el.details || []
-    })
-  )
-
-  return { processedElements, parentColumns, childColumns }
-}
-
-function establishRelationships(
+function establishBasicRelationships(
   parents: ElementData[],
   children: ElementData[]
 ): TableRow[] {
-  // Create parent map with proper typing
+  const parentMap = new Map<string, ElementData>(
+    parents.map((parent): [string, ElementData] => [
+      parent.mark,
+      { ...parent, details: [] }
+    ])
+  )
+
+  // Basic child assignment
+  children.forEach((child) => {
+    const host = child.host || 'Ungrouped'
+    const parent = parentMap.get(host) || parentMap.get('Ungrouped')
+    if (parent) {
+      parent.details.push(child)
+    }
+  })
+
+  return Array.from(parentMap.values()).map(elementToTableRow)
+}
+
+function establishFullRelationships(
+  parents: ElementData[],
+  children: ElementData[]
+): TableRow[] {
   const parentMap = new Map<string, ElementData>(
     parents.map((parent): [string, ElementData] => [
       parent.mark,
@@ -246,29 +303,20 @@ function establishRelationships(
     }
   })
 
-  // Convert to table rows with proper typing
-  return Array.from(parentMap.values()).map(
-    (parent): TableRow => ({
-      id: parent.id,
-      type: parent.type,
-      mark: parent.mark,
-      category: parent.category,
-      parameters: parent.parameters,
-      _visible: parent._visible,
-      isChild: false,
-      details: parent.details.map(
-        (child): TableRow => ({
-          id: child.id,
-          type: child.type,
-          mark: child.mark,
-          category: child.category,
-          parameters: child.parameters,
-          _visible: child._visible,
-          isChild: true,
-          host: child.host,
-          details: []
-        })
-      )
-    })
-  )
+  return Array.from(parentMap.values()).map(elementToTableRow)
+}
+
+function elementToTableRow(element: ElementData): TableRow {
+  return {
+    id: element.id,
+    type: element.type || '',
+    mark: element.mark,
+    category: element.category,
+    parameters: element.parameters,
+    _visible: element._visible ?? true,
+    isChild: element.isChild ?? false,
+    host: element.host,
+    _raw: element._raw,
+    details: element.details?.map(elementToTableRow) || []
+  }
 }

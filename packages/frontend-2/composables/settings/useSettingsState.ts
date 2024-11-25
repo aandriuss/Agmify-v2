@@ -96,54 +96,55 @@ export function useSettingsState() {
 
   async function loadSettings(): Promise<void> {
     try {
+      debug.startState(DebugCategories.INITIALIZATION, 'Loading settings')
       loading.value = true
       error.value = null
 
-      // Try to fetch settings, but don't block on failure
-      try {
-        const rawSettings = await fetchSettings()
-        if (rawSettings && isUserSettings(rawSettings)) {
-          // If no tables exist, use default table
-          if (
-            !rawSettings.namedTables ||
-            Object.keys(rawSettings.namedTables).length === 0
-          ) {
-            settings.value = {
-              ...rawSettings,
-              namedTables: {
-                [defaultTable.id]: defaultTable
-              }
-            }
-          } else {
-            settings.value = {
-              ...rawSettings,
-              namedTables: rawSettings.namedTables
-            }
-          }
-
-          debug.log(DebugCategories.INITIALIZATION, 'Settings loaded', {
-            namedTablesCount: Object.keys(settings.value.namedTables).length,
-            namedTables: settings.value.namedTables
-          })
-        } else {
-          // Use default table if no valid settings
+      const rawSettings = await fetchSettings()
+      if (rawSettings && isUserSettings(rawSettings)) {
+        // If no tables exist, use default table
+        if (
+          !rawSettings.namedTables ||
+          Object.keys(rawSettings.namedTables).length === 0
+        ) {
           settings.value = {
+            ...rawSettings,
             namedTables: {
               [defaultTable.id]: defaultTable
             }
           }
-          debug.log(DebugCategories.INITIALIZATION, 'Using default table settings')
+        } else {
+          settings.value = {
+            ...rawSettings,
+            namedTables: rawSettings.namedTables
+          }
         }
-      } catch (err) {
-        debug.warn(
-          DebugCategories.INITIALIZATION,
-          'Failed to fetch settings, using default table',
-          err
-        )
+
+        debug.log(DebugCategories.INITIALIZATION, 'Settings loaded', {
+          namedTablesCount: Object.keys(settings.value.namedTables).length,
+          namedTables: settings.value.namedTables
+        })
+      } else {
+        // Use default table if no valid settings
         settings.value = {
           namedTables: {
             [defaultTable.id]: defaultTable
           }
+        }
+        debug.log(DebugCategories.INITIALIZATION, 'Using default table settings')
+      }
+
+      debug.completeState(
+        DebugCategories.INITIALIZATION,
+        'Settings loaded successfully'
+      )
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to load settings', err)
+      error.value = err instanceof Error ? err : new Error('Failed to load settings')
+      // Use default table on error
+      settings.value = {
+        namedTables: {
+          [defaultTable.id]: defaultTable
         }
       }
     } finally {
@@ -154,6 +155,7 @@ export function useSettingsState() {
   async function saveSettings(newSettings: UserSettings): Promise<boolean> {
     return queueUpdate(async () => {
       try {
+        debug.startState(DebugCategories.STATE, 'Saving settings')
         loading.value = true
         error.value = null
         isUpdating.value = true
@@ -161,18 +163,35 @@ export function useSettingsState() {
         // Record update time before sending to avoid race conditions
         lastUpdateTime.value = Date.now()
 
-        // Update local state immediately
-        settings.value = newSettings
-
-        // Try to persist settings, but don't block on failure
-        try {
-          await updateSettings(newSettings)
-        } catch (err) {
-          debug.warn(DebugCategories.STATE, 'Failed to persist settings', err)
+        // Validate settings before saving
+        if (!isUserSettings(newSettings)) {
+          throw new Error('Invalid settings format')
         }
 
+        debug.log(DebugCategories.STATE, 'Persisting settings to backend', {
+          settings: newSettings,
+          namedTablesCount: Object.keys(newSettings.namedTables || {}).length
+        })
+
+        // Update local state first to ensure UI responsiveness
+        settings.value = newSettings
+
+        // Then persist settings
+        const success = await updateSettings(newSettings)
+        if (!success) {
+          // Revert local state if persistence fails
+          settings.value = (await fetchSettings()) || {
+            namedTables: {
+              [defaultTable.id]: defaultTable
+            }
+          }
+          throw new Error('Failed to persist settings')
+        }
+
+        debug.completeState(DebugCategories.STATE, 'Settings saved successfully')
         return true
       } catch (err) {
+        debug.error(DebugCategories.ERROR, 'Failed to save settings', err)
         error.value = err instanceof Error ? err : new Error('Failed to save settings')
         throw error.value
       } finally {

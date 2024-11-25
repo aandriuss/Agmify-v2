@@ -14,6 +14,10 @@ interface UpdateUserSettingsResponse {
   userSettingsUpdate: boolean
 }
 
+interface UpdateUserSettingsVariables {
+  settings: Record<string, unknown>
+}
+
 const GET_USER_SETTINGS = gql`
   query GetUserSettings {
     activeUser {
@@ -30,8 +34,10 @@ const UPDATE_USER_SETTINGS = gql`
 `
 
 export function useSettingsGraphQL() {
-  const { mutate: updateSettingsMutation } =
-    useMutation<UpdateUserSettingsResponse>(UPDATE_USER_SETTINGS)
+  const { mutate: updateSettingsMutation } = useMutation<
+    UpdateUserSettingsResponse,
+    UpdateUserSettingsVariables
+  >(UPDATE_USER_SETTINGS)
 
   const {
     result,
@@ -43,6 +49,7 @@ export function useSettingsGraphQL() {
 
   async function fetchSettings(): Promise<UserSettings | null> {
     try {
+      debug.startState(DebugCategories.INITIALIZATION, 'Fetching settings from GraphQL')
       const response = await refetch()
 
       if (!response?.data) {
@@ -58,6 +65,7 @@ export function useSettingsGraphQL() {
         userId: response.data.activeUser?.id
       })
 
+      debug.completeState(DebugCategories.INITIALIZATION, 'Settings fetch complete')
       return settings
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to fetch settings', err)
@@ -67,9 +75,19 @@ export function useSettingsGraphQL() {
 
   async function updateSettings(settings: UserSettings): Promise<boolean> {
     try {
-      const result = await updateSettingsMutation({
-        settings
+      debug.startState(DebugCategories.STATE, 'Updating settings via GraphQL')
+
+      debug.log(DebugCategories.STATE, 'Settings update payload', {
+        settings,
+        namedTablesCount: Object.keys(settings.namedTables || {}).length
       })
+
+      // Convert settings to a plain object for GraphQL
+      const settingsPayload: UpdateUserSettingsVariables = {
+        settings: JSON.parse(JSON.stringify(settings)) as Record<string, unknown>
+      }
+
+      const result = await updateSettingsMutation(settingsPayload)
 
       if (!result?.data) {
         debug.warn(DebugCategories.STATE, 'No data in mutation response')
@@ -83,10 +101,15 @@ export function useSettingsGraphQL() {
         settings
       })
 
-      return success
+      if (!success) {
+        throw new Error('Settings update returned false')
+      }
+
+      debug.completeState(DebugCategories.STATE, 'Settings update complete')
+      return true
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to update settings', err)
-      throw new Error('Failed to update settings')
+      throw new Error(err instanceof Error ? err.message : 'Failed to update settings')
     }
   }
 

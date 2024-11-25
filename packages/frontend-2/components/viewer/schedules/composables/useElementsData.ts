@@ -13,16 +13,15 @@ import type {
   BIMNode,
   NodeModel
 } from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { debug, DebugCategories } from '../debug/useDebug'
 import { useBIMElements } from './useBIMElements'
 import { useParameterDiscovery } from './useParameterDiscovery'
 import { processDataPipeline } from '../utils/dataPipeline'
 import { useStore } from '../core/store'
+import { mergeColumns } from '../utils/columnUtils'
 
 // Helper to convert ProcessedHeader to UnifiedParameter
 function convertToUnifiedParameter(header: ProcessedHeader): UnifiedParameter {
-  // Convert ProcessedHeader type to UnifiedParameter type
   let paramType: ParameterType
   switch (header.type) {
     case 'number':
@@ -75,17 +74,11 @@ function convertToUnifiedParameter(header: ProcessedHeader): UnifiedParameter {
 
 // Convert NodeModel to TreeItemComponentModel
 function convertNodeModelToTreeItem(model: NodeModel): TreeItemComponentModel | null {
-  if (!model.raw) {
-    return null
-  }
+  if (!model.raw) return null
 
-  // Create BIMNode
-  const bimNode: BIMNode = {
-    raw: model.raw
-  }
-
-  // Convert children recursively
+  const bimNode: BIMNode = { raw: model.raw }
   const children: TreeItemComponentModel[] = []
+
   if (model.children?.length) {
     model.children.forEach((child) => {
       const childItem = convertNodeModelToTreeItem(child)
@@ -95,7 +88,6 @@ function convertNodeModelToTreeItem(model: NodeModel): TreeItemComponentModel | 
     })
   }
 
-  // Add children to BIMNode if any
   if (children.length > 0) {
     bimNode.children = children.map((child) => ({
       raw: child.rawNode!.raw,
@@ -103,14 +95,12 @@ function convertNodeModelToTreeItem(model: NodeModel): TreeItemComponentModel | 
     }))
   }
 
-  const result: TreeItemComponentModel = {
+  return {
     id: model.raw.id,
     label: model.raw.type || 'Unknown',
     rawNode: bimNode,
     children: children.length > 0 ? children : undefined
   }
-
-  return result
 }
 
 export function useElementsData({
@@ -131,14 +121,12 @@ export function useElementsData({
     initializeElements
   } = useBIMElements()
 
-  // Initialize parameter discovery
   const { availableParentHeaders, availableChildHeaders, discoverParameters } =
     useParameterDiscovery({
       selectedParentCategories,
       selectedChildCategories
     })
 
-  // Initialize processing state
   const processingState = ref<ProcessingState>({
     isInitializing: false,
     isProcessingElements: false,
@@ -147,22 +135,8 @@ export function useElementsData({
     error: null
   })
 
-  // Create refs for data
   const scheduleDataRef = ref<ElementData[]>([])
   const tableDataRef = ref<TableRow[]>([])
-
-  // Helper to preserve column settings
-  const preserveColumnSettings = (
-    newColumns: ColumnDef[],
-    existingColumns: ColumnDef[]
-  ): ColumnDef[] => {
-    return newColumns.map((newCol) => ({
-      ...newCol,
-      ...existingColumns.find((col) => col.field === newCol.field),
-      visible: true,
-      isFetched: true
-    }))
-  }
 
   // Helper to create ProcessedHeader for custom parameter
   const createCustomParameterHeader = (param: {
@@ -209,28 +183,17 @@ export function useElementsData({
 
       // First, discover ALL available parameters
       if (rawWorldTree.value?._root) {
-        debug?.log(DebugCategories.PARAMETERS, 'Starting parameter discovery', {
-          selectedParentCategories: selectedParentCategories.value,
-          selectedChildCategories: selectedChildCategories.value,
-          worldTreeRoot: {
-            hasModel: !!rawWorldTree.value._root.model,
-            hasChildren: !!rawWorldTree.value._root.children?.length
-          }
-        })
-
-        // Convert world tree root to TreeItemComponentModel
         const model = rawWorldTree.value._root.model
         if (!model?.raw) {
           throw new Error('Invalid world tree root: missing model or raw data')
         }
 
-        // Create root node with all children
         const root = convertNodeModelToTreeItem(model)
         if (!root) {
           throw new Error('Failed to convert root model')
         }
 
-        // Process additional children from root.children
+        // Process additional children
         if (rawWorldTree.value._root.children?.length) {
           const additionalChildren: TreeItemComponentModel[] = []
           rawWorldTree.value._root.children.forEach((child) => {
@@ -249,7 +212,6 @@ export function useElementsData({
             }
           })
 
-          // Only set children if we have any
           if (additionalChildren.length > 0) {
             root.children = [...(root.children || []), ...additionalChildren]
           }
@@ -257,24 +219,7 @@ export function useElementsData({
 
         await discoverParameters(root)
 
-        debug?.log(DebugCategories.PARAMETERS, 'Raw discovered parameters', {
-          parentCount: availableParentHeaders.value.length,
-          childCount: availableChildHeaders.value.length,
-          parentHeaders: availableParentHeaders.value.map((h) => ({
-            field: h.field,
-            type: h.type,
-            source: h.source,
-            category: h.category
-          })),
-          childHeaders: availableChildHeaders.value.map((h) => ({
-            field: h.field,
-            type: h.type,
-            source: h.source,
-            category: h.category
-          }))
-        })
-
-        // Add custom parameters to available parameters
+        // Add custom parameters
         const customParams = store.customParameters.value || []
         const discoveredParentParams = [
           ...availableParentHeaders.value,
@@ -285,115 +230,46 @@ export function useElementsData({
           ...customParams.map(createCustomParameterHeader)
         ]
 
-        debug?.log(DebugCategories.PARAMETERS, 'Parameters with custom ones', {
-          parentCount: discoveredParentParams.length,
-          childCount: discoveredChildParams.length,
-          customCount: customParams.length,
-          sampleParent: discoveredParentParams.slice(0, 3).map((p) => ({
-            field: p.field,
-            type: p.type,
-            source: p.source,
-            category: p.category
-          })),
-          sampleChild: discoveredChildParams.slice(0, 3).map((p) => ({
-            field: p.field,
-            type: p.type,
-            source: p.source,
-            category: p.category
-          }))
-        })
-
-        // Convert ProcessedHeaders to UnifiedParameters
+        // Convert to UnifiedParameters
         const unifiedParentParams = discoveredParentParams.map(
           convertToUnifiedParameter
         )
         const unifiedChildParams = discoveredChildParams.map(convertToUnifiedParameter)
 
-        debug?.log(DebugCategories.PARAMETERS, 'Converted to UnifiedParameters', {
-          parentCount: unifiedParentParams.length,
-          childCount: unifiedChildParams.length,
-          sampleParent: unifiedParentParams.slice(0, 3).map((p) => ({
-            field: p.field,
-            type: p.type,
-            source: p.source,
-            category: p.category
-          })),
-          sampleChild: unifiedChildParams.slice(0, 3).map((p) => ({
-            field: p.field,
-            type: p.type,
-            source: p.source,
-            category: p.category
-          }))
-        })
-
-        // Update store with available parameters first
+        // Update store with available parameters
         await store.lifecycle.update({
           availableHeaders: {
             parent: unifiedParentParams,
             child: unifiedChildParams
           }
         })
-
-        debug?.log(DebugCategories.PARAMETERS, 'Store updated with parameters', {
-          parentParams: unifiedParentParams.length,
-          childParams: unifiedChildParams.length,
-          customParams: customParams.length,
-          storeHeaders: store.availableHeaders.value
-        })
-      } else {
-        debug?.warn(
-          DebugCategories.STATE,
-          'World tree not available for parameter discovery'
-        )
       }
 
-      // Then, process data with ACTIVE parameters
-      const result = processDataPipeline({
+      // Process data with progressive loading
+      const result = await processDataPipeline({
         allElements: elements,
         selectedParent: selectedParentCategories.value,
         selectedChild: selectedChildCategories.value
       })
 
-      // Get current active columns with preserved settings
+      // Get current columns
       const currentParentColumns = store.parentVisibleColumns.value || []
       const currentChildColumns = store.childVisibleColumns.value || []
 
-      // Create active columns with preserved settings
-      const activeParentColumns = preserveColumnSettings(
+      // Merge columns with current settings
+      const activeParentColumns = mergeColumns(
         result.parentColumns,
         currentParentColumns
       )
-      const activeChildColumns = preserveColumnSettings(
-        result.childColumns,
-        currentChildColumns
-      )
+      const activeChildColumns = mergeColumns(result.childColumns, currentChildColumns)
 
-      debug?.log(DebugCategories.PARAMETERS, 'Parameters prepared', {
-        activeParent: activeParentColumns.length,
-        activeChild: activeChildColumns.length,
-        sampleActiveParent: activeParentColumns.slice(0, 3).map((p) => ({
-          field: p.field,
-          type: p.type,
-          source: p.source,
-          category: p.category
-        })),
-        sampleActiveChild: activeChildColumns.slice(0, 3).map((p) => ({
-          field: p.field,
-          type: p.type,
-          source: p.source,
-          category: p.category
-        }))
-      })
-
-      // Update store with data and active columns
+      // Update store with processed data
       await store.lifecycle.update({
         scheduleData: result.filteredElements,
         evaluatedData: result.processedElements,
         tableData: result.tableData,
-        // Active parameters (shown in Manage Columns right panel and table)
         parentVisibleColumns: activeParentColumns,
         childVisibleColumns: activeChildColumns,
-        // Base columns from data pipeline
         parentBaseColumns: result.parentColumns,
         childBaseColumns: result.childColumns,
         initialized: true
@@ -403,16 +279,13 @@ export function useElementsData({
       scheduleDataRef.value = result.filteredElements
       tableDataRef.value = result.tableData
 
+      // Update processing state based on pipeline result
+      processingState.value.isProcessingFullData = result.isProcessingComplete
+
       debug?.completeState(DebugCategories.DATA_TRANSFORM, 'Data processing complete', {
         filteredCount: result.filteredElements.length,
         processedCount: result.processedElements.length,
-        activeParentCount: activeParentColumns.length,
-        activeChildCount: activeChildColumns.length,
-        storeState: {
-          availableHeaders: store.availableHeaders.value,
-          parentVisibleColumns: store.parentVisibleColumns.value?.length,
-          childVisibleColumns: store.childVisibleColumns.value?.length
-        }
+        isComplete: result.isProcessingComplete
       })
     } catch (error) {
       debug?.error(DebugCategories.ERROR, 'Error processing data:', error)
@@ -439,10 +312,6 @@ export function useElementsData({
       debug?.startState(DebugCategories.INITIALIZATION, 'Initializing data')
       processingState.value.isInitializing = true
       await initializeElements()
-      debug?.completeState(
-        DebugCategories.INITIALIZATION,
-        'Data initialization complete'
-      )
     } catch (error) {
       debug?.error(DebugCategories.ERROR, 'Error initializing data:', error)
       processingState.value.error =
@@ -455,22 +324,17 @@ export function useElementsData({
 
   // Category update handler
   const updateCategories = async (
-    parentCategories: string[],
-    childCategories: string[]
+    _parentCategories: string[],
+    _childCategories: string[]
   ): Promise<void> => {
     try {
-      debug?.startState(DebugCategories.CATEGORY_UPDATES, 'Updating categories', {
-        parent: parentCategories,
-        child: childCategories
-      })
+      debug?.startState(DebugCategories.CATEGORY_UPDATES, 'Updating categories')
       processingState.value.isUpdatingCategories = true
       processingState.value.error = null
 
       if (allElements.value?.length) {
         await updateData(allElements.value)
       }
-
-      debug?.completeState(DebugCategories.CATEGORY_UPDATES, 'Category update complete')
     } catch (error) {
       debug?.error(DebugCategories.ERROR, 'Error updating categories:', error)
       processingState.value.error =
@@ -537,7 +401,10 @@ export function useElementsData({
     initializeData,
     stopWorldTreeWatch,
     isLoading: computed(
-      () => bimLoading.value || processingState.value.isProcessingElements
+      () =>
+        bimLoading.value ||
+        processingState.value.isProcessingElements ||
+        !processingState.value.isProcessingFullData
     ),
     hasError: computed(() => bimError.value || !!processingState.value.error),
     processingState,

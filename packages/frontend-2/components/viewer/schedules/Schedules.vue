@@ -1,10 +1,8 @@
 <template>
-  <ViewerLayoutPanel :initial-width="400" v-bind="$attrs" @close="handleClose">
-    <template #header>
-      <div>Schedules</div>
-    </template>
+  <ViewerLayoutPanel :initial-width="400" @close="handleClose">
+    <template #title>Datasets</template>
 
-    <template #default>
+    <template #actions>
       <div class="flex items-center justify-between w-full">
         <ScheduleHeader
           :selected-table-id="store.selectedTableId.value || ''"
@@ -12,14 +10,38 @@
           :tables="store.tablesArray.value || []"
           :show-category-options="showCategoryOptions"
           :has-changes="hasChanges"
-          :is-test-mode="isTestMode"
           @update:selected-table-id="handleSelectedTableIdUpdate"
           @update:table-name="handleTableNameUpdate"
           @table-change="handleTableChange"
           @save="handleSaveTable"
-          @manage-parameters="showParameterManager = true"
-          @toggle-category-options="showCategoryOptions = !showCategoryOptions"
-          @toggle-test-mode="isTestMode = !isTestMode"
+          @toggle-category-options="toggleCategoryOptions"
+        />
+        <FormButton
+          text
+          size="sm"
+          color="primary"
+          :disabled="!store.selectedTableId.value"
+          @click="toggleParameterManager"
+        >
+          Manage Parameters
+        </FormButton>
+      </div>
+    </template>
+
+    <div class="flex flex-col">
+      <!-- Category Filters - Below actions but above table -->
+      <div
+        v-if="showCategoryOptions && !isLoading"
+        class="sticky top-10 px-2 py-2 flex flex-col justify-start text-left border-b-2 border-primary-muted bg-foundation"
+      >
+        <ScheduleCategoryFilters
+          :show-category-options="showCategoryOptions"
+          :parent-categories="parentCategories"
+          :child-categories="childCategories"
+          :selected-parent-categories="selectedParentCategories"
+          :selected-child-categories="selectedChildCategories"
+          :is-updating="isUpdating"
+          @toggle-category="handleCategoryToggle"
         />
       </div>
 
@@ -87,17 +109,6 @@
               @error="handleError"
             />
 
-            <ScheduleCategoryFilters
-              v-if="!isLoading"
-              :show-category-options="showCategoryOptions"
-              :parent-categories="parentCategories"
-              :child-categories="childCategories"
-              :selected-parent-categories="selectedParentCategories"
-              :selected-child-categories="selectedChildCategories"
-              :is-updating="isUpdating"
-              @toggle-category="handleCategoryToggle"
-            />
-
             <ScheduleDataManagement
               v-if="!isLoading"
               ref="dataComponent"
@@ -145,8 +156,9 @@
 
             <ScheduleParameterManagerModal
               v-if="showParameterManager"
-              v-model:show="showParameterManager"
+              :show="showParameterManager"
               :table-id="store.currentTableId.value || ''"
+              @update:show="toggleParameterManager"
               @update="handleParameterUpdate"
               @update:visibility="handleParameterVisibility"
               @update:order="handleParameterOrder"
@@ -162,24 +174,27 @@
               :child-parameter-columns="store.childAvailableColumns.value || []"
               :available-parent-headers="availableParentHeaders"
               :available-child-headers="availableChildHeaders"
+              :is-test-mode="isTestMode"
+              @update:is-test-mode="isTestMode = $event"
             />
           </div>
         </template>
       </div>
-    </template>
+    </div>
   </ViewerLayoutPanel>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { isEqual } from 'lodash-es'
 import { useDebug, DebugCategories } from './debug/useDebug'
 import { useStore } from './core/store'
 import { useProcessedHeaders } from './composables/useProcessedHeaders'
 import { useElementsData } from './composables/useElementsData'
-import { useScheduleEmits } from './composables/useScheduleEmits'
 import { parentCategories, childCategories } from './config/categories'
 import { defaultTable } from './config/defaultColumns'
 import { useUnifiedParameters } from './composables/useUnifiedParameters'
+import { useScheduleInteractions } from './composables/useScheduleInteractions'
 import TestDataTable from './components/test/TestDataTable.vue'
 import DebugPanel from './debug/DebugPanel.vue'
 
@@ -189,7 +204,9 @@ import type {
   ScheduleParameterHandlingExposed,
   ScheduleColumnManagementExposed,
   ElementData,
-  TableRow
+  TableRow,
+  ScheduleInitializationInstance,
+  TableConfig
 } from './types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
@@ -222,8 +239,6 @@ const debug = useDebug()
 const isTestMode = ref(false)
 
 // Initialize refs
-const showCategoryOptions = ref(false)
-const showParameterManager = ref(false)
 const error = ref<Error | null>(null)
 const viewerContainer = ref<HTMLElement | null>(null)
 const selectedParentCategories = ref<string[]>(
@@ -238,10 +253,123 @@ const dataComponent = ref<ScheduleDataManagementExposed | null>(null)
 const parameterComponent = ref<ScheduleParameterHandlingExposed | null>(null)
 const columnComponent = ref<ScheduleColumnManagementExposed | null>(null)
 
-// Initialize core composables first
-const { handleClose } = useScheduleEmits({ emit })
+// Initialize core composables
 const store = useStore()
 const { settings, loadSettings } = useUserSettings()
+
+const initComponent = ref<ScheduleInitializationInstance>({
+  initialize: async () => {
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing schedule component')
+    await store.lifecycle.init()
+  },
+  createNamedTable: async (name: string, config: Omit<TableConfig, 'id' | 'name'>) => {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table', {
+      name,
+      config
+    })
+
+    // Create new table with store
+    await store.lifecycle.update({
+      tableName: name,
+      parentBaseColumns: config.parentColumns,
+      childBaseColumns: config.childColumns,
+      parentVisibleColumns: config.parentColumns,
+      childVisibleColumns: config.childColumns,
+      selectedParentCategories: config.categoryFilters?.selectedParentCategories || [],
+      selectedChildCategories: config.categoryFilters?.selectedChildCategories || [],
+      customParameters: config.customParameters || []
+    })
+
+    // Return table config
+    const tableConfig: TableConfig = {
+      id: store.currentTableId.value,
+      name,
+      parentColumns: config.parentColumns,
+      childColumns: config.childColumns,
+      categoryFilters: config.categoryFilters,
+      customParameters: config.customParameters
+    }
+
+    return tableConfig
+  },
+  updateNamedTable: async (id: string, config: Partial<TableConfig>) => {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Updating table', {
+      id,
+      config
+    })
+
+    // Update table with store
+    await store.lifecycle.update({
+      currentTableId: id,
+      tableName: config.name,
+      ...(config.parentColumns && {
+        parentBaseColumns: config.parentColumns,
+        parentVisibleColumns: config.parentColumns
+      }),
+      ...(config.childColumns && {
+        childBaseColumns: config.childColumns,
+        childVisibleColumns: config.childColumns
+      }),
+      ...(config.categoryFilters && {
+        selectedParentCategories: config.categoryFilters.selectedParentCategories,
+        selectedChildCategories: config.categoryFilters.selectedChildCategories
+      }),
+      ...(config.customParameters && {
+        customParameters: config.customParameters
+      })
+    })
+
+    // Return updated table config
+    const tableConfig: TableConfig = {
+      id,
+      name: config.name || store.tableName.value,
+      parentColumns: config.parentColumns || store.parentVisibleColumns.value || [],
+      childColumns: config.childColumns || store.childVisibleColumns.value || [],
+      categoryFilters: config.categoryFilters || {
+        selectedParentCategories: selectedParentCategories.value,
+        selectedChildCategories: selectedChildCategories.value
+      },
+      customParameters: config.customParameters || store.customParameters.value || []
+    }
+
+    return tableConfig
+  }
+})
+
+// Initialize interactions with proper initialization component
+const interactions = useScheduleInteractions({
+  state: {
+    selectedTableId: store.selectedTableId.value || '',
+    tableName: store.tableName.value || '',
+    currentTable: null,
+    selectedParentCategories: selectedParentCategories.value,
+    selectedChildCategories: selectedChildCategories.value,
+    currentTableColumns: store.parentVisibleColumns.value || [],
+    currentDetailColumns: store.childVisibleColumns.value || []
+  },
+  initComponent,
+  updateCurrentColumns: async (parentColumns, childColumns) => {
+    await store.setColumns(parentColumns, childColumns, 'available')
+    // Also update visible columns
+    await store.setColumns(parentColumns, childColumns, 'visible')
+  },
+  handleError: (err: unknown) => {
+    const error = err instanceof Error ? err : new Error('Unknown error occurred')
+    handleError(error)
+  },
+  emit
+})
+
+const {
+  showCategoryOptions,
+  showParameterManager,
+  toggleCategoryOptions,
+  toggleParameterManager,
+  handleClose,
+  handleSaveTable,
+  handleBothColumnsUpdate,
+  state: interactionsState
+} = interactions
 
 // Initialize data composables - we know viewer state is ready
 const elementsData = useElementsData({
@@ -274,7 +402,42 @@ const hasSelectedCategories = computed(
     selectedChildCategories.value.length > 0
 )
 
-const hasChanges = computed(() => false) // TODO: Implement change tracking
+const hasChanges = computed(() => {
+  // Get the current table settings from settings
+  const currentTableId = store.selectedTableId.value
+  const currentSettings = settings.value?.namedTables?.[currentTableId]
+
+  if (!currentTableId || !currentSettings) {
+    // If we're creating a new table or no settings exist, check if we have any data
+    return !!(
+      store.tableName.value ||
+      selectedParentCategories.value.length > 0 ||
+      selectedChildCategories.value.length > 0 ||
+      store.parentVisibleColumns.value?.length > 0 ||
+      store.childVisibleColumns.value?.length > 0
+    )
+  }
+
+  // Compare current state with saved settings
+  return (
+    // Check table name changes
+    currentSettings.name !== store.tableName.value ||
+    // Check category changes
+    !isEqual(
+      currentSettings.categoryFilters?.selectedParentCategories || [],
+      selectedParentCategories.value
+    ) ||
+    !isEqual(
+      currentSettings.categoryFilters?.selectedChildCategories || [],
+      selectedChildCategories.value
+    ) ||
+    // Check column changes
+    !isEqual(currentSettings.parentColumns || [], store.parentVisibleColumns.value) ||
+    !isEqual(currentSettings.childColumns || [], store.childVisibleColumns.value) ||
+    // Check custom parameters changes
+    !isEqual(currentSettings.customParameters || [], store.customParameters.value)
+  )
+})
 
 // Process headers
 const { processedHeaders } = useProcessedHeaders({
@@ -489,9 +652,74 @@ async function handleSelectedTableIdUpdate(value: string) {
   }
 }
 
+// Watch for store changes to update interactions state
+watch(
+  [
+    () => store.selectedTableId.value,
+    () => store.tableName.value,
+    () => store.parentVisibleColumns.value,
+    () => store.childVisibleColumns.value,
+    () => selectedParentCategories.value,
+    () => selectedChildCategories.value
+  ],
+  ([
+    selectedTableId,
+    tableName,
+    parentColumns,
+    childColumns,
+    parentCategories,
+    childCategories
+  ]) => {
+    debug.log(DebugCategories.STATE, 'Store state changed, updating interactions', {
+      selectedTableId,
+      tableName,
+      parentColumnsCount: parentColumns?.length,
+      childColumnsCount: childColumns?.length,
+      currentInteractionsState: interactionsState.value
+    })
+
+    // Ensure we have a valid table name
+    const newTableName = tableName || ''
+
+    // Update interactions state
+    interactionsState.value = {
+      selectedTableId: selectedTableId || '',
+      tableName: newTableName,
+      currentTable: null,
+      selectedParentCategories: parentCategories,
+      selectedChildCategories: childCategories,
+      currentTableColumns: parentColumns || [],
+      currentDetailColumns: childColumns || []
+    }
+
+    debug.log(DebugCategories.STATE, 'Updated interactions state', {
+      newState: interactionsState.value
+    })
+  },
+  { immediate: true, deep: true }
+)
+
 function handleTableNameUpdate(value: string) {
   try {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Updating table name', {
+      value,
+      currentStoreName: store.tableName.value,
+      currentInteractionsName: interactionsState.value.tableName
+    })
+
+    // Update store
     store.setTableInfo({ tableName: value })
+
+    // Ensure interactions state is updated
+    interactionsState.value = {
+      ...interactionsState.value,
+      tableName: value
+    }
+
+    debug.log(DebugCategories.TABLE_UPDATES, 'Table name updated', {
+      newStoreName: store.tableName.value,
+      newInteractionsName: interactionsState.value.tableName
+    })
   } catch (err) {
     handleError(err)
   }
@@ -555,17 +783,6 @@ async function handleParameterUpdate() {
 function handleTableChange() {
   try {
     error.value = null
-  } catch (err) {
-    handleError(err)
-  }
-}
-
-async function handleBothColumnsUpdate(updates: {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-}) {
-  try {
-    await store.setColumns(updates.parentColumns, updates.childColumns, 'available')
   } catch (err) {
     handleError(err)
   }
@@ -644,66 +861,6 @@ onMounted(async () => {
     handleError(err)
   }
 })
-
-async function handleSaveTable() {
-  try {
-    debug.startState(DebugCategories.TABLE_UPDATES, 'Saving table')
-
-    const currentTableId = store.currentTableId.value
-    if (!currentTableId) {
-      throw new Error('No table selected')
-    }
-
-    // Get current table state
-    const tableState = {
-      id: currentTableId,
-      name: store.tableName.value || 'Unnamed Table',
-      parentColumns: store.parentVisibleColumns.value || [],
-      childColumns: store.childVisibleColumns.value || [],
-      categoryFilters: {
-        selectedParentCategories: selectedParentCategories.value,
-        selectedChildCategories: selectedChildCategories.value
-      },
-      lastUpdateTimestamp: Date.now()
-    }
-
-    // Update settings
-    const { settings, saveSettings } = useUserSettings()
-    const currentSettings = settings.value || { namedTables: {} }
-
-    const updatedSettings = {
-      ...currentSettings,
-      namedTables: {
-        ...currentSettings.namedTables,
-        [currentTableId]: tableState
-      }
-    }
-
-    // Save to PostgreSQL
-    const success = await saveSettings(updatedSettings)
-    if (!success) {
-      throw new Error('Failed to save table settings')
-    }
-
-    // Update store's tablesArray
-    const tables = Object.entries(updatedSettings.namedTables).map(([id, table]) => ({
-      id,
-      name: table.name || 'Unnamed Table'
-    }))
-
-    await store.lifecycle.update({
-      tablesArray: tables
-    })
-
-    debug.completeState(DebugCategories.TABLE_UPDATES, 'Table saved', {
-      tableId: currentTableId,
-      name: tableState.name
-    })
-  } catch (err) {
-    debug.error(DebugCategories.ERROR, 'Error saving table:', err)
-    handleError(err)
-  }
-}
 
 // Clean up
 onBeforeUnmount(() => {
@@ -831,5 +988,25 @@ defineExpose({
 
 .ml-2 {
   margin-left: 0.5rem;
+}
+
+.sticky {
+  position: sticky;
+}
+
+.top-10 {
+  top: 2.5rem;
+}
+
+.border-b-2 {
+  border-bottom-width: 2px;
+}
+
+.border-primary-muted {
+  border-color: var(--color-primary-muted);
+}
+
+.bg-foundation {
+  background-color: var(--color-foundation);
 }
 </style>

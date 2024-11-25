@@ -116,6 +116,11 @@ Schedules.vue
 ├── useScheduleStore (Store initialization)
 ├── useViewerInitialization (Core viewer state)
 ├── useScheduleFlow (Type conversion & state flow)
+├── useScheduleInteractions (UI interactions & state)
+│   ├── Table operations
+│   ├── Category management
+│   ├── Parameter management
+│   └── Error handling
 ├── useScheduleTable (Table management)
 ├── useScheduleValues (Value management)
 └── Components
@@ -129,7 +134,79 @@ Schedules.vue
     │   └── index.ts (Component exports)
     ├── ScheduleParameterHandling (Parameter UI)
     ├── ScheduleColumnManagement (Column UI)
-    └── ScheduleDataManagement
+    └── ScheduleDataManagement (Data UI)
+
+Interaction Flow:
+1. User Action
+   └── Component Event
+       ├── useScheduleInteractions handler
+       │   ├── State update
+       │   ├── Store mutation
+       │   └── Error handling
+       └── UI update
+```
+
+### State Management (Updated)
+
+```
+State Management Layers:
+1. Store State (useStore)
+   ├── Core data
+   ├── UI state
+   └── Computed values
+
+2. Interaction State (useScheduleInteractions)
+   ├── UI toggles
+   ├── Action handlers
+   └── Error boundaries
+
+3. Component State
+   ├── Local refs
+   ├── Computed props
+   └── Event emitters
+
+State Flow:
+User Action → Component Event → Interaction Handler → Store Mutation → UI Update
+     ↑            ↓                    ↓                   ↓            ↓
+     └── Error Handling ───────────────┴───────────────────┴────────────┘
+```
+
+### Type System (Updated)
+
+```typescript
+// Interaction State
+interface ScheduleInteractionsState {
+  selectedTableId: string
+  tableName: string
+  currentTable: TableConfig | null
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
+  currentTableColumns: ColumnDef[]
+  currentDetailColumns: ColumnDef[]
+}
+
+// Table Configuration
+interface TableConfig {
+  id: string
+  name: string
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+  categoryFilters?: {
+    selectedParentCategories: string[]
+    selectedChildCategories: string[]
+  }
+  customParameters?: CustomParameter[]
+}
+
+// Component Interfaces
+interface ScheduleInitializationInstance {
+  initialize: () => Promise<void>
+  createNamedTable: (
+    name: string,
+    config: Omit<TableConfig, 'id' | 'name'>
+  ) => Promise<TableConfig>
+  updateNamedTable: (id: string, config: Partial<TableConfig>) => Promise<TableConfig>
+}
 ```
 
 ### Parameter Types and Flow (Updated)

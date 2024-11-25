@@ -5,9 +5,8 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { useScheduleDataTransform } from '../composables/useScheduleDataTransform'
-import { useDataOrganization } from '../composables/useDataOrganization'
 import { debug, DebugCategories } from '../debug/useDebug'
+import { useElementsData } from '../composables/useElementsData'
 import type { CustomParameter } from '~/composables/useUserSettings'
 import type { ElementData, TableRow } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
@@ -28,22 +27,18 @@ const emit = defineEmits<{
   error: [error: Error]
 }>()
 
-// Initialize data transform with selected categories
-const { tableData, filteredData } = useScheduleDataTransform({
-  scheduleData: computed(() => props.scheduleData),
-  evaluatedData: computed(() => props.evaluatedData),
-  customParameters: computed(() => props.customParameters),
-  mergedTableColumns: computed(() => props.mergedTableColumns),
-  mergedDetailColumns: computed(() => props.mergedDetailColumns),
+// Initialize data management with selected categories
+const {
+  tableData,
+  scheduleData: filteredData,
+  updateCategories,
+  isLoading,
+  hasError,
+  processingState
+} = useElementsData({
   selectedParentCategories: computed(() => props.selectedParentCategories),
-  selectedChildCategories: computed(() => props.selectedChildCategories),
-  isInitialized: computed(() => props.isInitialized)
+  selectedChildCategories: computed(() => props.selectedChildCategories)
 })
-
-// Only initialize data organization when we have data
-const { updateRootNodes } = props.isInitialized
-  ? useDataOrganization()
-  : { updateRootNodes: () => {} }
 
 // Watch for data changes
 watch(
@@ -62,7 +57,9 @@ watch(
         categories: {
           parent: props.selectedParentCategories,
           child: props.selectedChildCategories
-        }
+        },
+        isLoading: isLoading.value,
+        processingState: processingState.value
       })
       emit('update:tableData', newData || [])
     } catch (error) {
@@ -76,25 +73,41 @@ watch(
 // Watch for category changes
 watch(
   [() => props.selectedParentCategories, () => props.selectedChildCategories],
-  ([newParentCats, newChildCats]) => {
+  async ([newParentCats, newChildCats]) => {
     if (!props.isInitialized) {
       debug.warn(DebugCategories.STATE, 'Waiting for initialization')
       return
     }
 
-    debug.log(DebugCategories.CATEGORIES, 'Categories changed', {
-      parent: newParentCats,
-      child: newChildCats,
-      timestamp: new Date().toISOString()
-    })
+    try {
+      debug.log(DebugCategories.CATEGORIES, 'Categories changed', {
+        parent: newParentCats,
+        child: newChildCats,
+        timestamp: new Date().toISOString()
+      })
+
+      await updateCategories(newParentCats, newChildCats)
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error updating categories:', error)
+      emit('error', error instanceof Error ? error : new Error(String(error)))
+    }
   },
   { immediate: true }
 )
 
-// Expose necessary functions and state
+// Watch for errors
+watch(hasError, (error) => {
+  if (error) {
+    emit('error', processingState.value.error || new Error('Unknown error occurred'))
+  }
+})
+
+// Expose necessary state
 defineExpose({
   tableData,
   filteredData,
-  updateRootNodes
+  isLoading,
+  hasError,
+  processingState
 })
 </script>

@@ -15,6 +15,11 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
   const { updateTable, createTable, updateTableCategories, updateTableColumns } =
     useTableOperations({
       updateNamedTable: async (id, config) => {
+        debug.startState(DebugCategories.TABLE_UPDATES, 'Updating named table', {
+          id,
+          config
+        })
+
         const currentSettings = settings.value
         const existingTable = currentSettings.namedTables[id]
 
@@ -44,15 +49,29 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
 
         const success = await saveSettings(updatedSettings)
         if (!success) {
+          debug.error(DebugCategories.ERROR, 'Failed to update table', {
+            id,
+            config: updatedTable
+          })
           throw new Error('Failed to update table')
         }
 
         // Force settings update
         settings.value = updatedSettings
 
+        debug.completeState(DebugCategories.TABLE_UPDATES, 'Table update complete', {
+          id,
+          updatedTable
+        })
+
         return updatedTable
       },
       createNamedTable: async (name, config) => {
+        debug.startState(DebugCategories.TABLE_UPDATES, 'Creating new table', {
+          name,
+          config
+        })
+
         const tableId = `table-${Date.now()}`
         const newTable: NamedTableConfig = {
           id: tableId,
@@ -76,11 +95,20 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
 
         const success = await saveSettings(updatedSettings)
         if (!success) {
+          debug.error(DebugCategories.ERROR, 'Failed to create table', {
+            name,
+            config: newTable
+          })
           throw new Error('Failed to create table')
         }
 
         // Force settings update
         settings.value = updatedSettings
+
+        debug.completeState(DebugCategories.TABLE_UPDATES, 'Table creation complete', {
+          id: tableId,
+          newTable
+        })
 
         return tableId
       }
