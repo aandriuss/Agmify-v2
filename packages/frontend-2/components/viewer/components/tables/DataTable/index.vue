@@ -84,8 +84,11 @@ import {
   validateTableRows
 } from './composables/useTableUtils'
 import type { ColumnDef } from './composables/columns/types'
-import type { CustomParameter } from '~/composables/useUserSettings'
-import type { TableRow, ElementData } from '~/components/viewer/schedules/types'
+import type {
+  TableRow,
+  ElementData,
+  UnifiedParameter
+} from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import type {
   DataTableColumnReorderEvent,
@@ -100,8 +103,8 @@ interface Props {
   scheduleData: (TableRow | ElementData)[]
   columns: ColumnDef[]
   detailColumns: ColumnDef[]
-  availableParentParameters: CustomParameter[]
-  availableChildParameters: CustomParameter[]
+  availableParentParameters: UnifiedParameter[]
+  availableChildParameters: UnifiedParameter[]
   loading?: boolean
   initialState?: TableState
 }

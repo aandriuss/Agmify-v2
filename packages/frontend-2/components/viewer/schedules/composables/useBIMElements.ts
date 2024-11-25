@@ -9,14 +9,12 @@ import type {
   ParameterValueType,
   ParameterValueState,
   TreeNode,
-  DeepBIMNode
+  DeepBIMNode,
+  NodeModel
 } from '../types'
-import { useDebug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '../debug/useDebug'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import { defaultColumns } from '../config/defaultColumns'
-
-// Initialize debug
-const debug = useDebug()
 
 // BIM parameter mapping with type information
 const parameterMapping: Record<string, { names: string[]; type: ParameterValueType }> =
@@ -65,6 +63,25 @@ interface ProcessingStats {
   totalNodes: number
   skippedNodes: number
   processedNodes: number
+}
+
+// Type guard for ViewerTree
+function isValidViewerTree(value: unknown): value is ViewerTree {
+  if (!value || typeof value !== 'object') return false
+  const tree = value as Partial<ViewerTree>
+  return (
+    '_root' in tree &&
+    typeof tree._root === 'object' &&
+    tree._root !== null &&
+    ('model' in tree._root || 'children' in tree._root)
+  )
+}
+
+// Type guard for NodeModel
+function isValidNodeModel(value: unknown): value is NodeModel {
+  if (!value || typeof value !== 'object') return false
+  const model = value as Partial<NodeModel>
+  return 'raw' in model || 'children' in model
 }
 
 function inferType(paramName: string, value: unknown): ParameterValueType {
@@ -414,6 +431,26 @@ export function useBIMElements(): UseBIMElementsReturn {
   const isInitialized = ref(false)
   const viewerState = useInjectedViewerState()
 
+  // Wait for world tree to be available
+  async function waitForWorldTree(timeout = 10000): Promise<ViewerTree | null> {
+    const startTime = Date.now()
+    while (Date.now() - startTime < timeout) {
+      const worldTree = viewerState?.viewer?.metadata?.worldTree?.value
+      if (isValidViewerTree(worldTree) && worldTree._root) {
+        debug.log(DebugCategories.STATE, 'World tree found', {
+          hasRoot: true,
+          hasModel: isValidNodeModel(worldTree._root.model),
+          hasChildren: Array.isArray(worldTree._root.children)
+            ? worldTree._root.children.length
+            : 0
+        })
+        return worldTree
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    return null
+  }
+
   async function initializeElements(
     activeParameters: string[] = defaultColumns.map((col) => col.field)
   ): Promise<void> {
@@ -423,11 +460,21 @@ export function useBIMElements(): UseBIMElementsReturn {
 
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
 
-      const worldTreeValue = viewerState?.viewer?.metadata?.worldTree?.value
+      // Wait for world tree
+      const worldTreeValue = await waitForWorldTree()
       if (!worldTreeValue?._root) {
-        debug.warn(DebugCategories.STATE, 'World tree not available')
+        debug.warn(DebugCategories.STATE, 'World tree not available after timeout')
         return
       }
+
+      debug.log(DebugCategories.STATE, 'World tree available', {
+        hasRoot: true,
+        hasModel: isValidNodeModel(worldTreeValue._root.model),
+        hasChildren: Array.isArray(worldTreeValue._root.children)
+          ? worldTreeValue._root.children.length
+          : 0,
+        modelType: worldTreeValue._root.model?.raw?.type || 'unknown'
+      })
 
       const stats = {
         totalNodes: 0,
@@ -449,7 +496,15 @@ export function useBIMElements(): UseBIMElementsReturn {
 
       debug.completeState(DebugCategories.INITIALIZATION, 'BIM elements initialized', {
         elementCount: processedElements.length,
-        stats
+        stats,
+        sampleElement: processedElements[0]
+          ? {
+              id: processedElements[0].id,
+              type: processedElements[0].type,
+              category: processedElements[0].category,
+              parameterCount: Object.keys(processedElements[0].parameters).length
+            }
+          : null
       })
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'BIM element initialization failed:', error)
@@ -464,10 +519,19 @@ export function useBIMElements(): UseBIMElementsReturn {
     () => viewerState?.viewer?.metadata?.worldTree?.value,
     async (worldTree) => {
       try {
-        if (!worldTree?._root) {
+        if (!isValidViewerTree(worldTree) || !worldTree._root) {
           debug.warn(DebugCategories.STATE, 'World tree not available')
           return
         }
+
+        debug.log(DebugCategories.STATE, 'World tree updated', {
+          hasRoot: true,
+          hasModel: isValidNodeModel(worldTree._root.model),
+          hasChildren: Array.isArray(worldTree._root.children)
+            ? worldTree._root.children.length
+            : 0,
+          modelType: worldTree._root.model?.raw?.type || 'unknown'
+        })
 
         await initializeElements()
       } catch (error) {

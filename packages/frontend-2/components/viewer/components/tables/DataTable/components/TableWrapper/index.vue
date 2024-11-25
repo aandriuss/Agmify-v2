@@ -3,7 +3,7 @@
     <DataTable
       :key="`table-${props.data.length}-${props.parentColumns.length}`"
       :value="sortedData"
-      :expanded-rows="props.expandedRows"
+      :expanded-rows="expandedRows"
       :loading="props.loading"
       :sort-field="props.sortField"
       :sort-order="props.sortOrder"
@@ -16,13 +16,21 @@
       :rows="10"
       expand-mode="row"
       data-key="id"
+      :expandable-row-groups="false"
+      :row-expandable="(row) => hasDetails(row)"
+      :row-class="(row) => (!hasDetails(row) ? 'non-expandable-row' : '')"
+      :pt="{
+        bodyRow: {
+          'data-expandable': (options) => hasDetails(options?.row)
+        }
+      }"
       @update:expanded-rows="handleExpandedRowsUpdate"
       @column-resize-end="handleColumnResize"
       @column-reorder="handleColumnReorder"
       @sort="handleSort"
       @filter="handleFilter"
-      @row-expand="(event) => handleRowExpand(event.data as TableRow | ElementData)"
-      @row-collapse="(event) => handleRowCollapse(event.data as TableRow | ElementData)"
+      @row-expand="(event) => handleRowExpand(event?.data)"
+      @row-collapse="(event) => handleRowCollapse(event?.data)"
     >
       <template #empty>
         <slot name="empty">
@@ -46,13 +54,16 @@
             striped-rows
             class="nested-table p-datatable-sm"
             data-key="id"
+            :expandable-row-groups="false"
+            :row-expandable="(row: TableRow | ElementData) => hasDetails(row)"
             @column-resize-end="handleColumnResize"
             @column-reorder="handleColumnReorder"
           >
             <Column
+              v-if="hasNestedChildren(expandedData)"
               :expander="true"
               style="width: 3rem"
-              :show-expander-icon="(row: unknown) => hasDetails(row)"
+              :show-expander-icon="(row: TableRow | ElementData) => hasDetails(row)"
             />
             <Column
               v-for="col in validColumnsInGroup(props.childColumns)"
@@ -77,7 +88,12 @@
         </div>
       </template>
 
-      <Column :expander="true" style="width: 3rem" :show-expander-icon="hasDetails" />
+      <Column
+        v-if="hasExpandableRows"
+        :expander="true"
+        style="width: 3rem"
+        :show-expander-icon="(row: TableRow | ElementData) => hasDetails(row)"
+      />
       <Column
         v-for="col in validColumnsInGroup(props.parentColumns)"
         :key="col.field"
@@ -124,6 +140,10 @@ interface Props {
   sortField?: string
   sortOrder?: number
   filters?: DataTableFilterMeta
+}
+
+interface DataTableEvent {
+  data: unknown
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -219,11 +239,26 @@ const sortedData = computed(() => {
   })
 })
 
+// Check if any rows are expandable
+const hasExpandableRows = computed(() => {
+  return props.data.some((row) => hasDetails(row))
+})
+
 // Helper function to check if row has details
 function hasDetails(data: unknown): boolean {
   if (!data || typeof data !== 'object') return false
   const row = data as TableRow | ElementData
   return 'details' in row && Array.isArray(row.details) && row.details.length > 0
+}
+
+// Helper function to check if any children have nested children
+function hasNestedChildren(data: TableRow | ElementData): boolean {
+  return (
+    data.details?.some(
+      (child) =>
+        'details' in child && Array.isArray(child.details) && child.details.length > 0
+    ) || false
+  )
 }
 
 // Helper function to get valid columns from a group
@@ -255,14 +290,16 @@ function getColumnStyle(col: ColumnDef) {
 // Event handlers
 function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): void {
   if (Array.isArray(value)) {
+    // Only allow expansion of rows with details
+    const validExpansions = value.filter((row) => hasDetails(row))
     debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
-      rowCount: value.length,
-      rows: value.map((row) => ({
+      rowCount: validExpansions.length,
+      rows: validExpansions.map((row) => ({
         id: (row as TableRow).id,
         hasDetails: !!(row as TableRow).details?.length
       }))
     })
-    emit('update:expanded-rows', value as (TableRow | ElementData)[])
+    emit('update:expanded-rows', validExpansions as (TableRow | ElementData)[])
   }
 }
 
@@ -390,17 +427,141 @@ function handleFilter(event: { filters: DataTableFilterMeta }): void {
   white-space: nowrap;
 }
 
-/* Hide expander icon for rows without details */
-:deep(.p-datatable-tbody > tr > td.p-column-expander .p-row-toggler) {
+/* Completely hide expander column by default */
+:deep(.p-datatable-tbody > tr > td.p-column-expander) {
+  width: 0;
+  padding: 0;
+  border: none;
   visibility: hidden;
+  display: none;
+  pointer-events: none;
+}
+
+:deep(.p-datatable-tbody > tr > td.p-column-expander .p-row-toggler) {
+  display: none;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Only show expander for rows that actually have children */
+:deep(.p-datatable-tbody > tr[data-p-expandable='true'] > td.p-column-expander) {
+  width: 3rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid #e9ecef;
+  visibility: visible;
+  display: table-cell;
+  pointer-events: auto;
 }
 
 :deep(
     .p-datatable-tbody
-      > tr
+      > tr[data-p-expandable='true']
       > td.p-column-expander
-      .p-row-toggler[data-pr-expandable='true']
+      .p-row-toggler
   ) {
+  display: inline-flex;
   visibility: visible;
+  pointer-events: auto;
+}
+
+/* Prevent any expansion behavior on non-expandable rows */
+:deep(.p-datatable-tbody > tr:not([data-p-expandable='true'])) {
+  pointer-events: none;
+}
+
+:deep(.p-datatable-tbody > tr:not([data-p-expandable='true']) > td) {
+  pointer-events: auto;
+}
+
+:deep(.p-datatable-tbody > tr:not([data-p-expandable='true']) > td.p-column-expander) {
+  display: none;
+  pointer-events: none;
+}
+
+/* Remove hover effect on non-expandable rows */
+:deep(.p-datatable-tbody > tr:not([data-p-expandable='true']):hover) {
+  cursor: default;
+}
+
+/* Ensure expansion panel is properly hidden */
+:deep(.p-datatable-tbody > tr:not([data-p-expandable='true']) .p-row-toggler) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Enhanced styles for non-expandable rows */
+:deep(.non-expandable-row) {
+  pointer-events: none !important;
+}
+
+:deep(.non-expandable-row > td) {
+  pointer-events: auto !important;
+}
+
+:deep(.non-expandable-row > td.p-column-expander) {
+  display: none !important;
+  width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  pointer-events: none !important;
+}
+
+:deep(.non-expandable-row .p-row-toggler) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  padding: 0 !important;
+}
+
+:deep(.non-expandable-row:hover) {
+  cursor: default !important;
+}
+
+/* Prevent any expansion behavior */
+:deep(.p-datatable-tbody > tr[data-expandable='false']) {
+  pointer-events: none !important;
+}
+
+:deep(.p-datatable-tbody > tr[data-expandable='false'] > td) {
+  pointer-events: auto !important;
+}
+
+:deep(.p-datatable-tbody > tr[data-expandable='false'] > td.p-column-expander) {
+  display: none !important;
+  width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  pointer-events: none !important;
+}
+
+:deep(.p-datatable-tbody > tr[data-expandable='false'] .p-row-toggler) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  padding: 0 !important;
+}
+
+/* Only show expander for rows that actually have children */
+:deep(.p-datatable-tbody > tr[data-expandable='true'] > td.p-column-expander) {
+  width: 3rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid #e9ecef;
+  visibility: visible;
+  display: table-cell;
+  pointer-events: auto;
+}
+
+:deep(
+    .p-datatable-tbody
+      > tr[data-expandable='true']
+      > td.p-column-expander
+      .p-row-toggler
+  ) {
+  display: inline-flex;
+  visibility: visible;
+  pointer-events: auto;
 }
 </style>

@@ -2,7 +2,7 @@
   <div>
     <!-- Loading State -->
     <ScheduleLoadingState
-      v-if="props.isLoading && !hasAnyData"
+      v-if="isLoading && !hasData"
       loading-message="Loading schedule data..."
       loading-detail="Please wait while we prepare your data"
       :current-step="1"
@@ -11,41 +11,34 @@
 
     <!-- Error State -->
     <ScheduleErrorState
-      v-else-if="props.loadingError && !hasAnyData"
-      :error="props.loadingError"
+      v-else-if="loadingError && !hasData"
+      :error="loadingError"
       :show-debug="showDebug"
-      @retry="retryLoading"
-      @show-debug="toggleDebug"
+      @retry="reloadPage"
+      @show-debug="showDebug = !showDebug"
     />
 
     <!-- Table -->
     <DataTable
-      v-else-if="hasAnyData"
-      :key="`${props.tableKey}-${props.tableData.length}-${parentVisibleColumns.length}`"
-      :table-id="props.currentTableId"
-      :table-name="props.tableName"
-      :data="props.tableData"
-      :schedule-data="props.scheduleData"
+      v-else-if="hasData"
+      :key="`${tableKey}-${tableData.length}-${parentVisibleColumns.length}`"
+      :table-id="currentTableId"
+      :table-name="tableName"
+      :data="tableData"
+      :schedule-data="scheduleData"
       :columns="parentVisibleColumns"
       :detail-columns="childVisibleColumns"
-      :available-parent-parameters="props.availableParentParameters"
-      :available-child-parameters="props.availableChildParameters"
-      :loading="props.isLoadingAdditionalData"
-      :initial-state="{
-        columns: parentVisibleColumns,
-        detailColumns: childVisibleColumns,
-        expandedRows: expandedRows,
-        sortField: 'mark',
-        sortOrder: 1,
-        filters: {}
-      }"
-      @update:both-columns="handleBothColumnsUpdate"
-      @update:expanded-rows="handleExpandedRowsUpdate"
+      :available-parent-parameters="store.availableHeaders.value?.parent || []"
+      :available-child-parameters="store.availableHeaders.value?.child || []"
+      :loading="isLoadingAdditionalData"
+      :initial-state="tableState"
+      @update:both-columns="emit('update:both-columns', $event)"
+      @update:expanded-rows="updateExpandedRows"
       @row-expand="handleRowExpand"
       @row-collapse="handleRowCollapse"
-      @table-updated="$emit('table-updated')"
-      @column-visibility-change="$emit('column-visibility-change')"
-      @error="$emit('error', $event)"
+      @table-updated="emit('table-updated')"
+      @column-visibility-change="emit('column-visibility-change')"
+      @error="emit('error', $event)"
     />
 
     <!-- Empty State -->
@@ -62,46 +55,54 @@
 import { ref, computed } from 'vue'
 import DataTable from '../../../components/tables/DataTable/index.vue'
 import type { ColumnDef } from '../../../components/tables/DataTable/composables/columns/types'
-import type { CustomParameter } from '~/composables/useUserSettings'
 import type { TableConfig, TableRow, ElementData } from '../../types'
 import { useDebug, DebugCategories } from '../../debug/useDebug'
+import { useStore } from '../../core/store'
 
 // Import local components
 import ScheduleLoadingState from './ScheduleLoadingState.vue'
 import ScheduleErrorState from './ScheduleErrorState.vue'
 
-interface Props {
+// Group related props into interfaces
+interface TableProps {
   selectedTableId: string
   currentTable: TableConfig | null
-  isInitialized: boolean
   tableName: string
   currentTableId: string
   tableKey: string
-  loadingError: Error | null
-  // Parent columns
-  parentBaseColumns: ColumnDef[] // Base columns from PostgreSQL
-  parentAvailableColumns: ColumnDef[] // All available columns (including custom)
-  parentVisibleColumns: ColumnDef[] // Currently visible columns
-  // Child columns
-  childBaseColumns: ColumnDef[] // Base columns from PostgreSQL
-  childAvailableColumns: ColumnDef[] // All available columns (including custom)
-  childVisibleColumns: ColumnDef[] // Currently visible columns
-  // Parameters
-  availableParentParameters: CustomParameter[]
-  availableChildParameters: CustomParameter[]
-  // Data
+}
+
+interface ColumnProps {
+  parentBaseColumns: ColumnDef[]
+  parentAvailableColumns: ColumnDef[]
+  parentVisibleColumns: ColumnDef[]
+  childBaseColumns: ColumnDef[]
+  childAvailableColumns: ColumnDef[]
+  childVisibleColumns: ColumnDef[]
+}
+
+interface DataProps {
   scheduleData: ElementData[]
   evaluatedData: ElementData[]
   tableData: TableRow[]
-  // State
+}
+
+interface StateProps {
+  isInitialized: boolean
   isLoading: boolean
   isLoadingAdditionalData: boolean
+  loadingError: Error | null
   noCategoriesSelected: boolean
   selectedParentCategories: string[]
   selectedChildCategories: string[]
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(
+  defineProps<TableProps & ColumnProps & DataProps & StateProps>(),
+  {
+    loadingError: null
+  }
+)
 
 const emit = defineEmits<{
   'update:both-columns': [
@@ -114,79 +115,69 @@ const emit = defineEmits<{
   error: [error: Error | unknown]
 }>()
 
-// Initialize debug
 const debug = useDebug()
-
-// Debug state
+const store = useStore()
 const showDebug = ref(true)
-
-// Track expanded rows
 const expandedRows = ref<(TableRow | ElementData)[]>([])
 
-// Simplified table visibility check
-const hasAnyData = computed(() => {
-  if (!props.isInitialized) {
-    return false
-  }
+const hasData = computed(() => {
+  const isReady =
+    props.isInitialized &&
+    props.tableData.length > 0 &&
+    props.parentVisibleColumns.length > 0
 
-  // Only show table if we have both data and columns
-  const hasData = props.tableData.length > 0
-  const hasColumns = props.parentVisibleColumns.length > 0
-
-  debug.log(DebugCategories.TABLE_DATA, 'Table visibility check', {
-    hasData,
-    hasColumns,
-    dataLength: props.tableData.length,
-    columnLength: props.parentVisibleColumns.length
+  debug.log(DebugCategories.TABLE_DATA, 'Table data status', {
+    initialized: props.isInitialized,
+    dataCount: props.tableData.length,
+    columnCount: props.parentVisibleColumns.length,
+    isReady,
+    availableParentParams: store.availableHeaders.value?.parent.length || 0,
+    availableChildParams: store.availableHeaders.value?.child.length || 0
   })
 
-  return hasData && hasColumns
+  return isReady
 })
 
-// Event handlers
-function handleBothColumnsUpdate(updates: {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-}): void {
-  emit('update:both-columns', updates)
-}
+const tableState = computed(() => ({
+  columns: props.parentVisibleColumns,
+  detailColumns: props.childVisibleColumns,
+  expandedRows: expandedRows.value,
+  sortField: 'mark',
+  sortOrder: 1,
+  filters: {}
+}))
 
-function handleExpandedRowsUpdate(rows: (TableRow | ElementData)[]): void {
-  debug.log(DebugCategories.TABLE_DATA, 'Expanded rows updated', {
-    count: rows.length,
-    rows: rows.map((row) => ({
-      id: row.id,
-      mark: row.mark,
-      hasDetails: 'details' in row && Array.isArray(row.details)
-    }))
-  })
+// Event handlers
+function updateExpandedRows(rows: (TableRow | ElementData)[]): void {
   expandedRows.value = rows
+  debug.log(DebugCategories.TABLE_DATA, 'Updated expanded rows', {
+    count: rows.length,
+    marks: rows.map((row) => row.mark)
+  })
 }
 
 function handleRowExpand(row: TableRow | ElementData): void {
   debug.log(DebugCategories.TABLE_DATA, 'Row expanded', {
-    id: row.id,
     mark: row.mark,
-    hasDetails: 'details' in row && Array.isArray(row.details)
+    hasDetails: 'details' in row
   })
   emit('row-expand', row)
 }
 
 function handleRowCollapse(row: TableRow | ElementData): void {
   debug.log(DebugCategories.TABLE_DATA, 'Row collapsed', {
-    id: row.id,
     mark: row.mark,
-    hasDetails: 'details' in row && Array.isArray(row.details)
+    hasDetails: 'details' in row
   })
   emit('row-collapse', row)
 }
 
-function toggleDebug(): void {
-  showDebug.value = !showDebug.value
-}
-
-function retryLoading(): void {
-  window.location.reload()
+// Utility functions
+function reloadPage(): void {
+  // Using location.reload() for browser reload
+  if (typeof location !== 'undefined') {
+    location.reload()
+  }
 }
 </script>
 

@@ -4,7 +4,7 @@ import type {
   StoreState,
   ElementData,
   TableRow,
-  ProcessedHeader
+  UnifiedParameter
 } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import type { CustomParameter } from '~/composables/useUserSettings'
@@ -96,13 +96,72 @@ export function createStore(): Store {
     },
 
     update: async (state: Partial<StoreState>) => {
-      debug.log(DebugCategories.STATE, 'Updating store state', state)
+      debug.startState(DebugCategories.STATE, 'Updating store state')
+
+      // Log parameter-related updates
+      if ('availableHeaders' in state) {
+        debug.log(DebugCategories.PARAMETERS, 'Updating available headers', {
+          parentCount: state.availableHeaders?.parent.length,
+          childCount: state.availableHeaders?.child.length,
+          sampleParent: state.availableHeaders?.parent.slice(0, 3).map((p) => ({
+            field: p.field,
+            type: p.type,
+            source: p.source,
+            category: p.category
+          })),
+          sampleChild: state.availableHeaders?.child.slice(0, 3).map((p) => ({
+            field: p.field,
+            type: p.type,
+            source: p.source,
+            category: p.category
+          }))
+        })
+      }
+
+      if ('parentAvailableColumns' in state || 'childAvailableColumns' in state) {
+        debug.log(DebugCategories.PARAMETERS, 'Updating available columns', {
+          parentCount: state.parentAvailableColumns?.length,
+          childCount: state.childAvailableColumns?.length,
+          sampleParent: state.parentAvailableColumns?.slice(0, 3).map((p) => ({
+            field: p.field,
+            type: p.type,
+            source: p.source,
+            category: p.category
+          })),
+          sampleChild: state.childAvailableColumns?.slice(0, 3).map((p) => ({
+            field: p.field,
+            type: p.type,
+            source: p.source,
+            category: p.category
+          }))
+        })
+      }
+
       try {
         await Promise.resolve() // Make async to satisfy eslint
+        const oldState = { ...internalState.value }
         internalState.value = {
-          ...internalState.value,
+          ...oldState,
           ...state
         }
+
+        // Log state after update
+        debug.log(DebugCategories.STATE, 'Store state updated', {
+          availableHeaders: {
+            parentCount: internalState.value.availableHeaders.parent.length,
+            childCount: internalState.value.availableHeaders.child.length
+          },
+          availableColumns: {
+            parentCount: internalState.value.parentAvailableColumns.length,
+            childCount: internalState.value.childAvailableColumns.length
+          },
+          visibleColumns: {
+            parentCount: internalState.value.parentVisibleColumns.length,
+            childCount: internalState.value.childVisibleColumns.length
+          }
+        })
+
+        debug.completeState(DebugCategories.STATE, 'Store update complete')
       } catch (error) {
         debug.error(DebugCategories.ERROR, 'Error updating store state:', error)
         throw error
@@ -169,9 +228,27 @@ export function createStore(): Store {
     setCustomParameters: (params: CustomParameter[]) =>
       lifecycle.update({ customParameters: params }),
     setAvailableHeaders: (headers: {
-      parent: ProcessedHeader[]
-      child: ProcessedHeader[]
-    }) => lifecycle.update({ availableHeaders: headers }),
+      parent: UnifiedParameter[]
+      child: UnifiedParameter[]
+    }) => {
+      debug.log(DebugCategories.PARAMETERS, 'Setting available headers', {
+        parentCount: headers.parent.length,
+        childCount: headers.child.length,
+        sampleParent: headers.parent.slice(0, 3).map((p) => ({
+          field: p.field,
+          type: p.type,
+          source: p.source,
+          category: p.category
+        })),
+        sampleChild: headers.child.slice(0, 3).map((p) => ({
+          field: p.field,
+          type: p.type,
+          source: p.source,
+          category: p.category
+        }))
+      })
+      return lifecycle.update({ availableHeaders: headers })
+    },
     setSelectedCategories: (categories: Set<string>) =>
       lifecycle.update({ selectedCategories: categories }),
     setParentCategories: (categories: string[]) =>
@@ -198,6 +275,24 @@ export function createStore(): Store {
         updates.parentVisibleColumns = parentColumns
         updates.childVisibleColumns = childColumns
       }
+
+      debug.log(DebugCategories.PARAMETERS, `Setting ${type} columns`, {
+        parentCount: parentColumns.length,
+        childCount: childColumns.length,
+        sampleParent: parentColumns.slice(0, 3).map((p) => ({
+          field: p.field,
+          type: p.type,
+          source: p.source,
+          category: p.category
+        })),
+        sampleChild: childColumns.slice(0, 3).map((p) => ({
+          field: p.field,
+          type: p.type,
+          source: p.source,
+          category: p.category
+        }))
+      })
+
       return lifecycle.update(updates)
     },
     setInitialized: (value: boolean) => lifecycle.update({ initialized: value }),

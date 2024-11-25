@@ -71,8 +71,6 @@
               :child-base-columns="store.childBaseColumns.value || []"
               :child-available-columns="store.childAvailableColumns.value || []"
               :child-visible-columns="store.childVisibleColumns.value || []"
-              :available-parent-parameters="availableParentParameters"
-              :available-child-parameters="availableChildParameters"
               :schedule-data="store.scheduleData.value || []"
               :evaluated-data="store.evaluatedData.value || []"
               :table-data="store.tableData.value || []"
@@ -88,86 +86,84 @@
               @row-collapse="handleRowCollapse"
               @error="handleError"
             />
+
+            <ScheduleCategoryFilters
+              v-if="!isLoading"
+              :show-category-options="showCategoryOptions"
+              :parent-categories="parentCategories"
+              :child-categories="childCategories"
+              :selected-parent-categories="selectedParentCategories"
+              :selected-child-categories="selectedChildCategories"
+              :is-updating="isUpdating"
+              @toggle-category="handleCategoryToggle"
+            />
+
+            <ScheduleDataManagement
+              v-if="!isLoading"
+              ref="dataComponent"
+              :schedule-data="store.scheduleData.value || []"
+              :evaluated-data="store.evaluatedData.value || []"
+              :custom-parameters="store.customParameters.value || []"
+              :merged-table-columns="store.parentAvailableColumns.value || []"
+              :merged-detail-columns="store.childAvailableColumns.value || []"
+              :selected-parent-categories="selectedParentCategories"
+              :selected-child-categories="selectedChildCategories"
+              :is-initialized="isInitialized"
+              @update:table-data="handleTableDataUpdate"
+              @error="handleError"
+            />
+
+            <ScheduleParameterHandling
+              v-if="!isLoading"
+              ref="parameterComponent"
+              :schedule-data="store.scheduleData.value || []"
+              :custom-parameters="store.customParameters.value || []"
+              :selected-parent-categories="selectedParentCategories"
+              :selected-child-categories="selectedChildCategories"
+              :available-headers="processedHeaders"
+              :is-initialized="isInitialized"
+              @update:parameter-columns="handleParameterColumnsUpdate"
+              @update:evaluated-data="handleEvaluatedDataUpdate"
+              @update:merged-parent-parameters="handleMergedParentParametersUpdate"
+              @update:merged-child-parameters="handleMergedChildParametersUpdate"
+              @error="handleError"
+            />
+
+            <ScheduleColumnManagement
+              v-if="!isLoading"
+              ref="columnComponent"
+              :current-table-columns="store.parentVisibleColumns.value || []"
+              :current-detail-columns="store.childVisibleColumns.value || []"
+              :parameter-columns="store.parentBaseColumns.value || []"
+              :is-initialized="isInitialized"
+              @update:merged-table-columns="handleMergedTableColumnsUpdate"
+              @update:merged-detail-columns="handleMergedDetailColumnsUpdate"
+              @column-visibility-change="handleColumnVisibilityChange"
+              @column-order-change="handleColumnOrderChange"
+              @error="handleError"
+            />
+
+            <ScheduleParameterManagerModal
+              v-if="showParameterManager"
+              v-model:show="showParameterManager"
+              :table-id="store.currentTableId.value || ''"
+              @update="handleParameterUpdate"
+              @update:visibility="handleParameterVisibility"
+              @update:order="handleParameterOrder"
+            />
+
+            <DebugPanel
+              :schedule-data="store.scheduleData.value || []"
+              :evaluated-data="store.evaluatedData.value || []"
+              :table-data="store.tableData.value || []"
+              :parent-elements="parentElements"
+              :child-elements="childElements"
+              :parent-parameter-columns="store.parentAvailableColumns.value || []"
+              :child-parameter-columns="store.childAvailableColumns.value || []"
+              :available-parent-headers="availableParentHeaders"
+              :available-child-headers="availableChildHeaders"
+            />
           </div>
-
-          <ScheduleCategoryFilters
-            v-if="!isLoading"
-            :show-category-options="showCategoryOptions"
-            :parent-categories="parentCategories"
-            :child-categories="childCategories"
-            :selected-parent-categories="selectedParentCategories"
-            :selected-child-categories="selectedChildCategories"
-            :is-updating="isUpdating"
-            @toggle-category="handleCategoryToggle"
-          />
-
-          <ScheduleDataManagement
-            v-if="!isLoading"
-            ref="dataComponent"
-            :schedule-data="store.scheduleData.value || []"
-            :evaluated-data="store.evaluatedData.value || []"
-            :custom-parameters="store.customParameters.value || []"
-            :merged-table-columns="store.parentAvailableColumns.value || []"
-            :merged-detail-columns="store.childAvailableColumns.value || []"
-            :selected-parent-categories="selectedParentCategories"
-            :selected-child-categories="selectedChildCategories"
-            :is-initialized="isInitialized"
-            @update:table-data="handleTableDataUpdate"
-            @error="handleError"
-          />
-
-          <ScheduleParameterHandling
-            v-if="!isLoading"
-            ref="parameterComponent"
-            :schedule-data="store.scheduleData.value || []"
-            :custom-parameters="store.customParameters.value || []"
-            :selected-parent-categories="selectedParentCategories"
-            :selected-child-categories="selectedChildCategories"
-            :available-headers="processedHeaders"
-            :is-initialized="isInitialized"
-            @update:parameter-columns="handleParameterColumnsUpdate"
-            @update:evaluated-data="handleEvaluatedDataUpdate"
-            @update:merged-parent-parameters="handleMergedParentParametersUpdate"
-            @update:merged-child-parameters="handleMergedChildParametersUpdate"
-            @error="handleError"
-          />
-
-          <ScheduleColumnManagement
-            v-if="!isLoading"
-            ref="columnComponent"
-            :current-table-columns="store.parentVisibleColumns.value || []"
-            :current-detail-columns="store.childVisibleColumns.value || []"
-            :parameter-columns="store.parentBaseColumns.value || []"
-            :is-initialized="isInitialized"
-            @update:merged-table-columns="handleMergedTableColumnsUpdate"
-            @update:merged-detail-columns="handleMergedDetailColumnsUpdate"
-            @column-visibility-change="handleColumnVisibilityChange"
-            @column-order-change="handleColumnOrderChange"
-            @error="handleError"
-          />
-
-          <ScheduleParameterManagerModal
-            v-if="showParameterManager"
-            v-model:show="showParameterManager"
-            :table-id="store.currentTableId.value || ''"
-            @update="handleParameterUpdate"
-            @update:visibility="handleParameterVisibility"
-            @update:order="handleParameterOrder"
-          />
-
-          <DebugPanel
-            :schedule-data="store.scheduleData.value || []"
-            :evaluated-data="store.evaluatedData.value || []"
-            :table-data="store.tableData.value || []"
-            :parent-elements="parentElements"
-            :child-elements="childElements"
-            :parent-parameter-columns="store.parentAvailableColumns.value || []"
-            :child-parameter-columns="store.childAvailableColumns.value || []"
-            :available-parent-headers="availableParentHeaders"
-            :available-child-headers="availableChildHeaders"
-            :available-parent-parameters="availableParentParameters"
-            :available-child-parameters="availableChildParameters"
-          />
         </template>
       </div>
     </template>
@@ -175,7 +171,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useDebug, DebugCategories } from './debug/useDebug'
 import { useStore } from './core/store'
 import { useProcessedHeaders } from './composables/useProcessedHeaders'
@@ -183,6 +179,7 @@ import { useElementsData } from './composables/useElementsData'
 import { useScheduleEmits } from './composables/useScheduleEmits'
 import { parentCategories, childCategories } from './config/categories'
 import { defaultTable } from './config/defaultColumns'
+import { useUnifiedParameters } from './composables/useUnifiedParameters'
 import TestDataTable from './components/test/TestDataTable.vue'
 import DebugPanel from './debug/DebugPanel.vue'
 
@@ -283,54 +280,53 @@ const { processedHeaders } = useProcessedHeaders({
   headers: computed(() => store.availableHeaders.value)
 })
 
-// Parameter handling
-const availableParentParameters = computed(() => {
-  const params = store.customParameters.value
-  if (!Array.isArray(params)) return []
-
-  return params
-    .filter((param) => param.type === 'fixed')
-    .map((param) => ({
-      ...param,
-      header: param.name
-    }))
+// Parameter handling - this will automatically update the store
+useUnifiedParameters({
+  discoveredParameters: computed(
+    () => store.availableHeaders.value || { parent: [], child: [] }
+  ),
+  customParameters: computed(() => store.customParameters.value || [])
 })
 
-const availableChildParameters = computed(() => {
-  const params = store.customParameters.value
-  if (!Array.isArray(params)) return []
-
-  return params
-    .filter((param) => param.type === 'equation')
-    .map((param) => ({
-      ...param,
-      header: param.name
-    }))
+// Initialize on mount
+onMounted(async () => {
+  try {
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
+    await elementsData.initializeData()
+    debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Error initializing schedules:', err)
+    handleError(err)
+  }
 })
 
 // Computed properties for available headers with required ColumnDef properties
 const availableParentHeaders = computed(
   () =>
-    availableParentParameters.value.map((param, index) => ({
-      field: `param_${param.id}`,
-      header: param.name,
-      type: param.type === 'equation' ? 'number' : 'string',
-      source: param.source || 'Parameters',
-      visible: true,
-      order: index
-    })) as ColumnDef[]
+    store.parentAvailableColumns.value?.map((col) => ({
+      ...col,
+      type: col.type || 'string',
+      source: col.source || 'Parameters',
+      category: col.category || 'Uncategorized',
+      description: col.description || '',
+      visible: col.visible ?? true,
+      removable: col.removable ?? true,
+      order: col.order ?? 0
+    })) || []
 )
 
 const availableChildHeaders = computed(
   () =>
-    availableChildParameters.value.map((param, index) => ({
-      field: `param_${param.id}`,
-      header: param.name,
-      type: param.type === 'equation' ? 'number' : 'string',
-      source: param.source || 'Parameters',
-      visible: true,
-      order: index
-    })) as ColumnDef[]
+    store.childAvailableColumns.value?.map((col) => ({
+      ...col,
+      type: col.type || 'string',
+      source: col.source || 'Parameters',
+      category: col.category || 'Uncategorized',
+      description: col.description || '',
+      visible: col.visible ?? true,
+      removable: col.removable ?? true,
+      order: col.order ?? 0
+    })) || []
 )
 
 // Computed properties for relationship data
@@ -428,11 +424,33 @@ function handleEvaluatedDataUpdate() {
   }
 }
 
-function handleParameterUpdate() {
+async function handleParameterUpdate() {
   try {
+    debug.startState(DebugCategories.PARAMETERS, 'Updating parameters')
     error.value = null
+
+    // Reload settings to get updated parameters
+    const { settings, loadSettings } = useUserSettings()
+    await loadSettings()
+
+    // Get custom parameters from settings
+    const customParams =
+      settings.value?.namedTables?.[store.currentTableId.value]?.customParameters || []
+
+    // Update store with custom parameters
+    await store.lifecycle.update({
+      customParameters: customParams
+    })
+
+    // Close modal
     showParameterManager.value = false
+
+    debug.completeState(DebugCategories.PARAMETERS, 'Parameters updated', {
+      parameterCount: customParams.length,
+      tableId: store.currentTableId.value
+    })
   } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Error updating parameters:', err)
     handleError(err)
   }
 }

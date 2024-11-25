@@ -6,7 +6,7 @@ import type {
   BIMNodeRaw,
   BIMNodeValue
 } from '../types'
-import { debug, DebugCategories } from './debug'
+import { debug, DebugCategories } from '../debug/useDebug'
 
 export class ValidationError extends Error {
   constructor(message: string, public details?: unknown) {
@@ -28,6 +28,17 @@ export function isValidTreeItemComponentModel(
   }
 
   const typedNode = node as Record<string, unknown>
+
+  // Check required properties
+  if (typeof typedNode.id !== 'string' || typeof typedNode.label !== 'string') {
+    if (throwError) {
+      throw new ValidationError('Invalid node: missing or invalid id/label', {
+        id: typedNode.id,
+        label: typedNode.label
+      })
+    }
+    return false
+  }
 
   // Allow either rawNode or model property
   if (!('rawNode' in typedNode) && !('model' in typedNode)) {

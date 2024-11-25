@@ -245,7 +245,6 @@ import { computed } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
 import type { TableRow, ElementData } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { CustomParameter } from '~/composables/useUserSettings'
 
 interface Props {
   scheduleData?: ElementData[]
@@ -257,8 +256,6 @@ interface Props {
   childParameterColumns?: ColumnDef[]
   availableParentHeaders?: ColumnDef[]
   availableChildHeaders?: ColumnDef[]
-  availableParentParameters?: CustomParameter[]
-  availableChildParameters?: CustomParameter[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -270,9 +267,7 @@ const props = withDefaults(defineProps<Props>(), {
   parentParameterColumns: () => [],
   childParameterColumns: () => [],
   availableParentHeaders: () => [],
-  availableChildHeaders: () => [],
-  availableParentParameters: () => [],
-  availableChildParameters: () => []
+  availableChildHeaders: () => []
 })
 
 // Limit displayed logs for performance

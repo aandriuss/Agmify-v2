@@ -37,6 +37,20 @@ export interface BIMNodeRaw {
   [key: string]: unknown
 }
 
+export type BIMNodeValue = string | number | boolean | null | undefined
+
+export interface WorldTreeNode {
+  _root: {
+    model?: {
+      raw?: BIMNodeRaw
+      children?: NodeModel[]
+    }
+    children?: TreeNode[]
+    isRoot?: () => boolean
+    hasChildren?: () => boolean
+  }
+}
+
 // Type guard for BIMNodeRaw
 export function isValidBIMNodeRaw(value: unknown): value is BIMNodeRaw {
   if (!value || typeof value !== 'object') return false
@@ -118,6 +132,32 @@ export type ParameterValue = string | number | boolean | null
 
 export type ParameterValueType = 'string' | 'number' | 'boolean'
 
+export type ParameterType = 'fixed' | 'equation' | ParameterValueType
+
+// Unified parameter interface
+export interface UnifiedParameter {
+  // Metadata
+  id: string
+  name: string
+  field: string
+  header: string
+  type: ParameterType
+  category: string
+  description: string
+  source: string
+  isFetched: boolean
+  fetchedGroup?: string
+  currentGroup?: string
+  // Values
+  value?: string
+  equation?: string
+  valueState?: ParameterValueState
+  // UI state
+  visible?: boolean
+  removable?: boolean
+  order?: number
+}
+
 // Helper to create parameter value state
 export function createParameterValueState(value: ParameterValue): ParameterValueState {
   return {
@@ -129,21 +169,23 @@ export function createParameterValueState(value: ParameterValue): ParameterValue
 }
 
 // Header Types
-export interface ProcessedHeader {
-  field: string
-  header: string
-  type: ParameterValueType
-  category: string
-  description: string
-  fetchedGroup: string
-  currentGroup: string
-  isFetched: boolean
-  source: string
-}
+export interface ProcessedHeader
+  extends Pick<
+    UnifiedParameter,
+    | 'field'
+    | 'header'
+    | 'type'
+    | 'category'
+    | 'description'
+    | 'source'
+    | 'isFetched'
+    | 'fetchedGroup'
+    | 'currentGroup'
+  > {}
 
 export interface AvailableHeaders {
-  parent: ProcessedHeader[]
-  child: ProcessedHeader[]
+  parent: UnifiedParameter[]
+  child: UnifiedParameter[]
 }
 
 // Tree Types
@@ -215,8 +257,8 @@ export interface StoreState {
   parameterDefinitions: Record<string, ProcessedHeader>
   // Headers
   availableHeaders: {
-    parent: ProcessedHeader[]
-    child: ProcessedHeader[]
+    parent: UnifiedParameter[]
+    child: UnifiedParameter[]
   }
   // Categories
   selectedCategories: Set<string>
@@ -257,8 +299,8 @@ export interface Store {
   parameterDefinitions: ComputedRef<Record<string, ProcessedHeader>>
   // Headers
   availableHeaders: ComputedRef<{
-    parent: ProcessedHeader[]
-    child: ProcessedHeader[]
+    parent: UnifiedParameter[]
+    child: UnifiedParameter[]
   }>
   // Categories
   selectedCategories: ComputedRef<Set<string>>
@@ -282,8 +324,8 @@ export interface Store {
   setTableData: (data: TableRow[]) => void
   setCustomParameters: (params: CustomParameter[]) => void
   setAvailableHeaders: (headers: {
-    parent: ProcessedHeader[]
-    child: ProcessedHeader[]
+    parent: UnifiedParameter[]
+    child: UnifiedParameter[]
   }) => void
   setSelectedCategories: (categories: Set<string>) => void
   setParentCategories: (categories: string[]) => void

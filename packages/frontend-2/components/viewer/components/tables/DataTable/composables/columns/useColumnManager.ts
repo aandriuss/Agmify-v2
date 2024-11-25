@@ -1,11 +1,11 @@
 import { ref, computed } from 'vue'
 import type { ColumnDef, ColumnGroup } from './types'
-import type { CustomParameter } from '~/composables/useUserSettings'
+import type { UnifiedParameter } from '~/components/viewer/schedules/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 type View = 'parent' | 'child'
 type ColumnOperation =
-  | { type: 'add'; column: CustomParameter }
+  | { type: 'add'; column: UnifiedParameter }
   | { type: 'remove'; column: ColumnDef }
   | { type: 'visibility'; column: ColumnDef; visible: boolean }
   | { type: 'reorder'; fromIndex: number; toIndex: number }
@@ -14,8 +14,8 @@ interface UseColumnManagerOptions {
   tableId: string
   initialParentColumns: ColumnDef[]
   initialChildColumns: ColumnDef[]
-  availableParentParameters: CustomParameter[]
-  availableChildParameters: CustomParameter[]
+  availableParentParameters: UnifiedParameter[]
+  availableChildParameters: UnifiedParameter[]
   searchTerm?: string
   sortBy?: 'name' | 'category' | 'type' | 'fixed' | 'group'
   selectedCategories?: string[]
@@ -56,7 +56,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     return columns.value.filter((col) => col.visible !== false)
   })
 
-  // Available parameters for the current view
+  // Available parameters for the current view (excluding active ones)
   const availableParameters = computed(() => {
     const active = new Set(activeColumns.value.map((col) => col.field))
     const available =
@@ -161,16 +161,19 @@ export function useColumnManager(options: UseColumnManagerOptions) {
   }
 
   // Convert parameter to column
-  function createColumnFromParameter(param: CustomParameter, order: number): ColumnDef {
+  function createColumnFromParameter(
+    param: UnifiedParameter,
+    order: number
+  ): ColumnDef {
     return {
       field: param.field,
-      header: param.header,
-      type: param.type || 'string',
-      visible: true,
-      removable: true,
+      header: param.name,
+      type: param.type === 'equation' ? 'number' : 'string',
+      visible: param.visible ?? true,
+      removable: param.removable ?? true,
       order,
-      category: param.category || 'Custom Parameters',
-      source: param.source || 'Custom',
+      category: param.category || 'Parameters',
+      source: param.source || 'Parameters',
       description: param.description,
       isFixed: false
     }

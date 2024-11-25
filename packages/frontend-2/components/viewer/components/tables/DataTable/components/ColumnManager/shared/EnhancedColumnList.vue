@@ -57,9 +57,26 @@
         }"
       >
         <template v-if="isGrouped">
-          <div v-for="group in groupedItems" :key="group.category" class="space-y-1">
-            <div class="text-sm font-medium text-gray-700">{{ group.category }}</div>
-            <div class="space-y-1">
+          <div v-for="group in groupedItems" :key="group.group" class="space-y-1">
+            <!-- Group Header -->
+            <div class="flex items-center gap-1">
+              <button
+                type="button"
+                class="flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-gray-900"
+                @click="toggleGroup(group.group)"
+              >
+                <ChevronRightIcon
+                  v-if="!isGroupExpanded(group.group)"
+                  class="w-4 h-4"
+                />
+                <ChevronDownIcon v-else class="w-4 h-4" />
+                {{ group.group }}
+                <span class="text-xs text-gray-500">({{ group.items.length }})</span>
+              </button>
+            </div>
+
+            <!-- Group Items -->
+            <div v-show="isGroupExpanded(group.group)" class="space-y-1 ml-4">
               <button
                 v-for="(item, index) in group.items"
                 :key="item.field"
@@ -185,12 +202,19 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { PlusIcon, MinusIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline'
+import {
+  PlusIcon,
+  MinusIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  ChevronRightIcon,
+  ChevronDownIcon
+} from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '../../../composables/columns/types'
-import type { CustomParameter } from '~/composables/useUserSettings'
+import type { UnifiedParameter } from '~/components/viewer/schedules/types'
 
 interface Props {
-  items: (ColumnDef | CustomParameter)[]
+  items: (ColumnDef | UnifiedParameter)[]
   mode: 'active' | 'available'
   showFilterOptions?: boolean
   searchTerm?: string
@@ -211,41 +235,68 @@ const emit = defineEmits<{
   'update:search-term': [value: string]
   'update:is-grouped': [value: boolean]
   'update:sort-by': [value: string]
-  add: [item: CustomParameter | ColumnDef]
-  remove: [item: CustomParameter | ColumnDef]
-  'drag-start': [event: DragEvent, item: CustomParameter | ColumnDef, index: number]
+  add: [item: UnifiedParameter | ColumnDef]
+  remove: [item: UnifiedParameter | ColumnDef]
+  'drag-start': [event: DragEvent, item: UnifiedParameter | ColumnDef, index: number]
   'drag-end': []
   'drag-enter': [event: DragEvent, index: number]
   drop: [event: DragEvent, index: number]
-  'visibility-change': [item: CustomParameter | ColumnDef, visible: boolean]
+  'visibility-change': [item: UnifiedParameter | ColumnDef, visible: boolean]
 }>()
 
 const localSearchTerm = ref(props.searchTerm)
+const expandedGroups = ref<Set<string>>(new Set())
 
-// Group items by category
+// Helper to get group name from item
+function getItemGroup(item: ColumnDef | UnifiedParameter): string {
+  if ('fetchedGroup' in item) {
+    return item.fetchedGroup || 'Uncategorized'
+  }
+  if ('source' in item) {
+    return item.source || 'Uncategorized'
+  }
+  return item.category || 'Uncategorized'
+}
+
 const groupedItems = computed(() => {
   const groups: Record<
     string,
-    { category: string; items: (ColumnDef | CustomParameter)[] }
+    { group: string; items: (ColumnDef | UnifiedParameter)[] }
   > = {}
 
   props.items.forEach((item) => {
-    const category = item.category || 'Uncategorized'
-    if (!groups[category]) {
-      groups[category] = {
-        category,
+    const group = getItemGroup(item)
+    if (!groups[group]) {
+      groups[group] = {
+        group,
         items: []
       }
     }
-    groups[category].items.push(item)
+    groups[group].items.push(item)
   })
 
-  return Object.values(groups).sort((a, b) => a.category.localeCompare(b.category))
+  // Sort groups by name, but keep essential groups at the top
+  return Object.values(groups)
+    .sort((a, b) => {
+      // Essential groups first
+      if (a.group === 'Properties') return -1
+      if (b.group === 'Properties') return 1
+      if (a.group === 'Parameters') return -1
+      if (b.group === 'Parameters') return 1
+      if (a.group === 'Dimensions') return -1
+      if (b.group === 'Dimensions') return 1
+      // Then sort alphabetically
+      return a.group.localeCompare(b.group)
+    })
+    .map((group) => ({
+      ...group,
+      items: group.items.sort((a, b) => a.header.localeCompare(b.header))
+    }))
 })
 
 function handleDragStart(
   event: DragEvent,
-  item: CustomParameter | ColumnDef,
+  item: UnifiedParameter | ColumnDef,
   index: number
 ) {
   if (event.dataTransfer) {
@@ -260,6 +311,23 @@ function handleSortChange(event: Event) {
   const target = event.target as HTMLSelectElement
   emit('update:sort-by', target.value)
 }
+
+function toggleGroup(group: string) {
+  if (expandedGroups.value.has(group)) {
+    expandedGroups.value.delete(group)
+  } else {
+    expandedGroups.value.add(group)
+  }
+}
+
+function isGroupExpanded(group: string): boolean {
+  return expandedGroups.value.has(group)
+}
+
+// Initialize with all groups expanded
+groupedItems.value.forEach((group) => {
+  expandedGroups.value.add(group.group)
+})
 </script>
 
 <style scoped>
