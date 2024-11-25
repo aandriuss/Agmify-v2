@@ -241,6 +241,7 @@ const columnComponent = ref<ScheduleColumnManagementExposed | null>(null)
 // Initialize core composables first
 const { handleClose } = useScheduleEmits({ emit })
 const store = useStore()
+const { settings, loadSettings } = useUserSettings()
 
 // Initialize data composables - we know viewer state is ready
 const elementsData = useElementsData({
@@ -288,11 +289,95 @@ useUnifiedParameters({
   customParameters: computed(() => store.customParameters.value || [])
 })
 
+// Helper to apply table settings to store
+async function applyTableSettings(tableId: string) {
+  try {
+    debug.startState(DebugCategories.INITIALIZATION, 'Applying table settings')
+
+    // Get table settings
+    const tableSettings = settings.value?.namedTables?.[tableId]
+
+    if (tableSettings) {
+      debug.log(DebugCategories.INITIALIZATION, 'Found table settings', {
+        tableId,
+        name: tableSettings.name,
+        parentColumnsCount: tableSettings.parentColumns?.length,
+        childColumnsCount: tableSettings.childColumns?.length
+      })
+
+      // Update store with table settings
+      await store.lifecycle.update({
+        selectedTableId: tableId,
+        currentTableId: tableId,
+        tableName: tableSettings.name,
+        // Set columns
+        parentBaseColumns: tableSettings.parentColumns || [],
+        childBaseColumns: tableSettings.childColumns || [],
+        parentVisibleColumns: tableSettings.parentColumns || [],
+        childVisibleColumns: tableSettings.childColumns || [],
+        // Set categories
+        selectedParentCategories:
+          tableSettings.categoryFilters?.selectedParentCategories || [],
+        selectedChildCategories:
+          tableSettings.categoryFilters?.selectedChildCategories || []
+      })
+
+      // Update local category refs
+      selectedParentCategories.value =
+        tableSettings.categoryFilters?.selectedParentCategories || []
+      selectedChildCategories.value =
+        tableSettings.categoryFilters?.selectedChildCategories || []
+    } else {
+      debug.log(DebugCategories.INITIALIZATION, 'Using default settings', {
+        tableId
+      })
+
+      // Apply defaults
+      await store.lifecycle.update({
+        selectedTableId: tableId,
+        currentTableId: tableId,
+        tableName: 'Default Table',
+        parentBaseColumns: defaultTable.parentColumns,
+        childBaseColumns: defaultTable.childColumns,
+        parentVisibleColumns: defaultTable.parentColumns,
+        childVisibleColumns: defaultTable.childColumns,
+        selectedParentCategories: defaultTable.categoryFilters.selectedParentCategories,
+        selectedChildCategories: defaultTable.categoryFilters.selectedChildCategories
+      })
+
+      // Update local category refs
+      selectedParentCategories.value =
+        defaultTable.categoryFilters.selectedParentCategories
+      selectedChildCategories.value =
+        defaultTable.categoryFilters.selectedChildCategories
+    }
+
+    debug.completeState(DebugCategories.INITIALIZATION, 'Table settings applied')
+  } catch (error) {
+    debug.error(DebugCategories.ERROR, 'Error applying table settings:', error)
+    handleError(error)
+  }
+}
+
 // Initialize on mount
 onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
+
+    // Load settings first
+    await loadSettings()
+
+    // Get default table ID
+    const defaultTableId = settings.value?.namedTables
+      ? Object.keys(settings.value.namedTables)[0]
+      : 'default'
+
+    // Apply settings for default table
+    await applyTableSettings(defaultTableId)
+
+    // Initialize elements data
     await elementsData.initializeData()
+
     debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error initializing schedules:', err)
@@ -384,10 +469,22 @@ function handleMergedDetailColumnsUpdate() {
   error.value = null
 }
 
-function handleSelectedTableIdUpdate(value: string) {
+async function handleSelectedTableIdUpdate(value: string) {
   try {
-    store.setTableInfo({ selectedTableId: value })
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Updating selected table')
+
+    // Apply settings for selected table
+    await applyTableSettings(value)
+
+    // Update elements with new categories
+    await elementsData.updateCategories(
+      selectedParentCategories.value,
+      selectedChildCategories.value
+    )
+
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Table selection updated')
   } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Error updating selected table:', err)
     handleError(err)
   }
 }
@@ -463,14 +560,6 @@ function handleTableChange() {
   }
 }
 
-function handleSaveTable() {
-  try {
-    error.value = null
-  } catch (err) {
-    handleError(err)
-  }
-}
-
 async function handleBothColumnsUpdate(updates: {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
@@ -484,15 +573,20 @@ async function handleBothColumnsUpdate(updates: {
 
 async function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   try {
-    // Update categories first
+    // Update categories by creating new arrays
     const categories =
       type === 'parent' ? selectedParentCategories : selectedChildCategories
-    const index = categories.value.indexOf(category)
+    const currentCategories = [...categories.value]
+    const index = currentCategories.indexOf(category)
+
     if (index === -1) {
-      categories.value.push(category)
+      currentCategories.push(category)
     } else {
-      categories.value.splice(index, 1)
+      currentCategories.splice(index, 1)
     }
+
+    // Update ref with new array
+    categories.value = currentCategories
 
     // Update elements with new categories
     await elementsData.updateCategories(
@@ -500,12 +594,113 @@ async function handleCategoryToggle(type: 'parent' | 'child', category: string) 
       selectedChildCategories.value
     )
 
+    // Update store
+    await store.lifecycle.update({
+      selectedParentCategories: selectedParentCategories.value,
+      selectedChildCategories: selectedChildCategories.value
+    })
+
     debug.completeState(DebugCategories.CATEGORIES, 'Category update complete', {
       parent: selectedParentCategories.value,
       child: selectedChildCategories.value
     })
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error updating categories:', err)
+    handleError(err)
+  }
+}
+
+onMounted(async () => {
+  try {
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
+
+    // Load settings first
+    await loadSettings()
+
+    // Extract tables info and update store
+    const tables = settings.value?.namedTables
+      ? Object.entries(settings.value.namedTables).map(([id, table]) => ({
+          id,
+          name: table.name || 'Unnamed Table'
+        }))
+      : []
+
+    await store.lifecycle.update({
+      tablesArray: tables
+    })
+
+    // Get default table ID
+    const defaultTableId = tables.length > 0 ? tables[0].id : 'default'
+
+    // Apply settings for default table
+    await applyTableSettings(defaultTableId)
+
+    // Initialize elements data
+    await elementsData.initializeData()
+
+    debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Error initializing schedules:', err)
+    handleError(err)
+  }
+})
+
+async function handleSaveTable() {
+  try {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Saving table')
+
+    const currentTableId = store.currentTableId.value
+    if (!currentTableId) {
+      throw new Error('No table selected')
+    }
+
+    // Get current table state
+    const tableState = {
+      id: currentTableId,
+      name: store.tableName.value || 'Unnamed Table',
+      parentColumns: store.parentVisibleColumns.value || [],
+      childColumns: store.childVisibleColumns.value || [],
+      categoryFilters: {
+        selectedParentCategories: selectedParentCategories.value,
+        selectedChildCategories: selectedChildCategories.value
+      },
+      lastUpdateTimestamp: Date.now()
+    }
+
+    // Update settings
+    const { settings, saveSettings } = useUserSettings()
+    const currentSettings = settings.value || { namedTables: {} }
+
+    const updatedSettings = {
+      ...currentSettings,
+      namedTables: {
+        ...currentSettings.namedTables,
+        [currentTableId]: tableState
+      }
+    }
+
+    // Save to PostgreSQL
+    const success = await saveSettings(updatedSettings)
+    if (!success) {
+      throw new Error('Failed to save table settings')
+    }
+
+    // Update store's tablesArray
+    const tables = Object.entries(updatedSettings.namedTables).map(([id, table]) => ({
+      id,
+      name: table.name || 'Unnamed Table'
+    }))
+
+    await store.lifecycle.update({
+      tablesArray: tables
+    })
+
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Table saved', {
+      tableId: currentTableId,
+      name: tableState.name
+    })
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Error saving table:', err)
     handleError(err)
   }
 }
