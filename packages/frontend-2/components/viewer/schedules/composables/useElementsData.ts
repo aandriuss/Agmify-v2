@@ -10,7 +10,8 @@ import type {
   ParameterValueType,
   UnifiedParameter,
   ParameterType,
-  BIMNode
+  BIMNode,
+  NodeModel
 } from '../types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { debug, DebugCategories } from '../debug/useDebug'
@@ -72,40 +73,98 @@ function convertToUnifiedParameter(header: ProcessedHeader): UnifiedParameter {
   return param
 }
 
-// Convert ViewerTree root to TreeItemComponentModel
-function convertWorldTreeRoot(root: ViewerTree['_root']): TreeItemComponentModel {
-  const model = root.model
-  if (!model?.raw) {
-    throw new Error('Invalid world tree root: missing model or raw data')
+// Convert NodeModel to TreeItemComponentModel
+function convertNodeModelToTreeItem(model: NodeModel): TreeItemComponentModel | null {
+  if (!model.raw) {
+    return null
   }
 
-  const node: BIMNode = {
-    raw: model.raw,
-    children: model.children?.map((child) => ({
-      raw: child.raw!,
-      children: child.children?.map((grandChild) => ({
-        raw: grandChild.raw!
-      }))
+  // Create BIMNode
+  const bimNode: BIMNode = {
+    raw: model.raw
+  }
+
+  // Convert children recursively
+  const children: TreeItemComponentModel[] = []
+  if (model.children?.length) {
+    model.children.forEach((child) => {
+      const childItem = convertNodeModelToTreeItem(child)
+      if (childItem) {
+        children.push(childItem)
+      }
+    })
+  }
+
+  // Add children to BIMNode if any
+  if (children.length > 0) {
+    bimNode.children = children.map((child) => ({
+      raw: child.rawNode!.raw,
+      children: child.rawNode!.children
     }))
   }
 
   return {
     id: model.raw.id,
-    label: model.raw.type || 'Root',
-    rawNode: node,
-    children: root.children?.map((child) => ({
-      id: child.model?.raw?.id || 'unknown',
-      label: child.model?.raw?.type || 'Unknown',
-      rawNode: child.model?.raw
-        ? {
-            raw: child.model.raw,
-            children: child.model.children?.map((grandChild) => ({
-              raw: grandChild.raw!
-            }))
-          }
-        : undefined
-    }))
+    label: model.raw.type || 'Unknown',
+    rawNode: bimNode,
+    children
   }
+}
+
+// Convert world tree root to TreeItemComponentModel
+function createTreeItemFromWorldTree(
+  root: ViewerTree['_root']
+): TreeItemComponentModel {
+  const model = root.model
+  if (!model?.raw) {
+    throw new Error('Invalid world tree root: missing model or raw data')
+  }
+
+  // Convert root model
+  const rootItem = convertNodeModelToTreeItem(model)
+  if (!rootItem) {
+    throw new Error('Failed to convert root model')
+  }
+
+  // Initialize children array if not present
+  rootItem.children = rootItem.children || []
+
+  // Process additional children from root.children
+  if (root.children?.length) {
+    root.children.forEach((child) => {
+      if (child.model) {
+        const childItem = convertNodeModelToTreeItem(child.model)
+        if (childItem) {
+          rootItem.children.push(childItem)
+          if (rootItem.rawNode) {
+            rootItem.rawNode.children = rootItem.rawNode.children || []
+            rootItem.rawNode.children.push({
+              raw: childItem.rawNode!.raw,
+              children: childItem.rawNode!.children
+            })
+          }
+        }
+      }
+    })
+  }
+
+  debug.log(DebugCategories.PARAMETERS, 'Created tree item from world tree', {
+    id: rootItem.id,
+    type: rootItem.rawNode?.raw.type,
+    childCount: rootItem.children.length,
+    totalElements: countElements(rootItem)
+  })
+
+  return rootItem
+}
+
+// Helper to count total elements in a tree
+function countElements(node: TreeItemComponentModel): number {
+  let count = 1 // Count the node itself
+  if (node.children?.length) {
+    count += node.children.reduce((sum, child) => sum + countElements(child), 0)
+  }
+  return count
 }
 
 export function useElementsData({
@@ -214,7 +273,7 @@ export function useElementsData({
         })
 
         // Convert world tree root to TreeItemComponentModel
-        const root = convertWorldTreeRoot(rawWorldTree.value._root)
+        const root = createTreeItemFromWorldTree(rawWorldTree.value._root)
         await discoverParameters(root)
 
         debug?.log(DebugCategories.PARAMETERS, 'Raw discovered parameters', {

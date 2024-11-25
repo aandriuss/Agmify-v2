@@ -3,11 +3,7 @@ import type { Ref } from 'vue'
 import type { TreeItemComponentModel, ProcessedHeader, BIMNodeRaw } from '../types'
 import { debug, DebugCategories } from '../debug/useDebug'
 import { convertToString } from '../utils/dataConversion'
-import {
-  isValidTreeItemComponentModel,
-  isValidArray,
-  ValidationError
-} from '../utils/validation'
+import { ValidationError } from '../utils/validation'
 
 interface ParameterDiscoveryOptions {
   selectedParentCategories: Ref<string[]>
@@ -20,29 +16,20 @@ interface ParameterDiscoveryReturn {
   discoverParameters: (rootNode: TreeItemComponentModel) => Promise<void>
 }
 
-// Find all elements regardless of hierarchy
-function findAllElements(node: TreeItemComponentModel): TreeItemComponentModel[] {
-  const elements: TreeItemComponentModel[] = []
+// Find all raw BIM nodes regardless of hierarchy
+function findAllRawNodes(node: TreeItemComponentModel): BIMNodeRaw[] {
+  const nodes: BIMNodeRaw[] = []
 
   function processNode(element: TreeItemComponentModel) {
-    if (!isValidTreeItemComponentModel(element)) {
-      debug.warn(DebugCategories.PARAMETERS, 'Invalid tree item model', {
-        element: typeof element === 'object' ? element : 'not an object'
-      })
-      return
-    }
-
-    // Add the element itself if it has raw data
+    // Add raw node if available
     if (element.rawNode?.raw) {
-      elements.push(element)
+      nodes.push(element.rawNode.raw)
     }
 
     // Process children if they exist
-    if (isValidArray(element.children)) {
+    if (Array.isArray(element.children)) {
       element.children.forEach((child) => {
-        if (isValidTreeItemComponentModel(child)) {
-          processNode(child)
-        }
+        processNode(child)
       })
     }
   }
@@ -50,19 +37,18 @@ function findAllElements(node: TreeItemComponentModel): TreeItemComponentModel[]
   processNode(node)
 
   debug.log(DebugCategories.PARAMETERS, 'Found elements', {
-    totalCount: elements.length,
-    sampleElements: elements.slice(0, 3).map((e) => ({
-      id: e.rawNode?.raw?.id,
-      type: e.rawNode?.raw?.type,
-      category: e.rawNode?.raw?.Other?.Category,
-      hasParameters: !!e.rawNode?.raw?.parameters,
-      parameterCount: e.rawNode?.raw?.parameters
-        ? Object.keys(e.rawNode.raw.parameters).length
-        : 0
+    totalCount: nodes.length,
+    sampleElements: nodes.slice(0, 3).map((node) => ({
+      id: node.id,
+      type: node.type,
+      category: node.Other?.Category,
+      hasParameters: !!node.parameters,
+      parameterCount: node.parameters ? Object.keys(node.parameters).length : 0,
+      otherCount: node.Other ? Object.keys(node.Other).length : 0
     }))
   })
 
-  return elements
+  return nodes
 }
 
 // Process parameters from element
@@ -161,7 +147,10 @@ function processElementParameters(
       key !== 'type' &&
       key !== '_type' &&
       key !== 'elements' &&
-      key !== 'children'
+      key !== 'children' &&
+      key !== '__closure' &&
+      key !== 'expressID' &&
+      key !== 'GlobalId'
     ) {
       if (typeof value !== 'object' || value === null) {
         addParameter(key, value, 'Properties')
@@ -194,7 +183,7 @@ function getElementCategory(raw: BIMNodeRaw): string {
 
 // Discover parameters for elements
 async function discoverParametersForElements(
-  elements: TreeItemComponentModel[],
+  elements: BIMNodeRaw[],
   selectedCategories: string[]
 ): Promise<ProcessedHeader[]> {
   const parameters = new Map<string, ProcessedHeader>()
@@ -204,27 +193,17 @@ async function discoverParametersForElements(
     elementCount: elements.length,
     selectedCategories,
     chunkSize: CHUNK_SIZE,
-    elementTypes: [
-      ...new Set(
-        elements
-          .map((e) => e.rawNode?.raw?.type)
-          .filter((type): type is string => !!type)
-      )
-    ]
+    elementTypes: [...new Set(elements.map((e) => e.type).filter(Boolean))]
   })
 
   // Process all elements if no categories selected
   const elementsToProcess = selectedCategories.length
     ? elements.filter((element) => {
-        if (!element.rawNode?.raw) {
-          return false
-        }
-
-        const category = getElementCategory(element.rawNode.raw)
+        const category = getElementCategory(element)
         const shouldProcess = selectedCategories.includes(category)
 
         debug.log(DebugCategories.PARAMETERS, 'Filtering element by category', {
-          elementType: element.rawNode.raw.type,
+          elementType: element.type,
           elementCategory: category,
           selectedCategories,
           shouldProcess
@@ -238,10 +217,7 @@ async function discoverParametersForElements(
     totalElements: elements.length,
     selectedCategories,
     elementsToProcess: elementsToProcess.length,
-    elementCategories: elementsToProcess
-      .map((e) => e.rawNode?.raw)
-      .filter((raw): raw is BIMNodeRaw => !!raw)
-      .map(getElementCategory),
+    elementCategories: elementsToProcess.map(getElementCategory),
     chunkSize: CHUNK_SIZE
   })
 
@@ -251,15 +227,10 @@ async function discoverParametersForElements(
 
     // Process chunk
     chunk.forEach((element) => {
-      if (!element.rawNode?.raw) {
-        return
-      }
-
-      const raw = element.rawNode.raw
-      const category = getElementCategory(raw)
+      const category = getElementCategory(element)
 
       // Process parameters from raw data
-      const elementParams = processElementParameters(raw, category)
+      const elementParams = processElementParameters(element, category)
       elementParams.forEach((param) => {
         if (!parameters.has(param.field)) {
           parameters.set(param.field, param)
@@ -338,33 +309,20 @@ export function useParameterDiscovery(
         }
       })
 
-      // Find all elements first
-      const allElements = findAllElements(rootNode)
+      // Find all raw nodes first
+      const allNodes = findAllRawNodes(rootNode)
 
       debug.log(DebugCategories.PARAMETERS, 'Found elements', {
-        totalCount: allElements.length,
-        categories: [
-          ...new Set(
-            allElements
-              .map((e) => e.rawNode?.raw)
-              .filter((raw): raw is BIMNodeRaw => !!raw)
-              .map(getElementCategory)
-          )
-        ],
-        elementTypes: [
-          ...new Set(
-            allElements
-              .map((e) => e.rawNode?.raw?.type)
-              .filter((type): type is string => !!type)
-          )
-        ],
-        sampleElement: allElements[0]?.rawNode?.raw
+        totalCount: allNodes.length,
+        categories: [...new Set(allNodes.map(getElementCategory))],
+        elementTypes: [...new Set(allNodes.map((e) => e.type).filter(Boolean))],
+        sampleElement: allNodes[0]
       })
 
       // Discover parameters for parent and child categories
       const [parentHeaders, childHeaders] = await Promise.all([
-        discoverParametersForElements(allElements, selectedParentCategories.value),
-        discoverParametersForElements(allElements, selectedChildCategories.value)
+        discoverParametersForElements(allNodes, selectedParentCategories.value),
+        discoverParametersForElements(allNodes, selectedChildCategories.value)
       ])
 
       debug.log(DebugCategories.PARAMETERS, 'Parameters discovered', {
