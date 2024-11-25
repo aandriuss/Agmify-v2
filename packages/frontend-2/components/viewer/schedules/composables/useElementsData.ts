@@ -103,68 +103,14 @@ function convertNodeModelToTreeItem(model: NodeModel): TreeItemComponentModel | 
     }))
   }
 
-  return {
+  const result: TreeItemComponentModel = {
     id: model.raw.id,
     label: model.raw.type || 'Unknown',
     rawNode: bimNode,
-    children
-  }
-}
-
-// Convert world tree root to TreeItemComponentModel
-function createTreeItemFromWorldTree(
-  root: ViewerTree['_root']
-): TreeItemComponentModel {
-  const model = root.model
-  if (!model?.raw) {
-    throw new Error('Invalid world tree root: missing model or raw data')
+    children: children.length > 0 ? children : undefined
   }
 
-  // Convert root model
-  const rootItem = convertNodeModelToTreeItem(model)
-  if (!rootItem) {
-    throw new Error('Failed to convert root model')
-  }
-
-  // Initialize children array if not present
-  rootItem.children = rootItem.children || []
-
-  // Process additional children from root.children
-  if (root.children?.length) {
-    root.children.forEach((child) => {
-      if (child.model) {
-        const childItem = convertNodeModelToTreeItem(child.model)
-        if (childItem) {
-          rootItem.children.push(childItem)
-          if (rootItem.rawNode) {
-            rootItem.rawNode.children = rootItem.rawNode.children || []
-            rootItem.rawNode.children.push({
-              raw: childItem.rawNode!.raw,
-              children: childItem.rawNode!.children
-            })
-          }
-        }
-      }
-    })
-  }
-
-  debug.log(DebugCategories.PARAMETERS, 'Created tree item from world tree', {
-    id: rootItem.id,
-    type: rootItem.rawNode?.raw.type,
-    childCount: rootItem.children.length,
-    totalElements: countElements(rootItem)
-  })
-
-  return rootItem
-}
-
-// Helper to count total elements in a tree
-function countElements(node: TreeItemComponentModel): number {
-  let count = 1 // Count the node itself
-  if (node.children?.length) {
-    count += node.children.reduce((sum, child) => sum + countElements(child), 0)
-  }
-  return count
+  return result
 }
 
 export function useElementsData({
@@ -273,7 +219,42 @@ export function useElementsData({
         })
 
         // Convert world tree root to TreeItemComponentModel
-        const root = createTreeItemFromWorldTree(rawWorldTree.value._root)
+        const model = rawWorldTree.value._root.model
+        if (!model?.raw) {
+          throw new Error('Invalid world tree root: missing model or raw data')
+        }
+
+        // Create root node with all children
+        const root = convertNodeModelToTreeItem(model)
+        if (!root) {
+          throw new Error('Failed to convert root model')
+        }
+
+        // Process additional children from root.children
+        if (rawWorldTree.value._root.children?.length) {
+          const additionalChildren: TreeItemComponentModel[] = []
+          rawWorldTree.value._root.children.forEach((child) => {
+            if (child.model) {
+              const childItem = convertNodeModelToTreeItem(child.model)
+              if (childItem) {
+                additionalChildren.push(childItem)
+                if (root.rawNode) {
+                  root.rawNode.children = root.rawNode.children || []
+                  root.rawNode.children.push({
+                    raw: childItem.rawNode!.raw,
+                    children: childItem.rawNode!.children
+                  })
+                }
+              }
+            }
+          })
+
+          // Only set children if we have any
+          if (additionalChildren.length > 0) {
+            root.children = [...(root.children || []), ...additionalChildren]
+          }
+        }
+
         await discoverParameters(root)
 
         debug?.log(DebugCategories.PARAMETERS, 'Raw discovered parameters', {
