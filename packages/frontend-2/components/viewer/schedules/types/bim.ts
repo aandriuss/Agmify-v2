@@ -1,5 +1,3 @@
-// import type { ViewerBase } from './viewer'
-
 // The raw data we get from Speckle
 export interface BIMNodeRaw {
   id: string
@@ -72,30 +70,6 @@ export interface DeepBIMNode {
   type?: string
 }
 
-// // BIM-specific viewer tree that extends ViewerBase
-// export interface BIMViewerTree extends ViewerBase {
-//   _root: {
-//     model: {
-//       raw: BIMNodeRaw
-//       children: NodeModel[]
-//     }
-//     children: TreeNode[]
-//     isRoot: () => boolean
-//     hasChildren: () => boolean
-//   }
-//   getRenderTree: () => unknown
-//   init: {
-//     ref: {
-//       value: boolean
-//     }
-//   }
-//   metadata: {
-//     worldTree: {
-//       value: BIMViewerTree
-//     }
-//   }
-// }
-
 // Type guard functions
 export function isBIMNodeRaw(node: unknown): node is BIMNodeRaw {
   if (!node || typeof node !== 'object') return false
@@ -129,19 +103,6 @@ export function isDeepBIMNode(node: unknown): node is DeepBIMNode {
     (!deepNode.model || isNodeModel(deepNode.model))
   )
 }
-
-// export function isBIMViewerTree(tree: unknown): tree is BIMViewerTree {
-//   if (!tree || typeof tree !== 'object') return false
-//   const bimTree = tree as BIMViewerTree
-//   return (
-//     '_root' in bimTree &&
-//     !!bimTree._root &&
-//     'model' in bimTree._root &&
-//     !!bimTree._root.model &&
-//     'raw' in bimTree._root.model &&
-//     isBIMNodeRaw(bimTree._root.model.raw)
-//   )
-// }
 
 export interface WorldTreeNode {
   _root: {

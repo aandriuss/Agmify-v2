@@ -1,40 +1,5 @@
-import type { BIMNodeRaw, NodeModel, BIMNode, DeepBIMNode, BIMViewerTree } from './bim'
-// import type { ViewerBase } from './viewer'
+import type { BIMNodeRaw, NodeModel, BIMNode, DeepBIMNode } from './bim'
 import type { ScheduleTreeItemModel } from './explorer'
-
-// Type guard for ViewerBase
-export function isValidViewerBase(value: unknown): value is ViewerBase {
-  if (!value || typeof value !== 'object') return false
-
-  // First check if it's a record
-  const record = value as Record<string, unknown>
-  if (!('_root' in record)) return false
-
-  // Then check if _root is an object
-  const root = record._root
-  if (!root || typeof root !== 'object') return false
-
-  // Now we can safely cast and check the structure
-  const rootObj = root as Record<string, unknown>
-  return (
-    ('model' in rootObj || 'children' in rootObj) &&
-    (!rootObj.model || typeof rootObj.model === 'object') &&
-    (!rootObj.children || Array.isArray(rootObj.children))
-  )
-}
-
-// // Type guard for BIMViewerTree
-// export function isBIMViewerTree(value: unknown): value is BIMViewerTree {
-//   if (!isValidViewerBase(value)) return false
-
-//   const tree = value as BIMViewerTree
-//   return (
-//     !!tree._root?.model?.raw &&
-//     isValidBIMNodeRaw(tree._root.model.raw) &&
-//     typeof tree.init?.ref?.value === 'boolean' &&
-//     tree.metadata?.worldTree !== undefined
-//   )
-// }
 
 // Type guard for NodeModel
 export function isValidNodeModel(value: unknown): value is NodeModel {
@@ -117,6 +82,3 @@ export function isValidBIMNodeArray(value: unknown): value is BIMNode[] {
 export function isValidNodeModelArray(value: unknown): value is NodeModel[] {
   return Array.isArray(value) && value.every(isValidNodeModel)
 }
-
-// // Keep isValidViewerTree for backward compatibility
-// export const isValidViewerTree = isBIMViewerTree
