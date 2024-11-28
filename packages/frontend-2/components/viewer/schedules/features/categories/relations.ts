@@ -1,4 +1,4 @@
-import type { CategoryDefinition } from '../../core/types'
+import type { CategoryDefinition } from '../../types'
 
 // Category hierarchy interface
 export interface CategoryHierarchy {

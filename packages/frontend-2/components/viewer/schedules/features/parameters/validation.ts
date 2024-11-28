@@ -1,9 +1,5 @@
-import type {
-  ParameterDefinition,
-  ParameterType,
-  ParameterValue
-} from '../../core/types'
-import { ValidationError } from '../../core/types'
+import type { ParameterDefinition, ParameterType, ParameterValue } from '../../types'
+import { ValidationError } from '../../types'
 
 // Validation rule interface
 export interface ValidationRule {

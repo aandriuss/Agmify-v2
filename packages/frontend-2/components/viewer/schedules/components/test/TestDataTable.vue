@@ -68,7 +68,7 @@ import type { ColumnDef } from '../../../components/tables/DataTable/composables
 import { debug, DebugCategories } from '../../debug/useDebug'
 
 // Import CustomParameter type
-import type { CustomParameter } from '../../types'
+import type { CustomParameter } from '../../types/'
 
 // Computed properties for data analysis
 const parentElements = computed(() => dummyTableRows.filter((row) => !row.isChild))

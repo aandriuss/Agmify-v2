@@ -27,3 +27,27 @@ export function isValidViewerState(state: ViewerState | null): state is ViewerSt
     !!state.viewer.metadata.worldTree
   )
 }
+
+// Viewer Tree Types
+export interface ViewerTree {
+  _root: {
+    model?: {
+      raw?: BIMNodeRaw
+      children?: NodeModel[]
+    }
+    children?: TreeNode[]
+    isRoot?: () => boolean
+    hasChildren?: () => boolean
+  }
+  getRenderTree: () => unknown
+  init?: {
+    ref?: {
+      value?: boolean
+    }
+  }
+  metadata?: {
+    worldTree?: {
+      value?: ViewerTree
+    }
+  }
+}
