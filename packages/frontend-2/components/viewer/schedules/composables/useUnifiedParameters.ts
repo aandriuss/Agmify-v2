@@ -9,7 +9,7 @@ interface UseUnifiedParametersProps {
     parent: ProcessedHeader[]
     child: ProcessedHeader[]
   }>
-  customParameters: ComputedRef<CustomParameter[]>
+  customParameters: ComputedRef<CustomParameter[] | null>
 }
 
 export function useUnifiedParameters({
@@ -56,23 +56,22 @@ export function useUnifiedParameters({
   // Compute unified parameters for parent
   const parentParameters = computed<UnifiedParameter[]>(() => {
     const discovered = discoveredParameters.value.parent.map(convertDiscoveredToUnified)
-    const custom = customParameters.value.map(convertCustomToUnified)
+    const custom = (customParameters.value || []).map(convertCustomToUnified) // Added null check
     return [...discovered, ...custom]
   })
 
   // Compute unified parameters for child
   const childParameters = computed<UnifiedParameter[]>(() => {
     const discovered = discoveredParameters.value.child.map(convertDiscoveredToUnified)
-    const custom = customParameters.value.map(convertCustomToUnified)
+    const custom = (customParameters.value || []).map(convertCustomToUnified) // Added null check
     return [...discovered, ...custom]
   })
 
-  // Update store with unified parameters
+  // Rest of the code remains unchanged
   const updateStore = async () => {
     try {
       debug.startState(DebugCategories.PARAMETERS, 'Updating unified parameters')
 
-      // Update store with unified parameters only
       await store.lifecycle.update({
         availableHeaders: {
           parent: parentParameters.value,
@@ -85,7 +84,7 @@ export function useUnifiedParameters({
         childCount: childParameters.value.length,
         discoveredParent: discoveredParameters.value.parent.length,
         discoveredChild: discoveredParameters.value.child.length,
-        customCount: customParameters.value.length,
+        customCount: customParameters.value?.length || 0,
         parentGroups: [...new Set(parentParameters.value.map((p) => p.category))],
         childGroups: [...new Set(childParameters.value.map((p) => p.category))]
       })
@@ -95,15 +94,12 @@ export function useUnifiedParameters({
     }
   }
 
-  // Watch for changes and update store
   watch(
     [discoveredParameters, customParameters],
     async (newValues, oldValues) => {
-      // Skip update if only customParameters changed
       const [newDiscovered, _newCustom] = newValues
       const [oldDiscovered, _oldCustom] = oldValues || []
 
-      // Only update if discovered parameters changed
       if (JSON.stringify(newDiscovered) !== JSON.stringify(oldDiscovered)) {
         await updateStore()
       }
