@@ -195,6 +195,7 @@ import { parentCategories, childCategories } from './config/categories'
 import { defaultTable } from './config/defaultColumns'
 import { useUnifiedParameters } from './composables/useUnifiedParameters'
 import { useScheduleInteractions } from './composables/useScheduleInteractions'
+import { useScheduleInitialization } from './composables/useScheduleInitialization'
 import { useScheduleCategories } from './composables/useScheduleCategories'
 import DebugPanel from './debug/DebugPanel.vue'
 import TestDataTable from './components/test/TestDataTable.vue'
@@ -205,9 +206,7 @@ import type {
   ScheduleParameterHandlingExposed,
   ScheduleColumnManagementExposed,
   ElementData,
-  TableRow,
-  ScheduleInitializationInstance,
-  TableConfig
+  TableRow
 } from './types'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 
@@ -269,82 +268,11 @@ const customParameters = computed<CustomParameter[] | null>(
   () => store.customParameters.value || ([] as CustomParameter[])
 )
 
-const initComponent = ref<ScheduleInitializationInstance>({
-  initialize: async () => {
-    debug.log(DebugCategories.INITIALIZATION, 'Initializing schedule component')
-    await store.lifecycle.init()
-  },
-  createNamedTable: async (name: string, config: Omit<TableConfig, 'id' | 'name'>) => {
-    debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table', {
-      name,
-      config
-    })
-
-    // Create new table with store
-    await store.lifecycle.update({
-      tableName: name,
-      parentBaseColumns: config.parentColumns,
-      childBaseColumns: config.childColumns,
-      parentVisibleColumns: config.parentColumns,
-      childVisibleColumns: config.childColumns,
-      selectedParentCategories: config.categoryFilters?.selectedParentCategories || [],
-      selectedChildCategories: config.categoryFilters?.selectedChildCategories || [],
-      customParameters: config.customParameters || []
-    })
-
-    // Return table config
-    const tableConfig: TableConfig = {
-      id: store.currentTableId.value,
-      name,
-      parentColumns: config.parentColumns,
-      childColumns: config.childColumns,
-      categoryFilters: config.categoryFilters,
-      customParameters: config.customParameters
-    }
-
-    return tableConfig
-  },
-  updateNamedTable: async (id: string, config: Partial<TableConfig>) => {
-    debug.log(DebugCategories.TABLE_UPDATES, 'Updating table', {
-      id,
-      config
-    })
-
-    // Update table with store
-    await store.lifecycle.update({
-      currentTableId: id,
-      tableName: config.name,
-      ...(config.parentColumns && {
-        parentBaseColumns: config.parentColumns,
-        parentVisibleColumns: config.parentColumns
-      }),
-      ...(config.childColumns && {
-        childBaseColumns: config.childColumns,
-        childVisibleColumns: config.childColumns
-      }),
-      ...(config.categoryFilters && {
-        selectedParentCategories: config.categoryFilters.selectedParentCategories,
-        selectedChildCategories: config.categoryFilters.selectedChildCategories
-      }),
-      ...(config.customParameters && {
-        customParameters: config.customParameters
-      })
-    })
-
-    // Return updated table config
-    const tableConfig: TableConfig = {
-      id,
-      name: config.name || store.tableName.value,
-      parentColumns: config.parentColumns || store.parentVisibleColumns.value || [],
-      childColumns: config.childColumns || store.childVisibleColumns.value || [],
-      categoryFilters: config.categoryFilters || {
-        selectedParentCategories: categories.selectedParentCategories.value,
-        selectedChildCategories: categories.selectedChildCategories.value
-      },
-      customParameters: config.customParameters || store.customParameters.value || []
-    }
-
-    return tableConfig
+const { initComponent } = useScheduleInitialization({
+  store,
+  categories: {
+    selectedParentCategories: categories.selectedParentCategories,
+    selectedChildCategories: categories.selectedChildCategories
   }
 })
 
@@ -362,14 +290,12 @@ const interactions = useScheduleInteractions({
   initComponent,
   updateCurrentColumns: async (parentColumns, childColumns) => {
     await store.setColumns(parentColumns, childColumns, 'available')
-    // Also update visible columns
     await store.setColumns(parentColumns, childColumns, 'visible')
   },
   handleError: (err: unknown) => {
     const error = err instanceof Error ? err : new Error('Unknown error occurred')
-    handleError(error)
-  },
-  emit
+    debug.error(DebugCategories.ERROR, 'Schedule error:', error)
+  }
 })
 
 const {
@@ -379,6 +305,10 @@ const {
   toggleParameterManager,
   handleClose,
   handleSaveTable,
+  handleDeleteTable,
+  // handleTableChange,
+  // handleSelectedTableIdUpdate,
+  // handleTableNameUpdate,
   handleBothColumnsUpdate,
   state: interactionsState
 } = interactions
