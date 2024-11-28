@@ -1,4 +1,5 @@
 import { ref, watch } from 'vue'
+import { useNuxtApp } from '#app'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import { useSettingsGraphQL } from './useSettingsGraphQL'
 import { useUpdateQueue } from './useUpdateQueue'
@@ -7,6 +8,8 @@ import type { UserSettings } from './types/scheduleTypes'
 import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
 
 export function useSettingsState() {
+  const nuxtApp = useNuxtApp()
+
   // Initialize with default table
   const settings = ref<UserSettings>({
     namedTables: {
@@ -18,7 +21,9 @@ export function useSettingsState() {
   const isUpdating = ref(false)
   const lastUpdateTime = ref(0)
 
-  const { result, queryLoading, fetchSettings, updateSettings } = useSettingsGraphQL()
+  // Initialize GraphQL operations within the Nuxt app context
+  const { result, queryLoading, fetchSettings, updateSettings } =
+    nuxtApp.runWithContext(() => useSettingsGraphQL())
   const { queueUpdate } = useUpdateQueue()
 
   // Watch for remote changes
@@ -100,7 +105,8 @@ export function useSettingsState() {
       loading.value = true
       error.value = null
 
-      const rawSettings = await fetchSettings()
+      // Run fetchSettings within Nuxt app context
+      const rawSettings = await nuxtApp.runWithContext(() => fetchSettings())
       if (rawSettings && isUserSettings(rawSettings)) {
         // If no tables exist, use default table
         if (
@@ -160,10 +166,8 @@ export function useSettingsState() {
         error.value = null
         isUpdating.value = true
 
-        // Record update time before sending to avoid race conditions
         lastUpdateTime.value = Date.now()
 
-        // Validate settings before saving
         if (!isUserSettings(newSettings)) {
           throw new Error('Invalid settings format')
         }
@@ -173,14 +177,14 @@ export function useSettingsState() {
           namedTablesCount: Object.keys(newSettings.namedTables || {}).length
         })
 
-        // Update local state first to ensure UI responsiveness
         settings.value = newSettings
 
-        // Then persist settings
-        const success = await updateSettings(newSettings)
+        // Run updateSettings within Nuxt app context
+        const success = await nuxtApp.runWithContext(() => updateSettings(newSettings))
+
         if (!success) {
-          // Revert local state if persistence fails
-          settings.value = (await fetchSettings()) || {
+          // Run fetchSettings within Nuxt app context for revert
+          settings.value = (await nuxtApp.runWithContext(() => fetchSettings())) || {
             namedTables: {
               [defaultTable.id]: defaultTable
             }

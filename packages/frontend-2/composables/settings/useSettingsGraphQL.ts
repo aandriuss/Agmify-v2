@@ -1,7 +1,8 @@
-import { useMutation, useQuery } from '@vue/apollo-composable'
+import { useMutation, useQuery, provideApolloClient } from '@vue/apollo-composable'
 import { gql } from 'graphql-tag'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import type { UserSettings } from './types'
+import { useNuxtApp } from '#app'
 
 interface GetUserSettingsResponse {
   activeUser: {
@@ -34,6 +35,21 @@ const UPDATE_USER_SETTINGS = gql`
 `
 
 export function useSettingsGraphQL() {
+  const nuxtApp = useNuxtApp()
+
+  // Get the Apollo client instance from Nuxt app
+  const apolloClient = nuxtApp.$apollo?.default
+  if (!apolloClient) {
+    debug.error(
+      DebugCategories.ERROR,
+      'Apollo client not found in Nuxt app - settings operations will fail'
+    )
+    throw new Error('Apollo client not initialized in Nuxt app')
+  }
+
+  // Provide the Apollo client for all operations in this composable
+  provideApolloClient(apolloClient)
+
   const { mutate: updateSettingsMutation } = useMutation<
     UpdateUserSettingsResponse,
     UpdateUserSettingsVariables
@@ -50,7 +66,9 @@ export function useSettingsGraphQL() {
   async function fetchSettings(): Promise<UserSettings | null> {
     try {
       debug.startState(DebugCategories.INITIALIZATION, 'Fetching settings from GraphQL')
-      const response = await refetch()
+
+      // Ensure we're in a valid Apollo context
+      const response = await nuxtApp.runWithContext(() => refetch())
 
       if (!response?.data) {
         debug.warn(DebugCategories.INITIALIZATION, 'No data in GraphQL response')
@@ -87,7 +105,10 @@ export function useSettingsGraphQL() {
         settings: JSON.parse(JSON.stringify(settings)) as Record<string, unknown>
       }
 
-      const result = await updateSettingsMutation(settingsPayload)
+      // Run the mutation within the Nuxt app context
+      const result = await nuxtApp.runWithContext(() =>
+        updateSettingsMutation(settingsPayload)
+      )
 
       if (!result?.data) {
         debug.warn(DebugCategories.STATE, 'No data in mutation response')

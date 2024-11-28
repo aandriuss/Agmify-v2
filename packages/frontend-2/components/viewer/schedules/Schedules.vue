@@ -511,8 +511,8 @@ async function handleParameterUpdate() {
       customParameters: customParams
     })
 
-    // Close modal
-    showParameterManager.value = false
+    // Don't close modal - remove this line
+    // showParameterManager.value = false
 
     debug.completeState(DebugCategories.PARAMETERS, 'Parameters updated', {
       parameterCount: customParams.length,

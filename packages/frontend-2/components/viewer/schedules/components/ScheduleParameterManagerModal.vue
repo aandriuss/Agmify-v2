@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import ParameterManager from './ParameterManager.vue'
+import { ParameterManager } from './ParameterManager/'
 
 interface Props {
   show: boolean
