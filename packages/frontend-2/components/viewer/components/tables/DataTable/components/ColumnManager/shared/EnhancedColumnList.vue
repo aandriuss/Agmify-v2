@@ -16,8 +16,8 @@
           />
         </div>
 
-        <!-- Grouping -->
-        <div class="flex items-center gap-2">
+        <!-- Grouping (only for available parameters) -->
+        <div v-if="mode === 'available'" class="flex items-center gap-2">
           <label class="flex items-center gap-1 text-sm">
             <input
               id="group-checkbox"
@@ -29,8 +29,8 @@
           </label>
         </div>
 
-        <!-- Sort -->
-        <div class="flex items-center gap-2">
+        <!-- Sort (only for available parameters) -->
+        <div v-if="mode === 'available'" class="flex items-center gap-2">
           <label for="sort-select" class="text-sm">Sort by:</label>
           <select
             id="sort-select"
@@ -52,11 +52,12 @@
       <div
         class="p-2"
         :class="{
-          'space-y-4': isGrouped,
-          'space-y-1': !isGrouped
+          'space-y-4': isGrouped && mode === 'available',
+          'space-y-1': !isGrouped || mode === 'active'
         }"
       >
-        <template v-if="isGrouped">
+        <!-- Available Parameters with Grouping -->
+        <template v-if="isGrouped && mode === 'available'">
           <div v-for="group in groupedItems" :key="group.group" class="space-y-1">
             <!-- Group Header -->
             <div class="flex items-center gap-1">
@@ -91,14 +92,10 @@
               >
                 <div class="flex-1">
                   <div class="text-sm">{{ item.header }}</div>
-                  <div v-if="item.description" class="text-xs text-gray-500">
-                    {{ item.description }}
-                  </div>
                 </div>
 
                 <div class="flex items-center gap-1">
                   <button
-                    v-if="mode === 'available'"
                     type="button"
                     class="p-1 text-blue-600 hover:text-blue-800"
                     @click.stop="$emit('add', item)"
@@ -106,43 +103,22 @@
                     <PlusIcon class="w-4 h-4" />
                     <span class="sr-only">Add {{ item.header }}</span>
                   </button>
-                  <button
-                    v-if="mode === 'active' && item.removable"
-                    type="button"
-                    class="p-1 text-red-600 hover:text-red-800"
-                    @click.stop="$emit('remove', item)"
-                  >
-                    <MinusIcon class="w-4 h-4" />
-                    <span class="sr-only">Remove {{ item.header }}</span>
-                  </button>
-                  <button
-                    v-if="mode === 'active'"
-                    type="button"
-                    class="p-1"
-                    :class="{
-                      'text-blue-600 hover:text-blue-800': !item.visible,
-                      'text-gray-400 hover:text-gray-600': item.visible
-                    }"
-                    @click.stop="$emit('visibility-change', item, !item.visible)"
-                  >
-                    <EyeIcon v-if="item.visible" class="w-4 h-4" />
-                    <EyeSlashIcon v-else class="w-4 h-4" />
-                    <span class="sr-only">
-                      {{ item.visible ? 'Hide' : 'Show' }} {{ item.header }}
-                    </span>
-                  </button>
                 </div>
               </button>
             </div>
           </div>
         </template>
 
+        <!-- Active Parameters or Ungrouped Available Parameters -->
         <template v-else>
           <button
             v-for="(item, index) in items"
             :key="item.field"
             type="button"
             class="w-full flex items-center gap-2 p-1 rounded hover:bg-gray-50 text-left"
+            :class="{
+              'text-gray-400': mode === 'active' && !item.visible
+            }"
             draggable="true"
             @dragstart="handleDragStart($event, item, index)"
             @dragend="$emit('drag-end')"
@@ -152,8 +128,8 @@
           >
             <div class="flex-1">
               <div class="text-sm">{{ item.header }}</div>
-              <div v-if="item.description" class="text-xs text-gray-500">
-                {{ item.description }}
+              <div v-if="mode === 'available'" class="text-xs text-gray-500">
+                {{ getItemGroup(item) }}
               </div>
             </div>
 

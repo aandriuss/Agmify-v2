@@ -14,6 +14,11 @@
             <FormButton
               size="sm"
               class="category-button"
+              :class="{
+                'category-button-selected': selectedParentCategories.includes(category),
+                'category-button-unselected':
+                  !selectedParentCategories.includes(category)
+              }"
               :variant="
                 selectedParentCategories.includes(category) ? 'primary' : 'secondary'
               "
@@ -41,6 +46,11 @@
             <FormButton
               size="sm"
               class="category-button"
+              :class="{
+                'category-button-selected': selectedChildCategories.includes(category),
+                'category-button-unselected':
+                  !selectedChildCategories.includes(category)
+              }"
               :variant="
                 selectedChildCategories.includes(category) ? 'primary' : 'secondary'
               "
@@ -70,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+import { FormButton } from '@speckle/ui-components'
 import { CheckCircleIcon as CheckCircleIconSolid } from '@heroicons/vue/24/solid'
 import { CheckCircleIcon as CheckCircleIconOutline } from '@heroicons/vue/24/outline'
 import { debug, DebugCategories } from '../debug/useDebug'
@@ -210,11 +221,28 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   padding: 0.5rem;
   display: flex;
   align-items: center;
+  transition: all 0.2s ease;
+}
+
+.category-button-selected {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 500;
+}
+
+.category-button-unselected {
+  background-color: var(--color-foundation);
+  color: var(--color-text-muted);
+  opacity: 0.8;
+}
+
+.category-button-unselected:hover {
+  background-color: var(--color-primary-muted);
+  opacity: 1;
 }
 
 .category-text {
   margin-left: 0.5rem;
-  color: var(--color-text);
   font-size: 0.875rem;
   line-height: 1.25rem;
 }

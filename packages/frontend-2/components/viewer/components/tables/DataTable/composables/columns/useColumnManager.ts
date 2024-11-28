@@ -50,10 +50,10 @@ export function useColumnManager(options: UseColumnManagerOptions) {
   const parentColumns = ref<ColumnDef[]>(initialParentColumns)
   const childColumns = ref<ColumnDef[]>(initialChildColumns)
 
-  // Active columns are the ones currently in use for the current view
+  // Active columns are all columns in the current view, regardless of visibility
   const activeColumns = computed(() => {
     const columns = currentView.value === 'parent' ? parentColumns : childColumns
-    return columns.value.filter((col) => col.visible !== false)
+    return columns.value
   })
 
   // Available parameters for the current view (excluding active ones)
