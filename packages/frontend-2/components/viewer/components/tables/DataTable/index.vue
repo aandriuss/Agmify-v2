@@ -73,7 +73,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
-import { FormButton } from '@speckle/ui-components'
 import { useUserSettings } from '~/composables/useUserSettings'
 import ColumnManager from './components/ColumnManager/index.vue'
 import TableWrapper from './components/TableWrapper/index.vue'

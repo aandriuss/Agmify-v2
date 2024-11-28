@@ -1,191 +1,83 @@
 <template>
-  <ViewerLayoutPanel :initial-width="400" @close="handleClose">
-    <template #title>Datasets</template>
-
-    <template #actions>
-      <div class="flex items-center justify-between w-full">
-        <ScheduleHeader
+  <ScheduleLayout
+    :selected-table-id="store.selectedTableId.value || ''"
+    :table-name="store.tableName.value || ''"
+    :tables="store.tablesArray.value || []"
+    :show-category-options="showCategoryOptions"
+    :has-changes="hasChanges"
+    :is-loading="isLoading"
+    :is-updating="isUpdating"
+    :parent-categories="parentCategories"
+    :child-categories="childCategories"
+    :selected-parent-categories="categories.selectedParentCategories.value"
+    :selected-child-categories="categories.selectedChildCategories.value"
+    @update:selected-table-id="handleSelectedTableIdUpdate"
+    @update:table-name="handleTableNameUpdate"
+    @table-change="handleTableChange"
+    @save="handleSaveTable"
+    @toggle-category-options="toggleCategoryOptions"
+    @toggle-parameter-manager="toggleParameterManager"
+    @toggle-category="handleCategoryToggle"
+    @close="handleClose"
+  >
+    <div class="schedule-container">
+      <ScheduleLoadingState :is-loading="isLoading" :error="error" @retry="handleRetry">
+        <ScheduleMainView
           :selected-table-id="store.selectedTableId.value || ''"
+          :current-table="null"
+          :is-initialized="isInitialized"
           :table-name="store.tableName.value || ''"
-          :tables="store.tablesArray.value || []"
-          :show-category-options="showCategoryOptions"
-          :has-changes="hasChanges"
-          @update:selected-table-id="handleSelectedTableIdUpdate"
-          @update:table-name="handleTableNameUpdate"
-          @table-change="handleTableChange"
-          @save="handleSaveTable"
-          @toggle-category-options="toggleCategoryOptions"
-        />
-        <FormButton
-          text
-          size="sm"
-          color="primary"
-          :disabled="!store.selectedTableId.value"
-          @click="toggleParameterManager"
-        >
-          Manage Parameters
-        </FormButton>
-      </div>
-    </template>
-
-    <div class="flex flex-col">
-      <!-- Category Filters -->
-      <div
-        v-if="showCategoryOptions && !isLoading"
-        class="sticky top-10 px-2 py-2 flex flex-col justify-start text-left border-b-2 border-primary-muted bg-foundation"
-      >
-        <ScheduleCategoryFilters
-          :show-category-options="showCategoryOptions"
-          :parent-categories="parentCategories"
-          :child-categories="childCategories"
+          :current-table-id="store.currentTableId.value || ''"
+          :table-key="store.tableKey.value || '0'"
+          :error="error"
+          :parent-base-columns="store.parentBaseColumns.value || []"
+          :parent-available-columns="store.parentAvailableColumns.value || []"
+          :parent-visible-columns="store.parentVisibleColumns.value || []"
+          :child-base-columns="store.childBaseColumns.value || []"
+          :child-available-columns="store.childAvailableColumns.value || []"
+          :child-visible-columns="store.childVisibleColumns.value || []"
+          :schedule-data="store.scheduleData.value || []"
+          :evaluated-data="store.evaluatedData.value || []"
+          :table-data="store.tableData.value || []"
+          :is-loading="isLoading"
+          :is-loading-additional-data="isUpdating"
+          :has-selected-categories="hasSelectedCategories"
           :selected-parent-categories="categories.selectedParentCategories.value"
           :selected-child-categories="categories.selectedChildCategories.value"
-          :is-updating="categories.isUpdating.value"
-          @toggle-category="categories.handleCategoryToggle"
+          :show-parameter-manager="showParameterManager"
+          :processed-headers="processedHeaders"
+          :custom-parameters="store.customParameters.value || []"
+          :parent-elements="parentElements"
+          :child-elements="childElements"
+          :available-parent-headers="availableParentHeaders"
+          :available-child-headers="availableChildHeaders"
+          :is-test-mode="isTestMode"
+          @update:both-columns="handleBothColumnsUpdate"
+          @table-updated="handleTableDataUpdate"
+          @column-visibility-change="handleColumnVisibilityChange"
+          @row-expand="handleRowExpand"
+          @row-collapse="handleRowCollapse"
+          @error="handleError"
+          @update:parameter-columns="handleParameterColumnsUpdate"
+          @update:evaluated-data="handleEvaluatedDataUpdate"
+          @update:merged-parent-parameters="handleMergedParentParametersUpdate"
+          @update:merged-child-parameters="handleMergedChildParametersUpdate"
+          @update:merged-table-columns="handleMergedTableColumnsUpdate"
+          @update:merged-detail-columns="handleMergedDetailColumnsUpdate"
+          @column-order-change="handleColumnOrderChange"
+          @update:show-parameter-manager="showParameterManager = $event"
+          @parameter-update="handleParameterUpdate"
+          @parameter-visibility-update="handleParameterVisibility"
+          @parameter-order-update="handleParameterOrder"
+          @update:is-test-mode="isTestMode = $event"
         />
-      </div>
-
-      <div v-if="isLoading" class="flex items-center justify-center h-full">
-        <div class="text-center">
-          <div class="text-lg font-semibold mb-2">Loading schedule data...</div>
-          <div class="text-sm text-gray-500">
-            Please wait while we prepare your data
-          </div>
-        </div>
-      </div>
-
-      <div v-else-if="error" class="flex items-center justify-center h-full">
-        <div class="text-center">
-          <div class="text-lg font-semibold mb-2 text-red-500">
-            {{ error?.message }}
-          </div>
-          <FormButton
-            class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            @click="handleRetry"
-          >
-            Retry
-          </FormButton>
-        </div>
-      </div>
-
-      <div
-        v-else
-        ref="viewerContainer"
-        class="viewer-container"
-        style="width: 100%; height: 100%; min-height: 400px"
-      >
-        <TestDataTable v-if="isTestMode" />
-
-        <template v-else>
-          <div class="schedule-table-container">
-            <ScheduleTableView
-              v-if="!isLoading"
-              :selected-table-id="store.selectedTableId.value || ''"
-              :current-table="null"
-              :is-initialized="isInitialized"
-              :table-name="store.tableName.value || ''"
-              :current-table-id="store.currentTableId.value || ''"
-              :table-key="store.tableKey.value || '0'"
-              :loading-error="error"
-              :parent-base-columns="store.parentBaseColumns.value || []"
-              :parent-available-columns="store.parentAvailableColumns.value || []"
-              :parent-visible-columns="store.parentVisibleColumns.value || []"
-              :child-base-columns="store.childBaseColumns.value || []"
-              :child-available-columns="store.childAvailableColumns.value || []"
-              :child-visible-columns="store.childVisibleColumns.value || []"
-              :schedule-data="store.scheduleData.value || []"
-              :evaluated-data="store.evaluatedData.value || []"
-              :table-data="store.tableData.value || []"
-              :is-loading="isLoading"
-              :is-loading-additional-data="isUpdating"
-              :no-categories-selected="!hasSelectedCategories"
-              :selected-parent-categories="categories.selectedParentCategories.value"
-              :selected-child-categories="categories.selectedChildCategories.value"
-              @update:both-columns="handleBothColumnsUpdate"
-              @table-updated="handleTableDataUpdate"
-              @column-visibility-change="handleColumnVisibilityChange"
-              @row-expand="handleRowExpand"
-              @row-collapse="handleRowCollapse"
-              @error="handleError"
-            />
-
-            <ScheduleDataManagement
-              v-if="!isLoading"
-              ref="dataComponent"
-              :schedule-data="store.scheduleData.value || []"
-              :evaluated-data="store.evaluatedData.value || []"
-              :custom-parameters="store.customParameters.value || []"
-              :merged-table-columns="store.parentAvailableColumns.value || []"
-              :merged-detail-columns="store.childAvailableColumns.value || []"
-              :selected-parent-categories="categories.selectedParentCategories.value"
-              :selected-child-categories="categories.selectedChildCategories.value"
-              :is-initialized="isInitialized"
-              @update:table-data="handleTableDataUpdate"
-              @error="handleError"
-            />
-
-            <ScheduleParameterHandling
-              v-if="!isLoading"
-              ref="parameterComponent"
-              :schedule-data="store.scheduleData.value || []"
-              :custom-parameters="store.customParameters.value || []"
-              :selected-parent-categories="categories.selectedParentCategories.value"
-              :selected-child-categories="categories.selectedChildCategories.value"
-              :available-headers="processedHeaders"
-              :is-initialized="isInitialized"
-              @update:parameter-columns="handleParameterColumnsUpdate"
-              @update:evaluated-data="handleEvaluatedDataUpdate"
-              @update:merged-parent-parameters="handleMergedParentParametersUpdate"
-              @update:merged-child-parameters="handleMergedChildParametersUpdate"
-              @error="handleError"
-            />
-
-            <ScheduleColumnManagement
-              v-if="!isLoading"
-              ref="columnComponent"
-              :current-table-columns="store.parentVisibleColumns.value || []"
-              :current-detail-columns="store.childVisibleColumns.value || []"
-              :parameter-columns="store.parentBaseColumns.value || []"
-              :is-initialized="isInitialized"
-              @update:merged-table-columns="handleMergedTableColumnsUpdate"
-              @update:merged-detail-columns="handleMergedDetailColumnsUpdate"
-              @column-visibility-change="handleColumnVisibilityChange"
-              @column-order-change="handleColumnOrderChange"
-              @error="handleError"
-            />
-
-            <ScheduleParameterManagerModal
-              v-if="showParameterManager"
-              :show="showParameterManager"
-              :table-id="store.currentTableId.value || ''"
-              @update:show="toggleParameterManager"
-              @update="handleParameterUpdate"
-              @update:visibility="handleParameterVisibility"
-              @update:order="handleParameterOrder"
-            />
-
-            <DebugPanel
-              :schedule-data="store.scheduleData.value || []"
-              :evaluated-data="store.evaluatedData.value || []"
-              :table-data="store.tableData.value || []"
-              :parent-elements="parentElements"
-              :child-elements="childElements"
-              :parent-parameter-columns="store.parentAvailableColumns.value || []"
-              :child-parameter-columns="store.childAvailableColumns.value || []"
-              :available-parent-headers="availableParentHeaders"
-              :available-child-headers="availableChildHeaders"
-              :is-test-mode="isTestMode"
-              @update:is-test-mode="isTestMode = $event"
-            />
-          </div>
-        </template>
-      </div>
+      </ScheduleLoadingState>
     </div>
-  </ViewerLayoutPanel>
+  </ScheduleLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { isEqual } from 'lodash-es'
 import { useDebug, DebugCategories } from './debug/useDebug'
 import { useStore } from './core/store'
@@ -197,39 +89,17 @@ import { useUnifiedParameters } from './composables/useUnifiedParameters'
 import { useScheduleInteractions } from './composables/useScheduleInteractions'
 import { useScheduleInitialization } from './composables/useScheduleInitialization'
 import { useScheduleCategories } from './composables/useScheduleCategories'
-import DebugPanel from './debug/DebugPanel.vue'
-import TestDataTable from './components/test/TestDataTable.vue'
-
-// Types
-import type {
-  ScheduleDataManagementExposed,
-  ScheduleParameterHandlingExposed,
-  ScheduleColumnManagementExposed,
-  ElementData,
-  TableRow
-} from './types'
+import { useUserSettings } from '~/composables/useUserSettings'
+import type { ElementData, TableRow } from './types/elements'
 import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-
-// Components
-import ScheduleHeader from './components/ScheduleTableHeader.vue'
-import ScheduleDataManagement from './components/ScheduleDataManagement.vue'
-import ScheduleParameterHandling from './components/ScheduleParameterHandling.vue'
-import ScheduleColumnManagement from './components/ScheduleColumnManagement.vue'
-import ScheduleParameterManagerModal from './components/ScheduleParameterManagerModal.vue'
-import ScheduleCategoryFilters from './components/ScheduleCategoryFilters.vue'
-import { ScheduleTableView } from './components/table'
+import ScheduleLayout from './components/ScheduleLayout.vue'
+import ScheduleLoadingState from './components/ScheduleLoadingState.vue'
+import ScheduleMainView from './components/ScheduleMainView.vue'
 
 // Define emits
 const emit = defineEmits<{
-  close: []
-  'update:table-data': [data: unknown]
-  'update:both-columns': [
-    updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
-  ]
-  'column-visibility-change': []
   'row-expand': [row: TableRow | ElementData]
   'row-collapse': [row: TableRow | ElementData]
-  error: [err: Error | unknown]
 }>()
 
 // Initialize debug system
@@ -240,7 +110,6 @@ const isTestMode = ref(false)
 
 // Initialize refs
 const error = ref<Error | null>(null)
-const viewerContainer = ref<HTMLElement | null>(null)
 
 const categories = useScheduleCategories({
   initialState: {
@@ -255,18 +124,9 @@ const categories = useScheduleCategories({
   }
 })
 
-// Component refs
-const dataComponent = ref<ScheduleDataManagementExposed | null>(null)
-const parameterComponent = ref<ScheduleParameterHandlingExposed | null>(null)
-const columnComponent = ref<ScheduleColumnManagementExposed | null>(null)
-
 // Initialize core composables
 const store = useStore()
 const { settings, loadSettings } = useUserSettings()
-
-const customParameters = computed<CustomParameter[] | null>(
-  () => store.customParameters.value || ([] as CustomParameter[])
-)
 
 const { initComponent } = useScheduleInitialization({
   store,
@@ -305,10 +165,6 @@ const {
   toggleParameterManager,
   handleClose,
   handleSaveTable,
-  handleDeleteTable,
-  // handleTableChange,
-  // handleSelectedTableIdUpdate,
-  // handleTableNameUpdate,
   handleBothColumnsUpdate,
   state: interactionsState
 } = interactions
@@ -363,11 +219,11 @@ const hasChanges = computed(() => {
     // Check category changes
     !isEqual(
       currentSettings.categoryFilters?.selectedParentCategories || [],
-      categories.selectedParentCategories.value // Changed
+      categories.selectedParentCategories.value
     ) ||
     !isEqual(
       currentSettings.categoryFilters?.selectedChildCategories || [],
-      categories.selectedChildCategories.value // Changed
+      categories.selectedChildCategories.value
     ) ||
     // Check column changes
     !isEqual(currentSettings.parentColumns || [], store.parentVisibleColumns.value) ||
@@ -676,6 +532,59 @@ function handleTableChange() {
   }
 }
 
+function handleCategoryToggle(type: 'parent' | 'child', category: string) {
+  categories.handleCategoryToggle(type, category)
+}
+
+function handleRowExpand(row: TableRow | ElementData) {
+  if (!('id' in row) || !('type' in row) || !('isChild' in row)) return
+
+  debug.log(DebugCategories.TABLE_DATA, 'Row expanded', {
+    id: row.id,
+    type: row.type,
+    isChild: row.isChild,
+    hasDetails: 'details' in row && Array.isArray(row.details)
+  })
+  emit('row-expand', row)
+}
+
+function handleRowCollapse(row: TableRow | ElementData) {
+  if (!('id' in row) || !('type' in row) || !('isChild' in row)) return
+
+  debug.log(DebugCategories.TABLE_DATA, 'Row collapsed', {
+    id: row.id,
+    type: row.type,
+    isChild: row.isChild,
+    hasDetails: 'details' in row && Array.isArray(row.details)
+  })
+  emit('row-collapse', row)
+}
+
+// Error handling with type safety
+function handleError(err: Error | unknown): void {
+  // Type guard for Error objects
+  function isError(value: unknown): value is Error {
+    return value instanceof Error
+  }
+
+  // Create a safe error object
+  const safeError = isError(err)
+    ? err
+    : new Error(typeof err === 'string' ? err : 'Unknown error occurred')
+
+  // Set error state
+  error.value = safeError
+
+  // Safe error logging with type guards
+  const errorDetails = {
+    name: isError(err) ? err.name : 'Error',
+    message: safeError.message,
+    stack: isError(err) && typeof err.stack === 'string' ? err.stack : undefined
+  }
+
+  debug.error(DebugCategories.ERROR, 'Schedule error:', errorDetails)
+}
+
 onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
@@ -716,51 +625,6 @@ onBeforeUnmount(() => {
   elementsData.stopWorldTreeWatch()
 })
 
-function handleRowExpand(row: TableRow | ElementData) {
-  debug.log(DebugCategories.TABLE_DATA, 'Row expanded', {
-    id: row.id,
-    type: row.type,
-    isChild: row.isChild,
-    hasDetails: 'details' in row && Array.isArray(row.details)
-  })
-  emit('row-expand', row)
-}
-
-function handleRowCollapse(row: TableRow | ElementData) {
-  debug.log(DebugCategories.TABLE_DATA, 'Row collapsed', {
-    id: row.id,
-    type: row.type,
-    isChild: row.isChild,
-    hasDetails: 'details' in row && Array.isArray(row.details)
-  })
-  emit('row-collapse', row)
-}
-
-// Error handling with type safety
-function handleError(err: Error | unknown): void {
-  // Type guard for Error objects
-  function isError(value: unknown): value is Error {
-    return value instanceof Error
-  }
-
-  // Create a safe error object
-  const safeError = isError(err)
-    ? err
-    : new Error(typeof err === 'string' ? err : 'Unknown error occurred')
-
-  // Set error state
-  error.value = safeError
-
-  // Safe error logging with type guards
-  const errorDetails = {
-    name: isError(err) ? err.name : 'Error',
-    message: safeError.message,
-    stack: isError(err) && typeof err.stack === 'string' ? err.stack : undefined
-  }
-
-  debug.error(DebugCategories.ERROR, 'Schedule error:', errorDetails)
-}
-
 // Expose necessary functions with type safety
 defineExpose({
   handleError: (err: Error | unknown) => handleError(err),
@@ -774,86 +638,11 @@ defineExpose({
 </script>
 
 <style scoped>
-.flex {
+.schedule-container {
   display: flex;
-}
-
-.flex-col {
   flex-direction: column;
-}
-
-.p-4 {
-  padding: 1rem;
-}
-
-.text-red-500 {
-  color: rgb(239 68 68);
-}
-
-.text-gray-500 {
-  color: rgb(107 114 128);
-}
-
-.mt-2 {
-  margin-top: 0.5rem;
-}
-
-.viewer-container {
-  position: relative;
+  height: 100%;
+  width: 100%;
   overflow: hidden;
-}
-
-.schedule-table-container {
-  display: block;
-}
-
-.px-4 {
-  padding-left: 1rem;
-  padding-right: 1rem;
-}
-
-.py-2 {
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-}
-
-.bg-blue-500 {
-  background-color: rgb(59 130 246);
-}
-
-.hover-bg-blue-600:hover {
-  background-color: rgb(37 99 235);
-}
-
-.text-white {
-  color: rgb(255 255 255);
-}
-
-.rounded {
-  border-radius: 0.25rem;
-}
-
-.ml-2 {
-  margin-left: 0.5rem;
-}
-
-.sticky {
-  position: sticky;
-}
-
-.top-10 {
-  top: 2.5rem;
-}
-
-.border-b-2 {
-  border-bottom-width: 2px;
-}
-
-.border-primary-muted {
-  border-color: var(--color-primary-muted);
-}
-
-.bg-foundation {
-  background-color: var(--color-foundation);
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <ViewerLayoutPanel :initial-width="400" @close="handleClose">
+  <ViewerLayoutPanel :initial-width="400" @close="$emit('close')">
     <template #title>Datasets</template>
 
     <template #actions>
@@ -29,21 +29,16 @@
     </template>
 
     <div class="flex flex-col">
-      <!-- Category Filters -->
-      <div
+      <ScheduleCategoryFilters
         v-if="showCategoryOptions && !isLoading"
-        class="sticky top-10 px-2 py-2 flex flex-col justify-start text-left border-b-2 border-primary-muted bg-foundation"
-      >
-        <ScheduleCategoryFilters
-          :show-category-options="showCategoryOptions"
-          :parent-categories="parentCategories"
-          :child-categories="childCategories"
-          :selected-parent-categories="selectedParentCategories"
-          :selected-child-categories="selectedChildCategories"
-          :is-updating="isUpdating"
-          @toggle-category="$emit('toggle-category', $event)"
-        />
-      </div>
+        :show-category-options="showCategoryOptions"
+        :parent-categories="parentCategories"
+        :child-categories="childCategories"
+        :selected-parent-categories="selectedParentCategories"
+        :selected-child-categories="selectedChildCategories"
+        :is-updating="isUpdating"
+        @toggle-category="(type, category) => $emit('toggle-category', type, category)"
+      />
 
       <slot></slot>
     </div>
@@ -54,7 +49,6 @@
 import { type PropType } from 'vue'
 import ScheduleHeader from './ScheduleTableHeader.vue'
 import ScheduleCategoryFilters from './ScheduleCategoryFilters.vue'
-import type { Category } from '../types'
 
 defineProps({
   selectedTableId: {
@@ -86,11 +80,11 @@ defineProps({
     default: false
   },
   parentCategories: {
-    type: Array as PropType<Category[]>,
+    type: Array as PropType<string[]>,
     required: true
   },
   childCategories: {
-    type: Array as PropType<Category[]>,
+    type: Array as PropType<string[]>,
     required: true
   },
   selectedParentCategories: {
@@ -110,7 +104,7 @@ defineEmits<{
   save: []
   'toggle-category-options': []
   'toggle-parameter-manager': []
-  'toggle-category': [category: string]
+  'toggle-category': [type: 'parent' | 'child', category: string]
   close: []
 }>()
 </script>
@@ -122,35 +116,5 @@ defineEmits<{
 
 .flex-col {
   flex-direction: column;
-}
-
-.sticky {
-  position: sticky;
-}
-
-.top-10 {
-  top: 2.5rem;
-}
-
-.border-b-2 {
-  border-bottom-width: 2px;
-}
-
-.border-primary-muted {
-  border-color: var(--color-primary-muted);
-}
-
-.bg-foundation {
-  background-color: var(--color-foundation);
-}
-
-.px-2 {
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
-}
-
-.py-2 {
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
 }
 </style>

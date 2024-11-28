@@ -86,7 +86,6 @@
   </div>
 </template>
 <script lang="ts" setup>
-import { FormButton } from '@speckle/ui-components'
 import type { ProjectDashboardItemFragment } from '~~/lib/common/generated/gql/graphql'
 import {
   projectRoute,

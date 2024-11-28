@@ -13,6 +13,7 @@
           <div v-for="category in parentCategories" :key="category" class="mb-1">
             <FormButton
               size="sm"
+              class="category-button"
               :variant="
                 selectedParentCategories.includes(category) ? 'primary' : 'secondary'
               "
@@ -22,10 +23,9 @@
                   : CheckCircleIconOutline
               "
               :disabled="isUpdating"
-              text
               @click="handleCategoryToggle('parent', category)"
             >
-              {{ category }}
+              <span class="category-text">{{ category }}</span>
             </FormButton>
           </div>
         </div>
@@ -40,6 +40,7 @@
           <div v-for="category in childCategories" :key="category" class="mb-1">
             <FormButton
               size="sm"
+              class="category-button"
               :variant="
                 selectedChildCategories.includes(category) ? 'primary' : 'secondary'
               "
@@ -49,10 +50,9 @@
                   : CheckCircleIconOutline
               "
               :disabled="isUpdating"
-              text
               @click="handleCategoryToggle('child', category)"
             >
-              {{ category }}
+              <span class="category-text">{{ category }}</span>
             </FormButton>
           </div>
         </div>
@@ -70,7 +70,6 @@
 </template>
 
 <script setup lang="ts">
-import { FormButton } from '@speckle/ui-components'
 import { CheckCircleIcon as CheckCircleIconSolid } from '@heroicons/vue/24/solid'
 import { CheckCircleIcon as CheckCircleIconOutline } from '@heroicons/vue/24/outline'
 import { debug, DebugCategories } from '../debug/useDebug'
@@ -203,5 +202,20 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
 
 .block {
   display: block;
+}
+
+.category-button {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.category-text {
+  margin-left: 0.5rem;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
 </style>
