@@ -29,7 +29,7 @@
     </template>
 
     <div class="flex flex-col">
-      <!-- Category Filters - Below actions but above table -->
+      <!-- Category Filters -->
       <div
         v-if="showCategoryOptions && !isLoading"
         class="sticky top-10 px-2 py-2 flex flex-col justify-start text-left border-b-2 border-primary-muted bg-foundation"
@@ -38,10 +38,10 @@
           :show-category-options="showCategoryOptions"
           :parent-categories="parentCategories"
           :child-categories="childCategories"
-          :selected-parent-categories="selectedParentCategories"
-          :selected-child-categories="selectedChildCategories"
-          :is-updating="isUpdating"
-          @toggle-category="handleCategoryToggle"
+          :selected-parent-categories="categories.selectedParentCategoriesValue"
+          :selected-child-categories="categories.selectedChildCategoriesValue"
+          :is-updating="categories.isUpdating.value"
+          @toggle-category="categories.handleCategoryToggle"
         />
       </div>
 
@@ -99,8 +99,8 @@
               :is-loading="isLoading"
               :is-loading-additional-data="isUpdating"
               :no-categories-selected="!hasSelectedCategories"
-              :selected-parent-categories="selectedParentCategories"
-              :selected-child-categories="selectedChildCategories"
+              :selected-parent-categories="categories.selectedParentCategories.value"
+              :selected-child-categories="categories.selectedChildCategories.value"
               @update:both-columns="handleBothColumnsUpdate"
               @table-updated="handleTableDataUpdate"
               @column-visibility-change="handleColumnVisibilityChange"
@@ -117,8 +117,8 @@
               :custom-parameters="store.customParameters.value || []"
               :merged-table-columns="store.parentAvailableColumns.value || []"
               :merged-detail-columns="store.childAvailableColumns.value || []"
-              :selected-parent-categories="selectedParentCategories"
-              :selected-child-categories="selectedChildCategories"
+              :selected-parent-categories="categories.selectedParentCategoriesValue"
+              :selected-child-categories="categories.selectedChildCategoriesValue"
               :is-initialized="isInitialized"
               @update:table-data="handleTableDataUpdate"
               @error="handleError"
@@ -129,8 +129,8 @@
               ref="parameterComponent"
               :schedule-data="store.scheduleData.value || []"
               :custom-parameters="store.customParameters.value || []"
-              :selected-parent-categories="selectedParentCategories"
-              :selected-child-categories="selectedChildCategories"
+              :selected-parent-categories="categories.selectedParentCategoriesValue"
+              :selected-child-categories="categories.selectedChildCategoriesValue"
               :available-headers="processedHeaders"
               :is-initialized="isInitialized"
               @update:parameter-columns="handleParameterColumnsUpdate"
@@ -195,8 +195,9 @@ import { parentCategories, childCategories } from './config/categories'
 import { defaultTable } from './config/defaultColumns'
 import { useUnifiedParameters } from './composables/useUnifiedParameters'
 import { useScheduleInteractions } from './composables/useScheduleInteractions'
-import TestDataTable from './components/test/TestDataTable.vue'
+import { useScheduleCategories } from './composables/useScheduleCategories'
 import DebugPanel from './debug/DebugPanel.vue'
+import TestDataTable from './components/test/TestDataTable.vue'
 
 // Types
 import type {
@@ -241,12 +242,19 @@ const isTestMode = ref(false)
 // Initialize refs
 const error = ref<Error | null>(null)
 const viewerContainer = ref<HTMLElement | null>(null)
-const selectedParentCategories = ref<string[]>(
-  defaultTable.categoryFilters.selectedParentCategories
-)
-const selectedChildCategories = ref<string[]>(
-  defaultTable.categoryFilters.selectedChildCategories
-)
+
+const categories = useScheduleCategories({
+  initialState: {
+    selectedParentCategories: defaultTable.categoryFilters.selectedParentCategories,
+    selectedChildCategories: defaultTable.categoryFilters.selectedChildCategories
+  },
+  onUpdate: async (state) => {
+    await store.lifecycle.update({
+      selectedParentCategories: state.selectedParentCategories,
+      selectedChildCategories: state.selectedChildCategories
+    })
+  }
+})
 
 // Component refs
 const dataComponent = ref<ScheduleDataManagementExposed | null>(null)
@@ -326,8 +334,8 @@ const initComponent = ref<ScheduleInitializationInstance>({
       parentColumns: config.parentColumns || store.parentVisibleColumns.value || [],
       childColumns: config.childColumns || store.childVisibleColumns.value || [],
       categoryFilters: config.categoryFilters || {
-        selectedParentCategories: selectedParentCategories.value,
-        selectedChildCategories: selectedChildCategories.value
+        selectedParentCategories: categories.selectedParentCategories.value,
+        selectedChildCategories: categories.selectedChildCategories.value
       },
       customParameters: config.customParameters || store.customParameters.value || []
     }
@@ -342,8 +350,8 @@ const interactions = useScheduleInteractions({
     selectedTableId: store.selectedTableId.value || '',
     tableName: store.tableName.value || '',
     currentTable: null,
-    selectedParentCategories: selectedParentCategories.value,
-    selectedChildCategories: selectedChildCategories.value,
+    selectedParentCategories: categories.selectedParentCategories.value,
+    selectedChildCategories: categories.selectedChildCategories.value,
     currentTableColumns: store.parentVisibleColumns.value || [],
     currentDetailColumns: store.childVisibleColumns.value || []
   },
@@ -371,10 +379,10 @@ const {
   state: interactionsState
 } = interactions
 
-// Initialize data composables - we know viewer state is ready
+// Initialize data composables with new category refs
 const elementsData = useElementsData({
-  selectedParentCategories,
-  selectedChildCategories
+  selectedParentCategories: categories.selectedParentCategoriesValue,
+  selectedChildCategories: categories.selectedChildCategoriesValue
 })
 
 // Loading state - only show loading when we have no data
@@ -396,11 +404,7 @@ const isUpdating = computed(() => {
   return state?.isProcessingElements || false
 })
 
-const hasSelectedCategories = computed(
-  () =>
-    selectedParentCategories.value.length > 0 ||
-    selectedChildCategories.value.length > 0
-)
+const hasSelectedCategories = computed(() => categories.hasSelectedCategories.value)
 
 const hasChanges = computed(() => {
   // Get the current table settings from settings
@@ -411,8 +415,8 @@ const hasChanges = computed(() => {
     // If we're creating a new table or no settings exist, check if we have any data
     return !!(
       store.tableName.value ||
-      selectedParentCategories.value.length > 0 ||
-      selectedChildCategories.value.length > 0 ||
+      categories.selectedParentCategories.value.length > 0 ||
+      categories.selectedChildCategories.value.length > 0 ||
       store.parentVisibleColumns.value?.length > 0 ||
       store.childVisibleColumns.value?.length > 0
     )
@@ -425,11 +429,11 @@ const hasChanges = computed(() => {
     // Check category changes
     !isEqual(
       currentSettings.categoryFilters?.selectedParentCategories || [],
-      selectedParentCategories.value
+      categories.selectedParentCategories.value // Changed
     ) ||
     !isEqual(
       currentSettings.categoryFilters?.selectedChildCategories || [],
-      selectedChildCategories.value
+      categories.selectedChildCategories.value // Changed
     ) ||
     // Check column changes
     !isEqual(currentSettings.parentColumns || [], store.parentVisibleColumns.value) ||
@@ -457,45 +461,25 @@ async function applyTableSettings(tableId: string) {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Applying table settings')
 
-    // Get table settings
     const tableSettings = settings.value?.namedTables?.[tableId]
 
     if (tableSettings) {
-      debug.log(DebugCategories.INITIALIZATION, 'Found table settings', {
-        tableId,
-        name: tableSettings.name,
-        parentColumnsCount: tableSettings.parentColumns?.length,
-        childColumnsCount: tableSettings.childColumns?.length
-      })
-
-      // Update store with table settings
       await store.lifecycle.update({
         selectedTableId: tableId,
         currentTableId: tableId,
         tableName: tableSettings.name,
-        // Set columns
         parentBaseColumns: tableSettings.parentColumns || [],
         childBaseColumns: tableSettings.childColumns || [],
         parentVisibleColumns: tableSettings.parentColumns || [],
-        childVisibleColumns: tableSettings.childColumns || [],
-        // Set categories
-        selectedParentCategories:
-          tableSettings.categoryFilters?.selectedParentCategories || [],
-        selectedChildCategories:
-          tableSettings.categoryFilters?.selectedChildCategories || []
+        childVisibleColumns: tableSettings.childColumns || []
       })
 
-      // Update local category refs
-      selectedParentCategories.value =
-        tableSettings.categoryFilters?.selectedParentCategories || []
-      selectedChildCategories.value =
+      // Update categories using new composable
+      await categories.loadCategories(
+        tableSettings.categoryFilters?.selectedParentCategories || [],
         tableSettings.categoryFilters?.selectedChildCategories || []
+      )
     } else {
-      debug.log(DebugCategories.INITIALIZATION, 'Using default settings', {
-        tableId
-      })
-
-      // Apply defaults
       await store.lifecycle.update({
         selectedTableId: tableId,
         currentTableId: tableId,
@@ -503,50 +487,20 @@ async function applyTableSettings(tableId: string) {
         parentBaseColumns: defaultTable.parentColumns,
         childBaseColumns: defaultTable.childColumns,
         parentVisibleColumns: defaultTable.parentColumns,
-        childVisibleColumns: defaultTable.childColumns,
-        selectedParentCategories: defaultTable.categoryFilters.selectedParentCategories,
-        selectedChildCategories: defaultTable.categoryFilters.selectedChildCategories
+        childVisibleColumns: defaultTable.childColumns
       })
 
-      // Update local category refs
-      selectedParentCategories.value =
-        defaultTable.categoryFilters.selectedParentCategories
-      selectedChildCategories.value =
+      // Load default categories
+      await categories.loadCategories(
+        defaultTable.categoryFilters.selectedParentCategories,
         defaultTable.categoryFilters.selectedChildCategories
+      )
     }
-
-    debug.completeState(DebugCategories.INITIALIZATION, 'Table settings applied')
   } catch (error) {
     debug.error(DebugCategories.ERROR, 'Error applying table settings:', error)
     handleError(error)
   }
 }
-
-// Initialize on mount
-onMounted(async () => {
-  try {
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
-
-    // Load settings first
-    await loadSettings()
-
-    // Get default table ID
-    const defaultTableId = settings.value?.namedTables
-      ? Object.keys(settings.value.namedTables)[0]
-      : 'default'
-
-    // Apply settings for default table
-    await applyTableSettings(defaultTableId)
-
-    // Initialize elements data
-    await elementsData.initializeData()
-
-    debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
-  } catch (err) {
-    debug.error(DebugCategories.ERROR, 'Error initializing schedules:', err)
-    handleError(err)
-  }
-})
 
 // Computed properties for available headers with required ColumnDef properties
 const availableParentHeaders = computed(
@@ -641,8 +595,8 @@ async function handleSelectedTableIdUpdate(value: string) {
 
     // Update elements with new categories
     await elementsData.updateCategories(
-      selectedParentCategories.value,
-      selectedChildCategories.value
+      categories.selectedParentCategories.value,
+      categories.selectedChildCategories.value
     )
 
     debug.completeState(DebugCategories.TABLE_UPDATES, 'Table selection updated')
@@ -659,8 +613,8 @@ watch(
     () => store.tableName.value,
     () => store.parentVisibleColumns.value,
     () => store.childVisibleColumns.value,
-    () => selectedParentCategories.value,
-    () => selectedChildCategories.value
+    () => categories.selectedParentCategories.value,
+    () => categories.selectedChildCategories.value
   ],
   ([
     selectedTableId,
@@ -788,45 +742,6 @@ function handleTableChange() {
   }
 }
 
-async function handleCategoryToggle(type: 'parent' | 'child', category: string) {
-  try {
-    // Update categories by creating new arrays
-    const categories =
-      type === 'parent' ? selectedParentCategories : selectedChildCategories
-    const currentCategories = [...categories.value]
-    const index = currentCategories.indexOf(category)
-
-    if (index === -1) {
-      currentCategories.push(category)
-    } else {
-      currentCategories.splice(index, 1)
-    }
-
-    // Update ref with new array
-    categories.value = currentCategories
-
-    // Update elements with new categories
-    await elementsData.updateCategories(
-      selectedParentCategories.value,
-      selectedChildCategories.value
-    )
-
-    // Update store
-    await store.lifecycle.update({
-      selectedParentCategories: selectedParentCategories.value,
-      selectedChildCategories: selectedChildCategories.value
-    })
-
-    debug.completeState(DebugCategories.CATEGORIES, 'Category update complete', {
-      parent: selectedParentCategories.value,
-      child: selectedChildCategories.value
-    })
-  } catch (err) {
-    debug.error(DebugCategories.ERROR, 'Error updating categories:', err)
-    handleError(err)
-  }
-}
-
 onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
@@ -920,9 +835,7 @@ defineExpose({
     parentColumns: ColumnDef[]
     childColumns: ColumnDef[]
   }) => handleBothColumnsUpdate(updates),
-  handleTableDataUpdate: () => handleTableDataUpdate(),
-  handleCategoryToggle: (type: 'parent' | 'child', category: string) =>
-    handleCategoryToggle(type, category)
+  handleTableDataUpdate: () => handleTableDataUpdate()
 })
 </script>
 

@@ -299,11 +299,14 @@ export function useElementsData({
   // Watch for BIM elements changes
   watch(() => allElements.value, updateData, { immediate: true })
 
-  // Watch for category changes
+  // Add watch for category changes
   watch(
-    [selectedParentCategories, selectedChildCategories],
-    () => allElements.value?.length && updateData(allElements.value),
-    { deep: true }
+    () => [selectedParentCategories.value, selectedChildCategories.value],
+    () => {
+      if (allElements.value?.length) {
+        updateData(allElements.value)
+      }
+    }
   )
 
   // Initialize data

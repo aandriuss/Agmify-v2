@@ -1,28 +1,30 @@
-import { ref, type Ref } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
+import { useStore } from '../core/store'
+import { defaultTable } from '../config/defaultColumns'
 import type {
   CategoryHierarchy,
   CategoryState,
   CategoryMutations
 } from '../features/categories/types'
+import type { ElementData } from '../types'
 
 interface UseScheduleCategoriesOptions {
-  // Initial state
   initialState?: Partial<CategoryState>
-  // Default categories (moved from config)
   defaultParentCategories?: string[]
   defaultChildCategories?: string[]
-  // Update callback
   onUpdate?: (state: CategoryState) => Promise<void>
 }
 
-export interface UseScheduleCategoriesReturn {
-  // Readonly state
-  selectedParentCategories: Ref<string[]>
-  selectedChildCategories: Ref<string[]>
+export interface UseScheduleCategoriesReturn extends CategoryState {
+  selectedParentCategoriesValue: Ref<string[]>
+  selectedChildCategoriesValue: Ref<string[]>
+  selectedParentCategories: ComputedRef<string[]>
+  selectedChildCategories: ComputedRef<string[]>
   hierarchy: Ref<CategoryHierarchy>
   isUpdating: Ref<boolean>
   error: Ref<Error | null>
+  hasSelectedCategories: Ref<boolean>
 
   // Mutations
   toggleCategory: CategoryMutations['toggleCategory']
@@ -32,6 +34,8 @@ export interface UseScheduleCategoriesReturn {
   // Actions
   loadCategories: (parent: string[], child: string[]) => Promise<void>
   updateHierarchy: (hierarchy: CategoryHierarchy) => Promise<void>
+  updateCategories: (elements: ElementData[]) => Promise<void>
+  handleCategoryToggle: (type: 'parent' | 'child', category: string) => Promise<void>
 }
 
 const defaultHierarchy: CategoryHierarchy = {
@@ -42,12 +46,13 @@ const defaultHierarchy: CategoryHierarchy = {
 export function useScheduleCategories(
   options: UseScheduleCategoriesOptions = {}
 ): UseScheduleCategoriesReturn {
-  // Validate options
-  if (
-    !options.defaultParentCategories?.length &&
-    !options.defaultChildCategories?.length
-  ) {
-    debug.warn(DebugCategories.CATEGORIES, 'No default categories provided')
+  const store = useStore()
+
+  // Initialize with defaults if no options provided
+  const defaultOptions = {
+    defaultParentCategories: defaultTable.categoryFilters.selectedParentCategories,
+    defaultChildCategories: defaultTable.categoryFilters.selectedChildCategories,
+    ...options
   }
 
   // Internal state
@@ -57,11 +62,20 @@ export function useScheduleCategories(
   const isUpdating = ref(false)
   const error = ref<Error | null>(null)
 
+  // Computed
+  const hasSelectedCategories = computed(
+    () =>
+      selectedParentCategories.value.length > 0 ||
+      selectedChildCategories.value.length > 0
+  )
+
   // Initialize with provided state
-  if (options.initialState) {
-    selectedParentCategories.value = options.initialState.selectedParentCategories || []
-    selectedChildCategories.value = options.initialState.selectedChildCategories || []
-    hierarchy.value = options.initialState.hierarchy || defaultHierarchy
+  if (defaultOptions.initialState) {
+    selectedParentCategories.value =
+      defaultOptions.initialState.selectedParentCategories || []
+    selectedChildCategories.value =
+      defaultOptions.initialState.selectedChildCategories || []
+    hierarchy.value = defaultOptions.initialState.hierarchy || defaultHierarchy
   }
 
   // Mutations
@@ -77,30 +91,40 @@ export function useScheduleCategories(
       hierarchy.value = newHierarchy
     },
 
-    toggleCategory: (type: 'parent' | 'child', id: string) => {
-      debug.log(DebugCategories.CATEGORIES, 'Toggle requested:', {
-        type,
-        id,
-        currentState: {
-          parent: selectedParentCategories.value,
-          child: selectedChildCategories.value
+    toggleCategory: async (type: 'parent' | 'child', id: string) => {
+      try {
+        const categories =
+          type === 'parent' ? selectedParentCategories : selectedChildCategories
+        const currentCategories = [...categories.value]
+        const index = currentCategories.indexOf(id)
+
+        if (index === -1) {
+          currentCategories.push(id)
+        } else {
+          currentCategories.splice(index, 1)
         }
-      })
 
-      const categories =
-        type === 'parent' ? selectedParentCategories : selectedChildCategories
+        categories.value = currentCategories
 
-      const index = categories.value.indexOf(id)
-      if (index === -1) {
-        categories.value = [...categories.value, id]
-      } else {
-        categories.value = categories.value.filter((cat) => cat !== id)
+        await store.lifecycle.update({
+          selectedParentCategories: selectedParentCategories.value,
+          selectedChildCategories: selectedChildCategories.value
+        })
+
+        debug.log(DebugCategories.CATEGORIES, 'Category toggled', {
+          type,
+          category: id,
+          currentState: {
+            parent: selectedParentCategories.value,
+            child: selectedChildCategories.value
+          }
+        })
+      } catch (err) {
+        error.value =
+          err instanceof Error ? err : new Error('Failed to toggle category')
+        debug.error(DebugCategories.CATEGORIES, 'Error toggling category:', err)
+        throw error.value
       }
-
-      debug.log(DebugCategories.CATEGORIES, 'Local state updated:', {
-        parent: selectedParentCategories.value,
-        child: selectedChildCategories.value
-      })
     }
   }
 
@@ -113,8 +137,13 @@ export function useScheduleCategories(
 
       mutations.setCategories(parent, child)
 
-      if (options.onUpdate) {
-        await options.onUpdate({
+      await store.lifecycle.update({
+        selectedParentCategories: parent,
+        selectedChildCategories: child
+      })
+
+      if (defaultOptions.onUpdate) {
+        await defaultOptions.onUpdate({
           selectedParentCategories: selectedParentCategories.value,
           selectedChildCategories: selectedChildCategories.value,
           hierarchy: hierarchy.value
@@ -137,8 +166,8 @@ export function useScheduleCategories(
 
       mutations.setHierarchy(newHierarchy)
 
-      if (options.onUpdate) {
-        await options.onUpdate({
+      if (defaultOptions.onUpdate) {
+        await defaultOptions.onUpdate({
           selectedParentCategories: selectedParentCategories.value,
           selectedChildCategories: selectedChildCategories.value,
           hierarchy: hierarchy.value
@@ -153,32 +182,63 @@ export function useScheduleCategories(
     }
   }
 
+  async function updateCategories(elements: ElementData[]) {
+    try {
+      isUpdating.value = true
+      error.value = null
+
+      await store.lifecycle.update({
+        selectedParentCategories: selectedParentCategories.value,
+        selectedChildCategories: selectedChildCategories.value
+      })
+
+      debug.log(DebugCategories.CATEGORIES, 'Categories updated', {
+        parentCategories: selectedParentCategories.value,
+        childCategories: selectedChildCategories.value,
+        elementCount: elements.length
+      })
+    } catch (err) {
+      error.value =
+        err instanceof Error ? err : new Error('Failed to update categories')
+      debug.error(DebugCategories.CATEGORIES, 'Error updating categories:', err)
+      throw error.value
+    } finally {
+      isUpdating.value = false
+    }
+  }
+
   // Initialize with defaults if no initial state
-  if (
-    !options.initialState &&
-    (options.defaultParentCategories || options.defaultChildCategories)
-  ) {
+  if (!defaultOptions.initialState) {
     loadCategories(
-      options.defaultParentCategories || [],
-      options.defaultChildCategories || []
+      defaultOptions.defaultParentCategories,
+      defaultOptions.defaultChildCategories
     ).catch((err) => {
       debug.error(DebugCategories.CATEGORIES, 'Failed to load default categories:', err)
     })
   }
 
   return {
-    // Readonly state
-    selectedParentCategories,
-    selectedChildCategories,
+    // State
+    selectedParentCategoriesValue: selectedParentCategories,
+    selectedChildCategoriesValue: selectedChildCategories,
+    selectedParentCategories: computed(() => selectedParentCategories.value),
+    selectedChildCategories: computed(() => selectedChildCategories.value),
     hierarchy,
-    isUpdating,
+    isUpdating: computed(() => isUpdating.value),
     error,
+    hasSelectedCategories: computed(
+      () =>
+        selectedParentCategories.value.length > 0 ||
+        selectedChildCategories.value.length > 0
+    ),
 
     // Mutations
     ...mutations,
 
     // Actions
     loadCategories,
-    updateHierarchy
+    updateHierarchy,
+    updateCategories,
+    handleCategoryToggle: mutations.toggleCategory
   }
 }

@@ -1,5 +1,5 @@
 import type { TreeItemComponentModel } from '~~/lib/viewer/helpers/sceneExplorer'
-import type { BIMNode, BIMNodeRaw } from './bim'
+import type { BIMNode } from './bim'
 
 // Extended tree item model that includes our BIM structure
 export interface ScheduleTreeItemModel extends TreeItemComponentModel {
@@ -14,13 +14,6 @@ export interface NodeConversionResult {
   node: ScheduleTreeItemModel
   children: ScheduleTreeItemModel[]
 }
-
-// // Type guard for BIMNodeRaw
-// export function isBIMNodeRaw(value: unknown): value is BIMNodeRaw {
-//   if (!value || typeof value !== 'object') return false
-//   const node = value as Record<string, unknown>
-//   return typeof node.id === 'string'
-// }
 
 // Type guard for ScheduleTreeItemModel
 export function isScheduleTreeItemModel(
