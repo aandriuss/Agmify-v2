@@ -270,10 +270,8 @@ const handleSaveParameter = async () => {
 
     await loadSettings()
     emit('update')
-    // Reset the form but don't close the dialog
+    // Only close the parameter edit dialog
     closeParameterDialog()
-    // Reset form for next parameter
-    openAddParameterDialog()
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to save parameter'
   }

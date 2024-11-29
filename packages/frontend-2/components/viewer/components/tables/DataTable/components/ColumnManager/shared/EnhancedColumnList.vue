@@ -30,18 +30,18 @@
         </div>
 
         <!-- Sort (only for available parameters) -->
-        <div v-if="mode === 'available'" class="flex items-center gap-2">
+        <div v-if="mode === 'available'" class="flex items-center gap-1">
           <label for="sort-select" class="text-sm">Sort by:</label>
           <select
             id="sort-select"
             :value="sortBy"
-            class="text-sm border rounded px-1"
+            class="px-2 py-1 rounded border bg-background text-sm h-7 w-32"
             @change="handleSortChange"
           >
             <option value="name">Name</option>
             <option value="category">Category</option>
             <option value="type">Type</option>
-            <option value="fixed">Fixed First</option>
+            <option value="fixed">Favorite First</option>
           </select>
         </div>
       </div>

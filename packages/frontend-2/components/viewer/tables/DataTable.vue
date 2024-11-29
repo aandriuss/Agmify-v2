@@ -51,10 +51,10 @@
         </div>
 
         <!-- Column Management Area -->
-        <div class="flex gap-4 h-[400px]">
+        <div class="flex gap-4 h-[400px] lists-container">
           <!-- Left Panel: Available Parameters -->
           <div class="flex-1 border rounded flex flex-col">
-            <div class="p-3 border-b bg-gray-50 space-y-3">
+            <div class="p-2 border-b bg-gray-50 space-y-2">
               <!-- Header with Toggle Button -->
               <div class="flex justify-between items-center">
                 <h3 class="font-medium text-sm">Available Parameterszz</h3>
@@ -210,7 +210,7 @@
             @dragover.prevent="handleDragOver"
             @drop="handleDropToActive"
           >
-            <div class="p-3 border-b bg-gray-50">
+            <div class="p-2 border-b bg-gray-50">
               <h3 class="font-medium text-sm">Active Columns</h3>
             </div>
 
@@ -783,27 +783,13 @@ const handleColumnReorder = (event) => {
 // Debug logging
 watch(
   () => props.detailColumns,
-  (newCols) => {
-    // console.log('Detail columns updated:', newCols)
-  },
+  (newCols) => {},
   { deep: true }
 )
 
 watch(
   () => props.data,
   (newData) => {
-    // console.log('Raw Data Structure:', {
-    //   fullData: newData,
-    //   firstItem: newData?.[0],
-    //   allFields: newData?.[0] ? Object.keys(newData[0]) : [],
-    //   firstDetails: newData?.[0]?.details,
-    //   firstDetailItem: newData?.[0]?.details?.[0],
-    //   detailFields: newData?.[0]?.details?.[0]
-    //     ? Object.keys(newData[0].details[0])
-    //     : [],
-    //   categories: [...new Set(newData?.map((item) => item.category))]
-    // })
-
     // Log sample items for each category
     const categories = [...new Set(newData?.map((item) => item.category))]
     categories.forEach((category) => {
@@ -817,22 +803,6 @@ watch(
   },
   { immediate: true }
 )
-
-// watch(
-//   () => props.availableParentParameters,
-//   (newParams) => {
-//     console.log('Available parent parameters updated:', newParams)
-//   },
-//   { immediate: true }
-// )
-
-// watch(
-//   () => props.availableChildParameters,
-//   (newParams) => {
-//     console.log('Available child parameters updated:', newParams)
-//   },
-//   { immediate: true }
-// )
 
 watch(
   () => props.availableParentParameters,
@@ -873,8 +843,8 @@ watch(
 .prime-local {
   --primary-color: #3b82f6;
   --surface-ground: #f8f9fa;
-  --surface-section: #ffffff;
-  --surface-card: #ffffff;
+  --surface-section: #fff;
+  --surface-card: #fff;
   --surface-border: #dfe7ef;
   --text-color: #495057;
   --text-color-secondary: #6c757d;
@@ -892,6 +862,7 @@ watch(
   border-top-right-radius: 0.5rem;
   padding: 0.2rem;
   border-bottom: 1px solid var(--surface-border);
+  height: 3rem;
 }
 
 .prime-local :deep(.p-datatable .p-datatable-thead > tr > th) {
@@ -900,6 +871,7 @@ watch(
   font-weight: 600;
   padding: 0.2rem;
   border-bottom: 1px solid var(--surface-border);
+  height: 3rem;
 }
 
 .prime-local :deep(.p-datatable .p-datatable-tbody > tr) {
@@ -1077,7 +1049,7 @@ watch(
 
 :deep(.p-dialog-header-close) {
   width: 2rem;
-  height: 2rem;
+  height: rem;
   border-radius: 6px;
   color: #6b7280;
 }
@@ -1091,7 +1063,11 @@ span[class*='bg-'] {
   transition: opacity 0.15s ease-in-out;
 }
 
-.hover\:bg-gray-50:hover span[class*='bg-'] {
+.hover-bg-gray-50:hover span[class*='bg-'] {
   opacity: 0.9;
+}
+
+.lists-container {
+  align-items: stretch;
 }
 </style>

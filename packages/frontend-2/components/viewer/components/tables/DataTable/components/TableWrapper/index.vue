@@ -142,10 +142,6 @@ interface Props {
   filters?: DataTableFilterMeta
 }
 
-interface DataTableEvent {
-  data: unknown
-}
-
 const props = withDefaults(defineProps<Props>(), {
   loading: false
 })
