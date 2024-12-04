@@ -854,6 +854,26 @@ export type CreateNamedTableInput = {
   name: Scalars['String']['input'];
 };
 
+/** Input for creating a new parameter */
+export type CreateParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  equation?: InputMaybe<Scalars['String']['input']>;
+  field: Scalars['String']['input'];
+  group: Scalars['String']['input'];
+  header: Scalars['String']['input'];
+  isFetched?: InputMaybe<Scalars['Boolean']['input']>;
+  metadata?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
+  orderIndex?: InputMaybe<Scalars['Int']['input']>;
+  removable: Scalars['Boolean']['input'];
+  source?: InputMaybe<Scalars['String']['input']>;
+  type: ParameterType;
+  userId: Scalars['ID']['input'];
+  value?: InputMaybe<Scalars['String']['input']>;
+  visible: Scalars['Boolean']['input'];
+};
+
 export type CreateUserEmailInput = {
   email: Scalars['String']['input'];
 };
@@ -1220,6 +1240,8 @@ export type Mutation = {
   _?: Maybe<Scalars['String']['output']>;
   /** Various Active User oriented mutations */
   activeUserMutations: ActiveUserMutations;
+  /** Add a parameter to a table (updates mapping) */
+  addParameterToTable: Scalars['Boolean']['output'];
   adminDeleteUser: Scalars['Boolean']['output'];
   /** Creates an personal api token. */
   apiTokenCreate: Scalars['String']['output'];
@@ -1291,8 +1313,12 @@ export type Mutation = {
   commitsMove: Scalars['Boolean']['output'];
   /** Create a new named table configuration */
   createNamedTable: NamedTableConfig;
+  /** Create a new parameter */
+  createParameter: ParameterMutationResponse;
   /** Delete a named table configuration */
   deleteNamedTable: Scalars['Boolean']['output'];
+  /** Delete a parameter */
+  deleteParameter: Scalars['Boolean']['output'];
   /**
    * Delete a pending invite
    * Note: The required scope to invoke this is not given out to app or personal access tokens
@@ -1307,6 +1333,8 @@ export type Mutation = {
   /** @deprecated Part of the old API surface and will be removed in the future. */
   objectCreate: Array<Scalars['String']['output']>;
   projectMutations: ProjectMutations;
+  /** Remove a parameter from a table (updates mapping) */
+  removeParameterFromTable: Scalars['Boolean']['output'];
   /** (Re-)send the account verification e-mail */
   requestVerification: Scalars['Boolean']['output'];
   requestVerificationByEmail: Scalars['Boolean']['output'];
@@ -1383,6 +1411,8 @@ export type Mutation = {
   streamsDelete: Scalars['Boolean']['output'];
   /** Update an existing named table configuration */
   updateNamedTable: NamedTableConfig;
+  /** Update an existing parameter */
+  updateParameter: ParameterMutationResponse;
   /**
    * Used for broadcasting real time typing status in comment threads. Does not persist any info.
    * @deprecated Use broadcastViewerUserActivity
@@ -1391,8 +1421,13 @@ export type Mutation = {
   /** Delete a user's account. */
   userDelete: Scalars['Boolean']['output'];
   userNotificationPreferencesUpdate?: Maybe<Scalars['Boolean']['output']>;
+  /** Update user parameters configuration */
+  userParametersUpdate: Scalars['Boolean']['output'];
   userRoleChange: Scalars['Boolean']['output'];
-  userSettingsUpdate?: Maybe<Scalars['Boolean']['output']>;
+  /** Update user settings (controlWidth only) */
+  userSettingsUpdate: Scalars['Boolean']['output'];
+  /** Update user tables configuration */
+  userTablesUpdate: Scalars['Boolean']['output'];
   /**
    * Edits a user's profile.
    * @deprecated Use activeUserMutations version
@@ -1411,6 +1446,12 @@ export type Mutation = {
   /** Updates an existing webhook */
   webhookUpdate: Scalars['String']['output'];
   workspaceMutations: WorkspaceMutations;
+};
+
+
+export type MutationAddParameterToTableArgs = {
+  parameterId: Scalars['ID']['input'];
+  tableId: Scalars['ID']['input'];
 };
 
 
@@ -1544,7 +1585,17 @@ export type MutationCreateNamedTableArgs = {
 };
 
 
+export type MutationCreateParameterArgs = {
+  input: CreateParameterInput;
+};
+
+
 export type MutationDeleteNamedTableArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteParameterArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -1561,6 +1612,12 @@ export type MutationInviteResendArgs = {
 
 export type MutationObjectCreateArgs = {
   objectInput: ObjectCreateInput;
+};
+
+
+export type MutationRemoveParameterFromTableArgs = {
+  parameterId: Scalars['ID']['input'];
+  tableId: Scalars['ID']['input'];
 };
 
 
@@ -1665,6 +1722,12 @@ export type MutationUpdateNamedTableArgs = {
 };
 
 
+export type MutationUpdateParameterArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateParameterInput;
+};
+
+
 export type MutationUserCommentThreadActivityBroadcastArgs = {
   commentId: Scalars['String']['input'];
   data?: InputMaybe<Scalars['JSONObject']['input']>;
@@ -1682,6 +1745,11 @@ export type MutationUserNotificationPreferencesUpdateArgs = {
 };
 
 
+export type MutationUserParametersUpdateArgs = {
+  parameters: Scalars['JSONObject']['input'];
+};
+
+
 export type MutationUserRoleChangeArgs = {
   userRoleInput: UserRoleInput;
 };
@@ -1689,6 +1757,11 @@ export type MutationUserRoleChangeArgs = {
 
 export type MutationUserSettingsUpdateArgs = {
   settings: Scalars['JSONObject']['input'];
+};
+
+
+export type MutationUserTablesUpdateArgs = {
+  tables: Scalars['JSONObject']['input'];
 };
 
 
@@ -1779,6 +1852,42 @@ export type ObjectCreateInput = {
   /** The stream against which these objects will be created. */
   streamId: Scalars['String']['input'];
 };
+
+/** Base parameter type with common fields */
+export type Parameter = {
+  __typename?: 'Parameter';
+  category?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  description?: Maybe<Scalars['String']['output']>;
+  equation?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
+  group: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  isFetched?: Maybe<Scalars['Boolean']['output']>;
+  metadata?: Maybe<Scalars['String']['output']>;
+  name: Scalars['String']['output'];
+  orderIndex?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  type: ParameterType;
+  updatedAt: Scalars['DateTime']['output'];
+  userId: Scalars['ID']['output'];
+  value?: Maybe<Scalars['String']['output']>;
+  visible: Scalars['Boolean']['output'];
+};
+
+/** Response type for parameter mutations */
+export type ParameterMutationResponse = {
+  __typename?: 'ParameterMutationResponse';
+  parameter: Parameter;
+};
+
+/** Parameter type enum */
+export enum ParameterType {
+  Equation = 'equation',
+  Fixed = 'fixed'
+}
 
 export type PasswordStrengthCheckFeedback = {
   __typename?: 'PasswordStrengthCheckFeedback';
@@ -2514,6 +2623,10 @@ export type Query = {
   namedTableConfigs: Array<NamedTableConfig>;
   /** Get the (limited) profile information of another server user */
   otherUser?: Maybe<LimitedUser>;
+  /** Get a specific parameter by ID */
+  parameter?: Maybe<Parameter>;
+  /** Get all parameters for the current user */
+  parameters: Array<Parameter>;
   /**
    * Find a specific project. Will throw an authorization error if active user isn't authorized
    * to see it, for example, if a project isn't public and the user doesn't have the appropriate rights.
@@ -2557,6 +2670,8 @@ export type Query = {
    * @deprecated Part of the old API surface and will be removed in the future. Use User.projects instead.
    */
   streams?: Maybe<StreamCollection>;
+  /** Get all parameters for a specific table */
+  tableParameters: Array<Parameter>;
   /**
    * Gets the profile of a user. If no id argument is provided, will return the current authenticated user's profile (as extracted from the authorization header).
    * @deprecated To be removed in the near future! Use 'activeUser' to get info about the active user or 'otherUser' to get info about another user.
@@ -2657,6 +2772,11 @@ export type QueryOtherUserArgs = {
 };
 
 
+export type QueryParameterArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type QueryProjectArgs = {
   id: Scalars['String']['input'];
 };
@@ -2693,6 +2813,11 @@ export type QueryStreamsArgs = {
   cursor?: InputMaybe<Scalars['String']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   query?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryTableParametersArgs = {
+  tableId: Scalars['ID']['input'];
 };
 
 
@@ -3513,6 +3638,25 @@ export type UpdateNamedTableInput = {
   name?: InputMaybe<Scalars['String']['input']>;
 };
 
+/** Input for updating an existing parameter */
+export type UpdateParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  equation?: InputMaybe<Scalars['String']['input']>;
+  field?: InputMaybe<Scalars['String']['input']>;
+  group?: InputMaybe<Scalars['String']['input']>;
+  header?: InputMaybe<Scalars['String']['input']>;
+  isFetched?: InputMaybe<Scalars['Boolean']['input']>;
+  metadata?: InputMaybe<Scalars['String']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  orderIndex?: InputMaybe<Scalars['Int']['input']>;
+  removable?: InputMaybe<Scalars['Boolean']['input']>;
+  source?: InputMaybe<Scalars['String']['input']>;
+  type?: InputMaybe<ParameterType>;
+  value?: InputMaybe<Scalars['String']['input']>;
+  visible?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
 /** Only non-null values will be updated */
 export type UpdateVersionInput = {
   message?: InputMaybe<Scalars['String']['input']>;
@@ -3589,7 +3733,12 @@ export type User = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   totalOwnedStreamsFavorites: Scalars['Int']['output'];
+  /** User parameters configuration */
+  userParameters?: Maybe<Scalars['JSONObject']['output']>;
+  /** User settings - contains only controlWidth */
   userSettings?: Maybe<Scalars['JSONObject']['output']>;
+  /** User tables configuration */
+  userTables?: Maybe<Scalars['JSONObject']['output']>;
   verified?: Maybe<Scalars['Boolean']['output']>;
   /**
    * Get (count of) user's versions. By default gets all versions of all projects the user has access to.
@@ -4480,6 +4629,7 @@ export type ResolversTypes = {
   CreateCommentReplyInput: CreateCommentReplyInput;
   CreateModelInput: CreateModelInput;
   CreateNamedTableInput: CreateNamedTableInput;
+  CreateParameterInput: CreateParameterInput;
   CreateUserEmailInput: CreateUserEmailInput;
   CreateVersionInput: CreateVersionInput;
   Currency: Currency;
@@ -4516,6 +4666,9 @@ export type ResolversTypes = {
   Object: ResolverTypeWrapper<ObjectGraphQLReturn>;
   ObjectCollection: ResolverTypeWrapper<Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversTypes['Object']> }>;
   ObjectCreateInput: ObjectCreateInput;
+  Parameter: ResolverTypeWrapper<Parameter>;
+  ParameterMutationResponse: ResolverTypeWrapper<ParameterMutationResponse>;
+  ParameterType: ParameterType;
   PasswordStrengthCheckFeedback: ResolverTypeWrapper<PasswordStrengthCheckFeedback>;
   PasswordStrengthCheckResults: ResolverTypeWrapper<PasswordStrengthCheckResults>;
   PendingStreamCollaborator: ResolverTypeWrapper<PendingStreamCollaboratorGraphQLReturn>;
@@ -4613,6 +4766,7 @@ export type ResolversTypes = {
   UpdateAutomateFunctionInput: UpdateAutomateFunctionInput;
   UpdateModelInput: UpdateModelInput;
   UpdateNamedTableInput: UpdateNamedTableInput;
+  UpdateParameterInput: UpdateParameterInput;
   UpdateVersionInput: UpdateVersionInput;
   User: ResolverTypeWrapper<UserGraphQLReturn>;
   UserAutomateInfo: ResolverTypeWrapper<UserAutomateInfoGraphQLReturn>;
@@ -4749,6 +4903,7 @@ export type ResolversParentTypes = {
   CreateCommentReplyInput: CreateCommentReplyInput;
   CreateModelInput: CreateModelInput;
   CreateNamedTableInput: CreateNamedTableInput;
+  CreateParameterInput: CreateParameterInput;
   CreateUserEmailInput: CreateUserEmailInput;
   CreateVersionInput: CreateVersionInput;
   DateTime: Scalars['DateTime']['output'];
@@ -4783,6 +4938,8 @@ export type ResolversParentTypes = {
   Object: ObjectGraphQLReturn;
   ObjectCollection: Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversParentTypes['Object']> };
   ObjectCreateInput: ObjectCreateInput;
+  Parameter: Parameter;
+  ParameterMutationResponse: ParameterMutationResponse;
   PasswordStrengthCheckFeedback: PasswordStrengthCheckFeedback;
   PasswordStrengthCheckResults: PasswordStrengthCheckResults;
   PendingStreamCollaborator: PendingStreamCollaboratorGraphQLReturn;
@@ -4865,6 +5022,7 @@ export type ResolversParentTypes = {
   UpdateAutomateFunctionInput: UpdateAutomateFunctionInput;
   UpdateModelInput: UpdateModelInput;
   UpdateNamedTableInput: UpdateNamedTableInput;
+  UpdateParameterInput: UpdateParameterInput;
   UpdateVersionInput: UpdateVersionInput;
   User: UserGraphQLReturn;
   UserAutomateInfo: UserAutomateInfoGraphQLReturn;
@@ -5492,6 +5650,7 @@ export type ModelsTreeItemCollectionResolvers<ContextType = GraphQLContext, Pare
 export type MutationResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
   _?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   activeUserMutations?: Resolver<ResolversTypes['ActiveUserMutations'], ParentType, ContextType>;
+  addParameterToTable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationAddParameterToTableArgs, 'parameterId' | 'tableId'>>;
   adminDeleteUser?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationAdminDeleteUserArgs, 'userConfirmation'>>;
   apiTokenCreate?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<MutationApiTokenCreateArgs, 'token'>>;
   apiTokenRevoke?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationApiTokenRevokeArgs, 'token'>>;
@@ -5519,12 +5678,15 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   commitsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsDeleteArgs, 'input'>>;
   commitsMove?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsMoveArgs, 'input'>>;
   createNamedTable?: Resolver<ResolversTypes['NamedTableConfig'], ParentType, ContextType, RequireFields<MutationCreateNamedTableArgs, 'input'>>;
+  createParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationCreateParameterArgs, 'input'>>;
   deleteNamedTable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteNamedTableArgs, 'id'>>;
+  deleteParameter?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteParameterArgs, 'id'>>;
   inviteDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationInviteDeleteArgs, 'inviteId'>>;
   inviteResend?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationInviteResendArgs, 'inviteId'>>;
   modelMutations?: Resolver<ResolversTypes['ModelMutations'], ParentType, ContextType>;
   objectCreate?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType, RequireFields<MutationObjectCreateArgs, 'objectInput'>>;
   projectMutations?: Resolver<ResolversTypes['ProjectMutations'], ParentType, ContextType>;
+  removeParameterFromTable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRemoveParameterFromTableArgs, 'parameterId' | 'tableId'>>;
   requestVerification?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   requestVerificationByEmail?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationRequestVerificationByEmailArgs, 'email'>>;
   serverInfoUpdate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationServerInfoUpdateArgs, 'info'>>;
@@ -5545,11 +5707,14 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   streamUpdatePermission?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationStreamUpdatePermissionArgs, 'permissionParams'>>;
   streamsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, Partial<MutationStreamsDeleteArgs>>;
   updateNamedTable?: Resolver<ResolversTypes['NamedTableConfig'], ParentType, ContextType, RequireFields<MutationUpdateNamedTableArgs, 'input'>>;
+  updateParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationUpdateParameterArgs, 'id' | 'input'>>;
   userCommentThreadActivityBroadcast?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserCommentThreadActivityBroadcastArgs, 'commentId' | 'streamId'>>;
   userDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserDeleteArgs, 'userConfirmation'>>;
   userNotificationPreferencesUpdate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationUserNotificationPreferencesUpdateArgs, 'preferences'>>;
+  userParametersUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserParametersUpdateArgs, 'parameters'>>;
   userRoleChange?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserRoleChangeArgs, 'userRoleInput'>>;
-  userSettingsUpdate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationUserSettingsUpdateArgs, 'settings'>>;
+  userSettingsUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserSettingsUpdateArgs, 'settings'>>;
+  userTablesUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserTablesUpdateArgs, 'tables'>>;
   userUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserUpdateArgs, 'user'>>;
   userViewerActivityBroadcast?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserViewerActivityBroadcastArgs, 'resourceId' | 'streamId'>>;
   versionMutations?: Resolver<ResolversTypes['VersionMutations'], ParentType, ContextType>;
@@ -5583,6 +5748,34 @@ export type ObjectCollectionResolvers<ContextType = GraphQLContext, ParentType e
   cursor?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   objects?: Resolver<Array<ResolversTypes['Object']>, ParentType, ContextType>;
   totalCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type ParameterResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['Parameter'] = ResolversParentTypes['Parameter']> = {
+  category?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  equation?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  field?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  group?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  header?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  isFetched?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
+  metadata?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  orderIndex?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  removable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  source?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  type?: Resolver<ResolversTypes['ParameterType'], ParentType, ContextType>;
+  updatedAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  userId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  value?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  visible?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type ParameterMutationResponseResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['ParameterMutationResponse'] = ResolversParentTypes['ParameterMutationResponse']> = {
+  parameter?: Resolver<ResolversTypes['Parameter'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -5833,6 +6026,8 @@ export type QueryResolvers<ContextType = GraphQLContext, ParentType extends Reso
   namedTableConfig?: Resolver<Maybe<ResolversTypes['NamedTableConfig']>, ParentType, ContextType, RequireFields<QueryNamedTableConfigArgs, 'id'>>;
   namedTableConfigs?: Resolver<Array<ResolversTypes['NamedTableConfig']>, ParentType, ContextType>;
   otherUser?: Resolver<Maybe<ResolversTypes['LimitedUser']>, ParentType, ContextType, RequireFields<QueryOtherUserArgs, 'id'>>;
+  parameter?: Resolver<Maybe<ResolversTypes['Parameter']>, ParentType, ContextType, RequireFields<QueryParameterArgs, 'id'>>;
+  parameters?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType>;
   project?: Resolver<ResolversTypes['Project'], ParentType, ContextType, RequireFields<QueryProjectArgs, 'id'>>;
   projectInvite?: Resolver<Maybe<ResolversTypes['PendingStreamCollaborator']>, ParentType, ContextType, RequireFields<QueryProjectInviteArgs, 'projectId'>>;
   serverInfo?: Resolver<ResolversTypes['ServerInfo'], ParentType, ContextType>;
@@ -5843,6 +6038,7 @@ export type QueryResolvers<ContextType = GraphQLContext, ParentType extends Reso
   streamInvite?: Resolver<Maybe<ResolversTypes['PendingStreamCollaborator']>, ParentType, ContextType, RequireFields<QueryStreamInviteArgs, 'streamId'>>;
   streamInvites?: Resolver<Array<ResolversTypes['PendingStreamCollaborator']>, ParentType, ContextType>;
   streams?: Resolver<Maybe<ResolversTypes['StreamCollection']>, ParentType, ContextType, RequireFields<QueryStreamsArgs, 'limit'>>;
+  tableParameters?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType, RequireFields<QueryTableParametersArgs, 'tableId'>>;
   user?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, Partial<QueryUserArgs>>;
   userPwdStrength?: Resolver<ResolversTypes['PasswordStrengthCheckResults'], ParentType, ContextType, RequireFields<QueryUserPwdStrengthArgs, 'pwd'>>;
   userSearch?: Resolver<ResolversTypes['UserSearchResultCollection'], ParentType, ContextType, RequireFields<QueryUserSearchArgs, 'archived' | 'emailOnly' | 'limit' | 'query'>>;
@@ -6152,7 +6348,9 @@ export type UserResolvers<ContextType = GraphQLContext, ParentType extends Resol
   streams?: Resolver<ResolversTypes['StreamCollection'], ParentType, ContextType, RequireFields<UserStreamsArgs, 'limit'>>;
   timeline?: Resolver<Maybe<ResolversTypes['ActivityCollection']>, ParentType, ContextType, RequireFields<UserTimelineArgs, 'limit'>>;
   totalOwnedStreamsFavorites?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  userParameters?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   userSettings?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
+  userTables?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   verified?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   versions?: Resolver<ResolversTypes['CountOnlyCollection'], ParentType, ContextType, RequireFields<UserVersionsArgs, 'authoredOnly' | 'limit'>>;
   workspaceInvites?: Resolver<Array<ResolversTypes['PendingWorkspaceCollaborator']>, ParentType, ContextType>;
@@ -6479,6 +6677,8 @@ export type Resolvers<ContextType = GraphQLContext> = {
   NamedTableConfig?: NamedTableConfigResolvers<ContextType>;
   Object?: ObjectResolvers<ContextType>;
   ObjectCollection?: ObjectCollectionResolvers<ContextType>;
+  Parameter?: ParameterResolvers<ContextType>;
+  ParameterMutationResponse?: ParameterMutationResponseResolvers<ContextType>;
   PasswordStrengthCheckFeedback?: PasswordStrengthCheckFeedbackResolvers<ContextType>;
   PasswordStrengthCheckResults?: PasswordStrengthCheckResultsResolvers<ContextType>;
   PendingStreamCollaborator?: PendingStreamCollaboratorResolvers<ContextType>;

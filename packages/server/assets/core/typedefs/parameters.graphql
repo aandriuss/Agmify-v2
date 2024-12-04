@@ -1,0 +1,126 @@
+"""
+Base parameter type with common fields
+"""
+type Parameter {
+  id: ID!
+  userId: ID!
+  name: String!
+  type: ParameterType!
+  value: String
+  equation: String
+  group: String!
+  field: String!
+  header: String!
+  category: String
+  description: String
+  removable: Boolean!
+  visible: Boolean!
+  orderIndex: Int
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  metadata: String
+  isFetched: Boolean
+  source: String
+}
+
+"""
+Parameter type enum
+"""
+enum ParameterType {
+  fixed
+  equation
+}
+
+"""
+Input for creating a new parameter
+"""
+input CreateParameterInput {
+  userId: ID!
+  name: String!
+  type: ParameterType!
+  value: String
+  equation: String
+  group: String!
+  field: String!
+  header: String!
+  category: String
+  description: String
+  removable: Boolean!
+  visible: Boolean!
+  orderIndex: Int
+  metadata: String
+  isFetched: Boolean
+  source: String
+}
+
+"""
+Input for updating an existing parameter
+"""
+input UpdateParameterInput {
+  name: String
+  type: ParameterType
+  value: String
+  equation: String
+  group: String
+  field: String
+  header: String
+  category: String
+  description: String
+  removable: Boolean
+  visible: Boolean
+  orderIndex: Int
+  metadata: String
+  isFetched: Boolean
+  source: String
+}
+
+"""
+Response type for parameter mutations
+"""
+type ParameterMutationResponse {
+  parameter: Parameter!
+}
+
+extend type Query {
+  """
+  Get all parameters for the current user
+  """
+  parameters: [Parameter!]!
+
+  """
+  Get a specific parameter by ID
+  """
+  parameter(id: ID!): Parameter
+
+  """
+  Get all parameters for a specific table
+  """
+  tableParameters(tableId: ID!): [Parameter!]!
+}
+
+extend type Mutation {
+  """
+  Create a new parameter
+  """
+  createParameter(input: CreateParameterInput!): ParameterMutationResponse!
+
+  """
+  Update an existing parameter
+  """
+  updateParameter(id: ID!, input: UpdateParameterInput!): ParameterMutationResponse!
+
+  """
+  Delete a parameter
+  """
+  deleteParameter(id: ID!): Boolean!
+
+  """
+  Add a parameter to a table (updates mapping)
+  """
+  addParameterToTable(parameterId: ID!, tableId: ID!): Boolean!
+
+  """
+  Remove a parameter from a table (updates mapping)
+  """
+  removeParameterFromTable(parameterId: ID!, tableId: ID!): Boolean!
+}

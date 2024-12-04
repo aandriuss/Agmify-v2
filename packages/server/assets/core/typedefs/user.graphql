@@ -54,7 +54,20 @@ extend type Query {
 }
 
 extend type User {
+  """
+  User settings - contains only controlWidth
+  """
   userSettings: JSONObject @isOwner
+
+  """
+  User tables configuration
+  """
+  userTables: JSONObject @isOwner
+
+  """
+  User parameters configuration
+  """
+  userParameters: JSONObject @isOwner
 }
 
 type PasswordStrengthCheckResults {
@@ -156,6 +169,21 @@ type ActiveUserMutations {
 }
 
 extend type Mutation {
+  """
+  Update user settings (controlWidth only)
+  """
+  userSettingsUpdate(settings: JSONObject!): Boolean!
+
+  """
+  Update user tables configuration
+  """
+  userTablesUpdate(tables: JSONObject!): Boolean!
+
+  """
+  Update user parameters configuration
+  """
+  userParametersUpdate(parameters: JSONObject!): Boolean!
+
   """
   Edits a user's profile.
   """
