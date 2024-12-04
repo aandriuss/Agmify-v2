@@ -1,36 +1,58 @@
 import { useMutation, useQuery, provideApolloClient } from '@vue/apollo-composable'
 import { gql } from 'graphql-tag'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import type { UserSettings } from '~/composables/core/types'
+import type {
+  UserSettings,
+  NamedTableConfig,
+  CustomParameter
+} from '~/composables/core/types'
 import { useNuxtApp } from '#app'
 
 interface GetUserSettingsResponse {
   activeUser: {
     userSettings: UserSettings | null
+    userTables: Record<string, NamedTableConfig> | null
+    userParameters: { customParameters: CustomParameter[] } | null
     id: string
   }
 }
 
 interface UpdateUserSettingsResponse {
   userSettingsUpdate: boolean
+  userTablesUpdate: boolean
+  userParametersUpdate: boolean
 }
 
 interface UpdateUserSettingsVariables {
-  settings: Record<string, unknown>
+  settings: {
+    controlWidth?: number
+  }
+  tables: Record<string, NamedTableConfig>
+  parameters: {
+    customParameters: CustomParameter[]
+  }
 }
 
 const GET_USER_SETTINGS = gql`
   query GetUserSettings {
     activeUser {
       userSettings
+      userTables
+      userParameters
       id
     }
   }
 `
 
 const UPDATE_USER_SETTINGS = gql`
-  mutation UpdateUserSettings($settings: JSONObject!) {
+  mutation UpdateUserSettings(
+    $settings: JSONObject!
+    $tables: JSONObject!
+    $parameters: JSONObject!
+  ) {
     userSettingsUpdate(settings: $settings)
+    userTablesUpdate(tables: $tables)
+    userParametersUpdate(parameters: $parameters)
   }
 `
 
@@ -75,13 +97,22 @@ export function useSettingsGraphQL() {
         return null
       }
 
-      const settings = response.data.activeUser?.userSettings
+      const { userSettings, userTables, userParameters } =
+        response.data.activeUser || {}
 
       debug.log(DebugCategories.INITIALIZATION, 'Settings fetched from GraphQL', {
-        hasSettings: !!settings,
-        settings,
+        hasSettings: !!userSettings,
+        hasTables: !!userTables,
+        hasParameters: !!userParameters,
         userId: response.data.activeUser?.id
       })
+
+      // Combine the settings
+      const settings: UserSettings = {
+        controlWidth: userSettings?.controlWidth,
+        namedTables: userTables || {},
+        customParameters: userParameters?.customParameters || []
+      }
 
       debug.completeState(DebugCategories.INITIALIZATION, 'Settings fetch complete')
       return settings
@@ -95,15 +126,22 @@ export function useSettingsGraphQL() {
     try {
       debug.startState(DebugCategories.STATE, 'Updating settings via GraphQL')
 
-      debug.log(DebugCategories.STATE, 'Settings update payload', {
-        settings,
-        namedTablesCount: Object.keys(settings.namedTables || {}).length
-      })
-
-      // Convert settings to a plain object for GraphQL
+      // Split settings into their respective fields
       const settingsPayload: UpdateUserSettingsVariables = {
-        settings: JSON.parse(JSON.stringify(settings)) as Record<string, unknown>
+        settings: {
+          controlWidth: settings.controlWidth
+        },
+        tables: settings.namedTables || {},
+        parameters: {
+          customParameters: settings.customParameters || []
+        }
       }
+
+      debug.log(DebugCategories.STATE, 'Settings update payload', {
+        settings: settingsPayload.settings,
+        namedTablesCount: Object.keys(settingsPayload.tables).length,
+        parametersCount: settingsPayload.parameters.customParameters.length
+      })
 
       // Run the mutation within the Nuxt app context
       const result = await nuxtApp.runWithContext(() =>
@@ -115,7 +153,10 @@ export function useSettingsGraphQL() {
         return false
       }
 
-      const success = result.data.userSettingsUpdate
+      const success =
+        result.data.userSettingsUpdate &&
+        result.data.userTablesUpdate &&
+        result.data.userParametersUpdate
 
       debug.log(DebugCategories.STATE, 'Settings update result', {
         success,

@@ -1,4 +1,4 @@
-import type { NamedTableConfig } from './types/scheduleTypes'
+import type { NamedTableConfig } from '~/composables/core/types'
 import { useTableOperations } from './useTableOperations'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
@@ -30,8 +30,7 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
         const updatedTable: NamedTableConfig = {
           ...existingTable,
           ...config,
-          id,
-          lastUpdateTimestamp: Date.now()
+          id
         }
 
         debug.log(DebugCategories.TABLE_UPDATES, 'Updating table in settings', {
@@ -72,16 +71,33 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
           config
         })
 
-        const tableId = `table-${Date.now()}`
+        // Generate timestamp once to use in both places
+        const timestamp = Date.now()
+
+        // Internal ID uses only timestamp
+        const internalId = `table-${timestamp}`
+
+        // Top level key includes sanitized name
+        const sanitizedName = name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
+        const topLevelKey = `${sanitizedName}_table-${timestamp}`
+
         const newTable: NamedTableConfig = {
-          id: tableId,
-          name,
           ...config,
-          lastUpdateTimestamp: Date.now()
+          id: internalId,
+          name,
+          displayName: config.displayName || name,
+          parentColumns: config.parentColumns || [],
+          childColumns: config.childColumns || [],
+          categoryFilters: config.categoryFilters || {
+            selectedParentCategories: [],
+            selectedChildCategories: []
+          },
+          selectedParameterIds: config.selectedParameterIds || []
         }
 
         debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table in settings', {
-          id: tableId,
+          topLevelKey,
+          internalId,
           config: newTable
         })
 
@@ -89,7 +105,7 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
           ...settings.value,
           namedTables: {
             ...settings.value.namedTables,
-            [tableId]: newTable
+            [topLevelKey]: newTable
           }
         }
 
@@ -106,11 +122,12 @@ export function useSettingsTableOperations(options: UseSettingsTableOperationsOp
         settings.value = updatedSettings
 
         debug.completeState(DebugCategories.TABLE_UPDATES, 'Table creation complete', {
-          id: tableId,
+          topLevelKey,
+          internalId,
           newTable
         })
 
-        return tableId
+        return internalId
       }
     })
 
