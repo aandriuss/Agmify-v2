@@ -27,8 +27,8 @@ export interface ValidationOptions {
 
 const defaultOptions: Required<ValidationOptions> = {
   strict: true,
-  allowNull: true, // Changed to true
-  allowUndefined: true // Changed to true
+  allowNull: true,
+  allowUndefined: true
 }
 
 // Create parameter validation
@@ -104,7 +104,7 @@ function createTypeValidation(
       }
 
     default:
-      throw new ValidationError('type', type, `Unsupported parameter type: ${type}`)
+      throw new ValidationError(`Unsupported parameter type: ${type}`)
   }
 }
 
@@ -126,7 +126,7 @@ export function validateParameterValue(
 ): value is ParameterValue {
   for (const rule of validation.rules) {
     if (!rule.validate(value)) {
-      throw new ValidationError('validation', value, rule.message)
+      throw new ValidationError(rule.message)
     }
   }
   return true
@@ -172,13 +172,14 @@ export const commonRules = {
 
 // Create parameter definition with validation
 export function createParameterDefinition(
-  id: string,
+  field: string,
   name: string,
   validation: ParameterValidation
 ): ParameterDefinition {
   return {
-    id,
+    id: `param_${field}`, // Generate ID from field name
     name,
+    field,
     type: validation.type,
     validation: (value: unknown) => {
       try {

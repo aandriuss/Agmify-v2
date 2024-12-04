@@ -30,29 +30,32 @@ export type {
   FixedParameterGroup
 } from './parameters'
 
-// Data types
+// Table types
 export type {
-  ElementData,
   ColumnDef,
-  TableRow,
   TableConfig,
   NamedTableConfig,
   TableState,
-  ColumnGroup,
-  TableUpdatePayload,
-  ElementsProcessingState,
-  ElementsDataReturn,
-  CreateNamedTableInput,
-  UpdateNamedTableInput,
-  CategoryDefinition,
-  ProcessedData,
-  DisplayData,
-  TableTypeSettings,
   TableInstanceState,
   TableRegistry,
-  TableUpdateOperationPayloads,
+  TableTypeSettings,
   TableUpdateOperation,
-  CategoryFilters
+  TableUpdateOperationPayloads,
+  TablesState,
+  CategoryFilters,
+  SortBy,
+  SortByField,
+  UseColumnsOptions
+} from './tables'
+
+// Data types
+export type {
+  ElementData,
+  TableRow,
+  ElementsProcessingState,
+  ElementsDataReturn,
+  ProcessedData,
+  DisplayData
 } from './data'
 
 // Store types
@@ -61,7 +64,25 @@ export type {
   StoreState,
   StoreMutations,
   StoreLifecycle,
-  Store
+  Store,
+  BaseParameter,
+  StoreParameterValue,
+  StoreParameterDefinition,
+  TableInfo,
+  TableInfoUpdatePayload,
+  RawParameterValue,
+  RawParameterDefinition
+} from './store'
+
+// Store utilities
+export {
+  convertToStoreParameterValue,
+  convertToStoreParameterDefinition,
+  convertParameterMap,
+  convertDefinitionMap,
+  createColumnDef,
+  isStoreParameterValue,
+  isStoreParameterDefinition
 } from './store'
 
 // Viewer types
@@ -83,11 +104,10 @@ export type {
 export type {
   ParameterResponse,
   ParametersQueryResponse,
-  TableInfo,
   TablesQueryResponse,
   SettingsQueryResponse,
-  CreateNamedTableInput as CreateTableInput,
-  UpdateNamedTableInput as UpdateTableInput,
+  CreateNamedTableInput,
+  UpdateNamedTableInput,
   CreateParameterInput,
   UpdateParameterInput,
   TableResponse,
@@ -95,8 +115,41 @@ export type {
   UpdateParameterResponse,
   DeleteParameterResponse,
   AddParameterToTableResponse,
-  RemoveParameterFromTableResponse
+  RemoveParameterFromTableResponse,
+  TablesMutationResponse
 } from './graphql'
 
 // Settings types
-export type { UserSettings, SettingsState, SettingsUpdatePayload } from './settings'
+export type {
+  UserSettings,
+  SettingsState,
+  SettingsUpdatePayload,
+  NewCustomParameter
+} from './settings'
+
+// Export settings constants and helpers
+export {
+  DEFAULT_SETTINGS,
+  ensureRequiredSettings,
+  getSettingsValue,
+  isUserSettings,
+  isCustomParameter,
+  isSettingsUpdatePayload
+} from './settings'
+
+// Validators
+export {
+  ValidationError,
+  isValidTreeItemComponentModel,
+  isValidViewerTree,
+  isValidArray,
+  isValidBIMNodeRaw,
+  isValidBIMNodeValue,
+  isValidProcessedHeader,
+  isValidElementData,
+  validateWorldTreeStructure,
+  validateElementDataArray
+} from './validators'
+
+// Helper functions
+export { createParameterValueState } from './parameters'

@@ -1,16 +1,5 @@
-import type { TableRow, ParameterValueState } from '~/composables/core/types'
-
-// Helper function to create parameter value state
-function createParameterState(
-  value: string | number | boolean | null
-): ParameterValueState {
-  return {
-    fetchedValue: value,
-    currentValue: value,
-    previousValue: value,
-    userValue: null
-  }
-}
+import type { TableRow } from '~/composables/core/types'
+import { createParameterValueState } from '~/composables/core/types/parameters'
 
 // Create dummy table rows
 export const dummyTableRows: TableRow[] = [
@@ -23,11 +12,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: false,
     parameters: {
-      width: createParameterState(300),
-      height: createParameterState(3000),
-      length: createParameterState(5000),
-      material: createParameterState('Concrete'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(300),
+      height: createParameterValueState(3000),
+      length: createParameterValueState(5000),
+      material: createParameterValueState('Concrete'),
+      level: createParameterValueState('Level 1')
     }
   },
   {
@@ -38,11 +27,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: false,
     parameters: {
-      width: createParameterState(300),
-      height: createParameterState(3000),
-      length: createParameterState(4000),
-      material: createParameterState('Concrete'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(300),
+      height: createParameterValueState(3000),
+      length: createParameterValueState(4000),
+      material: createParameterValueState('Concrete'),
+      level: createParameterValueState('Level 1')
     }
   },
 
@@ -54,11 +43,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: true,
     parameters: {
-      width: createParameterState(200),
-      height: createParameterState(400),
-      length: createParameterState(3000),
-      material: createParameterState('Steel'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(200),
+      height: createParameterValueState(400),
+      length: createParameterValueState(3000),
+      material: createParameterValueState('Steel'),
+      level: createParameterValueState('Level 1')
     }
   },
   {
@@ -68,11 +57,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: true,
     parameters: {
-      width: createParameterState(200),
-      height: createParameterState(400),
-      length: createParameterState(3000),
-      material: createParameterState('Steel'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(200),
+      height: createParameterValueState(400),
+      length: createParameterValueState(3000),
+      material: createParameterValueState('Steel'),
+      level: createParameterValueState('Level 1')
     }
   },
 
@@ -84,11 +73,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: true,
     parameters: {
-      width: createParameterState(200),
-      height: createParameterState(400),
-      length: createParameterState(2500),
-      material: createParameterState('Steel'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(200),
+      height: createParameterValueState(400),
+      length: createParameterValueState(2500),
+      material: createParameterValueState('Steel'),
+      level: createParameterValueState('Level 1')
     }
   },
   {
@@ -98,11 +87,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: true,
     parameters: {
-      width: createParameterState(200),
-      height: createParameterState(400),
-      length: createParameterState(2500),
-      material: createParameterState('Steel'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(200),
+      height: createParameterValueState(400),
+      length: createParameterValueState(2500),
+      material: createParameterValueState('Steel'),
+      level: createParameterValueState('Level 1')
     }
   },
 
@@ -114,11 +103,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: true,
     parameters: {
-      width: createParameterState(200),
-      height: createParameterState(400),
-      length: createParameterState(2000),
-      material: createParameterState('Steel'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(200),
+      height: createParameterValueState(400),
+      length: createParameterValueState(2000),
+      material: createParameterValueState('Steel'),
+      level: createParameterValueState('Level 1')
     }
   },
   {
@@ -128,11 +117,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: true,
     parameters: {
-      width: createParameterState(200),
-      height: createParameterState(400),
-      length: createParameterState(2000),
-      material: createParameterState('Steel'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(200),
+      height: createParameterValueState(400),
+      length: createParameterValueState(2000),
+      material: createParameterValueState('Steel'),
+      level: createParameterValueState('Level 1')
     }
   },
 
@@ -144,11 +133,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: false,
     parameters: {
-      width: createParameterState(5000),
-      thickness: createParameterState(300),
-      area: createParameterState(25000000),
-      material: createParameterState('Concrete'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(5000),
+      thickness: createParameterValueState(300),
+      area: createParameterValueState(25000000),
+      material: createParameterValueState('Concrete'),
+      level: createParameterValueState('Level 1')
     }
   },
 
@@ -160,11 +149,11 @@ export const dummyTableRows: TableRow[] = [
     _visible: true,
     isChild: true,
     parameters: {
-      width: createParameterState(1200),
-      height: createParameterState(1500),
-      sillHeight: createParameterState(900),
-      material: createParameterState('Aluminum'),
-      level: createParameterState('Level 1')
+      width: createParameterValueState(1200),
+      height: createParameterValueState(1500),
+      sillHeight: createParameterValueState(900),
+      material: createParameterValueState('Aluminum'),
+      level: createParameterValueState('Level 1')
     }
   }
 ]
@@ -172,6 +161,8 @@ export const dummyTableRows: TableRow[] = [
 // Column definitions matching the parameters
 export const dummyColumns = [
   {
+    id: 'mark',
+    name: 'Mark',
     field: 'mark',
     header: 'Mark',
     type: 'string',
@@ -184,6 +175,8 @@ export const dummyColumns = [
     source: 'Essential'
   },
   {
+    id: 'category',
+    name: 'Category',
     field: 'category',
     header: 'Category',
     type: 'string',
@@ -196,6 +189,8 @@ export const dummyColumns = [
     source: 'Essential'
   },
   {
+    id: 'type',
+    name: 'Type',
     field: 'type',
     header: 'Type',
     type: 'string',
@@ -208,6 +203,8 @@ export const dummyColumns = [
     source: 'Essential'
   },
   {
+    id: 'host',
+    name: 'Host',
     field: 'host',
     header: 'Host',
     type: 'string',
@@ -220,6 +217,8 @@ export const dummyColumns = [
     source: 'Essential'
   },
   {
+    id: 'width',
+    name: 'Width',
     field: 'width',
     header: 'Width',
     type: 'number',
@@ -231,6 +230,8 @@ export const dummyColumns = [
     source: 'Parameters'
   },
   {
+    id: 'height',
+    name: 'Height',
     field: 'height',
     header: 'Height',
     type: 'number',
@@ -242,6 +243,8 @@ export const dummyColumns = [
     source: 'Parameters'
   },
   {
+    id: 'length',
+    name: 'Length',
     field: 'length',
     header: 'Length',
     type: 'number',
@@ -253,6 +256,8 @@ export const dummyColumns = [
     source: 'Parameters'
   },
   {
+    id: 'thickness',
+    name: 'Thickness',
     field: 'thickness',
     header: 'Thickness',
     type: 'number',
@@ -264,6 +269,8 @@ export const dummyColumns = [
     source: 'Parameters'
   },
   {
+    id: 'area',
+    name: 'Area',
     field: 'area',
     header: 'Area',
     type: 'number',
@@ -275,6 +282,8 @@ export const dummyColumns = [
     source: 'Parameters'
   },
   {
+    id: 'sillHeight',
+    name: 'Sill Height',
     field: 'sillHeight',
     header: 'Sill Height',
     type: 'number',
@@ -286,6 +295,8 @@ export const dummyColumns = [
     source: 'Parameters'
   },
   {
+    id: 'material',
+    name: 'Material',
     field: 'material',
     header: 'Material',
     type: 'string',
@@ -297,6 +308,8 @@ export const dummyColumns = [
     source: 'Parameters'
   },
   {
+    id: 'level',
+    name: 'Level',
     field: 'level',
     header: 'Level',
     type: 'string',

@@ -3,8 +3,8 @@ import { useNuxtApp } from '#app'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import { useSettingsGraphQL } from './useSettingsGraphQL'
 import { useUpdateQueue } from './useUpdateQueue'
-import { isUserSettings } from './types/scheduleTypes'
-import type { UserSettings } from './types/scheduleTypes'
+import { isUserSettings } from '~/composables/core/types'
+import type { UserSettings } from '~/composables/core/types'
 import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
 
 export function useSettingsState() {

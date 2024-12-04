@@ -11,7 +11,14 @@ import type {
   ElementData,
   ProcessedHeader,
   ColumnDef,
-  ParameterDefinition
+  ParameterDefinition,
+  RawParameterValue,
+  RawParameterDefinition
+} from '~/composables/core/types'
+import {
+  convertParameterMap,
+  convertDefinitionMap,
+  createColumnDef
 } from '~/composables/core/types'
 
 // Import new core functionality
@@ -124,17 +131,17 @@ async function processParameters() {
           ([_, value]) => value !== undefined
         )
       )
-    )
+    ) as Record<string, RawParameterValue>
 
     const safeParamDefinitions = Object.fromEntries(
       allParams.map((param) => [param.field, param])
-    )
+    ) as Record<string, RawParameterDefinition>
 
     await store.lifecycle.update({
       ...store.state.value,
       evaluatedData: processed,
-      processedParameters: safeProcessedParameters,
-      parameterDefinitions: safeParamDefinitions
+      processedParameters: convertParameterMap(safeProcessedParameters),
+      parameterDefinitions: convertDefinitionMap(safeParamDefinitions)
     })
   } catch (err) {
     // Create a new error with a safe message
@@ -149,21 +156,7 @@ async function processParameters() {
 // Create parameter columns from parameter definitions
 const parameterColumns = computed<ColumnDef[]>(() => {
   const paramDefs = store.state.value.parameterDefinitions
-  return Object.values(paramDefs)
-    .filter(isParameterDefinition)
-    .map(
-      (param): ColumnDef => ({
-        field: `parameters.${param.field}`,
-        header: param.name,
-        type: param.type,
-        visible: true,
-        order: 0,
-        removable: true,
-        category: param.category,
-        isCustomParameter: true,
-        parameterRef: param.field
-      })
-    )
+  return Object.values(paramDefs).filter(isParameterDefinition).map(createColumnDef)
 })
 
 // Split parameters by category

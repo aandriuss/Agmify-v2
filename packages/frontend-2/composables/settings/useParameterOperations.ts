@@ -1,5 +1,5 @@
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import type { CustomParameter, UserSettings } from './types/scheduleTypes'
+import type { CustomParameter, UserSettings } from '~/composables/core/types'
 
 interface UseParameterOperationsOptions {
   settings: { value: UserSettings }

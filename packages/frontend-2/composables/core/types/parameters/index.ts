@@ -26,25 +26,45 @@ export type ParameterValueType = 'string' | 'number' | 'boolean'
 export type ParameterValue = string | number | boolean | null
 
 /**
- * Parameter value record entry
+ * Base parameter value interface
  */
-export interface ParameterValueEntry {
+interface BaseParameterValue {
+  value: unknown
+  isValid: boolean
+  error?: string
+}
+
+/**
+ * Parameter value record entry - base interface for parameter values
+ */
+export interface ParameterValueEntry extends BaseParameterValue {
   fetchedValue: ParameterValue
-  currentValue: ParameterValue
+  currentValue: unknown
   previousValue: ParameterValue
   userValue: ParameterValue | null
 }
 
 /**
- * Parameters collection type - maps parameter keys to their value states
- * Used in dataConversion.ts for parameter extraction
+ * Parameter value state tracking
+ * @deprecated Use ParameterValueEntry instead
  */
-export type Parameters = Record<string, ParameterValueState>
+export interface ParameterValueState extends BaseParameterValue {
+  fetchedValue: ParameterValue
+  currentValue: unknown
+  previousValue: ParameterValue
+  userValue: ParameterValue | null
+}
+
+/**
+ * Parameters collection type - maps parameter keys to their value entries
+ */
+export type Parameters = Record<string, ParameterValueEntry>
 
 /**
  * Parameter values record type
+ * @deprecated Use Parameters type instead
  */
-export type ParameterValuesRecord = Record<string, ParameterValueEntry>
+export type ParameterValuesRecord = Parameters
 
 /**
  * Parameter type
@@ -164,16 +184,6 @@ export interface ParameterFormData {
 }
 
 /**
- * Parameter value state tracking
- */
-export interface ParameterValueState {
-  value: unknown
-  isValid: boolean
-  error?: string
-  currentValue?: unknown
-}
-
-/**
  * Unified parameter interface combining base and computed properties
  */
 export interface UnifiedParameter extends Parameter {
@@ -262,7 +272,9 @@ export function createParameterValueState(value: ParameterValue): ParameterValue
     fetchedValue: value,
     currentValue: value,
     previousValue: value,
-    userValue: null
+    userValue: null,
+    value,
+    isValid: true
   }
 }
 

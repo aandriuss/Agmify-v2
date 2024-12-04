@@ -835,6 +835,26 @@ export type CreateNamedTableInput = {
   name: Scalars['String']['input'];
 };
 
+/** Input for creating a new parameter */
+export type CreateParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  equation?: InputMaybe<Scalars['String']['input']>;
+  field: Scalars['String']['input'];
+  group: Scalars['String']['input'];
+  header: Scalars['String']['input'];
+  isFetched?: InputMaybe<Scalars['Boolean']['input']>;
+  metadata?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
+  orderIndex?: InputMaybe<Scalars['Int']['input']>;
+  removable: Scalars['Boolean']['input'];
+  source?: InputMaybe<Scalars['String']['input']>;
+  type: ParameterType;
+  userId: Scalars['ID']['input'];
+  value?: InputMaybe<Scalars['String']['input']>;
+  visible: Scalars['Boolean']['input'];
+};
+
 export type CreateUserEmailInput = {
   email: Scalars['String']['input'];
 };
@@ -1201,6 +1221,8 @@ export type Mutation = {
   _?: Maybe<Scalars['String']['output']>;
   /** Various Active User oriented mutations */
   activeUserMutations: ActiveUserMutations;
+  /** Add a parameter to a table (updates mapping) */
+  addParameterToTable: Scalars['Boolean']['output'];
   adminDeleteUser: Scalars['Boolean']['output'];
   /** Creates an personal api token. */
   apiTokenCreate: Scalars['String']['output'];
@@ -1272,8 +1294,12 @@ export type Mutation = {
   commitsMove: Scalars['Boolean']['output'];
   /** Create a new named table configuration */
   createNamedTable: NamedTableConfig;
+  /** Create a new parameter */
+  createParameter: ParameterMutationResponse;
   /** Delete a named table configuration */
   deleteNamedTable: Scalars['Boolean']['output'];
+  /** Delete a parameter */
+  deleteParameter: Scalars['Boolean']['output'];
   /**
    * Delete a pending invite
    * Note: The required scope to invoke this is not given out to app or personal access tokens
@@ -1288,6 +1314,8 @@ export type Mutation = {
   /** @deprecated Part of the old API surface and will be removed in the future. */
   objectCreate: Array<Scalars['String']['output']>;
   projectMutations: ProjectMutations;
+  /** Remove a parameter from a table (updates mapping) */
+  removeParameterFromTable: Scalars['Boolean']['output'];
   /** (Re-)send the account verification e-mail */
   requestVerification: Scalars['Boolean']['output'];
   requestVerificationByEmail: Scalars['Boolean']['output'];
@@ -1364,6 +1392,8 @@ export type Mutation = {
   streamsDelete: Scalars['Boolean']['output'];
   /** Update an existing named table configuration */
   updateNamedTable: NamedTableConfig;
+  /** Update an existing parameter */
+  updateParameter: ParameterMutationResponse;
   /**
    * Used for broadcasting real time typing status in comment threads. Does not persist any info.
    * @deprecated Use broadcastViewerUserActivity
@@ -1372,8 +1402,13 @@ export type Mutation = {
   /** Delete a user's account. */
   userDelete: Scalars['Boolean']['output'];
   userNotificationPreferencesUpdate?: Maybe<Scalars['Boolean']['output']>;
+  /** Update user parameters configuration */
+  userParametersUpdate: Scalars['Boolean']['output'];
   userRoleChange: Scalars['Boolean']['output'];
-  userSettingsUpdate?: Maybe<Scalars['Boolean']['output']>;
+  /** Update user settings (controlWidth only) */
+  userSettingsUpdate: Scalars['Boolean']['output'];
+  /** Update user tables configuration */
+  userTablesUpdate: Scalars['Boolean']['output'];
   /**
    * Edits a user's profile.
    * @deprecated Use activeUserMutations version
@@ -1392,6 +1427,12 @@ export type Mutation = {
   /** Updates an existing webhook */
   webhookUpdate: Scalars['String']['output'];
   workspaceMutations: WorkspaceMutations;
+};
+
+
+export type MutationAddParameterToTableArgs = {
+  parameterId: Scalars['ID']['input'];
+  tableId: Scalars['ID']['input'];
 };
 
 
@@ -1525,7 +1566,17 @@ export type MutationCreateNamedTableArgs = {
 };
 
 
+export type MutationCreateParameterArgs = {
+  input: CreateParameterInput;
+};
+
+
 export type MutationDeleteNamedTableArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteParameterArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -1542,6 +1593,12 @@ export type MutationInviteResendArgs = {
 
 export type MutationObjectCreateArgs = {
   objectInput: ObjectCreateInput;
+};
+
+
+export type MutationRemoveParameterFromTableArgs = {
+  parameterId: Scalars['ID']['input'];
+  tableId: Scalars['ID']['input'];
 };
 
 
@@ -1646,6 +1703,12 @@ export type MutationUpdateNamedTableArgs = {
 };
 
 
+export type MutationUpdateParameterArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateParameterInput;
+};
+
+
 export type MutationUserCommentThreadActivityBroadcastArgs = {
   commentId: Scalars['String']['input'];
   data?: InputMaybe<Scalars['JSONObject']['input']>;
@@ -1663,6 +1726,11 @@ export type MutationUserNotificationPreferencesUpdateArgs = {
 };
 
 
+export type MutationUserParametersUpdateArgs = {
+  parameters: Scalars['JSONObject']['input'];
+};
+
+
 export type MutationUserRoleChangeArgs = {
   userRoleInput: UserRoleInput;
 };
@@ -1670,6 +1738,11 @@ export type MutationUserRoleChangeArgs = {
 
 export type MutationUserSettingsUpdateArgs = {
   settings: Scalars['JSONObject']['input'];
+};
+
+
+export type MutationUserTablesUpdateArgs = {
+  tables: Scalars['JSONObject']['input'];
 };
 
 
@@ -1760,6 +1833,42 @@ export type ObjectCreateInput = {
   /** The stream against which these objects will be created. */
   streamId: Scalars['String']['input'];
 };
+
+/** Base parameter type with common fields */
+export type Parameter = {
+  __typename?: 'Parameter';
+  category?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  description?: Maybe<Scalars['String']['output']>;
+  equation?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
+  group: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  isFetched?: Maybe<Scalars['Boolean']['output']>;
+  metadata?: Maybe<Scalars['String']['output']>;
+  name: Scalars['String']['output'];
+  orderIndex?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  type: ParameterType;
+  updatedAt: Scalars['DateTime']['output'];
+  userId: Scalars['ID']['output'];
+  value?: Maybe<Scalars['String']['output']>;
+  visible: Scalars['Boolean']['output'];
+};
+
+/** Response type for parameter mutations */
+export type ParameterMutationResponse = {
+  __typename?: 'ParameterMutationResponse';
+  parameter: Parameter;
+};
+
+/** Parameter type enum */
+export enum ParameterType {
+  Equation = 'equation',
+  Fixed = 'fixed'
+}
 
 export type PasswordStrengthCheckFeedback = {
   __typename?: 'PasswordStrengthCheckFeedback';
@@ -2495,6 +2604,10 @@ export type Query = {
   namedTableConfigs: Array<NamedTableConfig>;
   /** Get the (limited) profile information of another server user */
   otherUser?: Maybe<LimitedUser>;
+  /** Get a specific parameter by ID */
+  parameter?: Maybe<Parameter>;
+  /** Get all parameters for the current user */
+  parameters: Array<Parameter>;
   /**
    * Find a specific project. Will throw an authorization error if active user isn't authorized
    * to see it, for example, if a project isn't public and the user doesn't have the appropriate rights.
@@ -2538,6 +2651,8 @@ export type Query = {
    * @deprecated Part of the old API surface and will be removed in the future. Use User.projects instead.
    */
   streams?: Maybe<StreamCollection>;
+  /** Get all parameters for a specific table */
+  tableParameters: Array<Parameter>;
   /**
    * Gets the profile of a user. If no id argument is provided, will return the current authenticated user's profile (as extracted from the authorization header).
    * @deprecated To be removed in the near future! Use 'activeUser' to get info about the active user or 'otherUser' to get info about another user.
@@ -2638,6 +2753,11 @@ export type QueryOtherUserArgs = {
 };
 
 
+export type QueryParameterArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type QueryProjectArgs = {
   id: Scalars['String']['input'];
 };
@@ -2674,6 +2794,11 @@ export type QueryStreamsArgs = {
   cursor?: InputMaybe<Scalars['String']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   query?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryTableParametersArgs = {
+  tableId: Scalars['ID']['input'];
 };
 
 
@@ -3494,6 +3619,25 @@ export type UpdateNamedTableInput = {
   name?: InputMaybe<Scalars['String']['input']>;
 };
 
+/** Input for updating an existing parameter */
+export type UpdateParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  equation?: InputMaybe<Scalars['String']['input']>;
+  field?: InputMaybe<Scalars['String']['input']>;
+  group?: InputMaybe<Scalars['String']['input']>;
+  header?: InputMaybe<Scalars['String']['input']>;
+  isFetched?: InputMaybe<Scalars['Boolean']['input']>;
+  metadata?: InputMaybe<Scalars['String']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  orderIndex?: InputMaybe<Scalars['Int']['input']>;
+  removable?: InputMaybe<Scalars['Boolean']['input']>;
+  source?: InputMaybe<Scalars['String']['input']>;
+  type?: InputMaybe<ParameterType>;
+  value?: InputMaybe<Scalars['String']['input']>;
+  visible?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
 /** Only non-null values will be updated */
 export type UpdateVersionInput = {
   message?: InputMaybe<Scalars['String']['input']>;
@@ -3570,7 +3714,12 @@ export type User = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   totalOwnedStreamsFavorites: Scalars['Int']['output'];
+  /** User parameters configuration */
+  userParameters?: Maybe<Scalars['JSONObject']['output']>;
+  /** User settings - contains only controlWidth */
   userSettings?: Maybe<Scalars['JSONObject']['output']>;
+  /** User tables configuration */
+  userTables?: Maybe<Scalars['JSONObject']['output']>;
   verified?: Maybe<Scalars['Boolean']['output']>;
   /**
    * Get (count of) user's versions. By default gets all versions of all projects the user has access to.
@@ -4589,7 +4738,7 @@ export type UpdateUserSettingsMutationVariables = Exact<{
 }>;
 
 
-export type UpdateUserSettingsMutation = { __typename?: 'Mutation', userSettingsUpdate?: boolean | null };
+export type UpdateUserSettingsMutation = { __typename?: 'Mutation', userSettingsUpdate: boolean };
 
 export type GetUserSettingsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -6277,6 +6426,8 @@ export type AllObjectTypes = {
   NamedTableConfig: NamedTableConfig,
   Object: Object,
   ObjectCollection: ObjectCollection,
+  Parameter: Parameter,
+  ParameterMutationResponse: ParameterMutationResponse,
   PasswordStrengthCheckFeedback: PasswordStrengthCheckFeedback,
   PasswordStrengthCheckResults: PasswordStrengthCheckResults,
   PendingStreamCollaborator: PendingStreamCollaborator,
@@ -6772,6 +6923,7 @@ export type ModelsTreeItemCollectionFieldArgs = {
 export type MutationFieldArgs = {
   _: {},
   activeUserMutations: {},
+  addParameterToTable: MutationAddParameterToTableArgs,
   adminDeleteUser: MutationAdminDeleteUserArgs,
   apiTokenCreate: MutationApiTokenCreateArgs,
   apiTokenRevoke: MutationApiTokenRevokeArgs,
@@ -6799,12 +6951,15 @@ export type MutationFieldArgs = {
   commitsDelete: MutationCommitsDeleteArgs,
   commitsMove: MutationCommitsMoveArgs,
   createNamedTable: MutationCreateNamedTableArgs,
+  createParameter: MutationCreateParameterArgs,
   deleteNamedTable: MutationDeleteNamedTableArgs,
+  deleteParameter: MutationDeleteParameterArgs,
   inviteDelete: MutationInviteDeleteArgs,
   inviteResend: MutationInviteResendArgs,
   modelMutations: {},
   objectCreate: MutationObjectCreateArgs,
   projectMutations: {},
+  removeParameterFromTable: MutationRemoveParameterFromTableArgs,
   requestVerification: {},
   requestVerificationByEmail: MutationRequestVerificationByEmailArgs,
   serverInfoUpdate: MutationServerInfoUpdateArgs,
@@ -6825,11 +6980,14 @@ export type MutationFieldArgs = {
   streamUpdatePermission: MutationStreamUpdatePermissionArgs,
   streamsDelete: MutationStreamsDeleteArgs,
   updateNamedTable: MutationUpdateNamedTableArgs,
+  updateParameter: MutationUpdateParameterArgs,
   userCommentThreadActivityBroadcast: MutationUserCommentThreadActivityBroadcastArgs,
   userDelete: MutationUserDeleteArgs,
   userNotificationPreferencesUpdate: MutationUserNotificationPreferencesUpdateArgs,
+  userParametersUpdate: MutationUserParametersUpdateArgs,
   userRoleChange: MutationUserRoleChangeArgs,
   userSettingsUpdate: MutationUserSettingsUpdateArgs,
+  userTablesUpdate: MutationUserTablesUpdateArgs,
   userUpdate: MutationUserUpdateArgs,
   userViewerActivityBroadcast: MutationUserViewerActivityBroadcastArgs,
   versionMutations: {},
@@ -6858,6 +7016,30 @@ export type ObjectCollectionFieldArgs = {
   cursor: {},
   objects: {},
   totalCount: {},
+}
+export type ParameterFieldArgs = {
+  category: {},
+  createdAt: {},
+  description: {},
+  equation: {},
+  field: {},
+  group: {},
+  header: {},
+  id: {},
+  isFetched: {},
+  metadata: {},
+  name: {},
+  orderIndex: {},
+  removable: {},
+  source: {},
+  type: {},
+  updatedAt: {},
+  userId: {},
+  value: {},
+  visible: {},
+}
+export type ParameterMutationResponseFieldArgs = {
+  parameter: {},
 }
 export type PasswordStrengthCheckFeedbackFieldArgs = {
   suggestions: {},
@@ -7058,6 +7240,8 @@ export type QueryFieldArgs = {
   namedTableConfig: QueryNamedTableConfigArgs,
   namedTableConfigs: {},
   otherUser: QueryOtherUserArgs,
+  parameter: QueryParameterArgs,
+  parameters: {},
   project: QueryProjectArgs,
   projectInvite: QueryProjectInviteArgs,
   serverInfo: {},
@@ -7068,6 +7252,7 @@ export type QueryFieldArgs = {
   streamInvite: QueryStreamInviteArgs,
   streamInvites: {},
   streams: QueryStreamsArgs,
+  tableParameters: QueryTableParametersArgs,
   user: QueryUserArgs,
   userPwdStrength: QueryUserPwdStrengthArgs,
   userSearch: QueryUserSearchArgs,
@@ -7323,7 +7508,9 @@ export type UserFieldArgs = {
   streams: UserStreamsArgs,
   timeline: UserTimelineArgs,
   totalOwnedStreamsFavorites: {},
+  userParameters: {},
   userSettings: {},
+  userTables: {},
   verified: {},
   versions: UserVersionsArgs,
   workspaceInvites: {},
@@ -7583,6 +7770,8 @@ export type AllObjectFieldArgTypes = {
   NamedTableConfig: NamedTableConfigFieldArgs,
   Object: ObjectFieldArgs,
   ObjectCollection: ObjectCollectionFieldArgs,
+  Parameter: ParameterFieldArgs,
+  ParameterMutationResponse: ParameterMutationResponseFieldArgs,
   PasswordStrengthCheckFeedback: PasswordStrengthCheckFeedbackFieldArgs,
   PasswordStrengthCheckResults: PasswordStrengthCheckResultsFieldArgs,
   PendingStreamCollaborator: PendingStreamCollaboratorFieldArgs,

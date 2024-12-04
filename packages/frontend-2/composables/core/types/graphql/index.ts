@@ -1,4 +1,4 @@
-import type { ColumnDef, CategoryFilters, NamedTableConfig } from '../data'
+import type { ColumnDef, CategoryFilters, NamedTableConfig } from '../tables'
 import type { Parameter, ParameterType } from '../parameters'
 
 // Input Types
@@ -48,6 +48,13 @@ export interface UserSettingsUpdateResponse {
  * User tables update response
  */
 export interface UserTablesUpdateResponse {
+  userTablesUpdate: boolean
+}
+
+/**
+ * Tables mutation response
+ */
+export interface TablesMutationResponse {
   userTablesUpdate: boolean
 }
 
@@ -135,10 +142,7 @@ export interface TableData {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   metadata?: string
-  categoryFilters?: {
-    selectedParentCategories: string[]
-    selectedChildCategories: string[]
-  }
+  categoryFilters?: CategoryFilters
 }
 
 /**
@@ -187,7 +191,8 @@ export interface TableInfo {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   metadata?: string
-  categoryFilters?: CategoryFilters
+  categoryFilters: CategoryFilters
+  selectedParameterIds: string[]
 }
 
 /**
@@ -215,7 +220,8 @@ export interface CreateNamedTableInput {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   metadata?: string
-  categoryFilters?: CategoryFilters
+  categoryFilters: CategoryFilters
+  selectedParameterIds: string[]
 }
 
 /**
@@ -228,6 +234,7 @@ export interface UpdateNamedTableInput {
   childColumns?: ColumnDef[]
   metadata?: string
   categoryFilters?: CategoryFilters
+  selectedParameterIds?: string[]
 }
 
 /**
@@ -276,6 +283,7 @@ export interface TableResponse {
   childColumns: ColumnDef[]
   metadata?: string
   categoryFilters: CategoryFilters
+  selectedParameterIds: string[]
 }
 
 /**
@@ -284,29 +292,4 @@ export interface TableResponse {
 export interface StoredTable extends NamedTableConfig {
   id: string
   name: string
-}
-
-/**
- * Delete parameter response
- */
-export interface DeleteParameterResponse {
-  deleteParameter: boolean
-}
-
-/**
- * Add parameter to table response
- */
-export interface AddParameterToTableResponse {
-  addParameterToTable: {
-    parameter: ParameterResponse
-  }
-}
-
-/**
- * Remove parameter from table response
- */
-export interface RemoveParameterFromTableResponse {
-  removeParameterFromTable: {
-    parameter: ParameterResponse
-  }
 }

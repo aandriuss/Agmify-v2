@@ -1,6 +1,10 @@
-import type { ColumnDef, CategoryFilters } from '..'
-import type { ParameterDefinition } from '../parameters'
 import type { Ref } from 'vue'
+import type { ParameterDefinition } from '../parameters'
+
+/**
+ * Sort by field type
+ */
+export type SortByField = 'name' | 'category' | 'type' | 'fixed' | 'order'
 
 /**
  * Sort by interface
@@ -17,9 +21,47 @@ export interface UseColumnsOptions {
   initialColumns: ColumnDef[]
   searchTerm?: Ref<string>
   isGrouped?: Ref<boolean>
-  sortBy?: Ref<SortBy>
+  sortBy?: Ref<SortByField>
   selectedCategories?: Ref<string[]>
   onUpdate?: (columns: ColumnDef[]) => void
+}
+
+/**
+ * Column definition for tables
+ */
+export interface ColumnDef {
+  id: string
+  name: string
+  field: string
+  header?: string
+  type?: string
+  source?: string
+  category?: string
+  visible?: boolean
+  order?: number
+  width?: number
+  sortable?: boolean
+  filterable?: boolean
+  metadata?: Record<string, unknown>
+  headerComponent?: string
+  fetchedGroup?: string
+  currentGroup?: string
+  isFetched?: boolean
+  description?: string
+  isFixed?: boolean
+  isCustomParameter?: boolean
+  parameterRef?: string
+  color?: string
+  expander?: boolean
+  removable?: boolean
+}
+
+/**
+ * Category filters interface
+ */
+export interface CategoryFilters {
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
 }
 
 /**
@@ -28,17 +70,18 @@ export interface UseColumnsOptions {
 export interface TableConfig {
   id: string
   name: string
-  displayName: string
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   categoryFilters: CategoryFilters
   selectedParameterIds: string[]
+  metadata?: string
 }
 
 /**
  * Named table configuration interface
  */
 export interface NamedTableConfig extends TableConfig {
+  displayName: string
   description?: string
 }
 
@@ -53,38 +96,6 @@ export interface TableState {
     direction: 'asc' | 'desc'
   }
   filters?: Record<string, unknown>
-}
-
-/**
- * Table update payload interface
- */
-export interface TableUpdatePayload {
-  tableId: string
-  tableName: string
-  data?: unknown
-}
-
-/**
- * Create named table input interface
- */
-export interface CreateNamedTableInput {
-  name: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-  categoryFilters: CategoryFilters
-  selectedParameterIds: string[]
-}
-
-/**
- * Update named table input interface
- */
-export interface UpdateNamedTableInput {
-  id: string
-  name?: string
-  parentColumns?: ColumnDef[]
-  childColumns?: ColumnDef[]
-  categoryFilters?: CategoryFilters
-  selectedParameterIds?: string[]
 }
 
 /**
@@ -161,18 +172,4 @@ export interface TablesState {
   tables: Record<string, NamedTableConfig>
   loading: boolean
   error: Error | null
-}
-
-/**
- * Tables query response
- */
-export interface TablesQueryResponse {
-  userTables: Record<string, NamedTableConfig>
-}
-
-/**
- * Tables mutation response
- */
-export interface TablesMutationResponse {
-  userTablesUpdate: boolean
 }
