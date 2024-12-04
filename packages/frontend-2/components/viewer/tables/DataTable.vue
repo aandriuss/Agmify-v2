@@ -306,7 +306,6 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { LayoutDialog, FormButton } from '@speckle/ui-components'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Checkbox from 'primevue/checkbox'
@@ -321,21 +320,14 @@ import {
   RadioGroupOption
 } from '@headlessui/vue'
 
+import type { ColumnDef } from '~/composables/core/types'
+
 import ParameterItem from '~/components/viewer/components/parameters/components/ParameterItem.vue'
 import ParameterBadge from '~/components/viewer/components/parameters/components/ParameterBadge.vue'
 
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 
 const showFilterOptions = ref(false)
-
-interface ColumnDef {
-  field: string
-  header: string
-  visible: boolean
-  removable?: boolean
-  width?: number
-  order: number
-}
 
 const emit = defineEmits<{
   'update:expandedRows': [value: any[]]

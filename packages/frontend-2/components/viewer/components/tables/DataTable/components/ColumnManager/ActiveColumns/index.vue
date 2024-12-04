@@ -39,7 +39,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Button from 'primevue/button'
-import type { ColumnDef } from '../../../composables/types'
+import type { ColumnDef } from '~/composables/core/types'
 import EnhancedColumnList from '../shared/EnhancedColumnList.vue'
 
 const props = withDefaults(

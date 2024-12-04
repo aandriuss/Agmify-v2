@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type { ColumnDef } from '~/composables/core/types'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 import { debug, DebugCategories } from '../debug/useDebug'
 

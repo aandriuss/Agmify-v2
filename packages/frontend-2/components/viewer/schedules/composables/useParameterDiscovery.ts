@@ -1,6 +1,10 @@
 import { ref } from 'vue'
 import type { Ref } from 'vue'
-import type { TreeItemComponentModel, ProcessedHeader, BIMNodeRaw } from '../types'
+import type {
+  TreeItemComponentModel,
+  ProcessedHeader,
+  BIMNodeRaw
+} from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug/useDebug'
 import { convertToString } from '../utils/dataConversion'
 import { ValidationError } from '../utils/validation'

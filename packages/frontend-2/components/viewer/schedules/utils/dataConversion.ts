@@ -6,9 +6,9 @@ import type {
   BIMNodeRaw,
   Parameters,
   ParameterValueState
-} from '../types'
+} from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug/useDebug'
-import { isValidBIMNodeRaw } from '../types'
+import { isValidBIMNodeRaw } from '~/composables/core/types'
 
 export function convertToString(value: unknown): string {
   if (value === null || value === undefined) return ''

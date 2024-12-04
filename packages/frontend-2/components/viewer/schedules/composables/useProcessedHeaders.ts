@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import type { ComputedRef } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
-import type { AvailableHeaders, ProcessedHeader } from '../types'
+import type { AvailableHeaders, ProcessedHeader } from '~/composables/core/types'
 
 interface UseProcessedHeadersOptions {
   headers: ComputedRef<{ parent: unknown[]; child: unknown[] }>

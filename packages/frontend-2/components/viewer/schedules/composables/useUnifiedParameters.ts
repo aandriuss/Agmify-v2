@@ -1,6 +1,9 @@
 import { computed, type ComputedRef, watch } from 'vue'
-import type { UnifiedParameter, ProcessedHeader } from '../types'
-import type { CustomParameter } from '~/composables/settings/types/scheduleTypes'
+import type {
+  UnifiedParameter,
+  ProcessedHeader,
+  CustomParameter
+} from '~/composables/core/types'
 import { useStore } from '../core/store'
 import { debug, DebugCategories } from '../debug/useDebug'
 

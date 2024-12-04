@@ -1,7 +1,12 @@
 import type { Ref } from 'vue'
-import type { StoreState, ElementData, TableRow, ProcessedHeader } from '../../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { CustomParameter } from '~/composables/useUserSettings'
+import type {
+  StoreState,
+  ElementData,
+  TableRow,
+  ProcessedHeader,
+  ColumnDef,
+  CustomParameter
+} from '~/composables/core/types'
 import { useDebug, DebugCategories } from '../../debug/useDebug'
 
 // Initialize debug

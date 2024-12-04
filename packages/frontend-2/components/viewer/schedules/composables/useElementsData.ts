@@ -12,7 +12,7 @@ import type {
   ParameterType,
   BIMNode,
   NodeModel
-} from '../types'
+} from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug/useDebug'
 import { useBIMElements } from './useBIMElements'
 import { useParameterDiscovery } from './useParameterDiscovery'

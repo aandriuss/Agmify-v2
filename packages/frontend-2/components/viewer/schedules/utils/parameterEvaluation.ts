@@ -1,5 +1,8 @@
-import type { CustomParameter } from '~/composables/useUserSettings'
-import type { ElementData, ParameterValue } from '../types'
+import type {
+  CustomParameter,
+  ElementData,
+  ParameterValue
+} from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug/useDebug'
 
 export class EquationError extends Error {

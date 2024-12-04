@@ -82,12 +82,12 @@ import {
   updateLocalColumns as updateColumns,
   validateTableRows
 } from './composables/useTableUtils'
-import type { ColumnDef } from './composables/columns/types'
 import type {
+  ColumnDef,
   TableRow,
   ElementData,
   UnifiedParameter
-} from '~/components/viewer/schedules/types'
+} from '~/composables/core/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import type {
   DataTableColumnReorderEvent,

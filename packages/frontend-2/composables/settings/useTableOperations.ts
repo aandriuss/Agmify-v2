@@ -1,6 +1,5 @@
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import type { NamedTableConfig } from './types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type { NamedTableConfig, ColumnDef } from '~/composables/core/types'
 import { useUpdateQueue } from './useUpdateQueue'
 
 interface TableOperationsOptions {

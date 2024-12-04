@@ -1,5 +1,4 @@
-import type { ColumnDef } from './columns/types'
-import type { TableRow, ParameterValue } from '~/components/viewer/schedules/types'
+import type { ColumnDef, TableRow, ParameterValue } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 export function safeJSONClone<T>(obj: T): T {

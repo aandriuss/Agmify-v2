@@ -5,4 +5,4 @@ export { default as ParameterEditDialog } from './ParameterEditDialog.vue'
 export { default as TableSelectionDialog } from './TableSelectionDialog.vue'
 
 // Re-export types if needed
-export type { ParameterFormData } from '../../types'
+export type { ParameterFormData } from '~/composables/core/types'

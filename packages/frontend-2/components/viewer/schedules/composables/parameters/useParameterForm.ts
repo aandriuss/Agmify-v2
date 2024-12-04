@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { CustomParameter, ParameterFormData } from '../../types'
+import type { CustomParameter, ParameterFormData } from '~/composables/core/types'
 
 interface UseParameterFormOptions {
   onSave: (data: Omit<CustomParameter, 'id'>) => Promise<void>

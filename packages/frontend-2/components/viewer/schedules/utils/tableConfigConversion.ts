@@ -1,6 +1,9 @@
-import type { TableConfig } from '../types'
-import type { NamedTableConfig, CustomParameter } from '~/composables/useUserSettings'
-import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
+import type {
+  TableConfig,
+  NamedTableConfig,
+  CustomParameter,
+  ParameterDefinition
+} from '~/composables/core/types'
 
 function convertToCustomParameter(param: ParameterDefinition): CustomParameter {
   return {

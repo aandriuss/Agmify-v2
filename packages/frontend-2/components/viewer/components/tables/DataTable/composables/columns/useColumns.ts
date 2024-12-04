@@ -1,6 +1,9 @@
 import { ref, computed, watch } from 'vue'
-import type { ParameterDefinition } from '../../../../parameters/composables/types'
-import type { ColumnDef, UseColumnsOptions } from './types'
+import type {
+  ParameterDefinition,
+  ColumnDef,
+  UseColumnsOptions
+} from '~/composables/core/types'
 
 export function useColumns({
   initialColumns,

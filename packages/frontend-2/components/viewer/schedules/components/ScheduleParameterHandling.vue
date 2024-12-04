@@ -6,10 +6,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
-import type { CustomParameter } from '~/composables/useUserSettings'
-import type { ElementData, ProcessedHeader } from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
+import type {
+  CustomParameter,
+  ElementData,
+  ProcessedHeader,
+  ColumnDef,
+  ParameterDefinition
+} from '~/composables/core/types'
 
 // Import new core functionality
 import { useStore } from '../core/store'

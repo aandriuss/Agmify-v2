@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { ref, computed } from 'vue'
 import { useUnifiedParameters } from '../useUnifiedParameters'
-import type { Store, ProcessedHeader, UnifiedParameter } from '../../types'
-import type { CustomParameter } from '~/composables/settings/types/scheduleTypes'
+import type {
+  Store,
+  ProcessedHeader,
+  UnifiedParameter,
+  CustomParameter
+} from '~/composables/core/types'
 
 describe('useUnifiedParameters', () => {
   // Mock store
@@ -22,39 +26,24 @@ describe('useUnifiedParameters', () => {
   const mockDiscoveredHeaders = {
     parent: [
       {
-        field: 'width',
-        header: 'Width',
+        id: 'width',
+        name: 'Width',
         type: 'string',
-        source: 'Dimensions',
-        category: 'Walls',
-        description: 'Width parameter',
-        isFetched: true,
-        fetchedGroup: 'Dimensions',
-        currentGroup: 'Dimensions'
+        value: '100'
       },
       {
-        field: 'height',
-        header: 'Height',
+        id: 'height',
+        name: 'Height',
         type: 'string',
-        source: 'Dimensions',
-        category: 'Walls',
-        description: 'Height parameter',
-        isFetched: true,
-        fetchedGroup: 'Dimensions',
-        currentGroup: 'Dimensions'
+        value: '200'
       }
     ] satisfies ProcessedHeader[],
     child: [
       {
-        field: 'width',
-        header: 'Width',
+        id: 'width',
+        name: 'Width',
         type: 'string',
-        source: 'Dimensions',
-        category: 'Windows',
-        description: 'Width parameter',
-        isFetched: true,
-        fetchedGroup: 'Dimensions',
-        currentGroup: 'Dimensions'
+        value: '50'
       }
     ] satisfies ProcessedHeader[]
   }
@@ -68,7 +57,6 @@ describe('useUnifiedParameters', () => {
       type: 'fixed' as const,
       value: '100',
       category: 'Custom Parameters',
-      removable: true,
       visible: true,
       order: 0
     },
@@ -79,8 +67,8 @@ describe('useUnifiedParameters', () => {
       header: 'Custom Equation',
       type: 'equation' as const,
       equation: 'width * 2',
+      value: null,
       category: 'Custom Parameters',
-      removable: true,
       visible: true,
       order: 1
     }
@@ -89,19 +77,18 @@ describe('useUnifiedParameters', () => {
   // Helper to convert ProcessedHeader to UnifiedParameter
   function convertToUnifiedParameter(header: ProcessedHeader): UnifiedParameter {
     return {
-      id: header.field,
-      name: header.header,
-      field: header.field,
-      header: header.header,
+      id: header.id,
+      name: header.name,
+      field: header.id,
       type: header.type === 'number' ? 'equation' : 'fixed',
-      category: header.category,
-      description: header.description,
-      source: header.source,
-      isFetched: header.isFetched,
-      fetchedGroup: header.fetchedGroup,
-      currentGroup: header.currentGroup,
+      value: header.value,
       visible: true,
-      removable: true
+      header: header.name,
+      category: 'Discovered',
+      source: 'System',
+      isFetched: true,
+      fetchedGroup: 'System',
+      currentGroup: 'System'
     }
   }
 
@@ -139,8 +126,8 @@ describe('useUnifiedParameters', () => {
     // Check discovered parameter group
     const dimensionsParam = parentParameters.value.find((p) => p.field === 'width')
     expect(dimensionsParam).toBeDefined()
-    expect(dimensionsParam?.source).toBe('Dimensions')
-    expect(dimensionsParam?.fetchedGroup).toBe('Dimensions')
+    expect(dimensionsParam?.source).toBe('System')
+    expect(dimensionsParam?.fetchedGroup).toBe('System')
 
     // Check custom parameter group
     const customParam = parentParameters.value.find((p) => p.field === 'custom_fixed')
@@ -179,8 +166,9 @@ describe('useUnifiedParameters', () => {
             'id' in item &&
             'name' in item &&
             'field' in item &&
-            'header' in item &&
-            'type' in item
+            'type' in item &&
+            'value' in item &&
+            'visible' in item
           )
         })
       )
@@ -252,15 +240,10 @@ describe('useUnifiedParameters', () => {
       parent: [
         ...mockDiscoveredHeaders.parent,
         {
-          field: 'depth',
-          header: 'Depth',
+          id: 'depth',
+          name: 'Depth',
           type: 'string',
-          source: 'Dimensions',
-          category: 'Walls',
-          description: 'Depth parameter',
-          isFetched: true,
-          fetchedGroup: 'Dimensions',
-          currentGroup: 'Dimensions'
+          value: '300'
         }
       ],
       child: mockDiscoveredHeaders.child

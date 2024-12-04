@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import type { Ref } from 'vue'
-import type { CustomParameter } from '../../types'
+import type { CustomParameter } from '~/composables/core/types'
 
 interface UseParameterEvaluationOptions {
   parameters: Ref<CustomParameter[]>

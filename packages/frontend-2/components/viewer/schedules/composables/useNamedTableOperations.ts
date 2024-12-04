@@ -1,5 +1,7 @@
-import type { NamedTableConfig } from '~/composables/useUserSettings'
-import type { ScheduleInitializationInstance } from '../types'
+import type {
+  NamedTableConfig,
+  ScheduleInitializationInstance
+} from '~/composables/core/types'
 import type { Ref } from 'vue'
 
 interface UseNamedTableOperationsOptions {

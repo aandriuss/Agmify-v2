@@ -1,4 +1,4 @@
-import type { ParameterValueType } from '../../types'
+import type { ParameterValueType } from '~/composables/core/types'
 
 export interface CategoryDefinition {
   id: string

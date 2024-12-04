@@ -4,10 +4,10 @@ import type {
   TableRow,
   UnifiedParameter,
   Store,
-  StoreState
-} from '../../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { CustomParameter } from '~/composables/useUserSettings'
+  StoreState,
+  ColumnDef,
+  CustomParameter
+} from '~/composables/core/types'
 import { useDebug, DebugCategories } from '../../debug/useDebug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 
@@ -95,7 +95,10 @@ export function createStore(): Store {
         }
 
         // Initialize headers if they're still empty after viewer initialization
-        if (!internalState.value.availableHeaders.parent.length && !internalState.value.availableHeaders.child.length) {
+        if (
+          !internalState.value.availableHeaders.parent.length &&
+          !internalState.value.availableHeaders.child.length
+        ) {
           internalState.value.availableHeaders = { ...defaultHeaders }
         }
 
@@ -105,7 +108,7 @@ export function createStore(): Store {
             childCount: internalState.value.availableHeaders.child.length
           }
         })
-        
+
         internalState.value.initialized = true
       } catch (error) {
         debug.error(DebugCategories.ERROR, 'Store initialization failed:', error)
@@ -126,7 +129,7 @@ export function createStore(): Store {
           parent: state.availableHeaders?.parent ?? [],
           child: state.availableHeaders?.child ?? []
         }
-        
+
         debug.log(DebugCategories.PARAMETERS, 'Updating available headers', {
           parentCount: state.availableHeaders.parent.length,
           childCount: state.availableHeaders.child.length,
@@ -231,7 +234,9 @@ export function createStore(): Store {
     processedParameters: computed(() => internalState.value.processedParameters),
     parameterDefinitions: computed(() => internalState.value.parameterDefinitions),
     // Headers with safe default
-    availableHeaders: computed(() => internalState.value.availableHeaders ?? defaultHeaders),
+    availableHeaders: computed(
+      () => internalState.value.availableHeaders ?? defaultHeaders
+    ),
     // Categories
     selectedCategories: computed(() => internalState.value.selectedCategories),
     selectedParentCategories: computed(

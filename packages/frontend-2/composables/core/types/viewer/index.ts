@@ -108,3 +108,21 @@ export interface ScheduleInitializationInstance {
   update: (state: Record<string, unknown>) => Promise<void>
   cleanup: () => void
 }
+
+/**
+ * Schedule tree item model interface
+ */
+export interface ScheduleTreeItemModel extends TreeItemComponentModel {
+  id: string
+  label: string
+  rawNode?: BIMNode
+  children: ScheduleTreeItemModel[]
+}
+
+/**
+ * Node conversion result interface
+ */
+export interface NodeConversionResult {
+  node: ScheduleTreeItemModel
+  children: ScheduleTreeItemModel[]
+}

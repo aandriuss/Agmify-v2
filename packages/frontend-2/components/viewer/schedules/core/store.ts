@@ -4,10 +4,10 @@ import type {
   StoreState,
   ElementData,
   TableRow,
-  UnifiedParameter
-} from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { CustomParameter } from '~/composables/useUserSettings'
+  UnifiedParameter,
+  ColumnDef,
+  CustomParameter
+} from '~/composables/core/types'
 import { useDebug, DebugCategories } from '../debug/useDebug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 

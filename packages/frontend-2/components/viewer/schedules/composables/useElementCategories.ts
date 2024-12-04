@@ -1,4 +1,4 @@
-import type { ElementData } from '../types'
+import type { ElementData } from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug/useDebug'
 import { parentCategories, childCategories } from '../config/categories'
 

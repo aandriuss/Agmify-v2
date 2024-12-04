@@ -1,5 +1,5 @@
 import { ref, computed, unref } from 'vue'
-import type { Store, StoreState } from '../../types'
+import type { Store, StoreState } from '~/composables/core/types'
 import { debug, DebugCategories } from '../../debug/useDebug'
 import { createMutations } from './mutations'
 import {

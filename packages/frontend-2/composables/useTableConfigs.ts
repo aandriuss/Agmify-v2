@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
-import type { UserSettings, TableConfig } from './useUserSettings'
-import { useUserSettings, ColumnConfig } from './useUserSettings'
+import type { UserSettings } from '~/composables/useUserSettings'
+import type { TableConfig } from '~/composables/core/types'
+import { useUserSettings } from '~/composables/useUserSettings'
 
 export interface NamedTableConfig extends TableConfig {
   id: string

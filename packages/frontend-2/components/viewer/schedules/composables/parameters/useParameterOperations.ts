@@ -1,6 +1,9 @@
 import { ref } from 'vue'
-import type { CustomParameter, NewCustomParameter } from '../../types'
-import type { UserSettings } from '~/composables/settings/types/scheduleTypes'
+import type {
+  CustomParameter,
+  NewCustomParameter,
+  UserSettings
+} from '~/composables/core/types'
 
 interface UseParameterOperationsOptions {
   settings: Ref<UserSettings | null>

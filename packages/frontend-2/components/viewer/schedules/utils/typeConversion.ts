@@ -1,12 +1,12 @@
-import type { NamedTableConfig } from '~/composables/settings/types/scheduleTypes'
 import type {
+  NamedTableConfig,
   TableConfig,
   ElementData,
   TableRow,
   ParameterValue,
   ParameterValueState,
   Parameters
-} from '../types'
+} from '~/composables/core/types'
 
 /**
  * Convert ParameterValue to ParameterValueState

@@ -1,8 +1,5 @@
 import { ref, computed, watch } from 'vue'
-import type {
-  ColumnDef,
-  ParameterDefinition
-} from '~/components/viewer/components/tables/DataTable/composables/types'
+import type { ColumnDef, ParameterDefinition } from '~/composables/core/types'
 import { useUserSettings } from '~/composables/useUserSettings'
 import {
   defaultColumns,

@@ -1,4 +1,4 @@
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type { ColumnDef } from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug/useDebug'
 
 /**

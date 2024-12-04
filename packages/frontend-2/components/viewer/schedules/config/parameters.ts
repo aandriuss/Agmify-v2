@@ -1,4 +1,4 @@
-import type { BIMNodeRaw } from '../types'
+import type { BIMNodeRaw } from '~/composables/core/types'
 import { convertToString } from '../utils/dataConversion'
 
 // Parameter definition type

@@ -1,8 +1,11 @@
 import { computed, ref, watch } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import type { CustomParameter } from '~/composables/useUserSettings'
-import type { ElementData, ParameterValue } from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type {
+  CustomParameter,
+  ElementData,
+  ParameterValue,
+  ColumnDef
+} from '~/composables/core/types'
 import { evaluateParameter } from '../utils/parameterEvaluation'
 import { debug, DebugCategories } from '../debug/useDebug'
 import { getParameterGroup } from '../config/parameters'

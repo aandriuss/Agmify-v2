@@ -186,8 +186,7 @@ import {
   ChevronRightIcon,
   ChevronDownIcon
 } from '@heroicons/vue/24/outline'
-import type { ColumnDef } from '../../../composables/columns/types'
-import type { UnifiedParameter } from '~/components/viewer/schedules/types'
+import type { ColumnDef, UnifiedParameter } from '~/composables/core/types'
 
 interface Props {
   items: (ColumnDef | UnifiedParameter)[]

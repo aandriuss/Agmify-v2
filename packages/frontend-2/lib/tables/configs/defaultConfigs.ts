@@ -1,4 +1,4 @@
-import type { TableTypeSettings } from '../types'
+import type { TableTypeSettings } from '~/composables/core/types'
 
 export const defaultViewerColumns = [
   { field: 'category', header: 'Category', visible: true, removable: false, order: 0 },

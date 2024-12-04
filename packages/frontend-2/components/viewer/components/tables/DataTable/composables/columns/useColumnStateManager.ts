@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef } from './types'
+import type { ColumnDef } from '~/composables/core/types'
 
 export interface ColumnStateChange {
   type: 'ADD' | 'REMOVE' | 'REORDER' | 'UPDATE' | 'VISIBILITY'

@@ -1,5 +1,4 @@
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { NamedTableConfig } from '~/composables/useUserSettings'
+import type { ColumnDef, NamedTableConfig } from '~/composables/core/types'
 
 // Common columns that should appear in both parent and child tables
 const commonColumns: ColumnDef[] = [

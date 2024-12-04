@@ -1,11 +1,11 @@
-import { defineStore } from 'pinia'
+import { defineStore } from 'pinia' // why???
 import { ref, computed } from 'vue'
 import type {
   TableInstanceState,
   TableTypeSettings,
   TableUpdateOperation
-} from '../types'
-import { useUserSettings } from '../../../composables/useUserSettings'
+} from '~/composables/core/types'
+import { useUserSettings } from '~/composables/useUserSettings'
 
 export const useTableRegistry = defineStore('tableRegistry', () => {
   const { updateNamedTable, createNamedTable } = useUserSettings()

@@ -60,11 +60,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import ParameterBadge from '~/components/viewer/components/parameters/components/ParameterBadge.vue'
-import type { ColumnDef, ParameterDefinition } from '../../../composables/types'
+import type { ColumnDef, ParameterDefinition } from '~/composables/core/types'
 
 interface Props {
   column: ColumnDef | ParameterDefinition

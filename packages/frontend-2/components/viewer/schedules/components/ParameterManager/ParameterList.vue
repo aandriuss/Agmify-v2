@@ -88,7 +88,7 @@ import { computed, ref } from 'vue'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/vue/24/solid'
 import { useParameterOperations } from '~/composables/settings/useParameterOperations'
 import { useUserSettings } from '~/composables/useUserSettings'
-import type { CustomParameter } from '../../types'
+import type { CustomParameter } from '~/composables/core/types'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 

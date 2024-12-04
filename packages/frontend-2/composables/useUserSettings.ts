@@ -1,21 +1,11 @@
 import { useSettingsState } from './settings/useSettingsState'
 import { useSettingsTableOperations } from './settings/useSettingsTableOperations'
-import type { NamedTableConfig } from './settings/types/scheduleTypes'
-
-export type {
-  ColumnConfig,
-  BaseParameter,
-  CustomParameter,
-  NamedTableConfig,
-  UserSettings
-} from './settings/types/scheduleTypes'
 
 export function useUserSettings() {
   const { settings, loading, error, loadSettings, saveSettings } = useSettingsState()
 
   const {
     updateTable,
-    createTable,
     updateTableCategories,
     updateTableColumns,
     updateNamedTable,

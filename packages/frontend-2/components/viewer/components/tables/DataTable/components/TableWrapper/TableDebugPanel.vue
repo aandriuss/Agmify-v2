@@ -132,8 +132,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ColumnDef } from '../../composables/columns/types'
-import type { TableRow } from '~/components/viewer/schedules/types'
+import type { ColumnDef, TableRow } from '~/composables/core/types'
 
 interface Props {
   data: TableRow[]

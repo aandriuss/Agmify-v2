@@ -7,7 +7,7 @@ import type {
   CategoryState,
   CategoryMutations
 } from '../features/categories/types'
-import type { ElementData } from '../types'
+import type { ElementData } from '~/composables/core/types'
 
 interface UseScheduleCategoriesOptions {
   initialState?: Partial<CategoryState>

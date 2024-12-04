@@ -75,7 +75,7 @@ import type {
   CustomParameter,
   NewCustomParameter,
   ParameterFormData
-} from '../../types'
+} from '~/composables/core/types'
 
 // Components
 import ParameterList from './ParameterList.vue'

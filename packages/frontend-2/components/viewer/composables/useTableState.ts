@@ -1,7 +1,5 @@
 import { ref, computed } from 'vue'
-import type { Ref } from 'vue'
-import type { ColumnDef } from '../components/tables/DataTable/composables/columns/types'
-import type { NamedTableConfig, TableState } from '../tables/types/tableState'
+import type { ColumnDef, NamedTableConfig } from '~/composables/core/types'
 
 export function useTableState() {
   // Core state

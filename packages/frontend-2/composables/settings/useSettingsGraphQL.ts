@@ -1,7 +1,7 @@
 import { useMutation, useQuery, provideApolloClient } from '@vue/apollo-composable'
 import { gql } from 'graphql-tag'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import type { UserSettings } from './types'
+import type { UserSettings } from '~/composables/core/types'
 import { useNuxtApp } from '#app'
 
 interface GetUserSettingsResponse {

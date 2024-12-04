@@ -4,10 +4,10 @@ import type {
   TableRow,
   ParameterValueState,
   Parameters
-} from '../../types'
+} from '~/composables/core/types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import { debug, DebugCategories } from '../../debug/useDebug'
-import { createParameterValueState } from '../../types'
+import { createParameterValueState } from '~/composables/core/types'
 
 // Custom error class for validation errors
 export class ValidationError extends Error {

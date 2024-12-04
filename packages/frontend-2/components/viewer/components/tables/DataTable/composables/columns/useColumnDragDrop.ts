@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef, ParameterDefinition } from '../types'
+import type { ColumnDef, ParameterDefinition } from '~/composables/core/types'
 
 export interface DragItem {
   item: ColumnDef | ParameterDefinition

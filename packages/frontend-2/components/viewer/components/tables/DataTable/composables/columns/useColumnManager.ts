@@ -1,6 +1,5 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef, ColumnGroup } from './types'
-import type { UnifiedParameter } from '~/components/viewer/schedules/types'
+import type { ColumnDef, ColumnGroup, UnifiedParameter } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 type View = 'parent' | 'child'

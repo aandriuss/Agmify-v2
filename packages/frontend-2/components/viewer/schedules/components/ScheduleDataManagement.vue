@@ -7,9 +7,12 @@
 import { computed, watch } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
 import { useElementsData } from '../composables/useElementsData'
-import type { CustomParameter } from '~/composables/useUserSettings'
-import type { ElementData, TableRow } from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type {
+  CustomParameter,
+  ElementData,
+  TableRow,
+  ColumnDef
+} from '~/composables/core/types'
 
 const props = defineProps<{
   scheduleData: ElementData[]

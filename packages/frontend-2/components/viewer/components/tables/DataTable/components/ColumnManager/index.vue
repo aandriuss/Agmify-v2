@@ -133,9 +133,8 @@ import Button from 'primevue/button'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import TabSelector from './TabSelector.vue'
 import EnhancedColumnList from './shared/EnhancedColumnList.vue'
-import type { ColumnDef } from '../../composables/types'
+import type { ColumnDef, UnifiedParameter } from '~/composables/core/types'
 import { useColumnManager } from '~/components/viewer/components/tables/DataTable/composables/columns/useColumnManager'
-import type { UnifiedParameter } from '~/components/viewer/schedules/types'
 
 // Props and Emits
 interface Props {

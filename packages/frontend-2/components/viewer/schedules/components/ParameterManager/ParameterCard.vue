@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import type { CustomParameter } from '../../types'
+import type { CustomParameter } from '~/composables/core/types'
 
 defineProps<{
   parameter: CustomParameter

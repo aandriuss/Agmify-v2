@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ref } from 'vue'
 import { useParameterDiscovery } from '../useParameterDiscovery'
-import type { TreeItemComponentModel, BIMNodeRaw } from '../../types'
+import type { TreeItemComponentModel, BIMNodeRaw } from '~/composables/core/types'
 import { DebugCategories } from '../../debug/useDebug'
 
 describe('useParameterDiscovery', () => {

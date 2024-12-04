@@ -1,8 +1,65 @@
-import type { ColumnDef, CategoryFiltersInput } from '../data'
-import type { Parameter, CustomParameter } from '../parameters'
+import type { ColumnDef, CategoryFilters, NamedTableConfig } from '../data'
+import type { Parameter, ParameterType } from '../parameters'
+
+// Input Types
+export interface TableColumnInput extends ColumnDef {}
+
+export interface CategoryFiltersGQLInput {
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
+}
+
+export interface CreateNamedTableGQLInput {
+  name: string
+  parentColumns: TableColumnInput[]
+  childColumns: TableColumnInput[]
+  metadata?: string
+  categoryFilters?: CategoryFiltersGQLInput
+}
+
+export interface UpdateNamedTableGQLInput {
+  id: string
+  name?: string
+  parentColumns?: TableColumnInput[]
+  childColumns?: TableColumnInput[]
+  metadata?: string
+  categoryFilters?: CategoryFiltersGQLInput
+}
 
 /**
- * GraphQL response for parameter queries
+ * User response from GraphQL
+ */
+export interface UserResponse {
+  activeUser: {
+    userSettings: Record<string, unknown> | null
+    tables: Record<string, NamedTableConfig> | null
+    parameters: Record<string, unknown> | null
+  }
+}
+
+/**
+ * User settings update response
+ */
+export interface UserSettingsUpdateResponse {
+  userSettingsUpdate: boolean
+}
+
+/**
+ * User tables update response
+ */
+export interface UserTablesUpdateResponse {
+  userTablesUpdate: boolean
+}
+
+/**
+ * User parameters update response
+ */
+export interface UserParametersUpdateResponse {
+  userParametersUpdate: boolean
+}
+
+/**
+ * Parameter response from GraphQL
  */
 export interface ParameterResponse extends Parameter {
   tables?: Array<{
@@ -12,69 +69,49 @@ export interface ParameterResponse extends Parameter {
 }
 
 /**
- * Input for creating a new parameter
- */
-export interface CreateParameterInput {
-  name: string
-  type: string
-  value?: string | null
-  equation?: string | null
-  description?: string | null
-  metadata?: Record<string, unknown> | null
-  field: string
-  tableIds?: string[] | null
-  category?: string | null
-}
-
-/**
- * Input for updating an existing parameter
- */
-export interface UpdateParameterInput {
-  name?: string | null
-  type?: string | null
-  value?: string | null
-  equation?: string | null
-  description?: string | null
-  metadata?: Record<string, unknown> | null
-  field?: string | null
-  tableIds?: string[] | null
-  category?: string | null
-}
-
-/**
- * GraphQL response for parameters query
+ * Parameters query response
  */
 export interface ParametersQueryResponse {
   parameters: ParameterResponse[]
 }
 
 /**
- * GraphQL response for create parameter mutation
+ * Table parameters query response
+ */
+export interface TableParametersQueryResponse {
+  tableParameters: Parameter[]
+}
+
+/**
+ * Parameter mutation response
+ */
+export interface ParameterMutationResponse {
+  parameter: Parameter
+}
+
+/**
+ * Create parameter response
  */
 export interface CreateParameterResponse {
-  createParameter: {
-    parameter: ParameterResponse
-  }
+  createParameter: ParameterMutationResponse
 }
 
 /**
- * GraphQL response for update parameter mutation
+ * Update parameter response
  */
 export interface UpdateParameterResponse {
-  updateParameter: {
-    parameter: ParameterResponse
-  }
+  updateParameter: ParameterMutationResponse
 }
 
 /**
- * GraphQL response for delete parameter mutation
+ * Delete parameter response
  */
 export interface DeleteParameterResponse {
   deleteParameter: boolean
 }
 
 /**
- * GraphQL response for add parameter to table mutation
+ * Add parameter to table response
  */
 export interface AddParameterToTableResponse {
   addParameterToTable: {
@@ -83,7 +120,7 @@ export interface AddParameterToTableResponse {
 }
 
 /**
- * GraphQL response for remove parameter from table mutation
+ * Remove parameter from table response
  */
 export interface RemoveParameterFromTableResponse {
   removeParameterFromTable: {
@@ -92,15 +129,53 @@ export interface RemoveParameterFromTableResponse {
 }
 
 /**
- * Table configuration input for GraphQL mutations
- * Matches backend structure for parameters (using IDs)
+ * Table data interface
  */
-export interface TableConfigInput {
+export interface TableData {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-  parameters?: string[] // Store parameter IDs
-  customParameters?: string[] // Store custom parameter IDs
-  metadata?: string // Match backend type
+  metadata?: string
+  categoryFilters?: {
+    selectedParentCategories: string[]
+    selectedChildCategories: string[]
+  }
+}
+
+/**
+ * Table configuration response
+ */
+export interface TableConfigResponse {
+  id: string
+  name: string
+  data: TableData
+}
+
+/**
+ * Get tables response
+ */
+export interface GetTablesResponse {
+  namedTableConfigs: TableConfigResponse[]
+}
+
+/**
+ * Create table response
+ */
+export interface CreateTableResponse {
+  createNamedTable: TableConfigResponse
+}
+
+/**
+ * Update table response
+ */
+export interface UpdateTableResponse {
+  updateNamedTable: TableConfigResponse
+}
+
+/**
+ * Delete table response
+ */
+export interface DeleteTableResponse {
+  deleteNamedTable: boolean
 }
 
 /**
@@ -109,40 +184,21 @@ export interface TableConfigInput {
 export interface TableInfo {
   id: string
   name: string
-  config: {
-    parentColumns: ColumnDef[]
-    childColumns: ColumnDef[]
-  }
-  categoryFilters?: CategoryFiltersInput
-  parameters?: ParameterResponse[]
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+  metadata?: string
+  categoryFilters?: CategoryFilters
 }
 
 /**
- * Table response from GraphQL
- * This is the full table response that includes all table data
- */
-export interface TableResponse extends TableInfo {
-  id: string
-  name: string
-  config: {
-    parentColumns: ColumnDef[]
-    childColumns: ColumnDef[]
-    parameters?: string[] // Store parameter IDs
-    customParameters?: string[] // Store custom parameter IDs
-    metadata?: string // Match backend type
-  }
-  categoryFilters: CategoryFiltersInput
-}
-
-/**
- * GraphQL response for tables query
+ * Tables query response
  */
 export interface TablesQueryResponse {
-  namedTableConfigs: TableResponse[]
+  namedTableConfigs: TableInfo[]
 }
 
 /**
- * GraphQL response for settings query
+ * Settings query response
  */
 export interface SettingsQueryResponse {
   settings: {
@@ -152,20 +208,105 @@ export interface SettingsQueryResponse {
 }
 
 /**
- * GraphQL mutation input for table creation
+ * Create named table input
  */
 export interface CreateNamedTableInput {
   name: string
-  config: TableConfigInput
-  categoryFilters?: CategoryFiltersInput
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+  metadata?: string
+  categoryFilters?: CategoryFilters
 }
 
 /**
- * GraphQL mutation input for table update
+ * Update named table input
  */
 export interface UpdateNamedTableInput {
   id: string
   name?: string
-  config?: TableConfigInput
-  categoryFilters?: CategoryFiltersInput
+  parentColumns?: ColumnDef[]
+  childColumns?: ColumnDef[]
+  metadata?: string
+  categoryFilters?: CategoryFilters
+}
+
+/**
+ * Create parameter input
+ */
+export interface CreateParameterInput {
+  name: string
+  type: ParameterType
+  value?: unknown
+  field: string
+  header?: string
+  category?: string
+  description?: string
+  metadata?: Record<string, unknown>
+  visible?: boolean
+  order?: number
+  source?: string
+  isFetched?: boolean
+}
+
+/**
+ * Update parameter input
+ */
+export interface UpdateParameterInput {
+  name?: string
+  type?: ParameterType
+  value?: unknown
+  field?: string
+  header?: string
+  category?: string
+  description?: string
+  metadata?: Record<string, unknown>
+  visible?: boolean
+  order?: number
+  source?: string
+  isFetched?: boolean
+}
+
+/**
+ * Table response from GraphQL
+ */
+export interface TableResponse {
+  id: string
+  name: string
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+  metadata?: string
+  categoryFilters: CategoryFilters
+}
+
+/**
+ * Stored table interface
+ */
+export interface StoredTable extends NamedTableConfig {
+  id: string
+  name: string
+}
+
+/**
+ * Delete parameter response
+ */
+export interface DeleteParameterResponse {
+  deleteParameter: boolean
+}
+
+/**
+ * Add parameter to table response
+ */
+export interface AddParameterToTableResponse {
+  addParameterToTable: {
+    parameter: ParameterResponse
+  }
+}
+
+/**
+ * Remove parameter from table response
+ */
+export interface RemoveParameterFromTableResponse {
+  removeParameterFromTable: {
+    parameter: ParameterResponse
+  }
 }

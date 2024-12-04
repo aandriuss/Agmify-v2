@@ -1,4 +1,8 @@
-import type { ElementData, ParameterValueType, BIMNodeRaw } from '../../types'
+import type {
+  ElementData,
+  ParameterValueType,
+  BIMNodeRaw
+} from '~/composables/core/types'
 import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import { debug, DebugCategories } from '../../debug/useDebug'
 import { getParameterGroup } from '../../config/parameters'

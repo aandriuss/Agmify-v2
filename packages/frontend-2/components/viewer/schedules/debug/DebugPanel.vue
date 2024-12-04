@@ -252,8 +252,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
-import type { TableRow, ElementData } from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
+import type { TableRow, ElementData, ColumnDef } from '~/composables/core/types'
 
 interface Props {
   scheduleData?: ElementData[]

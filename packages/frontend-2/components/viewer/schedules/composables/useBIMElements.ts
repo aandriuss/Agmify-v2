@@ -11,7 +11,7 @@ import type {
   TreeNode,
   DeepBIMNode,
   NodeModel
-} from '../types'
+} from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug/useDebug'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import { defaultColumns } from '../config/defaultColumns'

@@ -1,11 +1,11 @@
 import type {
   TreeItemComponentModel,
-  WorldTreeNode,
+  ViewerTree,
   ElementData,
   ProcessedHeader,
   BIMNodeRaw,
   BIMNodeValue
-} from '../types'
+} from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug/useDebug'
 
 export class ValidationError extends Error {
@@ -69,10 +69,10 @@ export function isValidTreeItemComponentModel(
   return true
 }
 
-export function isValidWorldTreeNode(
+export function isValidViewerTree(
   node: unknown,
   throwError = false
-): node is Required<WorldTreeNode> {
+): node is Required<ViewerTree> {
   if (!node || typeof node !== 'object') {
     if (throwError) {
       throw new ValidationError('Invalid WorldTree: must be an object', { node })
@@ -80,7 +80,7 @@ export function isValidWorldTreeNode(
     return false
   }
 
-  const typedNode = node as WorldTreeNode
+  const typedNode = node as ViewerTree
   if (!typedNode._root) {
     if (throwError) {
       throw new ValidationError('Invalid WorldTree: missing _root property', { node })
@@ -251,7 +251,7 @@ export function validateWorldTreeStructure(tree: unknown): {
   const errors: string[] = []
 
   try {
-    isValidWorldTreeNode(tree, true)
+    isValidViewerTree(tree, true)
   } catch (error) {
     if (error instanceof ValidationError) {
       errors.push(error.message)

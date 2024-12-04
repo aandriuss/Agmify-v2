@@ -1,4 +1,4 @@
-import type { ElementData, CategoryDefinition } from '../../types'
+import type { ElementData, CategoryDefinition } from '~/composables/core/types'
 import type { CategoryHierarchy } from './relations'
 import { buildCategoryHierarchy, getDescendants, getAncestors } from './relations'
 

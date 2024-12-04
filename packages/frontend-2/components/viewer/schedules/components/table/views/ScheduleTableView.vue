@@ -54,8 +54,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import DataTable from '../../../../components/tables/DataTable/index.vue'
-import type { ColumnDef } from '../../../../components/tables/DataTable/composables/columns/types'
-import type { TableConfig, TableRow, ElementData } from '../../../types'
+import type {
+  ColumnDef,
+  TableConfig,
+  TableRow,
+  ElementData
+} from '~/composables/core/types'
 import { useDebug, DebugCategories } from '../../../debug/useDebug'
 import { useStore } from '../../../core/store'
 

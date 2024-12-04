@@ -100,7 +100,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { LayoutDialogButton } from '@speckle/ui-components'
-import type { ParameterFormData } from '../../types'
+import type { ParameterFormData } from '~/composables/core/types'
 
 const props = defineProps<{
   modelValue: ParameterFormData

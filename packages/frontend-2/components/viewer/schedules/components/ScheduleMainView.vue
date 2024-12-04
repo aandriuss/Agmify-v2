@@ -114,11 +114,14 @@
 
 <script setup lang="ts">
 import { ref, type PropType } from 'vue'
-import type { ElementData, TableRow } from '../types'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { TableConfig } from '../types/table'
-import type { CustomParameter } from '~/composables/settings/types/scheduleTypes'
-import type { AvailableHeaders } from '../types/parameters'
+import type {
+  ElementData,
+  TableRow,
+  ColumnDef,
+  TableConfig,
+  CustomParameter,
+  AvailableHeaders
+} from '~/composables/core/types'
 import { ScheduleTableView } from './table'
 import ScheduleDataManagement from './ScheduleDataManagement.vue'
 import ScheduleParameterHandling from './ScheduleParameterHandling.vue'

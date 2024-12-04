@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { StoreState } from '../../types'
+import type { StoreState } from '~/composables/core/types'
 import {
   defaultColumns,
   defaultDetailColumns,

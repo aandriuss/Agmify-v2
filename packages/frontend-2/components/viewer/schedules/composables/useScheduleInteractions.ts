@@ -1,11 +1,14 @@
 import { ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
-import type { TableConfig, ScheduleInitializationInstance } from '../types'
+import type {
+  ColumnDef,
+  TableConfig,
+  ScheduleInitializationInstance,
+  UserSettings
+} from '~/composables/core/types'
 import { useUserSettings } from '~/composables/useUserSettings'
 import { useStore } from '../core/store'
-import type { UserSettings } from '~/composables/settings/types/scheduleTypes'
 
 interface ScheduleInteractionsState {
   selectedTableId: string

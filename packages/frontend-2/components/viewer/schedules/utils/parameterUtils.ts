@@ -3,8 +3,8 @@ import type {
   BIMNodeRaw,
   ElementData,
   ParameterValueState
-} from '../types'
-import { createParameterValueState } from '../types'
+} from '~/composables/core/types'
+import { createParameterValueState } from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug/useDebug'
 
 /**

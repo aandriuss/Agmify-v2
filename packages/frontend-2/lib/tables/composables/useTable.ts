@@ -1,6 +1,6 @@
-import { computed, type Ref } from 'vue'
+import { computed } from 'vue'
 import { useTableRegistry } from '../stores/tableRegistry'
-import type { TableInstanceState, ColumnDef } from '../types'
+import type { TableInstanceState, ColumnDef } from '~/composables/core/types'
 
 export function useTable(
   id: string,

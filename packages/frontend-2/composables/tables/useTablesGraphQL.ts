@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@vue/apollo-composable'
 import { ref } from 'vue'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import { GET_TABLES, UPDATE_TABLES } from '../core/graphql/tables'
-import type { NamedTableConfig } from '../core/types/data'
+import type { NamedTableConfig } from '~/composables/core/types'
 import type {
   UserResponse,
   UserTablesUpdateResponse

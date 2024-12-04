@@ -1,7 +1,10 @@
 import { ref } from 'vue'
 import type { useStore } from '../core/store'
 import { debug, DebugCategories } from '../debug/useDebug'
-import type { TableConfig, ScheduleInitializationInstance } from '../types'
+import type {
+  TableConfig,
+  ScheduleInitializationInstance
+} from '~/composables/core/types'
 
 interface UseScheduleInitializationOptions {
   store: ReturnType<typeof useStore>

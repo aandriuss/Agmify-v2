@@ -1,5 +1,4 @@
-import type { ColumnDef } from './columns/types'
-import type { ParameterDefinition } from '../composables/parameters/parameterManagement'
+import type { ColumnDef, ParameterDefinition } from '~/composables/core/types'
 
 // Core table types
 export interface TableState {

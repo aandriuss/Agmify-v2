@@ -14,8 +14,11 @@
 <script setup lang="ts">
 import { onMounted, watch, computed } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
-import type { NamedTableConfig } from '~/composables/useUserSettings'
-import type { ElementData, TreeItemComponentModel } from '../types'
+import type {
+  NamedTableConfig,
+  ElementData,
+  TreeItemComponentModel
+} from '~/composables/core/types'
 import ScheduleErrorAlert from './ScheduleErrorAlert.vue'
 
 // Props for initialization flow

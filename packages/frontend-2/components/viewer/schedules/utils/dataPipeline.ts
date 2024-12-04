@@ -3,11 +3,11 @@ import type {
   TableRow,
   ParameterValue,
   ParameterValueState,
-  Parameters
-} from '../types'
+  Parameters,
+  ColumnDef
+} from '~/composables/core/types'
 import { useDebug, DebugCategories } from '../debug/useDebug'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
-import type { ColumnDef } from '~/components/viewer/components/tables/DataTable/composables/columns/types'
 import { createColumnsFromParameters, mergeColumns } from './columnUtils'
 
 const debug = useDebug()

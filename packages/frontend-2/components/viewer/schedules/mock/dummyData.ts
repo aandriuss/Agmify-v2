@@ -1,4 +1,4 @@
-import type { TableRow, ParameterValueState } from '../types'
+import type { TableRow, ParameterValueState } from '~/composables/core/types'
 
 // Helper function to create parameter value state
 function createParameterState(
