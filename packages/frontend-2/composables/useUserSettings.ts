@@ -29,7 +29,9 @@ export function useUserSettings() {
     useTableOperations({
       settings: {
         value: {
-          namedTables: tablesState.value.tables
+          get namedTables() {
+            return tablesState.value.tables
+          }
         }
       },
       saveTables,

@@ -17,6 +17,21 @@ export function useTableOperations(options: UseTableOperationsOptions) {
     return `${sanitizedName}_${table.id}`
   }
 
+  function findTableById(id: string): NamedTableConfig | null {
+    const currentTables = settings.value.namedTables || {}
+    const table = Object.values(currentTables).find((t) => t.id === id)
+
+    if (!table) {
+      debug.error(DebugCategories.ERROR, 'Table not found', {
+        searchId: id,
+        availableIds: Object.values(currentTables).map((t) => t.id)
+      })
+      return null
+    }
+
+    return table
+  }
+
   async function updateTable(
     id: string,
     config: Partial<NamedTableConfig>
@@ -26,9 +41,10 @@ export function useTableOperations(options: UseTableOperationsOptions) {
       config
     })
 
-    const currentTables = settings.value.namedTables || {}
-    const existingTable = Object.values(currentTables).find((table) => table.id === id)
+    // Reload settings to ensure we have the latest data
+    await loadTables()
 
+    const existingTable = findTableById(id)
     if (!existingTable) {
       throw new Error('Table not found')
     }
@@ -37,6 +53,8 @@ export function useTableOperations(options: UseTableOperationsOptions) {
       ...existingTable,
       ...config,
       // Ensure required fields are present
+      id: existingTable.id, // Keep the original ID
+      name: config.name || existingTable.name,
       displayName:
         config.displayName || existingTable.displayName || existingTable.name,
       parentColumns: Array.isArray(config.parentColumns)
@@ -52,15 +70,33 @@ export function useTableOperations(options: UseTableOperationsOptions) {
         },
       selectedParameterIds: Array.isArray(config.selectedParameterIds)
         ? config.selectedParameterIds
-        : existingTable.selectedParameterIds || []
+        : existingTable.selectedParameterIds || [],
+      description: config.description || existingTable.description
     }
 
-    // Store with name_id as key
-    const key = formatTableKey(updatedTable)
-    const updatedTables = {
-      ...currentTables,
-      [key]: updatedTable
+    const currentTables = settings.value.namedTables || {}
+
+    // Remove old table entry if name changed
+    const oldKey = formatTableKey(existingTable)
+    const newKey = formatTableKey(updatedTable)
+    const updatedTables = { ...currentTables }
+
+    if (oldKey !== newKey) {
+      delete updatedTables[oldKey]
     }
+    updatedTables[newKey] = updatedTable
+
+    debug.log(DebugCategories.TABLE_UPDATES, 'Saving updated tables', {
+      tableCount: Object.keys(updatedTables).length,
+      updatedTable: {
+        id: updatedTable.id,
+        name: updatedTable.name,
+        oldKey,
+        newKey,
+        parentColumnsCount: updatedTable.parentColumns.length,
+        childColumnsCount: updatedTable.childColumns.length
+      }
+    })
 
     const success = await saveTables(updatedTables)
     if (!success) {
@@ -70,9 +106,17 @@ export function useTableOperations(options: UseTableOperationsOptions) {
     // Refresh tables after successful update
     await loadTables()
 
+    // Re-select the table
+    selectTable(id)
+
     debug.completeState(DebugCategories.TABLE_UPDATES, 'Table update complete', {
       id,
-      updatedTable
+      updatedTable: {
+        id: updatedTable.id,
+        name: updatedTable.name,
+        parentColumnsCount: updatedTable.parentColumns.length,
+        childColumnsCount: updatedTable.childColumns.length
+      }
     })
 
     return updatedTable
@@ -156,6 +200,17 @@ export function useTableOperations(options: UseTableOperationsOptions) {
       [key]: newTable
     }
 
+    debug.log(DebugCategories.TABLE_UPDATES, 'Saving new table', {
+      tableCount: Object.keys(updatedTables).length,
+      newTable: {
+        id: newTable.id,
+        name: newTable.name,
+        key,
+        parentColumnsCount: newTable.parentColumns.length,
+        childColumnsCount: newTable.childColumns.length
+      }
+    })
+
     const success = await saveTables(updatedTables)
     if (!success) {
       throw new Error('Failed to create table')
@@ -167,7 +222,12 @@ export function useTableOperations(options: UseTableOperationsOptions) {
 
     debug.completeState(DebugCategories.TABLE_UPDATES, 'Table creation complete', {
       key,
-      newTable
+      newTable: {
+        id: newTable.id,
+        name: newTable.name,
+        parentColumnsCount: newTable.parentColumns.length,
+        childColumnsCount: newTable.childColumns.length
+      }
     })
 
     return { id: internalId, config: newTable }

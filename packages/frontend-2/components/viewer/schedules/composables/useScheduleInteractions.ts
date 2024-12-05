@@ -36,7 +36,7 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
   })
 
   // Initialize settings and store
-  const { createNamedTable, updateNamedTable, loadSettings, settings, selectTable } =
+  const { createNamedTable, updateTable, loadSettings, settings, selectTable } =
     useUserSettings()
   const store = useStore()
 
@@ -73,8 +73,8 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
   async function updateTablesArray() {
     if (!settings.value?.namedTables) return
 
-    const tables = Object.entries(settings.value.namedTables).map(([id, table]) => ({
-      id,
+    const tables = Object.entries(settings.value.namedTables).map(([_, table]) => ({
+      id: table.id,
       name: table.name
     }))
 
@@ -95,7 +95,7 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
       const currentDetailColumns = state.value.currentDetailColumns || []
 
       // Create table config
-      const tableConfig = {
+      const tableConfig: Partial<NamedTableConfig> = {
         name: trimmedName,
         displayName: trimmedName,
         parentColumns: currentTableColumns,
@@ -107,7 +107,7 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
         selectedParameterIds: []
       }
 
-      let result
+      let savedTable: NamedTableConfig
 
       // Create new table or update existing one
       if (!state.value.selectedTableId) {
@@ -115,54 +115,47 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
           name: trimmedName
         })
 
-        // Initialize empty columns for new table
+        // Initialize empty state
         await store.lifecycle.update({
           selectedTableId: '',
           currentTableId: '',
-          tableName: trimmedName,
-          parentVisibleColumns: [],
-          childVisibleColumns: [],
-          selectedParentCategories: [],
-          selectedChildCategories: []
+          tableName: trimmedName
         })
 
         // Create new table
-        result = await createNamedTable(trimmedName, tableConfig)
+        const result = await createNamedTable(trimmedName, tableConfig)
+        if (!result?.id || !result?.config) {
+          throw new Error('Failed to create table')
+        }
+        savedTable = result.config
+        savedTable.id = result.id
       } else {
         debug.log(DebugCategories.TABLE_UPDATES, 'Updating existing table', {
           id: state.value.selectedTableId,
           name: trimmedName
         })
 
-        // Update existing table
-        result = await updateNamedTable(state.value.selectedTableId, {
-          ...tableConfig,
-          id: state.value.selectedTableId
-        })
-      }
+        // Extract table ID from selectedTableId if it contains a key format
+        const tableId = state.value.selectedTableId.includes('_')
+          ? state.value.selectedTableId.split('_').pop() || state.value.selectedTableId
+          : state.value.selectedTableId
 
-      if (!result?.id || !result?.config) {
-        throw new Error('Failed to save table')
+        // Update existing table
+        savedTable = await updateTable(tableId, {
+          ...tableConfig,
+          id: tableId
+        })
       }
 
       // Update store with table data
       await store.lifecycle.update({
-        selectedTableId: result.id,
-        currentTableId: result.id,
-        tableName: result.config.name,
-        parentVisibleColumns: result.config.parentColumns,
-        childVisibleColumns: result.config.childColumns,
-        selectedParentCategories:
-          result.config.categoryFilters?.selectedParentCategories || [],
-        selectedChildCategories:
-          result.config.categoryFilters?.selectedChildCategories || []
+        selectedTableId: savedTable.id,
+        currentTableId: savedTable.id,
+        tableName: savedTable.name
       })
 
       // Update columns after save
-      await updateCurrentColumns(
-        result.config.parentColumns,
-        result.config.childColumns
-      )
+      await updateCurrentColumns(savedTable.parentColumns, savedTable.childColumns)
 
       // Reload settings to get updated data
       await loadSettings()
@@ -171,13 +164,13 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
       await updateTablesArray()
 
       // Select the table
-      selectTable(result.id)
+      selectTable(savedTable.id)
 
       debug.completeState(DebugCategories.TABLE_UPDATES, 'Table save complete', {
-        id: result.id,
-        name: result.config.name,
-        parentColumnsCount: result.config.parentColumns.length,
-        childColumnsCount: result.config.childColumns.length
+        id: savedTable.id,
+        name: savedTable.name,
+        parentColumnsCount: savedTable.parentColumns.length,
+        childColumnsCount: savedTable.childColumns.length
       })
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to save table')

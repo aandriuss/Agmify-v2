@@ -82,6 +82,11 @@ export function useTablesState() {
             }
             const key = formatTableKey(validatedTable)
             processedTables[key] = validatedTable
+
+            // Re-select table if it was previously selected
+            if (validatedTable.id === selectedTableId.value) {
+              selectTable(validatedTable.id)
+            }
           }
         })
 
@@ -107,14 +112,28 @@ export function useTablesState() {
 
       const tables = await fetchTables()
 
+      // Remember selected table ID
+      const currentSelectedId = selectedTableId.value
+
       // Merge with default table
       state.value.tables = {
         defaultTable,
         ...tables
       }
 
+      // Restore selected table if it still exists
+      if (currentSelectedId) {
+        const tableExists = Object.values(tables).some(
+          (table) => table.id === currentSelectedId
+        )
+        if (tableExists) {
+          selectTable(currentSelectedId)
+        }
+      }
+
       debug.log(DebugCategories.INITIALIZATION, 'Tables loaded', {
-        tablesCount: Object.keys(state.value.tables).length
+        tablesCount: Object.keys(state.value.tables).length,
+        selectedTableId: selectedTableId.value
       })
 
       debug.completeState(DebugCategories.INITIALIZATION, 'Tables loaded successfully')
@@ -144,6 +163,9 @@ export function useTablesState() {
           currentCount: Object.keys(state.value.tables).length,
           newCount: Object.keys(newTables).length
         })
+
+        // Remember selected table ID
+        const currentSelectedId = selectedTableId.value
 
         // Get existing tables from state, excluding default table
         const existingTables = Object.entries(state.value.tables).reduce<
@@ -191,8 +213,16 @@ export function useTablesState() {
             defaultTable,
             ...mergedTables
           }
-          // Refresh tables after successful save
-          await loadTables()
+
+          // Restore selected table if it still exists
+          if (currentSelectedId) {
+            const tableExists = Object.values(mergedTables).some(
+              (table) => table.id === currentSelectedId
+            )
+            if (tableExists) {
+              selectTable(currentSelectedId)
+            }
+          }
         }
 
         debug.completeState(DebugCategories.STATE, 'Tables saved')
@@ -210,20 +240,32 @@ export function useTablesState() {
   }
 
   function selectTable(tableId: string) {
+    debug.log(DebugCategories.STATE, 'Selecting table', { tableId })
     selectedTableId.value = tableId
   }
 
   function deselectTable() {
+    debug.log(DebugCategories.STATE, 'Deselecting table')
     selectedTableId.value = null
   }
 
   function getSelectedTable(): NamedTableConfig | null {
     if (!selectedTableId.value) return null
-    return (
-      Object.values(state.value.tables).find(
-        (table) => table.id === selectedTableId.value
-      ) || null
+
+    // Find table by ID, not by key
+    const selectedTable = Object.values(state.value.tables).find(
+      (table) => table.id === selectedTableId.value
     )
+
+    if (!selectedTable) {
+      debug.warn(DebugCategories.STATE, 'Selected table not found', {
+        selectedId: selectedTableId.value,
+        availableIds: Object.values(state.value.tables).map((t) => t.id)
+      })
+      return null
+    }
+
+    return selectedTable
   }
 
   return {
