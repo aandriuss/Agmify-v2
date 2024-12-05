@@ -45,7 +45,9 @@ function autoloadFromDirectory(dirPath: string) {
       const ext = path.extname(file)
       if (['.js', '.ts'].includes(ext)) {
         const name = camelCase(path.basename(file, ext))
-        results[name] = require(pathToFile)
+        const imported = require(pathToFile)
+        // Handle both default exports and regular exports
+        results[name] = imported.default || imported
       }
     }
   })
@@ -91,7 +93,8 @@ async function getSpeckleModules() {
   const moduleNames = getEnabledModuleNames()
 
   for (const dir of moduleNames) {
-    loadedModules.push(require(`./${dir}`))
+    const imported = require(`./${dir}`)
+    loadedModules.push(imported.default || imported)
   }
 
   return loadedModules
@@ -139,7 +142,7 @@ export const graphDataloadersBuilders = (): RequestDataLoadersBuilder<any>[] => 
     const directivesPath = path.join(fullPath, 'graph', 'dataloaders')
     if (fs.existsSync(directivesPath)) {
       const newLoaders = values(autoloadFromDirectory(directivesPath))
-        .map((l) => l.default)
+        .map((l) => l.default || l)
         .filter(isNonNullable)
 
       dataLoaders = [...dataLoaders, ...newLoaders]
@@ -194,7 +197,7 @@ const graphComponents = (): Pick<ApolloServerOptions<any>, 'resolvers'> & {
         ...reduce(
           values(autoloadFromDirectory(directivesPath)),
           (acc, directivesObj) => {
-            return { ...acc, ...directivesObj }
+            return { ...acc, ...(directivesObj.default || directivesObj) }
           },
           {}
         )
@@ -204,7 +207,7 @@ const graphComponents = (): Pick<ApolloServerOptions<any>, 'resolvers'> & {
 
   const resolvers = { ...scalarResolvers }
   resolverObjs.forEach((o) => {
-    merge(resolvers, o)
+    merge(resolvers, o.default || o)
   })
 
   return { resolvers, typeDefs, directiveBuilders }
@@ -271,7 +274,7 @@ export const moduleMockConfigs = (
     if (fs.existsSync(mocksFolderPath)) {
       // We only take the first mocks.ts file we find (for now)
       const mainConfig = values(autoloadFromDirectory(mocksFolderPath))
-        .map((l) => l.default)
+        .map((l) => l.default || l)
         .filter(isNonNullable)[0]
 
       if (mainConfig && Object.values(mainConfig).length) {

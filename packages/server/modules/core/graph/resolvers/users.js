@@ -8,7 +8,7 @@ const {
 } = require('@/modules/core/services/users')
 const { updateUserAndNotify } = require('@/modules/core/services/users/management')
 const { ActionTypes } = require('@/modules/activitystream/helpers/types')
-const { validateScopes } = require(`@/modules/shared`)
+const { validateScopes } = require('@/modules/shared')
 const zxcvbn = require('zxcvbn')
 const {
   getAdminUsersListCollection,
@@ -27,10 +27,10 @@ const {
 const db = require('@/db/knex')
 const { BadRequestError } = require('@/modules/shared/errors')
 const { saveActivityFactory } = require('@/modules/activitystream/repositories')
-const { getUserSettings, updateUserSettings } = require('@/modules/core/services/users/settings'); 
+const { getUserSettings } = require('@/modules/core/services/users/settings')
 
 /** @type {import('@/modules/core/graph/generated/graphql').Resolvers} */
-module.exports = {
+const resolvers = {
   Query: {
     async _() {
       return `Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn.`
@@ -139,6 +139,26 @@ module.exports = {
       
       // Get settings for the user
       return await getUserSettings(parent.id)
+    },
+    async tables(parent, args, context) {
+      // Check authentication
+      if (!context.userId) throw new Error('User not authenticated')
+      
+      // Get user's tables
+      const user = await db('users')
+        .where({ id: parent.id })
+        .select('tables')
+        .first()
+
+      // Return tables without UUID wrapping
+      if (user?.tables) {
+        const wrappedTables = user.tables
+        const firstKey = Object.keys(wrappedTables)[0]
+        if (firstKey && firstKey.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+          return wrappedTables[firstKey] || {}
+        }
+      }
+      return user?.tables || {}
     }
   },
   
@@ -207,16 +227,20 @@ module.exports = {
       const userId = context.userId;
       if (!userId) throw new Error('User not authenticated');
 
-      const existingSettings = await getUserSettings(userId);
+      await db('users')
+        .where({ id: userId })
+        .update({ usersettings: settings });
 
-      const updatedSettings = {
-        ...existingSettings,  
-        ...settings
-      };
+      return true;
+    },
+
+    async userTablesUpdate(_parent, { tables }, context) {
+      const userId = context.userId;
+      if (!userId) throw new Error('User not authenticated');
 
       await db('users')
         .where({ id: userId })
-        .update({ usersettings: updatedSettings });
+        .update({ tables });
 
       return true;
     },
@@ -233,4 +257,7 @@ module.exports = {
       return newUser
     }
   }
-};
+}
+
+module.exports = resolvers
+

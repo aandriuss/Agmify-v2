@@ -3709,6 +3709,8 @@ export type User = {
   isOnboardingFinished?: Maybe<Scalars['Boolean']['output']>;
   name: Scalars['String']['output'];
   notificationPreferences: Scalars['JSONObject']['output'];
+  /** User parameters configuration */
+  parameters?: Maybe<Scalars['JSONObject']['output']>;
   profiles?: Maybe<Scalars['JSONObject']['output']>;
   /** Get pending project access request, that the user made */
   projectAccessRequest?: Maybe<ProjectAccessRequest>;
@@ -3723,6 +3725,8 @@ export type User = {
    * @deprecated Part of the old API surface and will be removed in the future. Use User.projects instead.
    */
   streams: StreamCollection;
+  /** User tables configuration */
+  tables?: Maybe<Scalars['JSONObject']['output']>;
   /**
    * The user's timeline in chronological order
    * @deprecated Part of the old API surface and will be removed in the future.
@@ -3733,12 +3737,8 @@ export type User = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   totalOwnedStreamsFavorites: Scalars['Int']['output'];
-  /** User parameters configuration */
-  userParameters?: Maybe<Scalars['JSONObject']['output']>;
   /** User settings - contains only controlWidth */
   userSettings?: Maybe<Scalars['JSONObject']['output']>;
-  /** User tables configuration */
-  userTables?: Maybe<Scalars['JSONObject']['output']>;
   verified?: Maybe<Scalars['Boolean']['output']>;
   /**
    * Get (count of) user's versions. By default gets all versions of all projects the user has access to.
@@ -6340,17 +6340,17 @@ export type UserResolvers<ContextType = GraphQLContext, ParentType extends Resol
   isOnboardingFinished?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   notificationPreferences?: Resolver<ResolversTypes['JSONObject'], ParentType, ContextType>;
+  parameters?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   profiles?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   projectAccessRequest?: Resolver<Maybe<ResolversTypes['ProjectAccessRequest']>, ParentType, ContextType, RequireFields<UserProjectAccessRequestArgs, 'projectId'>>;
   projectInvites?: Resolver<Array<ResolversTypes['PendingStreamCollaborator']>, ParentType, ContextType>;
   projects?: Resolver<ResolversTypes['ProjectCollection'], ParentType, ContextType, RequireFields<UserProjectsArgs, 'limit'>>;
   role?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   streams?: Resolver<ResolversTypes['StreamCollection'], ParentType, ContextType, RequireFields<UserStreamsArgs, 'limit'>>;
+  tables?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   timeline?: Resolver<Maybe<ResolversTypes['ActivityCollection']>, ParentType, ContextType, RequireFields<UserTimelineArgs, 'limit'>>;
   totalOwnedStreamsFavorites?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
-  userParameters?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   userSettings?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
-  userTables?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   verified?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   versions?: Resolver<ResolversTypes['CountOnlyCollection'], ParentType, ContextType, RequireFields<UserVersionsArgs, 'authoredOnly' | 'limit'>>;
   workspaceInvites?: Resolver<Array<ResolversTypes['PendingWorkspaceCollaborator']>, ParentType, ContextType>;

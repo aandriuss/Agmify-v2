@@ -3694,6 +3694,8 @@ export type User = {
   isOnboardingFinished?: Maybe<Scalars['Boolean']['output']>;
   name: Scalars['String']['output'];
   notificationPreferences: Scalars['JSONObject']['output'];
+  /** User parameters configuration */
+  parameters?: Maybe<Scalars['JSONObject']['output']>;
   profiles?: Maybe<Scalars['JSONObject']['output']>;
   /** Get pending project access request, that the user made */
   projectAccessRequest?: Maybe<ProjectAccessRequest>;
@@ -3708,6 +3710,8 @@ export type User = {
    * @deprecated Part of the old API surface and will be removed in the future. Use User.projects instead.
    */
   streams: StreamCollection;
+  /** User tables configuration */
+  tables?: Maybe<Scalars['JSONObject']['output']>;
   /**
    * The user's timeline in chronological order
    * @deprecated Part of the old API surface and will be removed in the future.
@@ -3718,12 +3722,8 @@ export type User = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   totalOwnedStreamsFavorites: Scalars['Int']['output'];
-  /** User parameters configuration */
-  userParameters?: Maybe<Scalars['JSONObject']['output']>;
   /** User settings - contains only controlWidth */
   userSettings?: Maybe<Scalars['JSONObject']['output']>;
-  /** User tables configuration */
-  userTables?: Maybe<Scalars['JSONObject']['output']>;
   verified?: Maybe<Scalars['Boolean']['output']>;
   /**
    * Get (count of) user's versions. By default gets all versions of all projects the user has access to.

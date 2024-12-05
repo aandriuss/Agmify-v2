@@ -1,5 +1,9 @@
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import type { CustomParameter, UserSettings } from '~/composables/core/types'
+import type {
+  CustomParameter,
+  UserSettings,
+  NamedTableConfig
+} from '~/composables/core/types'
 
 interface UseParameterOperationsOptions {
   settings: { value: UserSettings }
@@ -9,9 +13,7 @@ interface UseParameterOperationsOptions {
 export function useParameterOperations(options: UseParameterOperationsOptions) {
   const { settings, saveSettings } = options
 
-  async function saveParameterUpdates(
-    updatedParameters: Record<string, CustomParameter>
-  ) {
+  async function saveParameterUpdates(updatedParameters: CustomParameter[]) {
     const updatedSettings = {
       ...settings.value,
       customParameters: updatedParameters
@@ -32,7 +34,7 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
       parameter
     })
 
-    const currentParameters = settings.value.customParameters || {}
+    const currentParameters = settings.value.customParameters || []
     const newId = `param-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
     const newParameter: CustomParameter = {
@@ -40,10 +42,7 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
       id: newId
     }
 
-    const updatedParameters = {
-      ...currentParameters,
-      [newId]: newParameter
-    }
+    const updatedParameters = [...currentParameters, newParameter]
 
     await saveParameterUpdates(updatedParameters)
 
@@ -63,22 +62,20 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
       updates
     })
 
-    const currentParameters = settings.value.customParameters || {}
-    const existingParameter = currentParameters[parameterId]
+    const currentParameters = settings.value.customParameters || []
+    const parameterIndex = currentParameters.findIndex((p) => p.id === parameterId)
 
-    if (!existingParameter) {
+    if (parameterIndex === -1) {
       throw new Error('Parameter not found')
     }
 
     const updatedParameter = {
-      ...existingParameter,
+      ...currentParameters[parameterIndex],
       ...updates
     }
 
-    const updatedParameters = {
-      ...currentParameters,
-      [parameterId]: updatedParameter
-    }
+    const updatedParameters = [...currentParameters]
+    updatedParameters[parameterIndex] = updatedParameter
 
     await saveParameterUpdates(updatedParameters)
 
@@ -94,11 +91,14 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
       parameterId
     })
 
-    const currentParameters = settings.value.customParameters || {}
-    const { [parameterId]: removed, ...updatedParameters } = currentParameters
+    const currentParameters = settings.value.customParameters || []
+    const updatedParameters = currentParameters.filter((p) => p.id !== parameterId)
 
     // Remove parameter reference from all tables
-    const updatedTables = Object.entries(settings.value.namedTables).reduce(
+    const currentTables = settings.value.namedTables || {}
+    const updatedTables = Object.entries(currentTables).reduce<
+      Record<string, NamedTableConfig>
+    >(
       (acc, [tableId, table]) => ({
         ...acc,
         [tableId]: {
@@ -132,7 +132,8 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
     tableId: string,
     parameterId: string
   ): Promise<void> {
-    const currentTable = settings.value.namedTables[tableId]
+    const currentTables = settings.value.namedTables || {}
+    const currentTable = currentTables[tableId]
     if (!currentTable) {
       throw new Error('Table not found')
     }
@@ -150,7 +151,7 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
     const updatedSettings = {
       ...settings.value,
       namedTables: {
-        ...settings.value.namedTables,
+        ...currentTables,
         [tableId]: updatedTable
       }
     }
@@ -162,7 +163,8 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
     tableId: string,
     parameterId: string
   ): Promise<void> {
-    const currentTable = settings.value.namedTables[tableId]
+    const currentTables = settings.value.namedTables || {}
+    const currentTable = currentTables[tableId]
     if (!currentTable) {
       throw new Error('Table not found')
     }
@@ -177,7 +179,7 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
     const updatedSettings = {
       ...settings.value,
       namedTables: {
-        ...settings.value.namedTables,
+        ...currentTables,
         [tableId]: updatedTable
       }
     }
@@ -187,11 +189,13 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
 
   // Helper to get parameters for a table
   function getTableParameters(tableId: string): CustomParameter[] {
-    const table = settings.value.namedTables[tableId]
+    const currentTables = settings.value.namedTables || {}
+    const table = currentTables[tableId]
     if (!table) return []
 
+    const currentParameters = settings.value.customParameters || []
     return (table.selectedParameterIds || [])
-      .map((id) => settings.value.customParameters[id])
+      .map((id) => currentParameters.find((p) => p.id === id))
       .filter((param): param is CustomParameter => !!param)
   }
 
