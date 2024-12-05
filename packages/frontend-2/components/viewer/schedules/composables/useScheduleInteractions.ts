@@ -115,14 +115,7 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
           name: trimmedName
         })
 
-        // Initialize empty state
-        await store.lifecycle.update({
-          selectedTableId: '',
-          currentTableId: '',
-          tableName: trimmedName
-        })
-
-        // Create new table
+        // Create new table with current settings
         const result = await createNamedTable(trimmedName, tableConfig)
         if (!result?.id || !result?.config) {
           throw new Error('Failed to create table')
@@ -203,7 +196,17 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
         newName: newState.tableName,
         state: newState
       })
-      state.value = { ...newState }
+
+      // If switching to create new table (selectedTableId is empty)
+      // Keep current settings but update the name to "New table"
+      if (!newState.selectedTableId && state.value.selectedTableId) {
+        state.value = {
+          ...newState,
+          tableName: 'New Table'
+        }
+      } else {
+        state.value = { ...newState }
+      }
     },
     { deep: true, immediate: true }
   )

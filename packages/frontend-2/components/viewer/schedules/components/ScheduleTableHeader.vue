@@ -14,7 +14,13 @@
             {{ table.name }}
           </option>
         </select>
-        <FormButton text size="sm" color="subtle" @click="startEditing">
+        <FormButton
+          v-if="selectedTableId"
+          text
+          size="sm"
+          color="subtle"
+          @click="startEditing"
+        >
           <PencilIcon class="size-4" />
         </FormButton>
         <FormButton
@@ -86,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -204,9 +210,31 @@ function cancelEdit() {
 
 async function handleTableChange(event: Event) {
   const target = event.target as HTMLSelectElement
-  emit('update:selectedTableId', target.value)
+  const newValue = target.value
+
+  // Update selected table ID
+  emit('update:selectedTableId', newValue)
+
   // Wait for the selectedTableId to be updated before emitting table-change
   await nextTick()
   emit('table-change')
+
+  // If creating new table, start editing mode
+  if (!newValue) {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table, starting edit mode')
+    await nextTick() // Wait for state updates
+    startEditing()
+  }
 }
+
+// Watch for table name changes to start editing when creating new table
+watch(
+  () => props.tableName,
+  (newName) => {
+    if (newName === 'New Table' && !isEditing.value) {
+      editingName.value = newName
+      startEditing()
+    }
+  }
+)
 </script>

@@ -252,7 +252,30 @@ async function applyTableSettings(tableId: string) {
 
     const tableSettings = settings.value?.namedTables?.[tableId]
 
-    if (tableSettings) {
+    if (tableId === '') {
+      // Creating new table - keep current settings
+      debug.log(
+        DebugCategories.INITIALIZATION,
+        'Creating new table, keeping current settings'
+      )
+      await store.lifecycle.update({
+        selectedTableId: '',
+        currentTableId: '',
+        tableName: 'New Table',
+        // Keep current columns
+        parentBaseColumns: store.parentVisibleColumns.value || [],
+        childBaseColumns: store.childVisibleColumns.value || [],
+        parentVisibleColumns: store.parentVisibleColumns.value || [],
+        childVisibleColumns: store.childVisibleColumns.value || []
+      })
+
+      // Keep current categories
+      await categories.loadCategories(
+        categories.selectedParentCategories.value,
+        categories.selectedChildCategories.value
+      )
+    } else if (tableSettings) {
+      // Loading existing table
       await store.lifecycle.update({
         selectedTableId: tableId,
         currentTableId: tableId,
@@ -269,6 +292,7 @@ async function applyTableSettings(tableId: string) {
         tableSettings.categoryFilters?.selectedChildCategories || []
       )
     } else {
+      // Fallback to default settings
       await store.lifecycle.update({
         selectedTableId: tableId,
         currentTableId: tableId,
