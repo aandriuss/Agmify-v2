@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import type { ParameterDefinition } from '../parameters'
+import type { ParameterDefinition, CustomParameter } from '../parameters'
 
 /**
  * Sort by field type
@@ -83,6 +83,7 @@ export interface TableConfig {
 export interface NamedTableConfig extends TableConfig {
   displayName: string
   description?: string
+  customParameters?: CustomParameter[]
 }
 
 /**

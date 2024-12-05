@@ -90,10 +90,17 @@ import { useScheduleInteractions } from './composables/useScheduleInteractions'
 import { useScheduleInitialization } from './composables/useScheduleInitialization'
 import { useScheduleCategories } from './composables/useScheduleCategories'
 import { useUserSettings } from '~/composables/useUserSettings'
-import type { ElementData, TableRow, ColumnDef } from '~/composables/core/types'
+import type {
+  ElementData,
+  TableRow,
+  ColumnDef,
+  NamedTableConfig,
+  StoreState
+} from '~/composables/core/types'
 import ScheduleLayout from './components/ScheduleLayout.vue'
 import ScheduleLoadingState from './components/ScheduleLoadingState.vue'
 import ScheduleMainView from './components/ScheduleMainView.vue'
+import { useTablesState } from '~/composables/settings/tables/useTablesState'
 
 // Define emits
 const emit = defineEmits<{
@@ -110,22 +117,26 @@ const isTestMode = ref(false)
 // Initialize refs
 const error = ref<Error | null>(null)
 
+// Initialize core composables
+const store = useStore()
+const { settings, loadSettings } = useUserSettings()
+const tablesState = useTablesState()
+
+// Initialize categories after store
 const categories = useScheduleCategories({
   initialState: {
     selectedParentCategories: defaultTable.categoryFilters.selectedParentCategories,
     selectedChildCategories: defaultTable.categoryFilters.selectedChildCategories
   },
   onUpdate: async (state) => {
-    await store.lifecycle.update({
-      selectedParentCategories: state.selectedParentCategories,
-      selectedChildCategories: state.selectedChildCategories
-    })
+    if (store.lifecycle) {
+      await store.lifecycle.update({
+        selectedParentCategories: state.selectedParentCategories,
+        selectedChildCategories: state.selectedChildCategories
+      } as Partial<StoreState>)
+    }
   }
 })
-
-// Initialize core composables
-const store = useStore()
-const { settings, loadSettings } = useUserSettings()
 
 const { initComponent } = useScheduleInitialization({
   store,
@@ -138,18 +149,24 @@ const { initComponent } = useScheduleInitialization({
 // Initialize interactions with proper initialization component
 const interactions = useScheduleInteractions({
   state: {
-    selectedTableId: store.selectedTableId.value || '',
-    tableName: store.tableName.value || '',
+    selectedTableId: '',
+    tableName: '',
     currentTable: null,
     selectedParentCategories: categories.selectedParentCategories.value,
     selectedChildCategories: categories.selectedChildCategories.value,
-    currentTableColumns: store.parentVisibleColumns.value || [],
-    currentDetailColumns: store.childVisibleColumns.value || []
+    currentTableColumns: [],
+    currentDetailColumns: []
   },
   initComponent,
   updateCurrentColumns: async (parentColumns, childColumns) => {
-    await store.setColumns(parentColumns, childColumns, 'available')
-    await store.setColumns(parentColumns, childColumns, 'visible')
+    if (store.lifecycle) {
+      await store.lifecycle.update({
+        currentTableColumns: parentColumns,
+        currentDetailColumns: childColumns,
+        mergedTableColumns: parentColumns,
+        mergedDetailColumns: childColumns
+      } as Partial<StoreState>)
+    }
   },
   handleError: (err: unknown) => {
     const error = err instanceof Error ? err : new Error('Unknown error occurred')
@@ -181,54 +198,68 @@ const isLoading = computed(() => {
   // If we have table data, don't show loading
   if (store.tableData.value?.length > 0) return false
   // If we're still processing elements, show loading
-  if (elementsData.processingState.value?.isProcessingElements) return true
+  if (elementsData.processingState?.isProcessingElements) return true
   // Otherwise show loading
   return true
 })
 
-const isInitialized = computed(() => store.initialized.value)
+const isInitialized = computed(() => store.initialized.value ?? false)
 
 const isUpdating = computed(() => {
-  const state = elementsData.processingState.value
-  return state?.isProcessingElements || false
+  return elementsData.processingState?.isProcessingElements ?? false
 })
 
 const hasSelectedCategories = computed(() => categories.hasSelectedCategories.value)
 
 const hasChanges = computed(() => {
-  // Get the current table settings from settings
+  // Get the current table settings from tables state
   const currentTableId = store.selectedTableId.value
-  const currentSettings = settings.value?.namedTables?.[currentTableId]
-
-  if (!currentTableId || !currentSettings) {
-    // If we're creating a new table or no settings exist, check if we have any data
+  if (!currentTableId) {
+    // For new table, check if we have any changes from default state
     return !!(
-      store.tableName.value ||
-      categories.selectedParentCategories.value.length > 0 ||
-      categories.selectedChildCategories.value.length > 0 ||
-      store.parentVisibleColumns.value?.length > 0 ||
-      store.childVisibleColumns.value?.length > 0
+      store.tableName.value !== 'New Table' || // Name has been changed from default
+      categories.selectedParentCategories.value?.length > 0 ||
+      categories.selectedChildCategories.value?.length > 0 ||
+      store.currentTableColumns.value?.length > 0 ||
+      store.currentDetailColumns.value?.length > 0
     )
   }
 
-  // Compare current state with saved settings
+  // Find current table by ID
+  const currentTable = Object.values(tablesState.state.value.tables).find(
+    (table): table is NamedTableConfig => 'id' in table && table.id === currentTableId
+  )
+  if (!currentTable) return false
+
+  // Find original table by ID
+  const originalTable = Object.values(tablesState.originalTables.value).find(
+    (table): table is NamedTableConfig => 'id' in table && table.id === currentTableId
+  )
+
+  // If no original table exists, this is a new table
+  if (!originalTable || !('categoryFilters' in originalTable)) return true
+
+  // Compare current state with original state
   return (
     // Check table name changes
-    currentSettings.name !== store.tableName.value ||
+    currentTable.name !== originalTable.name ||
     // Check category changes
     !isEqual(
-      currentSettings.categoryFilters?.selectedParentCategories || [],
-      categories.selectedParentCategories.value
+      currentTable.categoryFilters?.selectedParentCategories || [],
+      originalTable.categoryFilters?.selectedParentCategories || []
     ) ||
     !isEqual(
-      currentSettings.categoryFilters?.selectedChildCategories || [],
-      categories.selectedChildCategories.value
+      currentTable.categoryFilters?.selectedChildCategories || [],
+      originalTable.categoryFilters?.selectedChildCategories || []
     ) ||
     // Check column changes
-    !isEqual(currentSettings.parentColumns || [], store.parentVisibleColumns.value) ||
-    !isEqual(currentSettings.childColumns || [], store.childVisibleColumns.value) ||
-    // Check custom parameters changes
-    !isEqual(currentSettings.customParameters || [], store.customParameters.value)
+    !isEqual(currentTable.parentColumns || [], originalTable.parentColumns || []) ||
+    !isEqual(currentTable.childColumns || [], originalTable.childColumns || []) ||
+    // Check parameter changes
+    !isEqual(
+      currentTable.selectedParameterIds || [],
+      originalTable.selectedParameterIds || []
+    )
   )
 })
 
@@ -250,7 +281,13 @@ async function applyTableSettings(tableId: string) {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Applying table settings')
 
-    const tableSettings = settings.value?.namedTables?.[tableId]
+    // Find table settings by ID
+    const tableSettings = settings.value?.namedTables
+      ? Object.values(settings.value.namedTables).find(
+          (table) =>
+            table && typeof table === 'object' && 'id' in table && table.id === tableId
+        )
+      : null
 
     if (tableId === '') {
       // Creating new table - keep current settings
@@ -262,17 +299,16 @@ async function applyTableSettings(tableId: string) {
         selectedTableId: '',
         currentTableId: '',
         tableName: 'New Table',
-        // Keep current columns
-        parentBaseColumns: store.parentVisibleColumns.value || [],
-        childBaseColumns: store.childVisibleColumns.value || [],
-        parentVisibleColumns: store.parentVisibleColumns.value || [],
-        childVisibleColumns: store.childVisibleColumns.value || []
-      })
+        currentTableColumns: store.currentTableColumns?.value || [],
+        currentDetailColumns: store.currentDetailColumns?.value || [],
+        mergedTableColumns: store.currentTableColumns?.value || [],
+        mergedDetailColumns: store.currentDetailColumns?.value || []
+      } as Partial<StoreState>)
 
       // Keep current categories
       await categories.loadCategories(
-        categories.selectedParentCategories.value,
-        categories.selectedChildCategories.value
+        categories.selectedParentCategories.value || [],
+        categories.selectedChildCategories.value || []
       )
     } else if (tableSettings) {
       // Loading existing table
@@ -280,11 +316,11 @@ async function applyTableSettings(tableId: string) {
         selectedTableId: tableId,
         currentTableId: tableId,
         tableName: tableSettings.name,
-        parentBaseColumns: tableSettings.parentColumns || [],
-        childBaseColumns: tableSettings.childColumns || [],
-        parentVisibleColumns: tableSettings.parentColumns || [],
-        childVisibleColumns: tableSettings.childColumns || []
-      })
+        currentTableColumns: tableSettings.parentColumns || [],
+        currentDetailColumns: tableSettings.childColumns || [],
+        mergedTableColumns: tableSettings.parentColumns || [],
+        mergedDetailColumns: tableSettings.childColumns || []
+      } as Partial<StoreState>)
 
       // Update categories using new composable
       await categories.loadCategories(
@@ -297,16 +333,16 @@ async function applyTableSettings(tableId: string) {
         selectedTableId: tableId,
         currentTableId: tableId,
         tableName: 'Default Table',
-        parentBaseColumns: defaultTable.parentColumns,
-        childBaseColumns: defaultTable.childColumns,
-        parentVisibleColumns: defaultTable.parentColumns,
-        childVisibleColumns: defaultTable.childColumns
-      })
+        currentTableColumns: defaultTable.parentColumns || [],
+        currentDetailColumns: defaultTable.childColumns || [],
+        mergedTableColumns: defaultTable.parentColumns || [],
+        mergedDetailColumns: defaultTable.childColumns || []
+      } as Partial<StoreState>)
 
       // Load default categories
       await categories.loadCategories(
-        defaultTable.categoryFilters.selectedParentCategories,
-        defaultTable.categoryFilters.selectedChildCategories
+        defaultTable.categoryFilters.selectedParentCategories || [],
+        defaultTable.categoryFilters.selectedChildCategories || []
       )
     }
   } catch (error) {
@@ -316,45 +352,45 @@ async function applyTableSettings(tableId: string) {
 }
 
 // Computed properties for available headers with required ColumnDef properties
-const availableParentHeaders = computed(
-  () =>
-    store.parentAvailableColumns.value?.map((col) => ({
-      ...col,
-      type: col.type || 'string',
-      source: col.source || 'Parameters',
-      category: col.category || 'Uncategorized',
-      description: col.description || '',
-      visible: col.visible ?? true,
-      removable: col.removable ?? true,
-      order: col.order ?? 0
-    })) || []
-)
+const availableParentHeaders = computed<ColumnDef[]>(() => {
+  const columns = store.currentTableColumns?.value || []
+  return columns.map((col) => ({
+    ...col,
+    type: col.type || 'string',
+    source: col.source || 'Parameters',
+    category: col.category || 'Uncategorized',
+    description: col.description || '',
+    visible: col.visible ?? true,
+    removable: col.removable ?? true,
+    order: col.order ?? 0
+  }))
+})
 
-const availableChildHeaders = computed(
-  () =>
-    store.childAvailableColumns.value?.map((col) => ({
-      ...col,
-      type: col.type || 'string',
-      source: col.source || 'Parameters',
-      category: col.category || 'Uncategorized',
-      description: col.description || '',
-      visible: col.visible ?? true,
-      removable: col.removable ?? true,
-      order: col.order ?? 0
-    })) || []
-)
+const availableChildHeaders = computed<ColumnDef[]>(() => {
+  const columns = store.currentDetailColumns?.value || []
+  return columns.map((col) => ({
+    ...col,
+    type: col.type || 'string',
+    source: col.source || 'Parameters',
+    category: col.category || 'Uncategorized',
+    description: col.description || '',
+    visible: col.visible ?? true,
+    removable: col.removable ?? true,
+    order: col.order ?? 0
+  }))
+})
 
 // Computed properties for relationship data
 const parentElements = computed(() => {
-  return (store.scheduleData.value || []).filter((el): el is ElementData => {
-    return !el.isChild
-  })
+  return (store.scheduleData.value || []).filter(
+    (el): el is ElementData => el.isChild === false
+  )
 })
 
 const childElements = computed(() => {
-  return (store.scheduleData.value || []).filter((el): el is ElementData => {
-    return !!el.isChild
-  })
+  return (store.scheduleData.value || []).filter(
+    (el): el is ElementData => el.isChild === true
+  )
 })
 
 // Handler functions
@@ -422,12 +458,12 @@ async function handleSelectedTableIdUpdate(value: string) {
 // Watch for store changes to update interactions state
 watch(
   [
-    () => store.selectedTableId.value,
-    () => store.tableName.value,
-    () => store.parentVisibleColumns.value,
-    () => store.childVisibleColumns.value,
-    () => categories.selectedParentCategories.value,
-    () => categories.selectedChildCategories.value
+    () => store.selectedTableId?.value,
+    () => store.tableName?.value,
+    () => store.currentTableColumns?.value,
+    () => store.currentDetailColumns?.value,
+    () => categories.selectedParentCategories?.value,
+    () => categories.selectedChildCategories?.value
   ],
   ([
     selectedTableId,
@@ -437,6 +473,8 @@ watch(
     parentCategories,
     childCategories
   ]) => {
+    if (!store.initialized.value) return
+
     debug.log(DebugCategories.STATE, 'Store state changed, updating interactions', {
       selectedTableId,
       tableName,
@@ -453,8 +491,8 @@ watch(
       selectedTableId: selectedTableId || '',
       tableName: newTableName,
       currentTable: null,
-      selectedParentCategories: parentCategories,
-      selectedChildCategories: childCategories,
+      selectedParentCategories: parentCategories || [],
+      selectedChildCategories: childCategories || [],
       currentTableColumns: parentColumns || [],
       currentDetailColumns: childColumns || []
     }
@@ -532,10 +570,7 @@ async function handleParameterUpdate() {
     // Update store with custom parameters
     await store.lifecycle.update({
       customParameters: customParams
-    })
-
-    // Don't close modal - remove this line
-    // showParameterManager.value = false
+    } as Partial<StoreState>)
 
     debug.completeState(DebugCategories.PARAMETERS, 'Parameters updated', {
       parameterCount: customParams.length,
@@ -625,7 +660,7 @@ onMounted(async () => {
 
     await store.lifecycle.update({
       tablesArray: tables
-    })
+    } as Partial<StoreState>)
 
     // Get default table ID
     const defaultTableId = tables.length > 0 ? tables[0].id : 'default'

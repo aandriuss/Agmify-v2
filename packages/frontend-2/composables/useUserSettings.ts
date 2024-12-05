@@ -1,5 +1,6 @@
 import { useUserSettingsState } from './settings/userSettings'
 import { useTablesState, useTableOperations } from './settings/tables'
+import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 export function useUserSettings() {
   // User settings (controlWidth)
@@ -30,13 +31,12 @@ export function useUserSettings() {
       settings: {
         value: {
           get namedTables() {
-            return tablesState.value.tables
+            return tablesState.value.tables || {}
           }
         }
       },
       saveTables,
-      selectTable,
-      loadTables
+      selectTable
     })
 
   // Combined loading and error states
@@ -48,7 +48,7 @@ export function useUserSettings() {
     get value() {
       return {
         controlWidth: userSettingsState.value.controlWidth,
-        namedTables: tablesState.value.tables,
+        namedTables: tablesState.value.tables || {},
         customParameters: [] // Parameters will be handled separately
       }
     }
@@ -56,7 +56,23 @@ export function useUserSettings() {
 
   // Load all settings
   async function loadSettings(): Promise<void> {
-    await Promise.all([loadControlWidth(), loadTables()])
+    try {
+      debug.startState(DebugCategories.INITIALIZATION, 'Loading settings')
+
+      // Load control width first
+      await loadControlWidth()
+
+      // Then load tables
+      await loadTables()
+
+      debug.completeState(
+        DebugCategories.INITIALIZATION,
+        'Settings loaded successfully'
+      )
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to load settings', err)
+      throw err instanceof Error ? err : new Error('Failed to load settings')
+    }
   }
 
   return {

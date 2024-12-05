@@ -111,6 +111,12 @@ export interface StoreState {
   currentDetailColumns: ColumnDef[]
   mergedTableColumns: ColumnDef[]
   mergedDetailColumns: ColumnDef[]
+  parentBaseColumns: ColumnDef[]
+  parentAvailableColumns: ColumnDef[]
+  parentVisibleColumns: ColumnDef[]
+  childBaseColumns: ColumnDef[]
+  childAvailableColumns: ColumnDef[]
+  childVisibleColumns: ColumnDef[]
 
   // Headers
   availableHeaders: AvailableHeaders
@@ -232,6 +238,12 @@ export interface Store {
   initialized: ComputedRef<boolean>
   loading: ComputedRef<boolean>
   error: ComputedRef<Error | null>
+  parentBaseColumns: ComputedRef<ColumnDef[]>
+  parentAvailableColumns: ComputedRef<ColumnDef[]>
+  parentVisibleColumns: ComputedRef<ColumnDef[]>
+  childBaseColumns: ComputedRef<ColumnDef[]>
+  childAvailableColumns: ComputedRef<ColumnDef[]>
+  childVisibleColumns: ComputedRef<ColumnDef[]>
 
   // Mutations
   setProjectId: (id: string | null) => void

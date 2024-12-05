@@ -5,11 +5,10 @@ interface UseTableOperationsOptions {
   settings: { value: { namedTables?: Record<string, NamedTableConfig> } }
   saveTables: (tables: Record<string, NamedTableConfig>) => Promise<boolean>
   selectTable: (tableId: string) => void
-  loadTables: () => Promise<void>
 }
 
 export function useTableOperations(options: UseTableOperationsOptions) {
-  const { settings, saveTables, selectTable, loadTables } = options
+  const { settings, saveTables, selectTable } = options
 
   function formatTableKey(table: NamedTableConfig): string {
     // Create a key in format name_id
@@ -19,17 +18,24 @@ export function useTableOperations(options: UseTableOperationsOptions) {
 
   function findTableById(id: string): NamedTableConfig | null {
     const currentTables = settings.value.namedTables || {}
+    // First try to find by direct ID
     const table = Object.values(currentTables).find((t) => t.id === id)
+    if (table) return table
 
-    if (!table) {
-      debug.error(DebugCategories.ERROR, 'Table not found', {
-        searchId: id,
-        availableIds: Object.values(currentTables).map((t) => t.id)
-      })
-      return null
+    // If not found, try to extract ID from name_id format
+    const idFromKey = id.split('_').pop()
+    if (idFromKey) {
+      const tableByExtractedId = Object.values(currentTables).find(
+        (t) => t.id === idFromKey
+      )
+      if (tableByExtractedId) return tableByExtractedId
     }
 
-    return table
+    debug.error(DebugCategories.ERROR, 'Table not found', {
+      searchId: id,
+      availableIds: Object.values(currentTables).map((t) => t.id)
+    })
+    return null
   }
 
   async function updateTable(
@@ -40,9 +46,6 @@ export function useTableOperations(options: UseTableOperationsOptions) {
       id,
       config
     })
-
-    // Reload settings to ensure we have the latest data
-    await loadTables()
 
     const existingTable = findTableById(id)
     if (!existingTable) {
@@ -98,28 +101,30 @@ export function useTableOperations(options: UseTableOperationsOptions) {
       }
     })
 
-    const success = await saveTables(updatedTables)
-    if (!success) {
-      throw new Error('Failed to update table')
-    }
-
-    // Refresh tables after successful update
-    await loadTables()
-
-    // Re-select the table
-    selectTable(id)
-
-    debug.completeState(DebugCategories.TABLE_UPDATES, 'Table update complete', {
-      id,
-      updatedTable: {
-        id: updatedTable.id,
-        name: updatedTable.name,
-        parentColumnsCount: updatedTable.parentColumns.length,
-        childColumnsCount: updatedTable.childColumns.length
+    try {
+      const success = await saveTables(updatedTables)
+      if (!success) {
+        throw new Error('Failed to update table')
       }
-    })
 
-    return updatedTable
+      // Re-select the table using the original ID
+      selectTable(existingTable.id)
+
+      debug.completeState(DebugCategories.TABLE_UPDATES, 'Table update complete', {
+        id,
+        updatedTable: {
+          id: updatedTable.id,
+          name: updatedTable.name,
+          parentColumnsCount: updatedTable.parentColumns.length,
+          childColumnsCount: updatedTable.childColumns.length
+        }
+      })
+
+      return updatedTable
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to update table', err)
+      throw err instanceof Error ? err : new Error('Failed to update table')
+    }
   }
 
   async function updateTableCategories(
@@ -211,26 +216,30 @@ export function useTableOperations(options: UseTableOperationsOptions) {
       }
     })
 
-    const success = await saveTables(updatedTables)
-    if (!success) {
-      throw new Error('Failed to create table')
-    }
-
-    // Refresh tables and select the new table
-    await loadTables()
-    selectTable(internalId)
-
-    debug.completeState(DebugCategories.TABLE_UPDATES, 'Table creation complete', {
-      key,
-      newTable: {
-        id: newTable.id,
-        name: newTable.name,
-        parentColumnsCount: newTable.parentColumns.length,
-        childColumnsCount: newTable.childColumns.length
+    try {
+      const success = await saveTables(updatedTables)
+      if (!success) {
+        throw new Error('Failed to create table')
       }
-    })
 
-    return { id: internalId, config: newTable }
+      // Select the new table using the internal ID
+      selectTable(internalId)
+
+      debug.completeState(DebugCategories.TABLE_UPDATES, 'Table creation complete', {
+        key,
+        newTable: {
+          id: newTable.id,
+          name: newTable.name,
+          parentColumnsCount: newTable.parentColumns.length,
+          childColumnsCount: newTable.childColumns.length
+        }
+      })
+
+      return { id: internalId, config: newTable }
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to create table', err)
+      throw err instanceof Error ? err : new Error('Failed to create table')
+    }
   }
 
   return {

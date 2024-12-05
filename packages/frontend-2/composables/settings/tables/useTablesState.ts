@@ -2,8 +2,26 @@ import { ref, watch } from 'vue'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import { useTablesGraphQL } from './useTablesGraphQL'
 import { useUpdateQueue } from '../useUpdateQueue'
-import type { NamedTableConfig, TablesState } from '~/composables/core/types'
+import type { NamedTableConfig, TablesState, ColumnDef } from '~/composables/core/types'
 import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
+
+type RawTable = {
+  id: string
+  name: string
+  displayName?: string
+  parentColumns?: ColumnDef[]
+  childColumns?: ColumnDef[]
+  categoryFilters?: {
+    selectedParentCategories: string[]
+    selectedChildCategories: string[]
+  }
+  selectedParameterIds?: string[]
+  description?: string
+}
+
+function deepClone<T extends Record<string, unknown>>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj)) as T
+}
 
 export function useTablesState() {
   // Initialize with default table
@@ -18,6 +36,7 @@ export function useTablesState() {
   const isUpdating = ref(false)
   const lastUpdateTime = ref(0)
   const selectedTableId = ref<string | null>(null)
+  const originalTables = ref<Record<string, NamedTableConfig>>({})
 
   // Initialize GraphQL operations
   const { result, queryLoading, fetchTables, updateTables } = useTablesGraphQL()
@@ -27,6 +46,54 @@ export function useTablesState() {
     // Create a key in format name_id
     const sanitizedName = table.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
     return `${sanitizedName}_${table.id}`
+  }
+
+  function isColumnDef(value: unknown): value is ColumnDef {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'id' in value &&
+      'name' in value &&
+      'field' in value
+    )
+  }
+
+  function validateColumnDefs(arr: unknown[]): ColumnDef[] {
+    const validColumns = arr.filter(isColumnDef)
+    return validColumns.map((col) => ({
+      ...col,
+      type: col.type || 'string',
+      source: col.source || 'Parameters',
+      category: col.category || 'Uncategorized',
+      description: col.description || '',
+      visible: col.visible ?? true,
+      removable: col.removable ?? true,
+      order: col.order ?? 0
+    }))
+  }
+
+  function validateAndTransformTable(rawTable: RawTable): NamedTableConfig {
+    return {
+      id: rawTable.id,
+      name: rawTable.name,
+      displayName: rawTable.displayName || rawTable.name,
+      parentColumns: Array.isArray(rawTable.parentColumns)
+        ? validateColumnDefs(rawTable.parentColumns)
+        : [],
+      childColumns: Array.isArray(rawTable.childColumns)
+        ? validateColumnDefs(rawTable.childColumns)
+        : [],
+      categoryFilters: rawTable.categoryFilters || {
+        selectedParentCategories: [],
+        selectedChildCategories: []
+      },
+      selectedParameterIds: Array.isArray(rawTable.selectedParameterIds)
+        ? rawTable.selectedParameterIds.filter(
+            (id): id is string => typeof id === 'string'
+          )
+        : [],
+      description: rawTable.description
+    }
   }
 
   // Watch for tables changes
@@ -49,56 +116,53 @@ export function useTablesState() {
         tableCount: newTables ? Object.keys(newTables).length : 0
       })
 
-      // Update tables in state
-      if (newTables) {
-        const processedTables: Record<string, NamedTableConfig> = {
-          defaultTable
-        }
-
-        // Process tables from the nested structure
-        Object.entries(newTables).forEach(([_, table]) => {
-          if (table && typeof table === 'object' && 'id' in table && 'name' in table) {
-            const validatedTable: NamedTableConfig = {
-              id: table.id as string,
-              name: table.name as string,
-              displayName:
-                (table as NamedTableConfig).displayName || (table.name as string),
-              parentColumns: Array.isArray((table as NamedTableConfig).parentColumns)
-                ? (table as NamedTableConfig).parentColumns
-                : [],
-              childColumns: Array.isArray((table as NamedTableConfig).childColumns)
-                ? (table as NamedTableConfig).childColumns
-                : [],
-              categoryFilters: (table as NamedTableConfig).categoryFilters || {
-                selectedParentCategories: [],
-                selectedChildCategories: []
-              },
-              selectedParameterIds: Array.isArray(
-                (table as NamedTableConfig).selectedParameterIds
-              )
-                ? (table as NamedTableConfig).selectedParameterIds
-                : [],
-              description: (table as NamedTableConfig).description
-            }
-            const key = formatTableKey(validatedTable)
-            processedTables[key] = validatedTable
-
-            // Re-select table if it was previously selected
-            if (validatedTable.id === selectedTableId.value) {
-              selectTable(validatedTable.id)
-            }
+      try {
+        // Update tables in state
+        if (newTables) {
+          const processedTables: Record<string, NamedTableConfig> = {
+            defaultTable
           }
-        })
 
-        state.value = {
-          ...state.value,
-          tables: processedTables
+          // Process tables from the response
+          Object.entries(newTables).forEach(([_, tableData]) => {
+            if (
+              tableData &&
+              typeof tableData === 'object' &&
+              'id' in tableData &&
+              'name' in tableData
+            ) {
+              const rawTable = tableData as RawTable
+              const validatedTable = validateAndTransformTable(rawTable)
+              const key = formatTableKey(validatedTable)
+              processedTables[key] = validatedTable
+
+              // Re-select table if it was previously selected
+              if (validatedTable.id === selectedTableId.value) {
+                selectTable(validatedTable.id)
+              }
+            }
+          })
+
+          state.value = {
+            ...state.value,
+            tables: processedTables,
+            error: null
+          }
+
+          // Store original state for change detection
+          originalTables.value = deepClone(processedTables)
+        } else {
+          state.value = {
+            ...state.value,
+            tables: { defaultTable },
+            error: null
+          }
+          originalTables.value = { defaultTable }
         }
-      } else {
-        state.value = {
-          ...state.value,
-          tables: { defaultTable }
-        }
+      } catch (err) {
+        debug.error(DebugCategories.ERROR, 'Failed to process tables', err)
+        state.value.error =
+          err instanceof Error ? err : new Error('Failed to process tables')
       }
     },
     { deep: true }
@@ -120,6 +184,9 @@ export function useTablesState() {
         defaultTable,
         ...tables
       }
+
+      // Store original state for change detection
+      originalTables.value = deepClone(state.value.tables)
 
       // Restore selected table if it still exists
       if (currentSelectedId) {
@@ -143,6 +210,8 @@ export function useTablesState() {
         err instanceof Error ? err : new Error('Failed to load tables')
       // Use default table on error
       state.value.tables = { defaultTable }
+      originalTables.value = { defaultTable }
+      throw state.value.error
     } finally {
       state.value.loading = false
     }
@@ -175,33 +244,24 @@ export function useTablesState() {
           return { ...acc, [key]: table }
         }, {})
 
-        // Merge existing tables with new tables
+        // Only update tables that have changed
         const mergedTables = {
           ...existingTables,
           ...Object.entries(newTables).reduce<Record<string, NamedTableConfig>>(
             (acc, [_, table]) => {
               if (table.id === defaultTable.id) return acc
-              const validatedTable: NamedTableConfig = {
-                id: table.id,
-                name: table.name,
-                displayName: table.displayName || table.name,
-                parentColumns: Array.isArray(table.parentColumns)
-                  ? table.parentColumns
-                  : [],
-                childColumns: Array.isArray(table.childColumns)
-                  ? table.childColumns
-                  : [],
-                categoryFilters: table.categoryFilters || {
-                  selectedParentCategories: [],
-                  selectedChildCategories: []
-                },
-                selectedParameterIds: Array.isArray(table.selectedParameterIds)
-                  ? table.selectedParameterIds
-                  : [],
-                description: table.description
-              }
+              const validatedTable = validateAndTransformTable(table)
               const key = formatTableKey(validatedTable)
-              return { ...acc, [key]: validatedTable }
+
+              // Only include if table has changed
+              const originalTable = originalTables.value[key]
+              if (
+                !originalTable ||
+                JSON.stringify(originalTable) !== JSON.stringify(validatedTable)
+              ) {
+                return { ...acc, [key]: validatedTable }
+              }
+              return acc
             },
             {}
           )
@@ -213,6 +273,9 @@ export function useTablesState() {
             defaultTable,
             ...mergedTables
           }
+
+          // Update original state after successful save
+          originalTables.value = deepClone(state.value.tables)
 
           // Restore selected table if it still exists
           if (currentSelectedId) {
@@ -275,6 +338,7 @@ export function useTablesState() {
     isUpdating,
     lastUpdateTime,
     selectedTableId,
+    originalTables, // Expose originalTables
     loadTables,
     saveTables,
     selectTable,

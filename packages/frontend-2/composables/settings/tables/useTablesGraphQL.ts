@@ -139,8 +139,8 @@ export function useTablesGraphQL() {
     try {
       debug.startState(DebugCategories.STATE, 'Updating tables via GraphQL')
 
-      // Ensure all tables have valid arrays and required fields
-      const validatedTables = Object.entries(tables).reduce<
+      // Create a simple object with table IDs as keys for saving to backend
+      const tablesToSave = Object.entries(tables).reduce<
         Record<string, NamedTableConfig>
       >((acc, [_, table]) => {
         const validatedTable: NamedTableConfig = {
@@ -158,17 +158,17 @@ export function useTablesGraphQL() {
             : [],
           description: table.description
         }
-        const key = formatTableKey(validatedTable)
-        return { ...acc, [key]: validatedTable }
+        // Use table ID as key for backend storage
+        return { ...acc, [validatedTable.id]: validatedTable }
       }, {})
 
       debug.log(DebugCategories.STATE, 'Tables update payload', {
-        tableCount: Object.keys(validatedTables).length
+        tableCount: Object.keys(tablesToSave).length
       })
 
       const result = await nuxtApp.runWithContext(() =>
         updateTablesMutation({
-          tables: validatedTables
+          tables: tablesToSave
         })
       )
 

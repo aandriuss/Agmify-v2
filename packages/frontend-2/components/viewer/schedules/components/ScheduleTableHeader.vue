@@ -27,7 +27,7 @@
           v-if="hasChanges"
           text
           size="sm"
-          color="primary"
+          color="danger"
           @click="handleGlobalSave"
         >
           <template #default>Save</template>

@@ -128,15 +128,10 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
           name: trimmedName
         })
 
-        // Extract table ID from selectedTableId if it contains a key format
-        const tableId = state.value.selectedTableId.includes('_')
-          ? state.value.selectedTableId.split('_').pop() || state.value.selectedTableId
-          : state.value.selectedTableId
-
-        // Update existing table
-        savedTable = await updateTable(tableId, {
+        // Use selectedTableId directly as it's already the correct ID
+        savedTable = await updateTable(state.value.selectedTableId, {
           ...tableConfig,
-          id: tableId
+          id: state.value.selectedTableId
         })
       }
 

@@ -16,6 +16,7 @@ export interface ElementData {
   _visible?: boolean
   host?: string
   _raw?: unknown
+  isChild?: boolean
 }
 
 /**
