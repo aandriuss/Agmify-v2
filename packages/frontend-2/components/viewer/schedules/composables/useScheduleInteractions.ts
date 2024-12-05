@@ -3,9 +3,8 @@ import type { Ref } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
 import type {
   ColumnDef,
-  TableConfig,
-  ScheduleInitializationInstance,
-  UserSettings
+  NamedTableConfig,
+  ScheduleInitializationInstance
 } from '~/composables/core/types'
 import { useUserSettings } from '~/composables/useUserSettings'
 import { useStore } from '../core/store'
@@ -13,7 +12,7 @@ import { useStore } from '../core/store'
 interface ScheduleInteractionsState {
   selectedTableId: string
   tableName: string
-  currentTable: TableConfig | null
+  currentTable: NamedTableConfig | null
   selectedParentCategories: string[]
   selectedChildCategories: string[]
   currentTableColumns: ColumnDef[]
@@ -37,7 +36,7 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
   })
 
   // Initialize settings and store
-  const { createNamedTable, updateNamedTable, loadSettings, settings } =
+  const { createNamedTable, updateNamedTable, loadSettings, settings, selectTable } =
     useUserSettings()
   const store = useStore()
 
@@ -71,17 +70,15 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
     return trimmedName
   }
 
-  async function updateTablesArray(settings: UserSettings) {
-    if (!settings.namedTables) return
+  async function updateTablesArray() {
+    if (!settings.value?.namedTables) return
 
-    const tables = Object.entries(settings.namedTables).map(([id, table]) => ({
+    const tables = Object.entries(settings.value.namedTables).map(([id, table]) => ({
       id,
       name: table.name
     }))
 
-    await store.lifecycle.update({
-      tablesArray: tables
-    })
+    await store.lifecycle.update({ tablesArray: tables })
   }
 
   async function handleSaveTable() {
@@ -93,89 +90,94 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
       // Validate table name
       const trimmedName = validateTableName(state.value.tableName)
 
-      // Create config with all current state
-      const baseConfig = {
-        parentColumns: state.value.currentTableColumns,
-        childColumns: state.value.currentDetailColumns,
+      // Initialize empty arrays for new tables
+      const currentTableColumns = state.value.currentTableColumns || []
+      const currentDetailColumns = state.value.currentDetailColumns || []
+
+      // Create table config
+      const tableConfig = {
+        name: trimmedName,
+        displayName: trimmedName,
+        parentColumns: currentTableColumns,
+        childColumns: currentDetailColumns,
         categoryFilters: {
-          selectedParentCategories: state.value.selectedParentCategories,
-          selectedChildCategories: state.value.selectedChildCategories
+          selectedParentCategories: state.value.selectedParentCategories || [],
+          selectedChildCategories: state.value.selectedChildCategories || []
         },
-        customParameters: state.value.currentTable?.customParameters || []
+        selectedParameterIds: []
       }
 
-      let result: TableConfig | null = null
+      let result
 
       // Create new table or update existing one
       if (!state.value.selectedTableId) {
         debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table', {
-          name: trimmedName,
-          config: baseConfig
-        })
-
-        // Create new table in settings
-        result = await createNamedTable(trimmedName, baseConfig)
-
-        // Update store with new table ID
-        await store.lifecycle.update({
-          selectedTableId: result.id,
-          currentTableId: result.id,
-          tableName: result.name
-        })
-      } else {
-        debug.log(DebugCategories.TABLE_UPDATES, 'Updating existing table', {
-          id: state.value.selectedTableId,
-          name: trimmedName,
-          config: baseConfig
-        })
-
-        // Update existing table in settings
-        result = await updateNamedTable(state.value.selectedTableId, {
-          ...baseConfig,
           name: trimmedName
         })
 
-        // Ensure store IDs are in sync
+        // Initialize empty columns for new table
         await store.lifecycle.update({
-          selectedTableId: state.value.selectedTableId,
-          currentTableId: state.value.selectedTableId,
-          tableName: result.name
+          selectedTableId: '',
+          currentTableId: '',
+          tableName: trimmedName,
+          parentVisibleColumns: [],
+          childVisibleColumns: [],
+          selectedParentCategories: [],
+          selectedChildCategories: []
+        })
+
+        // Create new table
+        result = await createNamedTable(trimmedName, tableConfig)
+      } else {
+        debug.log(DebugCategories.TABLE_UPDATES, 'Updating existing table', {
+          id: state.value.selectedTableId,
+          name: trimmedName
+        })
+
+        // Update existing table
+        result = await updateNamedTable(state.value.selectedTableId, {
+          ...tableConfig,
+          id: state.value.selectedTableId
         })
       }
 
-      if (!result) {
+      if (!result?.id || !result?.config) {
         throw new Error('Failed to save table')
       }
 
-      // Update columns after save
-      await updateCurrentColumns(result.parentColumns, result.childColumns)
-
-      // Update store with latest state
+      // Update store with table data
       await store.lifecycle.update({
-        parentBaseColumns: result.parentColumns,
-        childBaseColumns: result.childColumns,
-        parentVisibleColumns: result.parentColumns,
-        childVisibleColumns: result.childColumns,
+        selectedTableId: result.id,
+        currentTableId: result.id,
+        tableName: result.config.name,
+        parentVisibleColumns: result.config.parentColumns,
+        childVisibleColumns: result.config.childColumns,
         selectedParentCategories:
-          result.categoryFilters?.selectedParentCategories || [],
-        selectedChildCategories: result.categoryFilters?.selectedChildCategories || [],
-        customParameters: result.customParameters || []
+          result.config.categoryFilters?.selectedParentCategories || [],
+        selectedChildCategories:
+          result.config.categoryFilters?.selectedChildCategories || []
       })
+
+      // Update columns after save
+      await updateCurrentColumns(
+        result.config.parentColumns,
+        result.config.childColumns
+      )
 
       // Reload settings to get updated data
       await loadSettings()
 
       // Update tables array with new data
-      if (settings.value) {
-        await updateTablesArray(settings.value)
-      }
+      await updateTablesArray()
 
-      debug.completeState(DebugCategories.TABLE_UPDATES, 'Save table completed', {
+      // Select the table
+      selectTable(result.id)
+
+      debug.completeState(DebugCategories.TABLE_UPDATES, 'Table save complete', {
         id: result.id,
-        name: result.name,
-        parentColumnsCount: result.parentColumns.length,
-        childColumnsCount: result.childColumns.length,
-        customParametersCount: result.customParameters?.length || 0
+        name: result.config.name,
+        parentColumnsCount: result.config.parentColumns.length,
+        childColumnsCount: result.config.childColumns.length
       })
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to save table')

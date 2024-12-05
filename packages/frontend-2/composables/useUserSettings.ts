@@ -17,7 +17,11 @@ export function useUserSettings() {
     loading: tablesLoading,
     error: tablesError,
     loadTables,
-    saveTables
+    saveTables,
+    selectTable,
+    deselectTable,
+    selectedTableId,
+    getSelectedTable
   } = useTablesState()
 
   // Table operations
@@ -28,7 +32,9 @@ export function useUserSettings() {
           namedTables: tablesState.value.tables
         }
       },
-      saveTables
+      saveTables,
+      selectTable,
+      loadTables
     })
 
   // Combined loading and error states
@@ -64,6 +70,11 @@ export function useUserSettings() {
     updateTableCategories,
     updateTableColumns,
     createNamedTable,
+    // Table selection
+    selectTable,
+    deselectTable,
+    selectedTableId,
+    getSelectedTable,
     cleanup: () => {
       // No cleanup needed for now
     }

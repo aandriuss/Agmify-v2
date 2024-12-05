@@ -17,6 +17,7 @@ export function useTablesState() {
 
   const isUpdating = ref(false)
   const lastUpdateTime = ref(0)
+  const selectedTableId = ref<string | null>(null)
 
   // Initialize GraphQL operations
   const { result, queryLoading, fetchTables, updateTables } = useTablesGraphQL()
@@ -144,39 +145,54 @@ export function useTablesState() {
           newCount: Object.keys(newTables).length
         })
 
-        // Ensure all tables have valid arrays for columns
-        const validatedTables = Object.entries(newTables).reduce<
+        // Get existing tables from state, excluding default table
+        const existingTables = Object.entries(state.value.tables).reduce<
           Record<string, NamedTableConfig>
-        >((acc, [_, table]) => {
-          if (table.id === defaultTable.id) return acc // Skip default table
-
-          const validatedTable: NamedTableConfig = {
-            id: table.id,
-            name: table.name,
-            displayName: table.displayName || table.name,
-            parentColumns: Array.isArray(table.parentColumns)
-              ? table.parentColumns
-              : [],
-            childColumns: Array.isArray(table.childColumns) ? table.childColumns : [],
-            categoryFilters: table.categoryFilters || {
-              selectedParentCategories: [],
-              selectedChildCategories: []
-            },
-            selectedParameterIds: Array.isArray(table.selectedParameterIds)
-              ? table.selectedParameterIds
-              : [],
-            description: table.description
-          }
-          const key = formatTableKey(validatedTable)
-          return { ...acc, [key]: validatedTable }
+        >((acc, [key, table]) => {
+          if (table.id === defaultTable.id) return acc
+          return { ...acc, [key]: table }
         }, {})
 
-        const success = await updateTables(validatedTables)
+        // Merge existing tables with new tables
+        const mergedTables = {
+          ...existingTables,
+          ...Object.entries(newTables).reduce<Record<string, NamedTableConfig>>(
+            (acc, [_, table]) => {
+              if (table.id === defaultTable.id) return acc
+              const validatedTable: NamedTableConfig = {
+                id: table.id,
+                name: table.name,
+                displayName: table.displayName || table.name,
+                parentColumns: Array.isArray(table.parentColumns)
+                  ? table.parentColumns
+                  : [],
+                childColumns: Array.isArray(table.childColumns)
+                  ? table.childColumns
+                  : [],
+                categoryFilters: table.categoryFilters || {
+                  selectedParentCategories: [],
+                  selectedChildCategories: []
+                },
+                selectedParameterIds: Array.isArray(table.selectedParameterIds)
+                  ? table.selectedParameterIds
+                  : [],
+                description: table.description
+              }
+              const key = formatTableKey(validatedTable)
+              return { ...acc, [key]: validatedTable }
+            },
+            {}
+          )
+        }
+
+        const success = await updateTables(mergedTables)
         if (success) {
           state.value.tables = {
             defaultTable,
-            ...validatedTables
+            ...mergedTables
           }
+          // Refresh tables after successful save
+          await loadTables()
         }
 
         debug.completeState(DebugCategories.STATE, 'Tables saved')
@@ -193,13 +209,34 @@ export function useTablesState() {
     })
   }
 
+  function selectTable(tableId: string) {
+    selectedTableId.value = tableId
+  }
+
+  function deselectTable() {
+    selectedTableId.value = null
+  }
+
+  function getSelectedTable(): NamedTableConfig | null {
+    if (!selectedTableId.value) return null
+    return (
+      Object.values(state.value.tables).find(
+        (table) => table.id === selectedTableId.value
+      ) || null
+    )
+  }
+
   return {
     state,
     loading: state.value.loading || queryLoading.value,
     error: state.value.error,
     isUpdating,
     lastUpdateTime,
+    selectedTableId,
     loadTables,
-    saveTables
+    saveTables,
+    selectTable,
+    deselectTable,
+    getSelectedTable
   }
 }

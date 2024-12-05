@@ -4,10 +4,12 @@ import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useD
 interface UseTableOperationsOptions {
   settings: { value: { namedTables?: Record<string, NamedTableConfig> } }
   saveTables: (tables: Record<string, NamedTableConfig>) => Promise<boolean>
+  selectTable: (tableId: string) => void
+  loadTables: () => Promise<void>
 }
 
 export function useTableOperations(options: UseTableOperationsOptions) {
-  const { settings, saveTables } = options
+  const { settings, saveTables, selectTable, loadTables } = options
 
   function formatTableKey(table: NamedTableConfig): string {
     // Create a key in format name_id
@@ -64,6 +66,9 @@ export function useTableOperations(options: UseTableOperationsOptions) {
     if (!success) {
       throw new Error('Failed to update table')
     }
+
+    // Refresh tables after successful update
+    await loadTables()
 
     debug.completeState(DebugCategories.TABLE_UPDATES, 'Table update complete', {
       id,
@@ -155,6 +160,10 @@ export function useTableOperations(options: UseTableOperationsOptions) {
     if (!success) {
       throw new Error('Failed to create table')
     }
+
+    // Refresh tables and select the new table
+    await loadTables()
+    selectTable(internalId)
 
     debug.completeState(DebugCategories.TABLE_UPDATES, 'Table creation complete', {
       key,

@@ -47,14 +47,26 @@ export function useTablesGraphQL() {
   const { mutate: updateTablesMutation } = useMutation<
     UpdateTablesResponse,
     UpdateTablesVariables
-  >(UPDATE_USER_TABLES)
+  >(UPDATE_USER_TABLES, {
+    // Update the cache after mutation
+    update: (cache, { data }) => {
+      if (data?.userTablesUpdate) {
+        // Invalidate and refetch the tables query
+        cache.evict({ fieldName: 'activeUser' })
+        cache.gc()
+      }
+    },
+    // Refetch the tables query after mutation
+    refetchQueries: [{ query: GET_USER_TABLES }],
+    awaitRefetchQueries: true
+  })
 
   const {
     result,
     loading: queryLoading,
     refetch
   } = useQuery<GetTablesResponse>(GET_USER_TABLES, null, {
-    fetchPolicy: 'network-only'
+    fetchPolicy: 'cache-and-network'
   })
 
   function formatTableKey(table: NamedTableConfig): string {
@@ -174,6 +186,9 @@ export function useTablesGraphQL() {
       if (!success) {
         throw new Error('Tables update returned false')
       }
+
+      // Manually trigger a refetch to ensure we have the latest data
+      await refetch()
 
       debug.completeState(DebugCategories.STATE, 'Tables update complete')
       return true
