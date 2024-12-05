@@ -24,7 +24,7 @@
           <PencilIcon class="size-4" />
         </FormButton>
         <FormButton
-          v-if="hasChanges"
+          v-if="hasChanges && !isEditing"
           text
           size="sm"
           color="danger"
@@ -127,7 +127,22 @@ const nameInput = ref<HTMLInputElement | null>(null)
 const nameError = ref<string | null>(null)
 
 function startEditing() {
-  editingName.value = props.tableName || ''
+  debug.log(DebugCategories.TABLE_UPDATES, 'Starting edit mode', {
+    currentName: props.tableName,
+    selectedId: props.selectedTableId
+  })
+
+  // If we have a selected table, use its name
+  if (props.selectedTableId && props.tableName !== 'Default Table') {
+    editingName.value = props.tableName
+  } else if (!props.selectedTableId) {
+    // For new table, use "New Table"
+    editingName.value = 'New Table'
+  } else {
+    // Fallback to current name
+    editingName.value = props.tableName || ''
+  }
+
   isEditing.value = true
   nameError.value = null
   nextTick(() => {
@@ -227,14 +242,27 @@ async function handleTableChange(event: Event) {
   }
 }
 
-// Watch for table name changes to start editing when creating new table
+// Watch for table name changes
 watch(
-  () => props.tableName,
-  (newName) => {
-    if (newName === 'New Table' && !isEditing.value) {
-      editingName.value = newName
-      startEditing()
+  [() => props.tableName, () => props.selectedTableId],
+  ([newName, selectedId]) => {
+    debug.log(DebugCategories.STATE, 'Table name or ID changed', {
+      newName,
+      selectedId,
+      isEditing: isEditing.value
+    })
+
+    // Only update editing name if we're in edit mode
+    if (isEditing.value) {
+      // If we have a selected table, use its name
+      if (selectedId && newName !== 'Default Table') {
+        editingName.value = newName
+      } else if (!selectedId) {
+        // For new table, use "New Table"
+        editingName.value = 'New Table'
+      }
     }
-  }
+  },
+  { immediate: true }
 )
 </script>

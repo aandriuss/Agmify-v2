@@ -99,8 +99,7 @@ export function useTablesGraphQL() {
           'name' in tableData
         ) {
           const table = tableData as NamedTableConfig
-          const key = formatTableKey(table)
-          tables[key] = {
+          const validatedTable: NamedTableConfig = {
             id: table.id,
             name: table.name,
             displayName: table.displayName || table.name,
@@ -117,6 +116,8 @@ export function useTablesGraphQL() {
               : [],
             description: table.description
           }
+          // Use table ID as key for consistency
+          tables[validatedTable.id] = validatedTable
         }
       })
 
@@ -163,7 +164,8 @@ export function useTablesGraphQL() {
       }, {})
 
       debug.log(DebugCategories.STATE, 'Tables update payload', {
-        tableCount: Object.keys(tablesToSave).length
+        tableCount: Object.keys(tablesToSave).length,
+        tableIds: Object.keys(tablesToSave)
       })
 
       const result = await nuxtApp.runWithContext(() =>

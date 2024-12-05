@@ -213,26 +213,26 @@ const hasSelectedCategories = computed(() => categories.hasSelectedCategories.va
 
 const hasChanges = computed(() => {
   // Get the current table settings from tables state
-  const currentTableId = store.selectedTableId.value
+  const currentTableId = store.selectedTableId?.value
   if (!currentTableId) {
     // For new table, check if we have any changes from default state
     return !!(
-      store.tableName.value !== 'New Table' || // Name has been changed from default
-      categories.selectedParentCategories.value?.length > 0 ||
-      categories.selectedChildCategories.value?.length > 0 ||
-      store.currentTableColumns.value?.length > 0 ||
-      store.currentDetailColumns.value?.length > 0
+      store.tableName?.value !== 'New Table' || // Name has been changed from default
+      categories.selectedParentCategories?.value?.length > 0 ||
+      categories.selectedChildCategories?.value?.length > 0 ||
+      store.currentTableColumns?.value?.length > 0 ||
+      store.currentDetailColumns?.value?.length > 0
     )
   }
 
   // Find current table by ID
-  const currentTable = Object.values(tablesState.state.value.tables).find(
+  const currentTable = Object.values(tablesState.state?.value?.tables || {}).find(
     (table): table is NamedTableConfig => 'id' in table && table.id === currentTableId
   )
   if (!currentTable) return false
 
   // Find original table by ID
-  const originalTable = Object.values(tablesState.originalTables.value).find(
+  const originalTable = Object.values(tablesState.originalTables?.value || {}).find(
     (table): table is NamedTableConfig => 'id' in table && table.id === currentTableId
   )
 
@@ -240,26 +240,59 @@ const hasChanges = computed(() => {
   if (!originalTable || !('categoryFilters' in originalTable)) return true
 
   // Compare current state with original state
+  const hasNameChanges = currentTable.name !== originalTable.name
+
+  // Check category changes
+  const hasParentCategoryChanges = !isEqual(
+    categories.selectedParentCategories?.value || [],
+    originalTable.categoryFilters?.selectedParentCategories || []
+  )
+  const hasChildCategoryChanges = !isEqual(
+    categories.selectedChildCategories?.value || [],
+    originalTable.categoryFilters?.selectedChildCategories || []
+  )
+
+  // Check column changes
+  const hasParentColumnChanges = !isEqual(
+    store.currentTableColumns?.value || [],
+    originalTable.parentColumns || []
+  )
+  const hasChildColumnChanges = !isEqual(
+    store.currentDetailColumns?.value || [],
+    originalTable.childColumns || []
+  )
+
+  // Check parameter changes
+  const hasParameterChanges = !isEqual(
+    store.customParameters?.value || [],
+    originalTable.selectedParameterIds || []
+  )
+
+  // Log changes for debugging
+  debug.log(DebugCategories.STATE, 'Change detection', {
+    hasNameChanges,
+    hasParentCategoryChanges,
+    hasChildCategoryChanges,
+    hasParentColumnChanges,
+    hasChildColumnChanges,
+    hasParameterChanges,
+    currentParentCategories: categories.selectedParentCategories?.value,
+    originalParentCategories: originalTable.categoryFilters?.selectedParentCategories,
+    currentChildCategories: categories.selectedChildCategories?.value,
+    originalChildCategories: originalTable.categoryFilters?.selectedChildCategories,
+    currentParentColumns: store.currentTableColumns?.value,
+    originalParentColumns: originalTable.parentColumns,
+    currentChildColumns: store.currentDetailColumns?.value,
+    originalChildColumns: originalTable.childColumns
+  })
+
   return (
-    // Check table name changes
-    currentTable.name !== originalTable.name ||
-    // Check category changes
-    !isEqual(
-      currentTable.categoryFilters?.selectedParentCategories || [],
-      originalTable.categoryFilters?.selectedParentCategories || []
-    ) ||
-    !isEqual(
-      currentTable.categoryFilters?.selectedChildCategories || [],
-      originalTable.categoryFilters?.selectedChildCategories || []
-    ) ||
-    // Check column changes
-    !isEqual(currentTable.parentColumns || [], originalTable.parentColumns || []) ||
-    !isEqual(currentTable.childColumns || [], originalTable.childColumns || []) ||
-    // Check parameter changes
-    !isEqual(
-      currentTable.selectedParameterIds || [],
-      originalTable.selectedParameterIds || []
-    )
+    hasNameChanges ||
+    hasParentCategoryChanges ||
+    hasChildCategoryChanges ||
+    hasParentColumnChanges ||
+    hasChildColumnChanges ||
+    hasParameterChanges
   )
 })
 
@@ -662,11 +695,21 @@ onMounted(async () => {
       tablesArray: tables
     } as Partial<StoreState>)
 
-    // Get default table ID
-    const defaultTableId = tables.length > 0 ? tables[0].id : 'default'
+    // Get the last selected table ID from localStorage
+    const lastSelectedId = localStorage.getItem('speckle:lastSelectedTableId')
 
-    // Apply settings for default table
-    await applyTableSettings(defaultTableId)
+    // Determine which table to select
+    let tableIdToSelect: string
+    if (lastSelectedId && tables.some((table) => table.id === lastSelectedId)) {
+      // Use stored ID if it exists and is valid
+      tableIdToSelect = lastSelectedId
+    } else {
+      // Otherwise use first table or default
+      tableIdToSelect = tables.length > 0 ? tables[0].id : 'default'
+    }
+
+    // Apply settings for selected table
+    await applyTableSettings(tableIdToSelect)
 
     // Initialize elements data
     await elementsData.initializeData()

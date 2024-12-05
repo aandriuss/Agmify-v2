@@ -199,6 +199,17 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
           ...newState,
           tableName: 'New Table'
         }
+      } else if (newState.selectedTableId) {
+        // If selecting an existing table, use its name from settings
+        const selectedTable = settings.value?.namedTables?.[newState.selectedTableId]
+        if (selectedTable) {
+          state.value = {
+            ...newState,
+            tableName: selectedTable.name
+          }
+        } else {
+          state.value = { ...newState }
+        }
       } else {
         state.value = { ...newState }
       }

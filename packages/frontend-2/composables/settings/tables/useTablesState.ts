@@ -5,6 +5,8 @@ import { useUpdateQueue } from '../useUpdateQueue'
 import type { NamedTableConfig, TablesState, ColumnDef } from '~/composables/core/types'
 import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
 
+const LAST_SELECTED_TABLE_KEY = 'speckle:lastSelectedTableId'
+
 type RawTable = {
   id: string
   name: string
@@ -35,7 +37,9 @@ export function useTablesState() {
 
   const isUpdating = ref(false)
   const lastUpdateTime = ref(0)
-  const selectedTableId = ref<string | null>(null)
+  const selectedTableId = ref<string | null>(
+    localStorage.getItem(LAST_SELECTED_TABLE_KEY) || null
+  )
   const originalTables = ref<Record<string, NamedTableConfig>>({})
 
   // Initialize GraphQL operations
@@ -151,6 +155,19 @@ export function useTablesState() {
 
           // Store original state for change detection
           originalTables.value = deepClone(processedTables)
+
+          // If no table is selected but we have a stored ID, try to select it
+          if (!selectedTableId.value) {
+            const storedId = localStorage.getItem(LAST_SELECTED_TABLE_KEY)
+            if (storedId) {
+              const tableExists = Object.values(processedTables).some(
+                (table) => table.id === storedId
+              )
+              if (tableExists) {
+                selectTable(storedId)
+              }
+            }
+          }
         } else {
           state.value = {
             ...state.value,
@@ -305,11 +322,15 @@ export function useTablesState() {
   function selectTable(tableId: string) {
     debug.log(DebugCategories.STATE, 'Selecting table', { tableId })
     selectedTableId.value = tableId
+    // Store the selected table ID
+    localStorage.setItem(LAST_SELECTED_TABLE_KEY, tableId)
   }
 
   function deselectTable() {
     debug.log(DebugCategories.STATE, 'Deselecting table')
     selectedTableId.value = null
+    // Clear the stored table ID
+    localStorage.removeItem(LAST_SELECTED_TABLE_KEY)
   }
 
   function getSelectedTable(): NamedTableConfig | null {

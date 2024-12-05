@@ -17,7 +17,11 @@ export function useTableOperations(options: UseTableOperationsOptions) {
   }
 
   function findTableById(id: string): NamedTableConfig | null {
+    // If no ID provided, return null
+    if (!id) return null
+
     const currentTables = settings.value.namedTables || {}
+
     // First try to find by direct ID
     const table = Object.values(currentTables).find((t) => t.id === id)
     if (table) return table
@@ -29,6 +33,12 @@ export function useTableOperations(options: UseTableOperationsOptions) {
         (t) => t.id === idFromKey
       )
       if (tableByExtractedId) return tableByExtractedId
+    }
+
+    // If still not found, check if this is a new table being created
+    if (id.startsWith('table-')) {
+      debug.log(DebugCategories.STATE, 'New table being created', { id })
+      return null
     }
 
     debug.error(DebugCategories.ERROR, 'Table not found', {
@@ -48,43 +58,56 @@ export function useTableOperations(options: UseTableOperationsOptions) {
     })
 
     const existingTable = findTableById(id)
-    if (!existingTable) {
+    // If table not found and it's a new table being created, proceed with creation
+    if (!existingTable && !id.startsWith('table-')) {
       throw new Error('Table not found')
     }
 
+    const baseTable = existingTable || {
+      id,
+      name: '',
+      displayName: '',
+      parentColumns: [],
+      childColumns: [],
+      categoryFilters: {
+        selectedParentCategories: [],
+        selectedChildCategories: []
+      },
+      selectedParameterIds: []
+    }
+
     const updatedTable: NamedTableConfig = {
-      ...existingTable,
+      ...baseTable,
       ...config,
       // Ensure required fields are present
-      id: existingTable.id, // Keep the original ID
-      name: config.name || existingTable.name,
-      displayName:
-        config.displayName || existingTable.displayName || existingTable.name,
+      id: baseTable.id, // Keep the original ID
+      name: config.name || baseTable.name,
+      displayName: config.displayName || baseTable.displayName || baseTable.name,
       parentColumns: Array.isArray(config.parentColumns)
         ? config.parentColumns
-        : existingTable.parentColumns,
+        : baseTable.parentColumns,
       childColumns: Array.isArray(config.childColumns)
         ? config.childColumns
-        : existingTable.childColumns,
+        : baseTable.childColumns,
       categoryFilters: config.categoryFilters ||
-        existingTable.categoryFilters || {
+        baseTable.categoryFilters || {
           selectedParentCategories: [],
           selectedChildCategories: []
         },
       selectedParameterIds: Array.isArray(config.selectedParameterIds)
         ? config.selectedParameterIds
-        : existingTable.selectedParameterIds || [],
-      description: config.description || existingTable.description
+        : baseTable.selectedParameterIds || [],
+      description: config.description || baseTable.description
     }
 
     const currentTables = settings.value.namedTables || {}
 
     // Remove old table entry if name changed
-    const oldKey = formatTableKey(existingTable)
+    const oldKey = existingTable ? formatTableKey(existingTable) : ''
     const newKey = formatTableKey(updatedTable)
     const updatedTables = { ...currentTables }
 
-    if (oldKey !== newKey) {
+    if (oldKey && oldKey !== newKey) {
       delete updatedTables[oldKey]
     }
     updatedTables[newKey] = updatedTable
@@ -108,7 +131,7 @@ export function useTableOperations(options: UseTableOperationsOptions) {
       }
 
       // Re-select the table using the original ID
-      selectTable(existingTable.id)
+      selectTable(baseTable.id)
 
       debug.completeState(DebugCategories.TABLE_UPDATES, 'Table update complete', {
         id,
