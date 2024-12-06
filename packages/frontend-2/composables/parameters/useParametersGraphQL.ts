@@ -103,11 +103,25 @@ export function useParametersGraphQL() {
       // First fetch current parameters
       const currentParameters = await fetchParameters()
 
-      // Merge current and new parameters
-      const mergedParameters = {
-        ...currentParameters,
-        ...newParameters
+      // Create a new object to store merged parameters
+      const mergedParameters: Record<string, UnifiedParameter> = {
+        ...currentParameters
       }
+
+      // Merge new parameters one by one
+      Object.entries(newParameters).forEach(([key, parameter]) => {
+        // If parameter already exists, preserve its ID and merge other properties
+        if (mergedParameters[key]) {
+          mergedParameters[key] = {
+            ...mergedParameters[key],
+            ...parameter,
+            id: mergedParameters[key].id // Ensure we keep the original ID
+          }
+        } else {
+          // If it's a new parameter, add it as is
+          mergedParameters[key] = parameter
+        }
+      })
 
       debug.log(DebugCategories.STATE, 'Parameters update payload', {
         currentCount: Object.keys(currentParameters).length,

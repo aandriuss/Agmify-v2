@@ -31,7 +31,9 @@
             <MagnifyingGlassIcon
               class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400"
             />
+            <label for="search-tables" class="sr-only">Search tables</label>
             <input
+              id="search-tables"
               v-model="searchQuery"
               type="text"
               class="w-full pl-9 pr-3 py-2 border rounded"

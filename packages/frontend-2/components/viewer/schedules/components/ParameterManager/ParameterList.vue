@@ -12,7 +12,7 @@
         <ChevronRightIcon v-else class="h-5 w-5 text-gray-500" />
       </div>
       <FormButton
-        v-if="showAddButton"
+        v-if="showAddButton && !isEditing"
         text
         size="sm"
         color="primary"
@@ -25,31 +25,39 @@
     <div v-show="isExpanded">
       <!-- New Parameter Form -->
       <div
-        v-if="isAddingNew && showAddButton"
+        v-if="isAddingNew && showAddButton && !isEditing"
         class="mb-4 p-4 border rounded bg-gray-50"
       >
         <div class="grid grid-cols-12 gap-4">
           <div class="col-span-3">
-            <input
-              v-model="newParameterForm.name"
-              type="text"
-              class="w-full px-3 py-2 border rounded"
-              placeholder="Parameter name"
-            />
+            <label class="block">
+              <span class="sr-only">Parameter name</span>
+              <input
+                v-model="newParameterForm.name"
+                type="text"
+                class="w-full px-3 py-2 border rounded"
+                placeholder="Parameter name"
+                aria-label="Parameter name"
+              />
+            </label>
           </div>
           <div class="col-span-7">
-            <input
-              v-model="newParameterForm.value"
-              type="text"
-              class="w-full px-3 py-2 border rounded"
-              placeholder="Value or equation"
-            />
+            <label class="block">
+              <span class="sr-only">Value or equation</span>
+              <input
+                v-model="newParameterForm.value"
+                type="text"
+                class="w-full px-3 py-2 border rounded"
+                placeholder="Value or equation"
+                aria-label="Value or equation"
+              />
+            </label>
           </div>
           <div class="col-span-2 flex gap-2 justify-end">
-            <FormButton text size="sm" color="success" @click="handleCreateNew">
+            <FormButton text size="sm" color="primary" @click="handleCreateNew">
               <CheckIcon class="h-4 w-4" />
             </FormButton>
-            <FormButton text size="sm" color="secondary" @click="$emit('cancel-add')">
+            <FormButton text size="sm" color="outline" @click="$emit('cancel-add')">
               <XMarkIcon class="h-4 w-4" />
             </FormButton>
           </div>
@@ -74,20 +82,28 @@
         <Column field="name" header="Name">
           <template #body="{ data }">
             <div v-if="editingParameter?.id === data.id">
-              <input
-                v-model="editForm.name"
-                type="text"
-                class="w-full px-3 py-1 border rounded"
-                placeholder="Parameter name"
-                @keyup.enter="handleSave(data)"
-                @keyup.esc="cancelEdit"
-              />
-              <input
-                v-model="editForm.group"
-                type="text"
-                class="w-full px-3 py-1 border rounded mt-2"
-                placeholder="Group name (optional)"
-              />
+              <label class="block">
+                <span class="sr-only">Parameter name</span>
+                <input
+                  v-model="editForm.name"
+                  type="text"
+                  class="w-full px-3 py-1 border rounded"
+                  placeholder="Parameter name"
+                  aria-label="Parameter name"
+                  @keyup.enter="handleSave(data)"
+                  @keyup.esc="cancelEdit"
+                />
+              </label>
+              <label class="block mt-2">
+                <span class="sr-only">Group name</span>
+                <input
+                  v-model="editForm.group"
+                  type="text"
+                  class="w-full px-3 py-1 border rounded"
+                  placeholder="Group name (optional)"
+                  aria-label="Group name"
+                />
+              </label>
             </div>
             <span v-else class="font-medium">{{ data.name }}</span>
           </template>
@@ -97,18 +113,24 @@
         <Column field="value" header="Value/Equation">
           <template #body="{ data }">
             <div v-if="editingParameter?.id === data.id">
-              <input
-                v-model="editForm.value"
-                type="text"
-                class="w-full px-3 py-1 border rounded"
-                :placeholder="data.type === 'fixed' ? 'Value' : 'Equation'"
-                @keyup.enter="handleSave(data)"
-                @keyup.esc="cancelEdit"
-              />
+              <label class="block">
+                <span class="sr-only">
+                  {{ data.type === 'fixed' ? 'Value' : 'Equation' }}
+                </span>
+                <input
+                  v-model="editForm.value"
+                  type="text"
+                  class="w-full px-3 py-1 border rounded"
+                  :placeholder="data.type === 'fixed' ? 'Value' : 'Equation'"
+                  :aria-label="data.type === 'fixed' ? 'Value' : 'Equation'"
+                  @keyup.enter="handleSave(data)"
+                  @keyup.esc="cancelEdit"
+                />
+              </label>
             </div>
             <template v-else>
-              <span v-if="data.type === 'fixed'">{{ data.value }}</span>
-              <span v-else>{{ data.equation }}</span>
+              <span v-if="data.type === 'fixed'">{{ data.value || '' }}</span>
+              <span v-else>{{ data.equation || '' }}</span>
             </template>
           </template>
         </Column>
@@ -118,6 +140,7 @@
           <template #body="{ data }">
             <div class="flex items-center gap-2">
               <FormButton
+                v-if="!isEditing"
                 text
                 size="sm"
                 color="primary"
@@ -139,6 +162,7 @@
                 >
                   {{ tableName }}
                   <button
+                    v-if="!isEditing"
                     class="hover:text-red-500"
                     @click="handleRemoveFromTable(data, tableName)"
                   >
@@ -158,15 +182,27 @@
                 <FormButton text size="sm" color="primary" @click="handleSave(data)">
                   <CheckIcon class="h-4 w-4" />
                 </FormButton>
-                <FormButton text size="sm" color="primary" @click="cancelEdit">
+                <FormButton text size="sm" color="outline" @click="cancelEdit">
                   <XMarkIcon class="h-4 w-4" />
                 </FormButton>
               </template>
               <template v-else>
-                <FormButton text size="sm" color="primary" @click="startEdit(data)">
+                <FormButton
+                  v-if="!isEditing || editingParameter?.id === data.id"
+                  text
+                  size="sm"
+                  color="primary"
+                  @click="startEdit(data)"
+                >
                   <PencilIcon class="h-4 w-4" />
                 </FormButton>
-                <FormButton text size="sm" color="danger" @click="handleDelete(data)">
+                <FormButton
+                  v-if="!isEditing"
+                  text
+                  size="sm"
+                  color="danger"
+                  @click="handleDelete(data)"
+                >
                   <TrashIcon class="h-4 w-4" />
                 </FormButton>
               </template>
@@ -211,7 +247,7 @@ const emit = defineEmits<{
   (e: 'remove-from-table', parameter: CustomParameter, tableName: string): void
   (e: 'update', parameter: CustomParameter): void
   (e: 'create', parameter: Omit<CustomParameter, 'id'>): void
-  (e: 'cancel-add'): void // Added this emit
+  (e: 'cancel-add'): void
 }>()
 
 const isExpanded = ref(true)
@@ -229,7 +265,6 @@ const newParameterForm = ref({
   group: ''
 })
 
-// Add computed for isEditing that was used in template
 const isEditing = computed(() => editingParameter.value !== null)
 
 const sortedParameters = computed(() => {
@@ -258,9 +293,11 @@ function startEdit(parameter: CustomParameter) {
   editForm.value = {
     name: parameter.name,
     value:
-      parameter.type === 'fixed' ? parameter.value || '' : parameter.equation || '',
-    group: parameter.group || '',
-    equation: parameter.equation || ''
+      parameter.type === 'fixed'
+        ? parameter.value?.toString() || ''
+        : parameter.equation?.toString() || '',
+    group: parameter.group?.toString() || '',
+    equation: parameter.equation?.toString() || ''
   }
 }
 
@@ -281,12 +318,12 @@ function handleCreateNew() {
     value: type === 'fixed' ? newParameterForm.value.value.trim() : undefined,
     equation: type === 'equation' ? newParameterForm.value.value.trim() : undefined,
     group: newParameterForm.value.group.trim() || props.groupName,
-    field: newParameterForm.value.name.trim(), // Added field
-    header: newParameterForm.value.name.trim(), // Added header
-    category: 'Custom Parameters', // Added category
-    visible: true, // Added visible
-    removable: true, // Added removable
-    order: 0 // Added order
+    field: newParameterForm.value.name.trim(),
+    header: newParameterForm.value.name.trim(),
+    category: 'Custom Parameters',
+    visible: true,
+    removable: true,
+    order: 0
   }
 
   emit('create', newParameter)

@@ -12,7 +12,6 @@ export function useParametersState() {
   const loading = ref(false)
   const error = ref<Error | null>(null)
   const isUpdating = ref(false)
-  const lastUpdateTime = ref(0)
 
   const parametersGraphQL = nuxtApp.runWithContext(() => useParametersGraphQL())
 
@@ -32,30 +31,36 @@ export function useParametersState() {
   watch(
     () => parametersResult.value?.activeUser?.parameters,
     (newParameters) => {
-      const timeSinceLastUpdate = Date.now() - lastUpdateTime.value
-      if (isUpdating.value || timeSinceLastUpdate < 500) {
+      if (isUpdating.value) {
         debug.log(
           DebugCategories.INITIALIZATION,
-          'Skipping parameters update during local change',
-          { isUpdating: isUpdating.value, timeSinceLastUpdate }
+          'Skipping parameters update during local change'
         )
         return
       }
 
       debug.log(DebugCategories.INITIALIZATION, 'Raw parameters received', {
-        hasParameters: !!newParameters
+        hasParameters: !!newParameters,
+        parameterCount: newParameters ? Object.keys(newParameters).length : 0
       })
 
-      if (!newParameters) {
-        parameters.value = {}
-        return
-      }
-
       try {
-        parameters.value = newParameters as Record<string, UnifiedParameter>
-        debug.log(DebugCategories.INITIALIZATION, 'Parameters updated')
+        if (newParameters) {
+          parameters.value = newParameters as Record<string, UnifiedParameter>
+          debug.log(DebugCategories.INITIALIZATION, 'Parameters updated', {
+            count: Object.keys(parameters.value).length
+          })
+        } else {
+          parameters.value = {}
+          debug.warn(
+            DebugCategories.INITIALIZATION,
+            'No parameters found, using empty object'
+          )
+        }
       } catch (err) {
         debug.error(DebugCategories.ERROR, 'Failed to process parameters update', err)
+        error.value =
+          err instanceof Error ? err : new Error('Failed to process parameters')
       }
     },
     { deep: true }
@@ -70,9 +75,16 @@ export function useParametersState() {
       const parametersData = await fetchParameters()
 
       if (parametersData) {
-        parameters.value = parametersData as Record<string, UnifiedParameter>
+        parameters.value = parametersData
+        debug.log(DebugCategories.INITIALIZATION, 'Parameters loaded', {
+          count: Object.keys(parameters.value).length
+        })
       } else {
         parameters.value = {}
+        debug.warn(
+          DebugCategories.INITIALIZATION,
+          'No parameters found, using empty object'
+        )
       }
 
       debug.completeState(
@@ -82,6 +94,7 @@ export function useParametersState() {
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to load parameters', err)
       error.value = err instanceof Error ? err : new Error('Failed to load parameters')
+      throw error.value
     } finally {
       loading.value = false
     }
@@ -96,13 +109,36 @@ export function useParametersState() {
         loading.value = true
         error.value = null
         isUpdating.value = true
-        lastUpdateTime.value = Date.now()
 
-        // Update local state first
-        parameters.value = newParameters
+        // Create a new object to store merged parameters
+        const mergedParameters: Record<string, UnifiedParameter> = {
+          ...parameters.value
+        }
 
-        // Then save to backend
-        await updateParametersGQL(newParameters)
+        // Merge new parameters one by one
+        Object.entries(newParameters).forEach(([key, parameter]) => {
+          // If parameter already exists, preserve its ID and merge other properties
+          if (mergedParameters[key]) {
+            mergedParameters[key] = {
+              ...mergedParameters[key],
+              ...parameter,
+              id: mergedParameters[key].id // Ensure we keep the original ID
+            }
+          } else {
+            // If it's a new parameter, add it as is
+            mergedParameters[key] = parameter
+          }
+        })
+
+        // Update backend first
+        const success = await updateParametersGQL(mergedParameters)
+
+        if (!success) {
+          throw new Error('Failed to update parameters on server')
+        }
+
+        // Update local state after successful backend update
+        parameters.value = mergedParameters
 
         debug.completeState(DebugCategories.STATE, 'Parameters saved successfully')
         return true
@@ -113,10 +149,7 @@ export function useParametersState() {
         throw error.value
       } finally {
         loading.value = false
-        // Add a small delay before allowing next update
-        setTimeout(() => {
-          isUpdating.value = false
-        }, 500)
+        isUpdating.value = false
       }
     })
   }
@@ -126,7 +159,6 @@ export function useParametersState() {
     loading,
     error,
     isUpdating,
-    lastUpdateTime,
     loadParameters,
     saveParameters
   }

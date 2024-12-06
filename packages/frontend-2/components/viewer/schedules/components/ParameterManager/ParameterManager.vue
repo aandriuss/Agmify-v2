@@ -47,7 +47,7 @@
         <!-- Table Selection Dialog -->
         <TableSelectionDialog
           v-if="showTableSelectionModal"
-          v-model:selected-tables="selectedTables"
+          v-model="selectedTables"
           :tables="safeAvailableTables"
           :parameter="selectedParameterForTables"
           @save="handleSaveTableSelection"
@@ -73,6 +73,11 @@ import type { CustomParameter } from '~/composables/core/types'
 import ParameterList from './ParameterList.vue'
 import TableSelectionDialog from './TableSelectionDialog.vue'
 
+interface Table {
+  id: string
+  name: string
+}
+
 const error = ref<string | null>(null)
 const showTableSelectionModal = ref(false)
 const selectedParameterForTables = ref<CustomParameter | null>(null)
@@ -84,13 +89,13 @@ const { parameters, loading, loadParameters } = useParametersState()
 
 // Initialize parameter operations with error handling
 const { createParameter, updateParameter, deleteParameter } = useParameterOperations({
-  onError: (message) => (error.value = message),
+  onError: (message: string) => (error.value = message),
   onUpdate: () => emit('update')
 })
 
 // Initialize mapping operations
 const { getParameterTables, updateParameterTables } = useParameterMappingOperations({
-  onError: (message) => (error.value = message),
+  onError: (message: string) => (error.value = message),
   onUpdate: () => emit('update')
 })
 
@@ -120,7 +125,12 @@ const props = defineProps<{
 // Computed properties
 const isLoading = computed(() => loading.value)
 
-const safeAvailableTables = computed(() => availableTables.value || [])
+const safeAvailableTables = computed<Table[]>(() =>
+  (availableTables.value || []).map((table) => ({
+    id: table.id,
+    name: table.name
+  }))
+)
 
 // Evaluation for equations
 const { evaluateParameter } = useParameterEvaluation({
@@ -144,7 +154,7 @@ const dialogButtons = computed<LayoutDialogButton[]>(() => [
 async function handleCreateParameter(paramData: Omit<CustomParameter, 'id'>) {
   try {
     error.value = null
-    const newParam = await createParameter(paramData)
+    const newParam: CustomParameter = await createParameter(paramData)
 
     // If tables are preselected
     if (props.tableId) {

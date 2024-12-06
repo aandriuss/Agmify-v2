@@ -16,6 +16,14 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
     if (onError) onError(message)
   }
 
+  function generateParameterKey(parameter: Omit<CustomParameter, 'id'>): string {
+    // Create a stable key based on name and group
+    const group = parameter.group || 'default'
+    const sanitizedName = parameter.name.toLowerCase().replace(/[^a-z0-9]/g, '_')
+    const sanitizedGroup = group.toLowerCase().replace(/[^a-z0-9]/g, '_')
+    return `${sanitizedGroup}-${sanitizedName}`
+  }
+
   async function createParameter(
     parameter: Omit<CustomParameter, 'id'>
   ): Promise<CustomParameter> {
@@ -27,10 +35,20 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
         throw new Error('Parameter name and type are required')
       }
 
-      const newId = `param-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      // Generate a stable key for the parameter
+      const parameterKey = generateParameterKey(parameter)
+
+      // Get current parameters
+      const currentParams = parameters.value || {}
+
+      // Check if parameter with this key already exists
+      if (currentParams[parameterKey]) {
+        throw new Error('A parameter with this name already exists in this group')
+      }
+
       const newParameter: CustomParameter = {
         ...parameter,
-        id: newId,
+        id: parameterKey,
         field: parameter.name,
         header: parameter.name,
         visible: true,
@@ -39,15 +57,14 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
         category: 'Custom Parameters'
       }
 
-      // Get current parameters and merge with new one
-      const currentParams = parameters.value || {}
+      // Merge with current parameters
       const updatedParameters = {
         ...currentParams,
-        [newId]: newParameter
+        [parameterKey]: newParameter
       }
 
       debug.log(DebugCategories.PARAMETERS, 'Saving parameter', {
-        parameterId: newId,
+        parameterId: parameterKey,
         totalParameters: Object.keys(updatedParameters).length
       })
 
@@ -80,21 +97,54 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
         throw new Error('Parameter not found')
       }
 
+      // If name or group is being updated, we need to generate a new key
+      if (updates.name || updates.group) {
+        const newKey = generateParameterKey({
+          ...existingParameter,
+          ...updates
+        })
+
+        // Check if new key would conflict with existing parameter (except self)
+        if (newKey !== parameterId && currentParams[newKey]) {
+          throw new Error('A parameter with this name already exists in this group')
+        }
+
+        // Create updated parameter with new key
+        const updatedParameter = {
+          ...existingParameter,
+          ...updates,
+          id: newKey
+        }
+
+        // Remove old key and add new key
+        const { [parameterId]: _, ...remainingParams } = currentParams
+        const updatedParameters = {
+          ...remainingParams,
+          [newKey]: updatedParameter
+        }
+
+        await saveParameters(updatedParameters)
+
+        if (onUpdate) onUpdate()
+
+        debug.completeState(
+          DebugCategories.PARAMETERS,
+          'Parameter updated successfully'
+        )
+        return updatedParameter
+      }
+
+      // If not changing name/group, just update the existing parameter
       const updatedParameter = {
         ...existingParameter,
         ...updates,
-        id: parameterId // Ensure ID doesn't get overwritten
+        id: parameterId
       }
 
       const updatedParameters = {
         ...currentParams,
         [parameterId]: updatedParameter
       }
-
-      debug.log(DebugCategories.PARAMETERS, 'Saving updated parameter', {
-        parameterId,
-        updates: Object.keys(updates)
-      })
 
       await saveParameters(updatedParameters)
 
