@@ -1,210 +1,149 @@
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import type {
-  CustomParameter,
-  UserSettings,
-  NamedTableConfig
-} from '~/composables/core/types'
+import { useParametersState } from '../parameters/useParametersState'
+import type { CustomParameter } from '~/composables/core/types'
 
 interface UseParameterOperationsOptions {
-  settings: { value: UserSettings }
-  saveSettings: (settings: UserSettings) => Promise<boolean>
+  onError?: (error: string) => void
+  onUpdate?: () => void
 }
 
 export function useParameterOperations(options: UseParameterOperationsOptions) {
-  const { settings, saveSettings } = options
+  const { onError, onUpdate } = options
+  const { parameters, saveParameters } = useParametersState()
 
-  async function saveParameterUpdates(updatedParameters: CustomParameter[]) {
-    const updatedSettings = {
-      ...settings.value,
-      customParameters: updatedParameters
-    }
-
-    const success = await saveSettings(updatedSettings)
-    if (!success) {
-      throw new Error('Failed to save parameters')
-    }
-
-    return updatedParameters
+  const handleError = (err: unknown) => {
+    const message = err instanceof Error ? err.message : 'An unknown error occurred'
+    if (onError) onError(message)
   }
 
   async function createParameter(
     parameter: Omit<CustomParameter, 'id'>
   ): Promise<CustomParameter> {
-    debug.startState(DebugCategories.PARAMETERS, 'Creating new parameter', {
-      parameter
-    })
+    try {
+      debug.startState(DebugCategories.PARAMETERS, 'Creating new parameter')
 
-    const currentParameters = settings.value.customParameters || []
-    const newId = `param-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      // Validate parameter data
+      if (!parameter.name || !parameter.type) {
+        throw new Error('Parameter name and type are required')
+      }
 
-    const newParameter: CustomParameter = {
-      ...parameter,
-      id: newId
+      const newId = `param-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const newParameter: CustomParameter = {
+        ...parameter,
+        id: newId,
+        field: parameter.name,
+        header: parameter.name,
+        visible: true,
+        removable: true,
+        order: 0,
+        category: 'Custom Parameters'
+      }
+
+      // Get current parameters and merge with new one
+      const currentParams = parameters.value || {}
+      const updatedParameters = {
+        ...currentParams,
+        [newId]: newParameter
+      }
+
+      debug.log(DebugCategories.PARAMETERS, 'Saving parameter', {
+        parameterId: newId,
+        totalParameters: Object.keys(updatedParameters).length
+      })
+
+      await saveParameters(updatedParameters)
+
+      if (onUpdate) onUpdate()
+
+      debug.completeState(DebugCategories.PARAMETERS, 'Parameter created successfully')
+      return newParameter
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to create parameter:', err)
+      handleError(err)
+      throw err
     }
-
-    const updatedParameters = [...currentParameters, newParameter]
-
-    await saveParameterUpdates(updatedParameters)
-
-    debug.completeState(DebugCategories.PARAMETERS, 'Parameter created', {
-      newParameter
-    })
-
-    return newParameter
   }
 
   async function updateParameter(
     parameterId: string,
     updates: Partial<CustomParameter>
   ): Promise<CustomParameter> {
-    debug.startState(DebugCategories.PARAMETERS, 'Updating parameter', {
-      parameterId,
-      updates
-    })
+    try {
+      debug.startState(DebugCategories.PARAMETERS, 'Updating parameter', {
+        parameterId
+      })
 
-    const currentParameters = settings.value.customParameters || []
-    const parameterIndex = currentParameters.findIndex((p) => p.id === parameterId)
+      const currentParams = parameters.value || {}
+      const existingParameter = currentParams[parameterId]
 
-    if (parameterIndex === -1) {
-      throw new Error('Parameter not found')
+      if (!existingParameter) {
+        throw new Error('Parameter not found')
+      }
+
+      const updatedParameter = {
+        ...existingParameter,
+        ...updates,
+        id: parameterId // Ensure ID doesn't get overwritten
+      }
+
+      const updatedParameters = {
+        ...currentParams,
+        [parameterId]: updatedParameter
+      }
+
+      debug.log(DebugCategories.PARAMETERS, 'Saving updated parameter', {
+        parameterId,
+        updates: Object.keys(updates)
+      })
+
+      await saveParameters(updatedParameters)
+
+      if (onUpdate) onUpdate()
+
+      debug.completeState(DebugCategories.PARAMETERS, 'Parameter updated successfully')
+      return updatedParameter
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to update parameter:', err)
+      handleError(err)
+      throw err
     }
-
-    const updatedParameter = {
-      ...currentParameters[parameterIndex],
-      ...updates
-    }
-
-    const updatedParameters = [...currentParameters]
-    updatedParameters[parameterIndex] = updatedParameter
-
-    await saveParameterUpdates(updatedParameters)
-
-    debug.completeState(DebugCategories.PARAMETERS, 'Parameter updated', {
-      updatedParameter
-    })
-
-    return updatedParameter
   }
 
   async function deleteParameter(parameterId: string): Promise<void> {
-    debug.startState(DebugCategories.PARAMETERS, 'Deleting parameter', {
-      parameterId
-    })
+    try {
+      debug.startState(DebugCategories.PARAMETERS, 'Deleting parameter', {
+        parameterId
+      })
 
-    const currentParameters = settings.value.customParameters || []
-    const updatedParameters = currentParameters.filter((p) => p.id !== parameterId)
+      const currentParams = parameters.value || {}
 
-    // Remove parameter reference from all tables
-    const currentTables = settings.value.namedTables || {}
-    const updatedTables = Object.entries(currentTables).reduce<
-      Record<string, NamedTableConfig>
-    >(
-      (acc, [tableId, table]) => ({
-        ...acc,
-        [tableId]: {
-          ...table,
-          selectedParameterIds: (table.selectedParameterIds || []).filter(
-            (id) => id !== parameterId
-          )
-        }
-      }),
-      {}
-    )
-
-    const updatedSettings = {
-      ...settings.value,
-      customParameters: updatedParameters,
-      namedTables: updatedTables
-    }
-
-    const success = await saveSettings(updatedSettings)
-    if (!success) {
-      throw new Error('Failed to delete parameter')
-    }
-
-    debug.completeState(DebugCategories.PARAMETERS, 'Parameter deleted', {
-      parameterId
-    })
-  }
-
-  // Table parameter selection operations
-  async function addParameterToTable(
-    tableId: string,
-    parameterId: string
-  ): Promise<void> {
-    const currentTables = settings.value.namedTables || {}
-    const currentTable = currentTables[tableId]
-    if (!currentTable) {
-      throw new Error('Table not found')
-    }
-
-    const selectedParameterIds = new Set([
-      ...(currentTable.selectedParameterIds || []),
-      parameterId
-    ])
-
-    const updatedTable = {
-      ...currentTable,
-      selectedParameterIds: Array.from(selectedParameterIds)
-    }
-
-    const updatedSettings = {
-      ...settings.value,
-      namedTables: {
-        ...currentTables,
-        [tableId]: updatedTable
+      if (!currentParams[parameterId]) {
+        throw new Error('Parameter not found')
       }
+
+      // Create new object without the deleted parameter
+      const { [parameterId]: deleted, ...remainingParameters } = currentParams
+
+      debug.log(DebugCategories.PARAMETERS, 'Deleting parameter', {
+        parameterId,
+        remainingCount: Object.keys(remainingParameters).length
+      })
+
+      await saveParameters(remainingParameters)
+
+      if (onUpdate) onUpdate()
+
+      debug.completeState(DebugCategories.PARAMETERS, 'Parameter deleted successfully')
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to delete parameter:', err)
+      handleError(err)
+      throw err
     }
-
-    await saveSettings(updatedSettings)
-  }
-
-  async function removeParameterFromTable(
-    tableId: string,
-    parameterId: string
-  ): Promise<void> {
-    const currentTables = settings.value.namedTables || {}
-    const currentTable = currentTables[tableId]
-    if (!currentTable) {
-      throw new Error('Table not found')
-    }
-
-    const updatedTable = {
-      ...currentTable,
-      selectedParameterIds: (currentTable.selectedParameterIds || []).filter(
-        (id) => id !== parameterId
-      )
-    }
-
-    const updatedSettings = {
-      ...settings.value,
-      namedTables: {
-        ...currentTables,
-        [tableId]: updatedTable
-      }
-    }
-
-    await saveSettings(updatedSettings)
-  }
-
-  // Helper to get parameters for a table
-  function getTableParameters(tableId: string): CustomParameter[] {
-    const currentTables = settings.value.namedTables || {}
-    const table = currentTables[tableId]
-    if (!table) return []
-
-    const currentParameters = settings.value.customParameters || []
-    return (table.selectedParameterIds || [])
-      .map((id) => currentParameters.find((p) => p.id === id))
-      .filter((param): param is CustomParameter => !!param)
   }
 
   return {
     createParameter,
     updateParameter,
-    deleteParameter,
-    addParameterToTable,
-    removeParameterFromTable,
-    getTableParameters
+    deleteParameter
   }
 }

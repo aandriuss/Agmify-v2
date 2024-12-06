@@ -127,6 +127,9 @@ export type {
   NewCustomParameter
 } from './settings'
 
+// Mappings
+export type { ParameterTableMapping, ParameterMappings } from './mappings'
+
 // Export settings constants and helpers
 export {
   DEFAULT_SETTINGS,

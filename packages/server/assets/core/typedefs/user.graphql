@@ -68,6 +68,11 @@ extend type User {
   User parameters configuration
   """
   parameters: JSONObject @isOwner
+
+  """
+  User parameters mappings configuration
+  """
+  parameterMappings: JSONObject @isOwner
 }
 
 type PasswordStrengthCheckResults {
@@ -178,6 +183,11 @@ extend type Mutation {
   Update user tables configuration
   """
   userTablesUpdate(tables: JSONObject!): Boolean!
+
+  """
+  Update user parameters mapping configuration
+  """
+  userParameterMappingsUpdate(mappings: JSONObject!): Boolean!
 
   """
   Update user parameters configuration

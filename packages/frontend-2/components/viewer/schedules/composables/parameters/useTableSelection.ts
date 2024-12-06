@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import type { Ref } from 'vue'
-import type { CustomParameter } from '../../types/parameters'
+import type { CustomParameter } from '~/composables/core/types'
 
 interface Table {
   id: string

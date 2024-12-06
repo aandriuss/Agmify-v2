@@ -1402,6 +1402,8 @@ export type Mutation = {
   /** Delete a user's account. */
   userDelete: Scalars['Boolean']['output'];
   userNotificationPreferencesUpdate?: Maybe<Scalars['Boolean']['output']>;
+  /** Update user parameters mapping configuration */
+  userParameterMappingsUpdate: Scalars['Boolean']['output'];
   /** Update user parameters configuration */
   userParametersUpdate: Scalars['Boolean']['output'];
   userRoleChange: Scalars['Boolean']['output'];
@@ -1723,6 +1725,11 @@ export type MutationUserDeleteArgs = {
 
 export type MutationUserNotificationPreferencesUpdateArgs = {
   preferences: Scalars['JSONObject']['input'];
+};
+
+
+export type MutationUserParameterMappingsUpdateArgs = {
+  mappings: Scalars['JSONObject']['input'];
 };
 
 
@@ -3690,6 +3697,8 @@ export type User = {
   isOnboardingFinished?: Maybe<Scalars['Boolean']['output']>;
   name: Scalars['String']['output'];
   notificationPreferences: Scalars['JSONObject']['output'];
+  /** User parameters mappings configuration */
+  parameterMappings?: Maybe<Scalars['JSONObject']['output']>;
   /** User parameters configuration */
   parameters?: Maybe<Scalars['JSONObject']['output']>;
   profiles?: Maybe<Scalars['JSONObject']['output']>;
@@ -6984,6 +6993,7 @@ export type MutationFieldArgs = {
   userCommentThreadActivityBroadcast: MutationUserCommentThreadActivityBroadcastArgs,
   userDelete: MutationUserDeleteArgs,
   userNotificationPreferencesUpdate: MutationUserNotificationPreferencesUpdateArgs,
+  userParameterMappingsUpdate: MutationUserParameterMappingsUpdateArgs,
   userParametersUpdate: MutationUserParametersUpdateArgs,
   userRoleChange: MutationUserRoleChangeArgs,
   userSettingsUpdate: MutationUserSettingsUpdateArgs,
@@ -7500,6 +7510,7 @@ export type UserFieldArgs = {
   isOnboardingFinished: {},
   name: {},
   notificationPreferences: {},
+  parameterMappings: {},
   parameters: {},
   profiles: {},
   projectAccessRequest: UserProjectAccessRequestArgs,

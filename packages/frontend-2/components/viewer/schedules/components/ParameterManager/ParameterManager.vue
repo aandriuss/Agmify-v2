@@ -9,6 +9,11 @@
     @update:open="$emit('close')"
   >
     <div class="p-4">
+      <!-- Loading State -->
+      <div v-if="isLoading" class="flex justify-center py-4">
+        <div>loading...</div>
+      </div>
+
       <!-- Error Alert -->
       <div
         v-if="error"
@@ -17,48 +22,38 @@
         {{ error }}
       </div>
 
-      <div class="space-y-6">
+      <!-- Content -->
+      <div v-if="!isLoading" class="space-y-6">
         <!-- Parameter Groups -->
         <div v-for="group in groupedParameters" :key="group.name">
           <ParameterList
             :group-name="group.name"
             :parameters="group.parameters"
+            :is-adding-new="isAddingNew"
             :show-add-button="group.name === 'Custom'"
+            :get-current-value="evaluateParameter"
+            :get-used-in-tables="getUsedInTables"
+            :available-tables="safeAvailableTables"
             @add="openAddParameterDialog"
-          >
-            <template #parameter="{ parameter }">
-              <ParameterCard
-                :parameter="parameter"
-                :used-in-tables="getUsedInTables(parameter.id)"
-                :current-value="evaluateParameter(parameter)"
-                @edit="handleEdit"
-                @delete="handleDelete"
-                @add-to-tables="handleAddToTables"
-              />
-            </template>
-          </ParameterList>
+            @cancel-add="handleCancelAdd"
+            @create="handleCreateParameter"
+            @update="handleParameterUpdate"
+            @delete="handleDelete"
+            @add-to-tables="handleAddToTables"
+            @remove-from-table="handleRemoveFromTable"
+          />
         </div>
+
+        <!-- Table Selection Dialog -->
+        <TableSelectionDialog
+          v-if="showTableSelectionModal"
+          v-model:selected-tables="selectedTables"
+          :tables="safeAvailableTables"
+          :parameter="selectedParameterForTables"
+          @save="handleSaveTableSelection"
+          @close="closeTableSelectionModal"
+        />
       </div>
-
-      <!-- Edit Dialog -->
-      <ParameterEditDialog
-        v-if="showParameterDialog"
-        :model-value="parameterForm"
-        :available-parameters="availableParametersText"
-        @update:model-value="(val: ParameterFormData) => (parameterForm = val)"
-        @save="handleSaveParameter"
-        @close="closeParameterDialog"
-      />
-
-      <!-- Table Selection Dialog -->
-      <TableSelectionDialog
-        v-if="showTableSelectionModal"
-        v-model:selected-tables="selectedTables"
-        :available-tables="availableTables"
-        :parameter="selectedParameterForTables"
-        @save="saveTableSelection"
-        @close="closeSelectionModal"
-      />
     </div>
   </LayoutDialog>
 </template>
@@ -66,223 +61,75 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import type { LayoutDialogButton } from '@speckle/ui-components'
-import { useUserSettings } from '~/composables/useUserSettings'
 import { useParameterOperations } from '~/composables/settings/useParameterOperations'
 import { useParameterGroups } from '../../composables/parameters/useParameterGroups'
 import { useParameterEvaluation } from '../../composables/parameters/useParameterEvaluation'
+import { useParametersState } from '~/composables/parameters/useParametersState'
 import { useTableSelection } from '../../composables/parameters/useTableSelection'
-import type {
-  CustomParameter,
-  NewCustomParameter,
-  ParameterFormData
-} from '~/composables/core/types'
+import { useParameterMappingOperations } from '~/composables/parameters/useParameterMappingOperations'
+import type { CustomParameter } from '~/composables/core/types'
 
 // Components
 import ParameterList from './ParameterList.vue'
-import ParameterCard from './ParameterCard.vue'
-import ParameterEditDialog from './ParameterEditDialog.vue'
 import TableSelectionDialog from './TableSelectionDialog.vue'
 
-const props = defineProps<{
-  tableId: string
-}>()
+const error = ref<string | null>(null)
+const showTableSelectionModal = ref(false)
+const selectedParameterForTables = ref<CustomParameter | null>(null)
+const isAddingNew = ref(false)
+const selectedTables = ref<string[]>([])
+
+// Initialize parameter state
+const { parameters, loading, loadParameters } = useParametersState()
+
+// Initialize parameter operations with error handling
+const { createParameter, updateParameter, deleteParameter } = useParameterOperations({
+  onError: (message) => (error.value = message),
+  onUpdate: () => emit('update')
+})
+
+// Initialize mapping operations
+const { getParameterTables, updateParameterTables } = useParameterMappingOperations({
+  onError: (message) => (error.value = message),
+  onUpdate: () => emit('update')
+})
+
+// Initialize table selection
+const { availableTables, getUsedInTables } = useTableSelection({
+  tables: computed(() => parameters.value || {}),
+  onTableSelectionChange: async (parameterId: string, tableIds: string[]) => {
+    try {
+      await updateParameterTables(parameterId, tableIds)
+      emit('update')
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to update tables'
+    }
+  }
+})
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'update'): void
+  (e: 'parameter-update'): void
 }>()
 
-// State
-const error = ref<string | null>(null)
-const showParameterDialog = ref(false)
-const showTableSelectionModal = ref(false)
-const selectedParameterForTables = ref<CustomParameter | null>(null)
-const editingParameter = ref<CustomParameter | null>(null)
+const props = defineProps<{
+  tableId?: string
+}>()
 
-// Parameter form state with default values
-const parameterForm = ref<ParameterFormData>({
-  name: '',
-  type: 'fixed' as const,
-  value: '',
-  equation: '',
-  group: 'Custom',
-  errors: {
-    name: '',
-    value: '',
-    equation: ''
-  }
-})
+// Computed properties
+const isLoading = computed(() => loading.value)
 
-// Services
-const { settings, loadSettings, saveSettings } = useUserSettings()
+const safeAvailableTables = computed(() => availableTables.value || [])
 
-onMounted(async () => {
-  try {
-    await loadSettings()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to load settings'
-  }
-})
-
-// Parameter Operations with error handling
-const {
-  createParameter,
-  updateParameter,
-  deleteParameter,
-  addParameterToTable,
-  removeParameterFromTable
-} = useParameterOperations({
-  settings,
-  saveSettings: async (updatedSettings) => {
-    try {
-      await saveSettings(updatedSettings)
-      return true
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to save settings'
-      return false
-    }
-  }
-})
-
-// Safe access to all parameters
-const allParameters = computed(() => {
-  return (
-    settings.value?.customParameters
-      ? Object.values(settings.value.customParameters)
-      : []
-  ) as CustomParameter[]
-})
-
-// Groups
-const { groupedParameters } = useParameterGroups({
-  parameters: allParameters
-})
-
-// Table Selection with safe access to settings
-const {
-  selectedTables,
-  availableTables,
-  getUsedInTables,
-  saveTableSelection,
-  closeSelectionModal
-} = useTableSelection({
-  tables: computed(() => settings.value?.namedTables ?? {}),
-  onTableSelectionChange: async (parameterId: string, tableIds: string[]) => {
-    if (!settings.value?.namedTables) return
-
-    const currentTables = Object.entries(settings.value.namedTables)
-      .filter(([, table]) => table.selectedParameterIds?.includes(parameterId))
-      .map(([id]) => id)
-
-    for (const tableId of currentTables) {
-      if (!tableIds.includes(tableId)) {
-        await removeParameterFromTable(tableId, parameterId)
-      }
-    }
-
-    for (const tableId of tableIds) {
-      if (!currentTables.includes(tableId)) {
-        await addParameterToTable(tableId, parameterId)
-      }
-    }
-  }
-})
-
-// Safe parameter evaluation
+// Evaluation for equations
 const { evaluateParameter } = useParameterEvaluation({
-  parameters: allParameters
+  parameters: computed(() => Object.values(parameters.value || {}))
 })
 
-// Methods
-const validateForm = (): boolean => {
-  const errors: Record<string, string> = {}
-  let isValid = true
-
-  // Validate name
-  if (!parameterForm.value?.name?.trim()) {
-    errors.name = 'Name is required'
-    isValid = false
-  }
-
-  // Validate based on type
-  if (parameterForm.value?.type === 'fixed') {
-    const value = parameterForm.value?.value?.trim()
-    if (!value && value !== '0') {
-      // Allow '0' as a valid value
-      errors.value = 'Value is required'
-      isValid = false
-    } else if (isNaN(Number(value))) {
-      errors.value = 'Value must be a number'
-      isValid = false
-    }
-  } else if (parameterForm.value?.type === 'equation') {
-    if (!parameterForm.value?.equation?.trim()) {
-      errors.equation = 'Equation is required'
-      isValid = false
-    }
-  }
-
-  // Update form with new errors
-  parameterForm.value = {
-    ...parameterForm.value,
-    errors
-  }
-
-  return isValid
-}
-
-const handleSaveParameter = async () => {
-  try {
-    if (!validateForm()) {
-      return
-    }
-
-    // Create a safe copy of the data with all required fields
-    const paramData: NewCustomParameter = {
-      name: parameterForm.value.name,
-      type: parameterForm.value.type,
-      field: parameterForm.value.name,
-      header: parameterForm.value.name,
-      group: parameterForm.value.group,
-      category: 'Custom Parameters',
-      visible: true,
-      removable: true,
-      order: 0
-    }
-
-    // Add type-specific fields
-    if (parameterForm.value.type === 'fixed') {
-      paramData.value = parameterForm.value.value?.trim() ?? '0'
-      paramData.equation = undefined
-    } else {
-      paramData.equation = parameterForm.value.equation?.trim() || ''
-      paramData.value = undefined
-    }
-
-    if (editingParameter.value) {
-      await updateParameter(editingParameter.value.id, paramData)
-    } else {
-      const newParam = await createParameter(paramData)
-      if (props.tableId) {
-        await addParameterToTable(props.tableId, newParam.id)
-      }
-    }
-
-    await loadSettings()
-    emit('update')
-    // Only close the parameter edit dialog
-    closeParameterDialog()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to save parameter'
-  }
-}
-
-// Computed
-const availableParametersText = computed(() => {
-  return allParameters.value
-    .filter((p) => !editingParameter.value || p.id !== editingParameter.value.id)
-    .map((p) => p.name)
-    .join(', ')
+// Grouped parameters
+const { groupedParameters } = useParameterGroups({
+  parameters: computed(() => Object.values(parameters.value || {}))
 })
 
 // Dialog buttons
@@ -294,35 +141,36 @@ const dialogButtons = computed<LayoutDialogButton[]>(() => [
   }
 ])
 
-// Methods
-const openAddParameterDialog = () => {
-  editingParameter.value = null
-  parameterForm.value = {
-    name: '',
-    type: 'fixed' as const,
-    value: '',
-    equation: '',
-    group: 'Custom',
-    errors: {}
-  }
-  showParameterDialog.value = true
-}
-
-const handleEdit = (parameter: CustomParameter) => {
-  editingParameter.value = parameter
-  parameterForm.value = {
-    name: parameter.name,
-    type: parameter.type,
-    value: parameter.value || '',
-    equation: parameter.equation || '',
-    group: parameter.group || 'Custom',
-    errors: {}
-  }
-  showParameterDialog.value = true
-}
-
-const handleDelete = async (parameter: CustomParameter) => {
+async function handleCreateParameter(paramData: Omit<CustomParameter, 'id'>) {
   try {
+    error.value = null
+    const newParam = await createParameter(paramData)
+
+    // If tables are preselected
+    if (props.tableId) {
+      await updateParameterTables(newParam.id, [props.tableId])
+    }
+
+    emit('update')
+    isAddingNew.value = false
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to create parameter'
+  }
+}
+
+async function handleParameterUpdate(parameter: CustomParameter) {
+  try {
+    error.value = null
+    await updateParameter(parameter.id, parameter)
+    emit('update')
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to update parameter'
+  }
+}
+
+async function handleDelete(parameter: CustomParameter) {
+  try {
+    error.value = null
     await deleteParameter(parameter.id)
     emit('update')
   } catch (err) {
@@ -330,35 +178,73 @@ const handleDelete = async (parameter: CustomParameter) => {
   }
 }
 
-const handleAddToTables = (parameter: CustomParameter) => {
-  selectedParameterForTables.value = parameter
-  showTableSelectionModal.value = true
-}
-
-const closeParameterDialog = () => {
-  showParameterDialog.value = false
-  editingParameter.value = null
-  parameterForm.value = {
-    name: '',
-    type: 'fixed',
-    value: '',
-    equation: '',
-    group: 'Custom',
-    errors: {}
+function handleAddToTables(parameter: CustomParameter) {
+  try {
+    selectedParameterForTables.value = parameter
+    selectedTables.value = getParameterTables(parameter.id)
+    showTableSelectionModal.value = true
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to get parameter tables'
   }
 }
 
-// Expose error handling
+async function handleSaveTableSelection() {
+  if (!selectedParameterForTables.value) return
+
+  try {
+    await updateParameterTables(
+      selectedParameterForTables.value.id,
+      selectedTables.value
+    )
+    emit('update')
+    closeTableSelectionModal()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to update table mappings'
+  }
+}
+
+function closeTableSelectionModal() {
+  showTableSelectionModal.value = false
+  selectedParameterForTables.value = null
+  selectedTables.value = []
+}
+
+async function handleRemoveFromTable(parameter: CustomParameter, tableName: string) {
+  try {
+    error.value = null
+    const currentTables = getParameterTables(parameter.id)
+    const tableToRemove = safeAvailableTables.value.find((t) => t.name === tableName)
+
+    if (tableToRemove) {
+      const updatedTables = currentTables.filter((id) => id !== tableToRemove.id)
+      await updateParameterTables(parameter.id, updatedTables)
+      emit('update')
+    }
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to remove table mapping'
+  }
+}
+
+function openAddParameterDialog() {
+  isAddingNew.value = true
+}
+
+function handleCancelAdd() {
+  isAddingNew.value = false
+}
+
+// Load parameters on mount
+onMounted(async () => {
+  try {
+    await loadParameters()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to load parameters'
+  }
+})
+
 defineExpose({
   handleError: (err: Error | unknown) => {
     error.value = err instanceof Error ? err.message : 'An error occurred'
   }
 })
 </script>
-
-<style scoped>
-.dialog-content {
-  max-height: 70vh;
-  overflow-y: auto;
-}
-</style>

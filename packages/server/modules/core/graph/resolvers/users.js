@@ -159,7 +159,21 @@ const resolvers = {
         }
       }
       return user?.tables || {}
+    },
+    async parameterMappings(parent, args, context) {
+      // Check authentication
+      if (!context.userId) throw new Error('User not authenticated')
+      
+      // Get user's parameter mappings
+      const user = await db('users')
+        .where({ id: parent.id })
+        .select('parameterMappings')
+        .first()
+
+      // Return mappings or empty object if none exist
+      return user?.parameterMappings || {}
     }
+
   },
   
   LimitedUser: {
@@ -243,6 +257,21 @@ const resolvers = {
         .update({ tables });
 
       return true;
+    },
+
+    async userParameterMappingsUpdate(_parent, { mappings }, context) {
+      const userId = context.userId;
+      if (!userId) throw new Error('User not authenticated');
+
+      try {
+        await db('users')
+          .where({ id: userId })
+          .update({ parameterMappings: mappings });
+
+        return true;
+      } catch (err) {
+        throw new Error('Failed to update parameter mappings')
+      }
     },
 
     activeUserMutations: () => ({}) // Empty function to prevent errors

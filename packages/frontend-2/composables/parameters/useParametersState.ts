@@ -2,7 +2,7 @@ import { ref, watch } from 'vue'
 import { useNuxtApp } from '#app'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import { useParametersGraphQL } from './useParametersGraphQL'
-import { useUpdateQueue } from '../useUpdateQueue'
+import { useUpdateQueue } from '../settings/useUpdateQueue'
 import type { UnifiedParameter } from '../core/types'
 
 export function useParametersState() {
@@ -98,8 +98,11 @@ export function useParametersState() {
         isUpdating.value = true
         lastUpdateTime.value = Date.now()
 
-        await updateParametersGQL(newParameters)
+        // Update local state first
         parameters.value = newParameters
+
+        // Then save to backend
+        await updateParametersGQL(newParameters)
 
         debug.completeState(DebugCategories.STATE, 'Parameters saved successfully')
         return true
@@ -110,7 +113,10 @@ export function useParametersState() {
         throw error.value
       } finally {
         loading.value = false
-        isUpdating.value = false
+        // Add a small delay before allowing next update
+        setTimeout(() => {
+          isUpdating.value = false
+        }, 500)
       }
     })
   }

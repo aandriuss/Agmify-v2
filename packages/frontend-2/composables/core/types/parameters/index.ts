@@ -150,7 +150,8 @@ export interface CustomParameter extends Parameter {
   isFetched?: boolean
   source?: string
   equation?: string
-  tables?: Array<{ id: string; name: string }>
+  group?: string
+  removable?: boolean
 }
 
 /**
@@ -178,9 +179,16 @@ export interface ParameterFormData {
   name: string
   type: ParameterType
   value?: unknown
+  equation?: unknown
+  group?: string
   description?: string
   metadata?: Record<string, unknown>
-  field: string
+  field?: string
+  errors?: {
+    name?: unknown
+    value?: unknown
+    equation?: unknown
+  }
 }
 
 /**
@@ -195,6 +203,7 @@ export interface UnifiedParameter extends Parameter {
   fetchedGroup?: string
   currentGroup?: string
   removable?: boolean
+  selectedParameterIds?: string[]
   computed?: {
     value: unknown
     isValid: boolean

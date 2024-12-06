@@ -1421,6 +1421,8 @@ export type Mutation = {
   /** Delete a user's account. */
   userDelete: Scalars['Boolean']['output'];
   userNotificationPreferencesUpdate?: Maybe<Scalars['Boolean']['output']>;
+  /** Update user parameters mapping configuration */
+  userParameterMappingsUpdate: Scalars['Boolean']['output'];
   /** Update user parameters configuration */
   userParametersUpdate: Scalars['Boolean']['output'];
   userRoleChange: Scalars['Boolean']['output'];
@@ -1742,6 +1744,11 @@ export type MutationUserDeleteArgs = {
 
 export type MutationUserNotificationPreferencesUpdateArgs = {
   preferences: Scalars['JSONObject']['input'];
+};
+
+
+export type MutationUserParameterMappingsUpdateArgs = {
+  mappings: Scalars['JSONObject']['input'];
 };
 
 
@@ -3709,6 +3716,8 @@ export type User = {
   isOnboardingFinished?: Maybe<Scalars['Boolean']['output']>;
   name: Scalars['String']['output'];
   notificationPreferences: Scalars['JSONObject']['output'];
+  /** User parameters mappings configuration */
+  parameterMappings?: Maybe<Scalars['JSONObject']['output']>;
   /** User parameters configuration */
   parameters?: Maybe<Scalars['JSONObject']['output']>;
   profiles?: Maybe<Scalars['JSONObject']['output']>;
@@ -5711,6 +5720,7 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   userCommentThreadActivityBroadcast?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserCommentThreadActivityBroadcastArgs, 'commentId' | 'streamId'>>;
   userDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserDeleteArgs, 'userConfirmation'>>;
   userNotificationPreferencesUpdate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationUserNotificationPreferencesUpdateArgs, 'preferences'>>;
+  userParameterMappingsUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserParameterMappingsUpdateArgs, 'mappings'>>;
   userParametersUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserParametersUpdateArgs, 'parameters'>>;
   userRoleChange?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserRoleChangeArgs, 'userRoleInput'>>;
   userSettingsUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserSettingsUpdateArgs, 'settings'>>;
@@ -6340,6 +6350,7 @@ export type UserResolvers<ContextType = GraphQLContext, ParentType extends Resol
   isOnboardingFinished?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   notificationPreferences?: Resolver<ResolversTypes['JSONObject'], ParentType, ContextType>;
+  parameterMappings?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   parameters?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   profiles?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
   projectAccessRequest?: Resolver<Maybe<ResolversTypes['ProjectAccessRequest']>, ParentType, ContextType, RequireFields<UserProjectAccessRequestArgs, 'projectId'>>;
