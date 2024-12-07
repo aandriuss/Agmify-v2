@@ -1,3 +1,4 @@
+<!-- Template section unchanged -->
 <template>
   <ScheduleLayout
     :selected-table-id="store.selectedTableId.value || ''"
@@ -24,7 +25,7 @@
       <ScheduleLoadingState :is-loading="isLoading" :error="error" @retry="handleRetry">
         <ScheduleMainView
           :selected-table-id="store.selectedTableId.value || ''"
-          :current-table="null"
+          :current-table="currentTable"
           :is-initialized="isInitialized"
           :table-name="store.tableName.value || ''"
           :current-table-id="store.currentTableId.value || ''"
@@ -89,7 +90,6 @@ import { useUnifiedParameters } from './composables/useUnifiedParameters'
 import { useScheduleInteractions } from './composables/useScheduleInteractions'
 import { useScheduleInitialization } from './composables/useScheduleInitialization'
 import { useScheduleCategories } from './composables/useScheduleCategories'
-import { useUserSettings } from '~/composables/useUserSettings'
 import type {
   ElementData,
   TableRow,
@@ -119,8 +119,20 @@ const error = ref<Error | null>(null)
 
 // Initialize core composables
 const store = useStore()
-const { settings, loadSettings } = useUserSettings()
 const tablesState = useTablesState()
+
+// Get current table from tablesState
+const currentTable = computed(() => {
+  const selectedId = store.selectedTableId.value
+  if (!selectedId) return null
+
+  // Find table by ID in tablesState
+  return (
+    Object.values(tablesState.state.value?.tables || {}).find(
+      (table): table is NamedTableConfig => table.id === selectedId
+    ) || null
+  )
+})
 
 // Initialize categories after store
 const categories = useScheduleCategories({
@@ -314,13 +326,10 @@ async function applyTableSettings(tableId: string) {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Applying table settings')
 
-    // Find table settings by ID
-    const tableSettings = settings.value?.namedTables
-      ? Object.values(settings.value.namedTables).find(
-          (table) =>
-            table && typeof table === 'object' && 'id' in table && table.id === tableId
-        )
-      : null
+    // Find table settings by ID from tablesState
+    const table = Object.values(tablesState.state.value?.tables || {}).find(
+      (t): t is NamedTableConfig => t.id === tableId
+    )
 
     if (tableId === '') {
       // Creating new table - keep current settings
@@ -343,22 +352,22 @@ async function applyTableSettings(tableId: string) {
         categories.selectedParentCategories.value || [],
         categories.selectedChildCategories.value || []
       )
-    } else if (tableSettings) {
+    } else if (table) {
       // Loading existing table
       await store.lifecycle.update({
         selectedTableId: tableId,
         currentTableId: tableId,
-        tableName: tableSettings.name,
-        currentTableColumns: tableSettings.parentColumns || [],
-        currentDetailColumns: tableSettings.childColumns || [],
-        mergedTableColumns: tableSettings.parentColumns || [],
-        mergedDetailColumns: tableSettings.childColumns || []
+        tableName: table.name,
+        currentTableColumns: table.parentColumns || [],
+        currentDetailColumns: table.childColumns || [],
+        mergedTableColumns: table.parentColumns || [],
+        mergedDetailColumns: table.childColumns || []
       } as Partial<StoreState>)
 
       // Update categories using new composable
       await categories.loadCategories(
-        tableSettings.categoryFilters?.selectedParentCategories || [],
-        tableSettings.categoryFilters?.selectedChildCategories || []
+        table.categoryFilters?.selectedParentCategories || [],
+        table.categoryFilters?.selectedChildCategories || []
       )
     } else {
       // Fallback to default settings
@@ -414,15 +423,19 @@ const availableChildHeaders = computed<ColumnDef[]>(() => {
 })
 
 // Computed properties for relationship data
-const parentElements = computed(() => {
-  return (store.scheduleData.value || []).filter(
-    (el): el is ElementData => el.isChild === false
+const parentElements = computed<ElementData[]>(() => {
+  const data = store.scheduleData.value || []
+  return data.filter(
+    (el): el is ElementData =>
+      typeof el === 'object' && el !== null && 'isChild' in el && el.isChild === false
   )
 })
 
-const childElements = computed(() => {
-  return (store.scheduleData.value || []).filter(
-    (el): el is ElementData => el.isChild === true
+const childElements = computed<ElementData[]>(() => {
+  const data = store.scheduleData.value || []
+  return data.filter(
+    (el): el is ElementData =>
+      typeof el === 'object' && el !== null && 'isChild' in el && el.isChild === true
   )
 })
 
@@ -592,21 +605,32 @@ async function handleParameterUpdate() {
     debug.startState(DebugCategories.PARAMETERS, 'Updating parameters')
     error.value = null
 
-    // Reload settings to get updated parameters
-    const { settings, loadSettings } = useUserSettings()
-    await loadSettings()
+    // Get current table from tablesState
+    const table = Object.values(tablesState.state.value?.tables || {}).find(
+      (t): t is NamedTableConfig => t.id === store.currentTableId.value
+    )
 
-    // Get custom parameters from settings
-    const customParams =
-      settings.value?.namedTables?.[store.currentTableId.value]?.customParameters || []
+    // Convert parameter IDs to UserParameter objects
+    const customParameters = (table?.selectedParameterIds || []).map((id) => ({
+      id,
+      kind: 'user' as const,
+      name: id,
+      type: 'fixed' as const,
+      group: 'Custom',
+      field: id,
+      visible: true,
+      header: id,
+      removable: true,
+      value: ''
+    }))
 
-    // Update store with custom parameters
+    // Update store with parameters
     await store.lifecycle.update({
-      customParameters: customParams
+      customParameters
     } as Partial<StoreState>)
 
     debug.completeState(DebugCategories.PARAMETERS, 'Parameters updated', {
-      parameterCount: customParams.length,
+      parameterCount: customParameters.length,
       tableId: store.currentTableId.value
     })
   } catch (err) {
@@ -680,16 +704,19 @@ onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
 
-    // Load settings first
-    await loadSettings()
+    // Load tables first
+    await tablesState.loadTables()
 
     // Extract tables info and update store
-    const tables = settings.value?.namedTables
-      ? Object.entries(settings.value.namedTables).map(([id, table]) => ({
-          id,
-          name: table.name || 'Unnamed Table'
-        }))
-      : []
+    const tables = Object.values(tablesState.state.value?.tables || {})
+      .filter((table): table is NamedTableConfig => {
+        if (!table || typeof table !== 'object') return false
+        return 'id' in table && table.id !== 'defaultTable'
+      })
+      .map((table) => ({
+        id: table.id,
+        name: table.name || 'Unnamed Table'
+      }))
 
     await store.lifecycle.update({
       tablesArray: tables

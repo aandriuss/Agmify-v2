@@ -209,7 +209,8 @@ async function processElement(
   const processedParams: Record<string, PrimitiveValue> = {}
 
   // Ensure parameters object exists
-  const parameters = element.parameters || {}
+  const parameters: Record<string, unknown> =
+    (element.parameters as Record<string, unknown>) || {}
 
   for (const def of definitions) {
     try {
