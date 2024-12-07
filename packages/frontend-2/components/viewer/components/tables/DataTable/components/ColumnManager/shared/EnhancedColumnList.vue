@@ -92,6 +92,7 @@
               >
                 <div class="flex-1">
                   <div class="text-sm">{{ item.header }}</div>
+                  <div class="text-xs text-gray-500">{{ getItemType(item) }}</div>
                 </div>
 
                 <div class="flex items-center gap-1">
@@ -186,10 +187,12 @@ import {
   ChevronRightIcon,
   ChevronDownIcon
 } from '@heroicons/vue/24/outline'
-import type { ColumnDef, UnifiedParameter } from '~/composables/core/types'
+import type { ColumnDef } from '~/composables/core/types/tables'
+import type { Parameter } from '~/composables/core/types/parameters'
+import { getParameterGroup, isBimParameter } from '~/composables/core/types/parameters'
 
 interface Props {
-  items: (ColumnDef | UnifiedParameter)[]
+  items: (ColumnDef | Parameter)[]
   mode: 'active' | 'available'
   showFilterOptions?: boolean
   searchTerm?: string
@@ -210,34 +213,44 @@ const emit = defineEmits<{
   'update:search-term': [value: string]
   'update:is-grouped': [value: boolean]
   'update:sort-by': [value: string]
-  add: [item: UnifiedParameter | ColumnDef]
-  remove: [item: UnifiedParameter | ColumnDef]
-  'drag-start': [event: DragEvent, item: UnifiedParameter | ColumnDef, index: number]
+  add: [item: Parameter | ColumnDef]
+  remove: [item: Parameter | ColumnDef]
+  'drag-start': [event: DragEvent, item: Parameter | ColumnDef, index: number]
   'drag-end': []
   'drag-enter': [event: DragEvent, index: number]
   drop: [event: DragEvent, index: number]
-  'visibility-change': [item: UnifiedParameter | ColumnDef, visible: boolean]
+  'visibility-change': [item: Parameter | ColumnDef, visible: boolean]
 }>()
 
 const localSearchTerm = ref(props.searchTerm)
 const expandedGroups = ref<Set<string>>(new Set())
 
+// Helper to determine if item is a Parameter
+function isParameter(item: Parameter | ColumnDef): item is Parameter {
+  return 'kind' in item
+}
+
 // Helper to get group name from item
-function getItemGroup(item: ColumnDef | UnifiedParameter): string {
-  if ('fetchedGroup' in item) {
-    return item.fetchedGroup || 'Uncategorized'
+function getItemGroup(item: Parameter | ColumnDef): string {
+  if (isParameter(item)) {
+    return getParameterGroup(item)
   }
-  if ('source' in item) {
-    return item.source || 'Uncategorized'
+  return item.category || item.currentGroup || 'Uncategorized'
+}
+
+// Helper to get item type
+function getItemType(item: Parameter | ColumnDef): string {
+  if (isParameter(item)) {
+    if (isBimParameter(item)) {
+      return `BIM - ${item.type}`
+    }
+    return `User - ${item.type}`
   }
-  return item.category || 'Uncategorized'
+  return item.type || 'string'
 }
 
 const groupedItems = computed(() => {
-  const groups: Record<
-    string,
-    { group: string; items: (ColumnDef | UnifiedParameter)[] }
-  > = {}
+  const groups: Record<string, { group: string; items: (Parameter | ColumnDef)[] }> = {}
 
   props.items.forEach((item) => {
     const group = getItemGroup(item)
@@ -253,7 +266,10 @@ const groupedItems = computed(() => {
   // Sort groups by name, but keep essential groups at the top
   return Object.values(groups)
     .sort((a, b) => {
-      // Essential groups first
+      // BIM groups first
+      if (a.group.startsWith('BIM') && !b.group.startsWith('BIM')) return -1
+      if (!a.group.startsWith('BIM') && b.group.startsWith('BIM')) return 1
+      // Essential groups next
       if (a.group === 'Properties') return -1
       if (b.group === 'Properties') return 1
       if (a.group === 'Parameters') return -1
@@ -265,15 +281,16 @@ const groupedItems = computed(() => {
     })
     .map((group) => ({
       ...group,
-      items: group.items.sort((a, b) => a.header.localeCompare(b.header))
+      items: group.items.sort((a, b) => {
+        // Sort by name within groups
+        const nameA = isParameter(a) ? a.name : a.header
+        const nameB = isParameter(b) ? b.name : b.header
+        return nameA.localeCompare(nameB)
+      })
     }))
 })
 
-function handleDragStart(
-  event: DragEvent,
-  item: UnifiedParameter | ColumnDef,
-  index: number
-) {
+function handleDragStart(event: DragEvent, item: Parameter | ColumnDef, index: number) {
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.dropEffect = 'move'

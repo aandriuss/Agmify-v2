@@ -1,3 +1,8 @@
+"""
+Represents a JSON object
+"""
+scalar JSONObject
+
 type SmartTextEditorValue {
   """
   The version of the schema

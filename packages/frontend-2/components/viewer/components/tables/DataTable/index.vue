@@ -1,3 +1,4 @@
+<!-- Template remains unchanged -->
 <template>
   <div class="prime-local">
     <!-- Column Management -->
@@ -20,7 +21,7 @@
       @update:open="dialogOpen = $event"
       @update:columns="handleColumnsUpdate"
       @cancel="handleCancel"
-      @apply="handleApply"
+      @apply="handleApplyColumns"
     />
 
     <!-- Main Table -->
@@ -73,7 +74,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
-import { useUserSettings } from '~/composables/useUserSettings'
 import ColumnManager from './components/ColumnManager/index.vue'
 import TableWrapper from './components/TableWrapper/index.vue'
 import {
@@ -82,18 +82,16 @@ import {
   updateLocalColumns as updateColumns,
   validateTableRows
 } from './composables/useTableUtils'
-import type {
-  ColumnDef,
-  TableRow,
-  ElementData,
-  UnifiedParameter
-} from '~/composables/core/types'
+import type { ColumnDef } from '~/composables/core/types/tables'
+import type { Parameter } from '~/composables/core/types/parameters'
+import type { ElementData, TableRow } from '~/composables/core/types/data'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import type {
   DataTableColumnReorderEvent,
   DataTableFilterMeta,
   DataTableExpandedRows
 } from 'primevue/datatable'
+import { useTableConfigs } from '~/composables/useTableConfigs'
 
 interface Props {
   tableId: string
@@ -102,8 +100,8 @@ interface Props {
   scheduleData: (TableRow | ElementData)[]
   columns: ColumnDef[]
   detailColumns: ColumnDef[]
-  availableParentParameters: UnifiedParameter[]
-  availableChildParameters: UnifiedParameter[]
+  availableParentParameters: Parameter[]
+  availableChildParameters: Parameter[]
   loading?: boolean
   initialState?: TableState
 }
@@ -115,23 +113,6 @@ interface TableState {
   sortField?: string
   sortOrder?: number
   filters?: DataTableFilterMeta
-}
-
-interface TableSettings {
-  namedTables: Record<
-    string,
-    {
-      id: string
-      name: string
-      parentColumns: ColumnDef[]
-      childColumns: ColumnDef[]
-      categoryFilters: {
-        selectedParentCategories: string[]
-        selectedChildCategories: string[]
-      }
-      lastUpdateTimestamp: number
-    }
-  >
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -156,9 +137,6 @@ const emit = defineEmits<{
   error: [error: Error]
 }>()
 
-// Initialize settings
-const { settings, saveSettings } = useUserSettings()
-
 // UI State
 const dialogOpen = ref(false)
 const isSaving = ref(false)
@@ -177,6 +155,9 @@ const localChildColumns = ref<ColumnDef[]>([])
 const tempParentColumns = ref<ColumnDef[]>([])
 const tempChildColumns = ref<ColumnDef[]>([])
 
+// Initialize table configs
+const tableConfigs = useTableConfigs()
+
 // Computed key to force table refresh
 const tableKey = computed(() => {
   return `${props.tableId}-${props.data.length}-${localParentColumns.value.length}-${localChildColumns.value.length}`
@@ -184,9 +165,9 @@ const tableKey = computed(() => {
 
 // Error Handler
 function handleError(error: Error | unknown): void {
-  const err = error instanceof Error ? error : new Error(String(error))
-  errorMessage.value = err.message
-  emit('error', err)
+  const message = error instanceof Error ? error.message : String(error)
+  errorMessage.value = message
+  emit('error', new Error(message))
 }
 
 function isTableRowOrElementData(value: unknown): value is TableRow | ElementData {
@@ -200,7 +181,6 @@ function isTableRowOrElementData(value: unknown): value is TableRow | ElementDat
     typeof candidate.type === 'string' &&
     typeof candidate.mark === 'string' &&
     typeof candidate.category === 'string' &&
-    typeof candidate._visible === 'boolean' &&
     typeof candidate.parameters === 'object' &&
     candidate.parameters !== null
 
@@ -223,39 +203,7 @@ function isTableRowOrElementData(value: unknown): value is TableRow | ElementDat
 // Update handleExpandedRowsUpdate to properly handle both types
 function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): void {
   if (Array.isArray(value)) {
-    const validRows = value.filter((row): row is TableRow | ElementData => {
-      const isValid = isTableRowOrElementData(row)
-      if (!isValid) {
-        // Create a type for the debug info
-        type DebugRowInfo = {
-          row: unknown
-          type: string
-          hasId: boolean
-          hasType: boolean
-          hasMark: boolean
-          hasCategory: boolean
-          hasVisible: boolean
-          hasParameters: boolean
-        }
-
-        // Cast row to Record for safe property checks
-        const candidate = row as Record<string, unknown>
-        const debugInfo: DebugRowInfo = {
-          row,
-          type: typeof row,
-          hasId: typeof candidate.id === 'string',
-          hasType: typeof candidate.type === 'string',
-          hasMark: typeof candidate.mark === 'string',
-          hasCategory: typeof candidate.category === 'string',
-          hasVisible: typeof candidate._visible === 'boolean',
-          hasParameters:
-            typeof candidate.parameters === 'object' && candidate.parameters !== null
-        }
-
-        debug.log(DebugCategories.TABLE_DATA, 'Invalid row in expanded rows', debugInfo)
-      }
-      return isValid
-    })
+    const validRows = value.filter(isTableRowOrElementData)
 
     debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
       inputRows: value.length,
@@ -264,8 +212,7 @@ function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): voi
         id: row.id,
         mark: row.mark,
         type: row.type,
-        hasDetails:
-          'details' in row && Array.isArray(row.details) && row.details.length > 0
+        hasDetails: 'details' in row && Array.isArray(row.details)
       }))
     })
     expandedRowsState.value = validRows
@@ -278,43 +225,7 @@ const expandedRows = computed<(TableRow | ElementData)[]>({
   get: () => expandedRowsState.value,
   set: (value) => {
     if (Array.isArray(value)) {
-      const validRows = value.filter((row): row is TableRow | ElementData => {
-        const isValid = isTableRowOrElementData(row)
-        if (!isValid) {
-          // Create a type for the debug info
-          type DebugRowInfo = {
-            row: unknown
-            type: string
-            hasId: boolean
-            hasType: boolean
-            hasMark: boolean
-            hasCategory: boolean
-            hasVisible: boolean
-            hasParameters: boolean
-          }
-
-          // Cast row to Record for safe property checks
-          const candidate = row as Record<string, unknown>
-          const debugInfo: DebugRowInfo = {
-            row,
-            type: typeof row,
-            hasId: typeof candidate.id === 'string',
-            hasType: typeof candidate.type === 'string',
-            hasMark: typeof candidate.mark === 'string',
-            hasCategory: typeof candidate.category === 'string',
-            hasVisible: typeof candidate._visible === 'boolean',
-            hasParameters:
-              typeof candidate.parameters === 'object' && candidate.parameters !== null
-          }
-
-          debug.log(
-            DebugCategories.TABLE_DATA,
-            'Invalid row in expanded rows',
-            debugInfo
-          )
-        }
-        return isValid
-      })
+      const validRows = value.filter(isTableRowOrElementData)
 
       debug.log(DebugCategories.DATA_TRANSFORM, 'Setting expanded rows', {
         inputRows: value.length,
@@ -323,8 +234,7 @@ const expandedRows = computed<(TableRow | ElementData)[]>({
           id: row.id,
           mark: row.mark,
           type: row.type,
-          hasDetails:
-            'details' in row && Array.isArray(row.details) && row.details.length > 0
+          hasDetails: 'details' in row && Array.isArray(row.details)
         }))
       })
       expandedRowsState.value = validRows
@@ -353,6 +263,7 @@ function handleRowCollapse(row: TableRow | ElementData): void {
 
 // Helper function to ensure column properties
 function ensureColumnProperties(column: ColumnDef): ColumnDef {
+  const group = column.currentGroup || 'Parameters'
   return {
     ...column,
     visible: column.visible ?? true,
@@ -360,7 +271,8 @@ function ensureColumnProperties(column: ColumnDef): ColumnDef {
     type: column.type || 'string',
     category: column.category || 'Parameters',
     description:
-      column.description || `${column.category || 'Parameters'} > ${column.field}`
+      column.description || `${column.category || 'Parameters'} > ${column.field}`,
+    currentGroup: group
   }
 }
 
@@ -381,13 +293,15 @@ async function initializeState(): Promise<void> {
       localChildColumns.value = safeJSONClone(sortColumnsByOrder(initialChildColumns))
 
       // Set initial expanded rows with proper validation
-      const validRows = validateTableRows(props.initialState.expandedRows)
+      const validRows = validateTableRows(props.initialState.expandedRows).filter(
+        isTableRowOrElementData
+      )
       expandedRowsState.value = validRows
       debug.log(DebugCategories.INITIALIZATION, 'Initial expanded rows set', {
         count: validRows.length,
         rows: validRows.map((row) => ({
           id: row.id,
-          hasDetails: !!(row as TableRow).details?.length
+          hasDetails: 'details' in row && Array.isArray(row.details)
         }))
       })
 
@@ -405,6 +319,9 @@ async function initializeState(): Promise<void> {
         (cols) => (localChildColumns.value = cols)
       )
     }
+
+    // Initialize table configs
+    await tableConfigs.initialize()
 
     debug.log(DebugCategories.INITIALIZATION, 'State initialized', {
       parentColumns: localParentColumns.value.length,
@@ -450,65 +367,22 @@ function handleColumnsUpdate(updates: {
   )
 }
 
-async function handleApply(): Promise<void> {
+async function handleApplyColumns(): Promise<void> {
   try {
     isSaving.value = true
-    const currentSettings = (settings.value || { namedTables: {} }) as TableSettings
-    const existingTable = currentSettings.namedTables[props.tableId]
 
-    // Prepare the updated columns with proper order and defaults
-    const updatedParentColumns = tempParentColumns.value.map((col, index) => ({
-      ...ensureColumnProperties(col),
-      order: index
-    }))
+    // Update local state
+    localParentColumns.value = safeJSONClone(tempParentColumns.value)
+    localChildColumns.value = safeJSONClone(tempChildColumns.value)
 
-    const updatedChildColumns = tempChildColumns.value.map((col, index) => ({
-      ...ensureColumnProperties(col),
-      order: index
-    }))
-
-    // Create updated settings preserving all existing data
-    const updatedSettings: TableSettings = {
-      ...currentSettings,
-      namedTables: {
-        ...currentSettings.namedTables,
-        [props.tableId]: {
-          ...(existingTable || {}),
-          id: props.tableId,
-          name: existingTable?.name || props.tableName,
-          parentColumns: updatedParentColumns,
-          childColumns: updatedChildColumns,
-          categoryFilters: existingTable?.categoryFilters || {
-            selectedParentCategories: [],
-            selectedChildCategories: []
-          },
-          lastUpdateTimestamp: Date.now()
-        }
-      }
+    // Update table configs
+    if (props.tableId) {
+      await tableConfigs.updateTableColumns(
+        props.tableId,
+        localParentColumns.value,
+        localChildColumns.value
+      )
     }
-
-    // Save all settings at once
-    const success = await saveSettings(updatedSettings)
-    if (!success) {
-      throw new Error('Failed to save settings')
-    }
-
-    // Update local state after successful save
-    localParentColumns.value = safeJSONClone(updatedParentColumns)
-    localChildColumns.value = safeJSONClone(updatedChildColumns)
-
-    debug.log(DebugCategories.COLUMNS, 'Columns updated', {
-      parentColumns: updatedParentColumns.length,
-      childColumns: updatedChildColumns.length,
-      groups: [
-        ...new Set([
-          ...updatedParentColumns.map((c) => c.category),
-          ...updatedChildColumns.map((c) => c.category)
-        ])
-      ],
-      visibleParent: updatedParentColumns.filter((c) => c.visible).length,
-      visibleChild: updatedChildColumns.filter((c) => c.visible).length
-    })
 
     // Emit updates
     emit('update:both-columns', {
@@ -519,9 +393,6 @@ async function handleApply(): Promise<void> {
     dialogOpen.value = false
   } catch (error) {
     handleError(error)
-    // Revert temp columns on error
-    tempParentColumns.value = safeJSONClone(localParentColumns.value)
-    tempChildColumns.value = safeJSONClone(localChildColumns.value)
   } finally {
     isSaving.value = false
   }
@@ -562,7 +433,7 @@ function isHTMLElement(value: unknown): value is HTMLElement {
   return value instanceof HTMLElement
 }
 
-async function handleColumnReorder(event: DataTableColumnReorderEvent): Promise<void> {
+function handleColumnReorder(event: DataTableColumnReorderEvent): void {
   try {
     isSaving.value = true
 
@@ -597,34 +468,6 @@ async function handleColumnReorder(event: DataTableColumnReorderEvent): Promise<
     } else {
       localParentColumns.value = updatedColumns
       emit('update:columns', updatedColumns)
-    }
-
-    // Save changes using the same method as handleApply
-    const currentSettings = (settings.value || { namedTables: {} }) as TableSettings
-    const existingTable = currentSettings.namedTables[props.tableId]
-
-    const updatedSettings: TableSettings = {
-      ...currentSettings,
-      namedTables: {
-        ...currentSettings.namedTables,
-        [props.tableId]: {
-          ...(existingTable || {}),
-          id: props.tableId,
-          name: existingTable?.name || props.tableName,
-          parentColumns: localParentColumns.value,
-          childColumns: localChildColumns.value,
-          categoryFilters: existingTable?.categoryFilters || {
-            selectedParentCategories: [],
-            selectedChildCategories: []
-          },
-          lastUpdateTimestamp: Date.now()
-        }
-      }
-    }
-
-    const success = await saveSettings(updatedSettings)
-    if (!success) {
-      throw new Error('Failed to save column reorder')
     }
 
     emit('column-reorder', event)

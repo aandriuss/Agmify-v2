@@ -1,4 +1,5 @@
-import type { ColumnDef, TableRow, ParameterValue } from '~/composables/core/types'
+import type { ColumnDef, ParameterValue } from '~/composables/core/types'
+import type { TableRow, ElementData } from '~/composables/core/types/data'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 export function safeJSONClone<T>(obj: T): T {
@@ -103,10 +104,38 @@ export function updateLocalColumns(
   }
 }
 
+// Type guard for ElementData
+function isElementData(value: unknown): value is ElementData {
+  if (!isValidParameters(value)) return false
+
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.type === 'string' &&
+    typeof candidate.mark === 'string' &&
+    typeof candidate.category === 'string' &&
+    Array.isArray(candidate.details)
+  )
+}
+
+// Type guard for TableRow
+function isTableRow(value: unknown): value is TableRow {
+  if (!isValidParameters(value)) return false
+
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.type === 'string' &&
+    typeof candidate.mark === 'string' &&
+    typeof candidate.category === 'string' &&
+    (!('details' in candidate) || Array.isArray(candidate.details))
+  )
+}
+
 /**
- * Validate array of TableRow objects
+ * Validate array of TableRow or ElementData objects
  */
-export function validateTableRows(data: unknown[]): TableRow[] {
+export function validateTableRows(data: unknown[]): (TableRow | ElementData)[] {
   debug.startState(DebugCategories.DATA_VALIDATION, 'Validating table rows', {
     inputCount: data?.length,
     sampleInput: data?.[0]
@@ -120,13 +149,13 @@ export function validateTableRows(data: unknown[]): TableRow[] {
     return []
   }
 
-  // Only validate parameters exist and are valid
-  const validItems = data.filter((item): item is TableRow => {
-    const isValid = isValidParameters(item)
+  // Validate each item is either a TableRow or ElementData
+  const validItems = data.filter((item): item is TableRow | ElementData => {
+    const isValid = isTableRow(item) || isElementData(item)
     if (!isValid) {
-      debug.warn(DebugCategories.VALIDATION, 'Invalid parameters in row', {
+      debug.warn(DebugCategories.VALIDATION, 'Invalid row', {
         item,
-        reason: 'Parameters missing or invalid'
+        reason: 'Item is neither TableRow nor ElementData'
       })
     }
     return isValid
@@ -139,7 +168,11 @@ export function validateTableRows(data: unknown[]): TableRow[] {
       inputCount: data.length,
       validCount: validItems.length,
       invalidCount: data.length - validItems.length,
-      sampleValidRow: validItems[0]
+      sampleValidRow: validItems[0],
+      types: {
+        tableRows: validItems.filter(isTableRow).length,
+        elementData: validItems.filter(isElementData).length
+      }
     }
   )
 

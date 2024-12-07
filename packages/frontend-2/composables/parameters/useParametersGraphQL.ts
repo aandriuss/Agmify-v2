@@ -10,43 +10,18 @@ import {
 } from './errors'
 
 import type {
-  UnifiedParameter,
-  UserParameterType,
-  UserParameter
+  Parameter,
+  BimParameter,
+  UserParameter,
+  GQLParameter,
+  GetParametersQueryResponse
 } from '~/composables/core/types'
 
-export enum ParameterType {
-  fixed = 'fixed',
-  equation = 'equation'
-}
-
-export interface Parameter extends UserParameter {
-  type: UserParameterType
-  id: string
-  name: string
-  value: string
-  equation?: string
-  group: string
-  field: string
-  header: string
-  category?: string
-  description?: string
-  removable: boolean
-  isFetched?: boolean
-  visible: boolean
-  metadata?: unknown
-  source?: string
-}
-
-interface GetParametersResponse {
-  activeUser: {
-    parameters: Record<string, Parameter>
-  }
-}
-
-interface UpdateParametersResponse {
-  userParametersUpdate: boolean
-}
+import {
+  convertToParameter,
+  convertToGQLParameter
+} from '~/composables/core/utils/graphql'
+import { isBimParameter } from '~/composables/core/utils/parameters'
 
 // GraphQL Operations
 const GET_USER_PARAMETERS = gql`
@@ -60,6 +35,18 @@ const GET_USER_PARAMETERS = gql`
 const UPDATE_USER_PARAMETERS = gql`
   mutation UpdateUserParameters($parameters: JSONObject!) {
     userParametersUpdate(parameters: $parameters)
+  }
+`
+
+const ADD_PARAMETER_TO_TABLE = gql`
+  mutation AddParameterToTable($parameterId: ID!, $tableId: ID!) {
+    addParameterToTable(parameterId: $parameterId, tableId: $tableId)
+  }
+`
+
+const REMOVE_PARAMETER_FROM_TABLE = gql`
+  mutation RemoveParameterFromTable($parameterId: ID!, $tableId: ID!) {
+    removeParameterFromTable(parameterId: $parameterId, tableId: $tableId)
   }
 `
 
@@ -97,15 +84,25 @@ export function useParametersGraphQL() {
 
   // Initialize GraphQL operations
   const { mutate: updateParametersMutation } = useMutation<
-    UpdateParametersResponse,
-    { parameters: Record<string, Parameter> }
+    { userParametersUpdate: boolean },
+    { parameters: Record<string, GQLParameter> }
   >(UPDATE_USER_PARAMETERS)
+
+  const { mutate: addParameterToTableMutation } = useMutation<
+    { addParameterToTable: boolean },
+    { parameterId: string; tableId: string }
+  >(ADD_PARAMETER_TO_TABLE)
+
+  const { mutate: removeParameterFromTableMutation } = useMutation<
+    { removeParameterFromTable: boolean },
+    { parameterId: string; tableId: string }
+  >(REMOVE_PARAMETER_FROM_TABLE)
 
   const {
     result: queryResult,
     loading: queryLoading,
     refetch
-  } = useQuery<GetParametersResponse>(GET_USER_PARAMETERS, null, {
+  } = useQuery<GetParametersQueryResponse>(GET_USER_PARAMETERS, null, {
     fetchPolicy: 'cache-and-network'
   })
 
@@ -115,12 +112,20 @@ export function useParametersGraphQL() {
       debug.startState(DebugCategories.INITIALIZATION, 'Fetching parameters')
 
       const response = await nuxtApp.runWithContext(() => refetch())
-      const parameters = response?.data?.activeUser?.parameters
+      const gqlParameters = response?.data?.activeUser?.parameters
 
-      if (!parameters) {
+      if (!gqlParameters) {
         debug.warn(DebugCategories.INITIALIZATION, 'No parameters found')
         return {}
       }
+
+      // Convert GQL parameters to core parameters
+      const parameters = Object.entries(gqlParameters).reduce<
+        Record<string, Parameter>
+      >((acc, [key, gqlParam]) => {
+        acc[key] = convertToParameter(gqlParam)
+        return acc
+      }, {})
 
       debug.log(DebugCategories.INITIALIZATION, 'Parameters fetched', {
         count: Object.keys(parameters).length
@@ -132,30 +137,22 @@ export function useParametersGraphQL() {
     }
   }
 
-  async function createParameter(parameter: UnifiedParameter): Promise<Parameter> {
+  async function createParameter(parameter: Parameter): Promise<Parameter> {
     try {
       debug.startState(DebugCategories.STATE, 'Creating parameter')
 
       // Get current parameters
       const currentParameters = await fetchParameters()
 
-      // Convert to Parameter type if needed
-      const parameterToSave: Parameter = {
-        ...parameter,
-        type: parameter.type as UserParameterType,
-        isFetched: false,
-        removable: true
-      }
-
       // Prepare update
       const updatedParameters = {
         ...currentParameters,
-        [parameter.id]: parameterToSave
+        [parameter.id]: parameter
       }
 
       await updateParameters(updatedParameters)
 
-      return parameterToSave
+      return parameter
     } catch (err) {
       handleOperationError('create', err)
     }
@@ -167,10 +164,18 @@ export function useParametersGraphQL() {
     try {
       debug.startState(DebugCategories.STATE, 'Updating parameters')
 
-      // Send update directly without trying to merge locally
+      // Convert parameters to GQL format
+      const gqlParameters = Object.entries(parameters).reduce<
+        Record<string, GQLParameter>
+      >((acc, [key, param]) => {
+        acc[key] = convertToGQLParameter(param)
+        return acc
+      }, {})
+
+      // Send update
       const result = await nuxtApp.runWithContext(() =>
         updateParametersMutation({
-          parameters // Server will handle the merge
+          parameters: gqlParameters
         })
       )
 
@@ -189,7 +194,7 @@ export function useParametersGraphQL() {
 
   async function updateParameter(
     id: string,
-    updates: Partial<Omit<UnifiedParameter, 'id' | 'createdAt' | 'updatedAt'>>
+    updates: Partial<Omit<Parameter, 'id' | 'kind'>>
   ): Promise<Parameter> {
     try {
       debug.startState(DebugCategories.STATE, 'Updating parameter')
@@ -203,48 +208,45 @@ export function useParametersGraphQL() {
       }
 
       // Check for name/group conflicts
-      if (updates.name || updates.currentGroup) {
-        const newKey = `${updates.currentGroup || existingParameter.group}-${
-          updates.name || existingParameter.name
-        }`
+      const groupToCheck = isBimParameter(existingParameter)
+        ? updates.currentGroup || existingParameter.currentGroup
+        : updates.group || existingParameter.group
+
+      if (updates.name || groupToCheck) {
+        const newKey = `${groupToCheck}-${updates.name || existingParameter.name}`
           .toLowerCase()
           .replace(/[^a-z0-9]/g, '_')
         if (newKey !== id && currentParameters[newKey]) {
           throw new ParameterDuplicateError(
             updates.name || existingParameter.name,
-            updates.currentGroup || existingParameter.group
+            groupToCheck
           )
         }
       }
 
-      // Update parameter
-      const updatedParameter: Parameter = {
-        ...existingParameter,
-        name: updates.name ?? existingParameter.name,
-        type:
-          updates.type === 'equation'
-            ? ParameterType.equation
-            : updates.type === 'fixed'
-            ? ParameterType.fixed
-            : existingParameter.type,
-        value: updates.value?.toString() ?? existingParameter.value,
-        equation:
-          updates.type === 'equation'
-            ? updates.value?.toString()
-            : existingParameter.equation,
-        group: updates.currentGroup ?? existingParameter.group,
-        field: updates.field ?? existingParameter.field,
-        header: updates.header ?? existingParameter.header,
-        category: updates.category ?? existingParameter.category,
-        description: updates.description ?? existingParameter.description,
-        removable: updates.removable ?? existingParameter.removable,
-        visible: updates.visible ?? existingParameter.visible,
-        metadata: updates.computed?.value
-          ? JSON.stringify(updates.computed.value)
-          : existingParameter.metadata,
-        isFetched: updates.isFetched ?? existingParameter.isFetched,
-        source: updates.source ?? existingParameter.source
-      }
+      // Type-safe parameter update
+      const updatedParameter = isBimParameter(existingParameter)
+        ? ({
+            ...existingParameter,
+            ...Object.fromEntries(
+              Object.entries(updates).filter(
+                ([key]) => !['group', 'equation', 'isCustom'].includes(key)
+              )
+            ),
+            kind: 'bim' as const,
+            type: existingParameter.type
+          } as BimParameter)
+        : ({
+            ...existingParameter,
+            ...Object.fromEntries(
+              Object.entries(updates).filter(
+                ([key]) =>
+                  !['sourceValue', 'fetchedGroup', 'currentGroup'].includes(key)
+              )
+            ),
+            kind: 'user' as const,
+            type: existingParameter.type
+          } as UserParameter)
 
       // Update parameters
       await updateParameters({ [id]: updatedParameter })
@@ -278,6 +280,54 @@ export function useParametersGraphQL() {
     }
   }
 
+  async function addParameterToTable(
+    parameterId: string,
+    tableId: string
+  ): Promise<boolean> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Adding parameter to table')
+
+      const result = await nuxtApp.runWithContext(() =>
+        addParameterToTableMutation({
+          parameterId,
+          tableId
+        })
+      )
+
+      if (!result?.data?.addParameterToTable) {
+        throw new ParameterOperationError('add to table', 'Server update failed')
+      }
+
+      return true
+    } catch (err) {
+      handleOperationError('add to table', err)
+    }
+  }
+
+  async function removeParameterFromTable(
+    parameterId: string,
+    tableId: string
+  ): Promise<boolean> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Removing parameter from table')
+
+      const result = await nuxtApp.runWithContext(() =>
+        removeParameterFromTableMutation({
+          parameterId,
+          tableId
+        })
+      )
+
+      if (!result?.data?.removeParameterFromTable) {
+        throw new ParameterOperationError('remove from table', 'Server update failed')
+      }
+
+      return true
+    } catch (err) {
+      handleOperationError('remove from table', err)
+    }
+  }
+
   return {
     result: queryResult,
     loading: queryLoading,
@@ -285,6 +335,8 @@ export function useParametersGraphQL() {
     updateParameters,
     createParameter,
     updateParameter,
-    deleteParameter
+    deleteParameter,
+    addParameterToTable,
+    removeParameterFromTable
   }
 }

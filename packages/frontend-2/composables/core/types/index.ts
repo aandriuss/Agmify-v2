@@ -3,35 +3,77 @@
 // Error types
 export * from './errors'
 
-// Parameter types
+// Parameter System Types
 export type {
-  Parameter,
-  Parameters,
-  CustomParameter,
-  ParameterType,
+  // Value Types
+  PrimitiveValue,
+  BimValueType,
+  UserValueType,
+  EquationValue,
   ParameterValue,
-  ParameterValueEntry,
-  ParameterGroup,
-  ParameterFormData,
-  ParameterValueState,
-  UnifiedParameter,
-  UnifiedParameters,
-  UserParameterType,
+  ValidationRules,
+  ValidationResult,
+
+  // Parameter Types
+  BaseParameter,
+  BimParameter,
   UserParameter,
-  AvailableHeaders,
-  ParameterDefinition,
-  ParameterDefinitions,
-  ProcessedParameter,
-  ProcessedParameters,
-  ParameterState,
-  ParameterValuesRecord,
-  ParameterValueType,
-  ParameterValidationFn,
-  ParameterValidationRules,
-  UseParametersOptions,
-  ParameterStats,
-  FixedParameterGroup
+  Parameter,
+
+  // Collections and State
+  ParameterCollection,
+  ParameterTableMapping,
+  ParameterState
 } from './parameters'
+
+// Parameter System Functions
+export {
+  // Type Guards
+  isBimParameter,
+  isUserParameter,
+  isEquationValue,
+  isPrimitiveValue,
+
+  // Parameter Creation
+  createBimParameter,
+  createUserParameter,
+  createParameterValueState,
+
+  // Parameter Operations
+  getParameterGroup
+} from './parameters'
+
+// GraphQL types
+export type {
+  // Parameter Types
+  GQLParameter,
+  BimGQLParameter,
+  UserGQLParameter,
+
+  // Input Types
+  CreateBimGQLInput,
+  CreateUserGQLInput,
+  UpdateBimGQLInput,
+  UpdateUserGQLInput,
+
+  // Response Types
+  ParametersQueryResponse,
+  GetParametersQueryResponse,
+  SingleParameterResponse,
+  ParametersOperationResponse,
+  CreateParameterResponse,
+  UpdateParameterResponse,
+  DeleteParameterResponse,
+
+  // Table Types
+  TableResponse,
+  CreateNamedTableInput,
+  UpdateNamedTableInput,
+  TablesQueryResponse,
+  TablesMutationResponse,
+  AddParameterToTableResponse,
+  RemoveParameterFromTableResponse
+} from './graphql'
 
 // Table types
 export type {
@@ -48,8 +90,13 @@ export type {
   CategoryFilters,
   SortBy,
   SortByField,
-  UseColumnsOptions
+  SortDirection,
+  UseColumnsOptions,
+  TableSettings
 } from './tables'
+
+// Table Functions
+export { createColumnDef, createTableConfig } from '../utils/tables'
 
 // Data types
 export type {
@@ -68,7 +115,6 @@ export type {
   StoreMutations,
   StoreLifecycle,
   Store,
-  BaseParameter,
   StoreParameterValue,
   StoreParameterDefinition,
   TableInfo,
@@ -83,7 +129,6 @@ export {
   convertToStoreParameterDefinition,
   convertParameterMap,
   convertDefinitionMap,
-  createColumnDef,
   isStoreParameterValue,
   isStoreParameterDefinition
 } from './store'
@@ -103,30 +148,6 @@ export type {
   ScheduleInitializationInstance
 } from './viewer'
 
-// GraphQL types
-export type {
-  ParameterResponse,
-  ParametersQueryResponse,
-  TablesQueryResponse,
-  SettingsQueryResponse,
-  CreateNamedTableInput,
-  UpdateNamedTableInput,
-  CreateParameterInput,
-  UpdateParameterInput,
-  TableResponse,
-  CreateParameterResponse,
-  UpdateParameterResponse,
-  DeleteParameterResponse,
-  AddParameterToTableResponse,
-  RemoveParameterFromTableResponse,
-  TablesMutationResponse,
-  GetParametersQueryResponse,
-  ParameterMutationResponse,
-  ParameterMutationVariables,
-  SingleParameterResponse,
-  ParametersOperationResponse
-} from './graphql'
-
 // Settings types
 export type {
   UserSettings,
@@ -135,16 +156,12 @@ export type {
   NewCustomParameter
 } from './settings'
 
-// Mappings
-export type { ParameterTableMapping, ParameterMappings } from './mappings'
-
 // Export settings constants and helpers
 export {
   DEFAULT_SETTINGS,
   ensureRequiredSettings,
   getSettingsValue,
   isUserSettings,
-  isCustomParameter,
   isSettingsUpdatePayload
 } from './settings'
 
@@ -161,6 +178,3 @@ export {
   validateWorldTreeStructure,
   validateElementDataArray
 } from './validators'
-
-// Helper functions
-export { createParameterValueState } from './parameters'

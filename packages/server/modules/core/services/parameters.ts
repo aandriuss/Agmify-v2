@@ -1,225 +1,336 @@
 import { GraphQLError } from 'graphql'
 import { v4 as uuid } from 'uuid'
-import knex from '@/db/knex'
+import { db } from '@/db/knex'
+import type { Knex } from 'knex'
+import {
+  Parameter,
+  BimParameter,
+  UserParameter,
+  BimValueType,
+  UserValueType,
+  PrimitiveValue,
+  ParameterValue,
+  ValidationRules,
+  ParameterStorage,
+  TableParameterMapping,
+  isBimParameter,
+  isUserParameter
+} from '@/modules/core/models/parameters'
 
-export interface Parameter {
-  id: string
-  userId: string
+interface CreateBimParameterInput {
   name: string
-  type: 'fixed' | 'equation'
-  value?: string
-  equation?: string
-  group: string
-  field: string
-  header: string
-  category?: string
-  description?: string
-  removable: boolean
-  visible: boolean
-  orderIndex?: number
-  createdAt: Date
-  updatedAt: Date
-  metadata?: unknown
-  isFetched?: boolean
-  source?: string
-}
-
-export interface CreateParameterInput {
-  userId: string
-  name: string
-  type: 'fixed' | 'equation'
-  value?: string
-  equation?: string
-  group: string
+  type: BimValueType
+  sourceValue: PrimitiveValue
+  fetchedGroup: string
+  currentGroup: string
   field: string
   header: string
   category?: string
   description?: string
   removable?: boolean
   visible?: boolean
-  orderIndex?: number
-  metadata?: unknown
-  isFetched?: boolean
+  order?: number
+  metadata?: Record<string, unknown>
   source?: string
 }
 
-export interface UpdateParameterInput {
-  name?: string
-  type?: 'fixed' | 'equation'
-  value?: string
+interface CreateUserParameterInput {
+  name: string
+  type: UserValueType
+  value: ParameterValue
+  group: string
   equation?: string
-  group?: string
-  field?: string
-  header?: string
+  field: string
+  header: string
   category?: string
   description?: string
   removable?: boolean
   visible?: boolean
-  orderIndex?: number
-  metadata?: unknown
-  isFetched?: boolean
+  order?: number
+  metadata?: Record<string, unknown>
   source?: string
-}
-
-export interface ParameterMutationResponse {
-  parameter: Parameter
-}
-
-interface ParameterStorage {
-  [key: string]: Parameter
-}
-
-interface ParameterRelations {
-  [parameterId: string]: string[]
+  isCustom?: boolean
+  validationRules?: ValidationRules
 }
 
 interface UserRecord {
   parameters?: ParameterStorage
-  parameter_relations?: ParameterRelations
+  parameterMappings?: TableParameterMapping
 }
 
 export class ParameterService {
   async getParameters(userId: string): Promise<Parameter[]> {
-    const user = (await knex('users')
+    const user = (await db('users')
       .select('parameters')
       .where({ id: userId })
-      .first()) as UserRecord
+      .first()) as UserRecord | undefined
 
-    const parameters = user?.parameters || {}
-    return Object.values(parameters)
+    return Object.values(user?.parameters || {})
   }
 
   async getParameter(id: string, userId: string): Promise<Parameter | null> {
-    const user = (await knex('users')
+    const user = (await db('users')
       .select('parameters')
       .where({ id: userId })
-      .first()) as UserRecord
+      .first()) as UserRecord | undefined
 
-    const parameters = user?.parameters || {}
-    const parameter = parameters[id]
-
-    if (!parameter || parameter.userId !== userId) return null
-    return parameter
+    return user?.parameters?.[id] || null
   }
 
   async getTableParameters(tableId: string, userId: string): Promise<Parameter[]> {
-    const user = (await knex('users')
-      .select(['parameters', 'parameter_relations'])
+    const user = (await db('users')
+      .select(['parameters', 'parameterMappings'])
       .where({ id: userId })
-      .first()) as UserRecord
+      .first()) as UserRecord | undefined
 
     const parameters = user?.parameters || {}
-    const relations = user?.parameter_relations || {}
-    const tableParameters: Parameter[] = []
+    const mappings = user?.parameterMappings || {}
+    const parameterIds = mappings[tableId] || []
 
-    for (const [parameterId, tables] of Object.entries(relations)) {
-      if (Array.isArray(tables) && tables.includes(tableId)) {
-        const parameter = parameters[parameterId]
-        if (parameter) {
-          tableParameters.push(parameter)
-        }
-      }
-    }
-
-    return tableParameters
+    return parameterIds
+      .map((id) => parameters[id])
+      .filter((param): param is Parameter => param !== undefined)
   }
 
-  async createParameter(
-    input: CreateParameterInput
-  ): Promise<ParameterMutationResponse> {
+  async createBimParameter(
+    userId: string,
+    input: CreateBimParameterInput
+  ): Promise<BimParameter> {
     const id = uuid()
-    const now = new Date()
 
-    const parameter: Parameter = {
+    const parameter: BimParameter = {
       id,
-      userId: input.userId,
+      kind: 'bim',
       name: input.name,
       type: input.type,
-      value: input.value,
-      equation: input.equation,
-      group: input.group,
+      sourceValue: input.sourceValue,
+      value: input.sourceValue, // Initially same as sourceValue
+      fetchedGroup: input.fetchedGroup,
+      currentGroup: input.currentGroup,
       field: input.field,
       header: input.header,
       category: input.category,
       description: input.description,
       removable: input.removable ?? true,
       visible: input.visible ?? true,
-      orderIndex: input.orderIndex,
+      order: input.order,
       metadata: input.metadata,
-      isFetched: input.isFetched,
-      source: input.source,
-      createdAt: now,
-      updatedAt: now
+      source: input.source
     }
 
-    // Get current parameters
-    const user = (await knex('users')
-      .select('parameters')
-      .where({ id: input.userId })
-      .first()) as UserRecord
+    await db.transaction(async (trx: Knex.Transaction) => {
+      const user = (await trx('users')
+        .select('parameters')
+        .where({ id: userId })
+        .forUpdate()
+        .first()) as UserRecord | undefined
 
-    const parameters = user?.parameters || {}
-    parameters[id] = parameter
+      const parameters = user?.parameters || {}
 
-    // Update parameters JSONB column
-    await knex('users').where({ id: input.userId }).update({ parameters })
+      // Check for name conflicts
+      const nameConflictExists = Object.values(parameters).some(
+        (p) =>
+          isBimParameter(p) &&
+          p.name === input.name &&
+          p.currentGroup === input.currentGroup
+      )
 
-    return { parameter }
+      if (nameConflictExists) {
+        throw new GraphQLError(
+          'A BIM parameter with this name already exists in this group'
+        )
+      }
+
+      parameters[id] = parameter
+
+      await trx('users').where({ id: userId }).update({ parameters })
+    })
+
+    return parameter
   }
 
-  async updateParameter(
+  async createUserParameter(
+    userId: string,
+    input: CreateUserParameterInput
+  ): Promise<UserParameter> {
+    const id = uuid()
+
+    const parameter: UserParameter = {
+      id,
+      kind: 'user',
+      name: input.name,
+      type: input.type,
+      value: input.value,
+      group: input.group,
+      equation: input.equation,
+      field: input.field,
+      header: input.header,
+      category: input.category,
+      description: input.description,
+      removable: input.removable ?? true,
+      visible: input.visible ?? true,
+      order: input.order,
+      metadata: input.metadata,
+      source: input.source,
+      isCustom: input.isCustom,
+      validationRules: input.validationRules
+    }
+
+    await db.transaction(async (trx: Knex.Transaction) => {
+      const user = (await trx('users')
+        .select('parameters')
+        .where({ id: userId })
+        .forUpdate()
+        .first()) as UserRecord | undefined
+
+      const parameters = user?.parameters || {}
+
+      // Check for name conflicts
+      const nameConflictExists = Object.values(parameters).some(
+        (p) => isUserParameter(p) && p.name === input.name && p.group === input.group
+      )
+
+      if (nameConflictExists) {
+        throw new GraphQLError(
+          'A user parameter with this name already exists in this group'
+        )
+      }
+
+      parameters[id] = parameter
+
+      await trx('users').where({ id: userId }).update({ parameters })
+    })
+
+    return parameter
+  }
+
+  async updateBimParameter(
     id: string,
     userId: string,
-    input: UpdateParameterInput
-  ): Promise<ParameterMutationResponse> {
-    // Get current parameters
-    const user = (await knex('users')
-      .select('parameters')
-      .where({ id: userId })
-      .first()) as UserRecord
-
-    const parameters = user?.parameters || {}
-    const parameter = parameters[id]
-
-    if (!parameter || parameter.userId !== userId) {
-      throw new GraphQLError('Parameter not found')
+    input: Partial<Omit<CreateBimParameterInput, 'fetchedGroup'>>
+  ): Promise<BimParameter> {
+    const parameter = await this.getParameter(id, userId)
+    if (!parameter || !isBimParameter(parameter)) {
+      throw new GraphQLError('BIM parameter not found')
     }
 
-    const updated: Parameter = {
+    const updatedParameter: BimParameter = {
       ...parameter,
-      ...input,
-      updatedAt: new Date()
+      ...input
     }
 
-    parameters[id] = updated
+    await db.transaction(async (trx: Knex.Transaction) => {
+      const user = (await trx('users')
+        .select('parameters')
+        .where({ id: userId })
+        .forUpdate()
+        .first()) as UserRecord | undefined
 
-    // Update parameters JSONB column
-    await knex('users').where({ id: userId }).update({ parameters })
+      const parameters = user?.parameters || {}
 
-    return { parameter: updated }
+      // Check for name conflicts if name is being updated
+      if (input.name) {
+        const nameConflictExists = Object.values(parameters).some(
+          (p) =>
+            p.id !== id &&
+            isBimParameter(p) &&
+            p.name === input.name &&
+            p.currentGroup === (input.currentGroup || parameter.currentGroup)
+        )
+
+        if (nameConflictExists) {
+          throw new GraphQLError(
+            'A BIM parameter with this name already exists in this group'
+          )
+        }
+      }
+
+      parameters[id] = updatedParameter
+
+      await trx('users').where({ id: userId }).update({ parameters })
+    })
+
+    return updatedParameter
+  }
+
+  async updateUserParameter(
+    id: string,
+    userId: string,
+    input: Partial<CreateUserParameterInput>
+  ): Promise<UserParameter> {
+    const parameter = await this.getParameter(id, userId)
+    if (!parameter || !isUserParameter(parameter)) {
+      throw new GraphQLError('User parameter not found')
+    }
+
+    const updatedParameter: UserParameter = {
+      ...parameter,
+      ...input
+    }
+
+    await db.transaction(async (trx: Knex.Transaction) => {
+      const user = (await trx('users')
+        .select('parameters')
+        .where({ id: userId })
+        .forUpdate()
+        .first()) as UserRecord | undefined
+
+      const parameters = user?.parameters || {}
+
+      // Check for name conflicts if name is being updated
+      if (input.name) {
+        const nameConflictExists = Object.values(parameters).some(
+          (p) =>
+            p.id !== id &&
+            isUserParameter(p) &&
+            p.name === input.name &&
+            p.group === (input.group || parameter.group)
+        )
+
+        if (nameConflictExists) {
+          throw new GraphQLError(
+            'A user parameter with this name already exists in this group'
+          )
+        }
+      }
+
+      parameters[id] = updatedParameter
+
+      await trx('users').where({ id: userId }).update({ parameters })
+    })
+
+    return updatedParameter
   }
 
   async deleteParameter(id: string, userId: string): Promise<boolean> {
-    // Get current parameters
-    const user = (await knex('users')
-      .select(['parameters', 'parameter_relations'])
-      .where({ id: userId })
-      .first()) as UserRecord
+    await db.transaction(async (trx: Knex.Transaction) => {
+      const user = (await trx('users')
+        .select(['parameters', 'parameterMappings'])
+        .where({ id: userId })
+        .forUpdate()
+        .first()) as UserRecord | undefined
 
-    const parameters = user?.parameters || {}
-    const relations = user?.parameter_relations || {}
-    const parameter = parameters[id]
+      const parameters = user?.parameters || {}
+      const mappings = user?.parameterMappings || {}
 
-    if (!parameter || parameter.userId !== userId) return false
+      if (!parameters[id]) {
+        throw new GraphQLError('Parameter not found')
+      }
 
-    // Remove parameter
-    delete parameters[id]
-    delete relations[id]
+      // Remove parameter
+      delete parameters[id]
 
-    // Update both JSONB columns
-    await knex('users').where({ id: userId }).update({
-      parameters,
-      parameter_relations: relations
+      // Remove from all mappings
+      Object.keys(mappings).forEach((tableId) => {
+        mappings[tableId] = (mappings[tableId] || []).filter(
+          (parameterId) => parameterId !== id
+        )
+      })
+
+      await trx('users').where({ id: userId }).update({
+        parameters,
+        parameterMappings: mappings
+      })
     })
 
     return true
@@ -230,30 +341,30 @@ export class ParameterService {
     tableId: string,
     userId: string
   ): Promise<boolean> {
-    // Check parameter exists
-    const parameter = await this.getParameter(parameterId, userId)
-    if (!parameter) {
-      throw new GraphQLError('Parameter not found')
-    }
+    await db.transaction(async (trx: Knex.Transaction) => {
+      const user = (await trx('users')
+        .select(['parameters', 'parameterMappings'])
+        .where({ id: userId })
+        .forUpdate()
+        .first()) as UserRecord | undefined
 
-    // Get current relations
-    const user = (await knex('users')
-      .select('parameter_relations')
-      .where({ id: userId })
-      .first()) as UserRecord
+      const parameters = user?.parameters || {}
+      const mappings = user?.parameterMappings || {}
 
-    const relations = user?.parameter_relations || {}
+      if (!parameters[parameterId]) {
+        throw new GraphQLError('Parameter not found')
+      }
 
-    if (!relations[parameterId]) {
-      relations[parameterId] = []
-    }
+      if (!mappings[tableId]) {
+        mappings[tableId] = []
+      }
 
-    if (!relations[parameterId].includes(tableId)) {
-      relations[parameterId].push(tableId)
-    }
+      if (!mappings[tableId].includes(parameterId)) {
+        mappings[tableId].push(parameterId)
+      }
 
-    // Update relations JSONB column
-    await knex('users').where({ id: userId }).update({ parameter_relations: relations })
+      await trx('users').where({ id: userId }).update({ parameterMappings: mappings })
+    })
 
     return true
   }
@@ -263,28 +374,26 @@ export class ParameterService {
     tableId: string,
     userId: string
   ): Promise<boolean> {
-    // Check parameter exists
-    const parameter = await this.getParameter(parameterId, userId)
-    if (!parameter) {
-      throw new GraphQLError('Parameter not found')
-    }
+    await db.transaction(async (trx: Knex.Transaction) => {
+      const user = (await trx('users')
+        .select(['parameters', 'parameterMappings'])
+        .where({ id: userId })
+        .forUpdate()
+        .first()) as UserRecord | undefined
 
-    // Get current relations
-    const user = (await knex('users')
-      .select('parameter_relations')
-      .where({ id: userId })
-      .first()) as UserRecord
+      const parameters = user?.parameters || {}
+      const mappings = user?.parameterMappings || {}
 
-    const relations = user?.parameter_relations || {}
+      if (!parameters[parameterId]) {
+        throw new GraphQLError('Parameter not found')
+      }
 
-    if (relations[parameterId]) {
-      relations[parameterId] = relations[parameterId].filter(
-        (id: string) => id !== tableId
-      )
-    }
+      if (mappings[tableId]) {
+        mappings[tableId] = mappings[tableId].filter((id) => id !== parameterId)
+      }
 
-    // Update relations JSONB column
-    await knex('users').where({ id: userId }).update({ parameter_relations: relations })
+      await trx('users').where({ id: userId }).update({ parameterMappings: mappings })
+    })
 
     return true
   }

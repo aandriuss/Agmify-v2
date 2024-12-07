@@ -17,11 +17,11 @@
       expand-mode="row"
       data-key="id"
       :expandable-row-groups="false"
-      :row-expandable="(row) => hasDetails(row)"
-      :row-class="(row) => (!hasDetails(row) ? 'non-expandable-row' : '')"
+      :row-expandable="hasDetails"
+      :row-class="rowClass"
       :pt="{
         bodyRow: {
-          'data-expandable': (options) => hasDetails(options?.row)
+          'data-expandable': rowExpandable
         }
       }"
       @update:expanded-rows="handleExpandedRowsUpdate"
@@ -55,7 +55,7 @@
             class="nested-table p-datatable-sm"
             data-key="id"
             :expandable-row-groups="false"
-            :row-expandable="(row: TableRow | ElementData) => hasDetails(row)"
+            :row-expandable="hasDetails"
             @column-resize-end="handleColumnResize"
             @column-reorder="handleColumnReorder"
           >
@@ -63,7 +63,7 @@
               v-if="hasNestedChildren(expandedData)"
               :expander="true"
               style="width: 3rem"
-              :show-expander-icon="(row: TableRow | ElementData) => hasDetails(row)"
+              :show-expander-icon="hasDetails"
             />
             <Column
               v-for="col in validColumnsInGroup(props.childColumns)"
@@ -92,7 +92,7 @@
         v-if="hasExpandableRows"
         :expander="true"
         style="width: 3rem"
-        :show-expander-icon="(row: TableRow | ElementData) => hasDetails(row)"
+        :show-expander-icon="hasDetails"
       />
       <Column
         v-for="col in validColumnsInGroup(props.parentColumns)"
@@ -127,7 +127,8 @@ import type {
   DataTableFilterMeta,
   DataTableExpandedRows
 } from 'primevue/datatable'
-import type { ColumnDef, TableRow, ElementData } from '~/composables/core/types'
+import type { ColumnDef } from '~/composables/core/types/tables'
+import type { TableRow, ElementData } from '~/composables/core/types/data'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 interface Props {
@@ -240,10 +241,20 @@ const hasExpandableRows = computed(() => {
 })
 
 // Helper function to check if row has details
-function hasDetails(data: unknown): boolean {
+function hasDetails(data: unknown): data is TableRow | ElementData {
   if (!data || typeof data !== 'object') return false
   const row = data as TableRow | ElementData
   return 'details' in row && Array.isArray(row.details) && row.details.length > 0
+}
+
+// Helper function for row class
+function rowClass(row: TableRow | ElementData): string {
+  return !hasDetails(row) ? 'non-expandable-row' : ''
+}
+
+// Helper function for row expandable
+function rowExpandable(options: { row: TableRow | ElementData }): boolean {
+  return hasDetails(options.row)
 }
 
 // Helper function to check if any children have nested children
@@ -286,15 +297,25 @@ function getColumnStyle(col: ColumnDef) {
 function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): void {
   if (Array.isArray(value)) {
     // Only allow expansion of rows with details
-    const validExpansions = value.filter((row) => hasDetails(row))
+    const validExpansions = value.filter((row): row is TableRow | ElementData => {
+      const isValid = hasDetails(row)
+      if (!isValid) {
+        debug.warn(DebugCategories.VALIDATION, 'Invalid expansion row', {
+          row,
+          reason: 'Row does not have valid details'
+        })
+      }
+      return isValid
+    })
+
     debug.log(DebugCategories.DATA_TRANSFORM, 'Expanded rows updated', {
       rowCount: validExpansions.length,
       rows: validExpansions.map((row) => ({
-        id: (row as TableRow).id,
-        hasDetails: !!(row as TableRow).details?.length
+        id: row.id,
+        hasDetails: !!row.details?.length
       }))
     })
-    emit('update:expanded-rows', validExpansions as (TableRow | ElementData)[])
+    emit('update:expanded-rows', validExpansions)
   }
 }
 

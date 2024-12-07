@@ -27,7 +27,7 @@ const {
 const db = require('@/db/knex')
 const { BadRequestError } = require('@/modules/shared/errors')
 const { saveActivityFactory } = require('@/modules/activitystream/repositories')
-const { getUserSettings } = require('@/modules/core/services/users/settings')
+const { getUserSettings, getTables, updateTables } = require('@/modules/core/services/users/settings')
 
 /** @type {import('@/modules/core/graph/generated/graphql').Resolvers} */
 const resolvers = {
@@ -144,83 +144,9 @@ const resolvers = {
       // Check authentication
       if (!context.userId) throw new Error('User not authenticated')
       
-      // Get user's tables
-      const user = await db('users')
-        .where({ id: parent.id })
-        .select('tables')
-        .first()
-
-      // Return tables without UUID wrapping
-      if (user?.tables) {
-        const wrappedTables = user.tables
-        const firstKey = Object.keys(wrappedTables)[0]
-        if (firstKey && firstKey.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
-          return wrappedTables[firstKey] || {}
-        }
-      }
-      return user?.tables || {}
-    },
-
-    async userParametersUpdate(_parent, { parameters }, context) {
-      const userId = context.userId;
-      if (!userId) throw new Error('User not authenticated');
-
-      try {
-        // Use transaction to ensure atomicity
-        await db.transaction(async (trx) => {
-          // Get current parameters within transaction
-          const user = await trx('users')
-            .where({ id: userId })
-            .select('parameters')
-            .forUpdate() // Lock the row
-            .first();
-
-          const currentParameters = user?.parameters || {};
-          const mergedParameters = {
-            ...currentParameters,
-            ...parameters
-          };
-
-          // Update within same transaction
-          await trx('users')
-            .where({ id: userId })
-            .update({ parameters: mergedParameters });
-        });
-
-        return true;
-      } catch {
-        console.error('Failed to update parameters:', err);
-        throw new Error('Failed to update parameters');
-      }
-    },
-
-    async parameters(parent, args, context) {
-      // Check authentication
-      if (!context.userId) throw new Error('User not authenticated')
-      
-      // Get user's parameters
-      const user = await db('users')
-        .where({ id: parent.id })
-        .select('parameters')
-        .first()
-      
-      return user?.parameters || {}
-    },
-
-    async parameterMappings(parent, args, context) {
-      // Check authentication
-      if (!context.userId) throw new Error('User not authenticated')
-      
-      // Get user's parameter mappings
-      const user = await db('users')
-        .where({ id: parent.id })
-        .select('parameterMappings')
-        .first()
-
-      // Return mappings or empty object if none exist
-      return user?.parameterMappings || {}
+      // Get tables for the user
+      return await getTables(parent.id)
     }
-
   },
   
   LimitedUser: {
@@ -299,26 +225,7 @@ const resolvers = {
       const userId = context.userId;
       if (!userId) throw new Error('User not authenticated');
 
-      await db('users')
-        .where({ id: userId })
-        .update({ tables });
-
-      return true;
-    },
-
-    async userParameterMappingsUpdate(_parent, { mappings }, context) {
-      const userId = context.userId;
-      if (!userId) throw new Error('User not authenticated');
-
-      try {
-        await db('users')
-          .where({ id: userId })
-          .update({ parameterMappings: mappings });
-
-        return true;
-      } catch (err) {
-        throw new Error('Failed to update parameter mappings')
-      }
+      return await updateTables(userId, tables);
     },
 
     activeUserMutations: () => ({}) // Empty function to prevent errors
@@ -336,4 +243,3 @@ const resolvers = {
 }
 
 module.exports = resolvers
-

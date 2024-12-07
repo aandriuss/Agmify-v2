@@ -7,68 +7,113 @@
 import { computed, ref, watch } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
 import type {
-  CustomParameter,
   ElementData,
-  ProcessedHeader,
+  Parameter,
   ColumnDef,
-  ParameterDefinition,
-  RawParameterValue,
-  RawParameterDefinition
+  StoreParameterValue,
+  StoreParameterDefinition,
+  BimValueType,
+  UserParameter,
+  BimParameter
 } from '~/composables/core/types'
 import {
-  convertParameterMap,
-  convertDefinitionMap,
-  createColumnDef
+  convertToStoreParameterValue,
+  convertToStoreParameterDefinition,
+  validateElementDataArray,
+  isUserParameter,
+  isBimParameter,
+  createBimParameter,
+  isPrimitiveValue
 } from '~/composables/core/types'
+import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 
 // Import new core functionality
 import { useStore } from '../core/store'
 import { discoverParameters } from '../features/parameters/discovery'
 import { processElementParameters } from '../features/parameters/processing'
-import { createParameterDefinition } from '../features/parameters/validation'
 
-// Type guard for parameter definitions
-function isParameterDefinition(value: unknown): value is ParameterDefinition {
-  if (!value || typeof value !== 'object') return false
-  const def = value as Record<string, unknown>
+// Convert discovered parameter to BIM parameter
+function convertToBimParameter(def: ParameterDefinition): BimParameter {
+  return createBimParameter({
+    id: def.field,
+    field: def.field,
+    name: def.name,
+    type: def.type as BimValueType,
+    header: def.header,
+    visible: def.visible ?? true,
+    removable: def.removable ?? true,
+    value: null,
+    sourceValue: null,
+    fetchedGroup: def.category ?? 'Parameters',
+    currentGroup: def.category ?? 'Parameters'
+  })
+}
+
+// Create BIM parameter from value
+function createBimParameterFromValue(
+  field: string,
+  value: unknown,
+  type: BimValueType
+): BimParameter {
+  return createBimParameter({
+    id: field,
+    field,
+    name: field,
+    type,
+    header: field,
+    visible: true,
+    removable: true,
+    value: isPrimitiveValue(value) ? value : null,
+    sourceValue: null,
+    fetchedGroup: 'Parameters',
+    currentGroup: 'Parameters'
+  })
+}
+
+// Type guard for parameters object
+function isParametersObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+// Type guard for store parameter value
+function isStoreParameterValue(value: unknown): value is StoreParameterValue {
   return (
-    typeof def.field === 'string' &&
-    typeof def.name === 'string' &&
-    typeof def.type === 'string' &&
-    typeof def.header === 'string'
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    'name' in value &&
+    'type' in value &&
+    'value' in value &&
+    'isValid' in value
   )
 }
 
-// Validate and filter parameter definitions
-function validateParameterDefinitionArray(
-  arr: readonly unknown[]
-): ParameterDefinition[] {
-  if (!Array.isArray(arr)) return []
+// Create error with safe message
+class ParameterError extends Error {
+  readonly _tag = 'ParameterError' as const
 
-  return arr.reduce<ParameterDefinition[]>((acc, item) => {
-    if (isParameterDefinition(item)) {
-      acc.push({
-        field: item.field,
-        name: item.name,
-        type: item.type,
-        header: item.header,
-        category: item.category,
-        removable: true,
-        visible: true
-      })
-    }
-    return acc
-  }, [])
+  constructor(message: string) {
+    super(message)
+    this.name = 'ParameterError'
+  }
+
+  static fromError(error: Error): ParameterError {
+    return new ParameterError(error.message)
+  }
+
+  static fromString(message: string): ParameterError {
+    return new ParameterError(message)
+  }
 }
 
 const props = defineProps<{
   scheduleData: ElementData[]
-  customParameters: CustomParameter[]
+  customParameters: UserParameter[]
   selectedParentCategories: string[]
   selectedChildCategories: string[]
   availableHeaders: {
-    parent: ProcessedHeader[]
-    child: ProcessedHeader[]
+    parent: Parameter[]
+    child: Parameter[]
   }
   isInitialized: boolean
 }>()
@@ -76,9 +121,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:parameterColumns': [value: ColumnDef[]]
   'update:evaluatedData': [value: ElementData[]]
-  'update:mergedParentParameters': [value: CustomParameter[]]
-  'update:mergedChildParameters': [value: CustomParameter[]]
-  error: [error: Error]
+  'update:mergedParentParameters': [value: UserParameter[]]
+  'update:mergedChildParameters': [value: UserParameter[]]
+  error: [error: ParameterError]
 }>()
 
 // Initialize store
@@ -89,7 +134,7 @@ const processedData = ref<ElementData[]>([])
 
 // Process parameters
 async function processParameters() {
-  if (!props.isInitialized) return
+  if (!props.isInitialized || !validateElementDataArray(props.scheduleData)) return
 
   try {
     // Discover parameters
@@ -99,76 +144,109 @@ async function processParameters() {
       excludeParams: new Set(props.customParameters.map((p) => p.field))
     })
 
-    // Create parameter definitions from custom parameters
-    const customParamDefs = props.customParameters.map((param) => ({
-      ...createParameterDefinition(param.field, param.name, {
-        type: param.type,
-        rules: []
-      }),
-      header: param.name // Add header field
-    }))
-
-    // Ensure type safety of discovered parameters
-    const safeDiscoveredParams = Array.isArray(discoveredParams)
-      ? validateParameterDefinitionArray(discoveredParams)
-      : []
-    const safeCustomParams = Array.isArray(customParamDefs)
-      ? validateParameterDefinitionArray(customParamDefs)
-      : []
-
-    // Combine discovered and custom parameters
-    const allParams = [...safeDiscoveredParams, ...safeCustomParams]
+    // Convert discovered parameters to BIM parameters
+    const bimParams = discoveredParams.map(convertToBimParameter)
 
     // Process data with all parameters
-    const processed = await processElementParameters(props.scheduleData, allParams)
+    const processed = await processElementParameters(props.scheduleData, [
+      ...discoveredParams,
+      ...props.customParameters
+    ])
 
     processedData.value = processed
 
     // Update store with both processed data and parameter definitions
-    const safeProcessedParameters = Object.fromEntries(
-      processed.flatMap((item) =>
-        Object.entries(item.parameters || {}).filter(
-          ([_, value]) => value !== undefined
-        )
-      )
-    ) as Record<string, RawParameterValue>
+    const safeProcessedParameters: Record<string, StoreParameterValue> = {}
+    const safeParamDefinitions: Record<string, StoreParameterDefinition> = {}
 
-    const safeParamDefinitions = Object.fromEntries(
-      allParams.map((param) => [param.field, param])
-    ) as Record<string, RawParameterDefinition>
+    // Safely process parameters
+    processed.forEach((item) => {
+      const params = item.parameters as Record<string, unknown>
+      if (isParametersObject(params)) {
+        for (const [key, value] of Object.entries(params)) {
+          if (typeof key === 'string' && value !== undefined) {
+            // Create a BIM parameter from the value
+            const param = createBimParameterFromValue(key, value, 'string')
+            const result = convertToStoreParameterValue(param)
+            if (result && isStoreParameterValue(result)) {
+              safeProcessedParameters[key] = result
+            }
+          }
+        }
+      }
+    })
+
+    // Safely process definitions
+    const allParams = [...bimParams, ...props.customParameters]
+    allParams.forEach((param) => {
+      if (isUserParameter(param) || isBimParameter(param)) {
+        const converted = convertToStoreParameterDefinition(param)
+        if (converted) {
+          safeParamDefinitions[param.field] = converted
+        }
+      }
+    })
 
     await store.lifecycle.update({
       ...store.state.value,
       evaluatedData: processed,
-      processedParameters: convertParameterMap(safeProcessedParameters),
-      parameterDefinitions: convertDefinitionMap(safeParamDefinitions)
+      processedParameters: safeProcessedParameters,
+      parameterDefinitions: safeParamDefinitions
     })
   } catch (err) {
-    // Create a new error with a safe message
-    const safeError = new Error(
-      typeof err === 'string' ? err : 'Parameter processing failed'
-    )
-    debug.error(DebugCategories.PARAMETERS, 'Parameter processing error:', safeError)
-    emit('error', safeError)
+    const error =
+      err instanceof Error
+        ? ParameterError.fromError(err)
+        : ParameterError.fromString('Parameter processing failed')
+    debug.error(DebugCategories.PARAMETERS, 'Parameter processing error:', error)
+    emit('error', error)
   }
 }
 
 // Create parameter columns from parameter definitions
 const parameterColumns = computed<ColumnDef[]>(() => {
   const paramDefs = store.state.value.parameterDefinitions
-  return Object.values(paramDefs).filter(isParameterDefinition).map(createColumnDef)
+  return Object.values(paramDefs).map(
+    (def) =>
+      ({
+        id: def.field,
+        name: def.name,
+        field: `parameters.${def.field}`,
+        header: def.header ?? def.name,
+        type: def.type,
+        visible: def.visible ?? true,
+        order: def.order ?? 0,
+        removable: def.removable ?? true,
+        category: def.category,
+        currentGroup: def.category ?? 'Parameters',
+        parameterRef: def.field
+      } satisfies ColumnDef)
+  )
 })
+
+// Helper function to safely get parameter field
+function getParameterField(param: Parameter): string | null {
+  if (isUserParameter(param)) return param.field
+  if (isBimParameter(param)) return param.field
+  return null
+}
 
 // Split parameters by category
 const parentParameters = computed(() =>
   props.customParameters.filter((param) =>
-    props.availableHeaders.parent.some((header) => header.field === param.field)
+    props.availableHeaders.parent.some((header) => {
+      const field = getParameterField(header)
+      return field !== null && field === param.field
+    })
   )
 )
 
 const childParameters = computed(() =>
   props.customParameters.filter((param) =>
-    props.availableHeaders.child.some((header) => header.field === param.field)
+    props.availableHeaders.child.some((header) => {
+      const field = getParameterField(header)
+      return field !== null && field === param.field
+    })
   )
 )
 

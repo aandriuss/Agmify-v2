@@ -440,6 +440,23 @@ export type AvatarUser = {
   name: Scalars['String']['output'];
 };
 
+/** Base parameter interface with common fields */
+export type BaseParameter = {
+  category?: Maybe<Scalars['String']['output']>;
+  computed?: Maybe<Scalars['JSONObject']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  metadata?: Maybe<Scalars['JSONObject']['output']>;
+  name: Scalars['String']['output'];
+  order?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  value: Scalars['String']['output'];
+  visible: Scalars['Boolean']['output'];
+};
+
 export type BasicGitRepositoryMetadata = {
   __typename?: 'BasicGitRepositoryMetadata';
   id: Scalars['ID']['output'];
@@ -447,6 +464,39 @@ export type BasicGitRepositoryMetadata = {
   owner: Scalars['String']['output'];
   url: Scalars['String']['output'];
 };
+
+/** BIM parameter type */
+export type BimParameter = BaseParameter & {
+  __typename?: 'BimParameter';
+  category?: Maybe<Scalars['String']['output']>;
+  computed?: Maybe<Scalars['JSONObject']['output']>;
+  currentGroup: Scalars['String']['output'];
+  description?: Maybe<Scalars['String']['output']>;
+  fetchedGroup: Scalars['String']['output'];
+  field: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  kind: Scalars['String']['output'];
+  metadata?: Maybe<Scalars['JSONObject']['output']>;
+  name: Scalars['String']['output'];
+  order?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  sourceValue: Scalars['String']['output'];
+  type: BimValueType;
+  value: Scalars['String']['output'];
+  visible: Scalars['Boolean']['output'];
+};
+
+/** BIM value type enum */
+export enum BimValueType {
+  Array = 'array',
+  Boolean = 'boolean',
+  Date = 'date',
+  Number = 'number',
+  Object = 'object',
+  String = 'string'
+}
 
 export type BlobMetadata = {
   __typename?: 'BlobMetadata';
@@ -824,6 +874,25 @@ export type CreateAutomateFunctionInput = {
   template: AutomateFunctionTemplateLanguage;
 };
 
+/** Input for creating a BIM parameter */
+export type CreateBimParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  currentGroup: Scalars['String']['input'];
+  description?: InputMaybe<Scalars['String']['input']>;
+  fetchedGroup: Scalars['String']['input'];
+  field: Scalars['String']['input'];
+  header: Scalars['String']['input'];
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
+  name: Scalars['String']['input'];
+  order?: InputMaybe<Scalars['Int']['input']>;
+  removable: Scalars['Boolean']['input'];
+  source?: InputMaybe<Scalars['String']['input']>;
+  sourceValue: Scalars['String']['input'];
+  type: BimValueType;
+  value: Scalars['String']['input'];
+  visible: Scalars['Boolean']['input'];
+};
+
 export type CreateCommentInput = {
   content: CommentContentInput;
   projectId: Scalars['String']['input'];
@@ -854,28 +923,27 @@ export type CreateNamedTableInput = {
   name: Scalars['String']['input'];
 };
 
-/** Input for creating a new parameter */
-export type CreateParameterInput = {
+export type CreateUserEmailInput = {
+  email: Scalars['String']['input'];
+};
+
+/** Input for creating a user parameter */
+export type CreateUserParameterInput = {
   category?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   equation?: InputMaybe<Scalars['String']['input']>;
   field: Scalars['String']['input'];
   group: Scalars['String']['input'];
   header: Scalars['String']['input'];
-  isFetched?: InputMaybe<Scalars['Boolean']['input']>;
-  metadata?: InputMaybe<Scalars['String']['input']>;
+  isCustom?: InputMaybe<Scalars['Boolean']['input']>;
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
   name: Scalars['String']['input'];
-  orderIndex?: InputMaybe<Scalars['Int']['input']>;
+  order?: InputMaybe<Scalars['Int']['input']>;
   removable: Scalars['Boolean']['input'];
   source?: InputMaybe<Scalars['String']['input']>;
-  type: ParameterType;
-  userId: Scalars['ID']['input'];
-  value?: InputMaybe<Scalars['String']['input']>;
+  type: UserValueType;
+  value: Scalars['String']['input'];
   visible: Scalars['Boolean']['input'];
-};
-
-export type CreateUserEmailInput = {
-  email: Scalars['String']['input'];
 };
 
 export type CreateVersionInput = {
@@ -1311,10 +1379,12 @@ export type Mutation = {
    * @deprecated Part of the old API surface and will be removed in the future. Use VersionMutations.moveToModel instead.
    */
   commitsMove: Scalars['Boolean']['output'];
+  /** Create a new BIM parameter */
+  createBimParameter: ParameterMutationResponse;
   /** Create a new named table configuration */
   createNamedTable: NamedTableConfig;
-  /** Create a new parameter */
-  createParameter: ParameterMutationResponse;
+  /** Create a new user parameter */
+  createUserParameter: ParameterMutationResponse;
   /** Delete a named table configuration */
   deleteNamedTable: Scalars['Boolean']['output'];
   /** Delete a parameter */
@@ -1409,10 +1479,12 @@ export type Mutation = {
   streamUpdatePermission?: Maybe<Scalars['Boolean']['output']>;
   /** @deprecated Part of the old API surface and will be removed in the future. Use ProjectMutations.batchDelete instead. */
   streamsDelete: Scalars['Boolean']['output'];
+  /** Update a BIM parameter */
+  updateBimParameter: ParameterMutationResponse;
   /** Update an existing named table configuration */
   updateNamedTable: NamedTableConfig;
-  /** Update an existing parameter */
-  updateParameter: ParameterMutationResponse;
+  /** Update a user parameter */
+  updateUserParameter: ParameterMutationResponse;
   /**
    * Used for broadcasting real time typing status in comment threads. Does not persist any info.
    * @deprecated Use broadcastViewerUserActivity
@@ -1582,13 +1654,18 @@ export type MutationCommitsMoveArgs = {
 };
 
 
+export type MutationCreateBimParameterArgs = {
+  input: CreateBimParameterInput;
+};
+
+
 export type MutationCreateNamedTableArgs = {
   input: CreateNamedTableInput;
 };
 
 
-export type MutationCreateParameterArgs = {
-  input: CreateParameterInput;
+export type MutationCreateUserParameterArgs = {
+  input: CreateUserParameterInput;
 };
 
 
@@ -1719,14 +1796,20 @@ export type MutationStreamsDeleteArgs = {
 };
 
 
+export type MutationUpdateBimParameterArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateBimParameterInput;
+};
+
+
 export type MutationUpdateNamedTableArgs = {
   input: UpdateNamedTableInput;
 };
 
 
-export type MutationUpdateParameterArgs = {
+export type MutationUpdateUserParameterArgs = {
   id: Scalars['ID']['input'];
-  input: UpdateParameterInput;
+  input: UpdateUserParameterInput;
 };
 
 
@@ -1860,41 +1943,14 @@ export type ObjectCreateInput = {
   streamId: Scalars['String']['input'];
 };
 
-/** Base parameter type with common fields */
-export type Parameter = {
-  __typename?: 'Parameter';
-  category?: Maybe<Scalars['String']['output']>;
-  createdAt: Scalars['DateTime']['output'];
-  description?: Maybe<Scalars['String']['output']>;
-  equation?: Maybe<Scalars['String']['output']>;
-  field: Scalars['String']['output'];
-  group: Scalars['String']['output'];
-  header: Scalars['String']['output'];
-  id: Scalars['ID']['output'];
-  isFetched?: Maybe<Scalars['Boolean']['output']>;
-  metadata?: Maybe<Scalars['String']['output']>;
-  name: Scalars['String']['output'];
-  orderIndex?: Maybe<Scalars['Int']['output']>;
-  removable: Scalars['Boolean']['output'];
-  source?: Maybe<Scalars['String']['output']>;
-  type: ParameterType;
-  updatedAt: Scalars['DateTime']['output'];
-  userId: Scalars['ID']['output'];
-  value?: Maybe<Scalars['String']['output']>;
-  visible: Scalars['Boolean']['output'];
-};
+/** Union of all parameter types */
+export type Parameter = BimParameter | UserParameter;
 
 /** Response type for parameter mutations */
 export type ParameterMutationResponse = {
   __typename?: 'ParameterMutationResponse';
   parameter: Parameter;
 };
-
-/** Parameter type enum */
-export enum ParameterType {
-  Equation = 'equation',
-  Fixed = 'fixed'
-}
 
 export type PasswordStrengthCheckFeedback = {
   __typename?: 'PasswordStrengthCheckFeedback';
@@ -3631,6 +3687,24 @@ export type UpdateAutomateFunctionInput = {
   tags?: InputMaybe<Array<Scalars['String']['input']>>;
 };
 
+/** Input for updating a BIM parameter */
+export type UpdateBimParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  currentGroup?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  field?: InputMaybe<Scalars['String']['input']>;
+  header?: InputMaybe<Scalars['String']['input']>;
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  order?: InputMaybe<Scalars['Int']['input']>;
+  removable?: InputMaybe<Scalars['Boolean']['input']>;
+  source?: InputMaybe<Scalars['String']['input']>;
+  sourceValue?: InputMaybe<Scalars['String']['input']>;
+  type?: InputMaybe<BimValueType>;
+  value?: InputMaybe<Scalars['String']['input']>;
+  visible?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
 export type UpdateModelInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
@@ -3645,21 +3719,21 @@ export type UpdateNamedTableInput = {
   name?: InputMaybe<Scalars['String']['input']>;
 };
 
-/** Input for updating an existing parameter */
-export type UpdateParameterInput = {
+/** Input for updating a user parameter */
+export type UpdateUserParameterInput = {
   category?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   equation?: InputMaybe<Scalars['String']['input']>;
   field?: InputMaybe<Scalars['String']['input']>;
   group?: InputMaybe<Scalars['String']['input']>;
   header?: InputMaybe<Scalars['String']['input']>;
-  isFetched?: InputMaybe<Scalars['Boolean']['input']>;
-  metadata?: InputMaybe<Scalars['String']['input']>;
+  isCustom?: InputMaybe<Scalars['Boolean']['input']>;
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-  orderIndex?: InputMaybe<Scalars['Int']['input']>;
+  order?: InputMaybe<Scalars['Int']['input']>;
   removable?: InputMaybe<Scalars['Boolean']['input']>;
   source?: InputMaybe<Scalars['String']['input']>;
-  type?: InputMaybe<ParameterType>;
+  type?: InputMaybe<UserValueType>;
   value?: InputMaybe<Scalars['String']['input']>;
   visible?: InputMaybe<Scalars['Boolean']['input']>;
 };
@@ -3905,6 +3979,29 @@ export type UserEmailMutationsSetPrimaryArgs = {
   input: SetPrimaryUserEmailInput;
 };
 
+/** User parameter type */
+export type UserParameter = BaseParameter & {
+  __typename?: 'UserParameter';
+  category?: Maybe<Scalars['String']['output']>;
+  computed?: Maybe<Scalars['JSONObject']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  equation?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
+  group: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  isCustom?: Maybe<Scalars['Boolean']['output']>;
+  kind: Scalars['String']['output'];
+  metadata?: Maybe<Scalars['JSONObject']['output']>;
+  name: Scalars['String']['output'];
+  order?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  type: UserValueType;
+  value: Scalars['String']['output'];
+  visible: Scalars['Boolean']['output'];
+};
+
 export type UserProjectsFilter = {
   /** Only include projects where user has the specified roles */
   onlyWithRoles?: InputMaybe<Array<Scalars['String']['input']>>;
@@ -3944,6 +4041,12 @@ export type UserUpdateInput = {
   company?: InputMaybe<Scalars['String']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
 };
+
+/** User value type enum */
+export enum UserValueType {
+  Equation = 'equation',
+  Fixed = 'fixed'
+}
 
 export type UserWorkspacesFilter = {
   search?: InputMaybe<Scalars['String']['input']>;
@@ -4556,7 +4659,17 @@ export type DirectiveResolverFn<TResult = {}, TParent = {}, TContext = {}, TArgs
   info: GraphQLResolveInfo
 ) => TResult | Promise<TResult>;
 
+/** Mapping of union types */
+export type ResolversUnionTypes<_RefType extends Record<string, unknown>> = {
+  AutomationRevisionTriggerDefinition: ( AutomationRevisionTriggerDefinitionGraphQLReturn );
+  AutomationRunTrigger: ( AutomationRunTriggerGraphQLReturn );
+  Parameter: ( BimParameter ) | ( UserParameter );
+};
 
+/** Mapping of interface types */
+export type ResolversInterfaceTypes<_RefType extends Record<string, unknown>> = {
+  BaseParameter: ( BimParameter ) | ( UserParameter );
+};
 
 /** Mapping between all available schema types and the resolvers types */
 export type ResolversTypes = {
@@ -4601,8 +4714,11 @@ export type ResolversTypes = {
   AutomationRevisionTriggerDefinition: ResolverTypeWrapper<AutomationRevisionTriggerDefinitionGraphQLReturn>;
   AutomationRunTrigger: ResolverTypeWrapper<AutomationRunTriggerGraphQLReturn>;
   AvatarUser: ResolverTypeWrapper<AvatarUser>;
+  BaseParameter: ResolverTypeWrapper<ResolversInterfaceTypes<ResolversTypes>['BaseParameter']>;
   BasicGitRepositoryMetadata: ResolverTypeWrapper<BasicGitRepositoryMetadata>;
   BigInt: ResolverTypeWrapper<Scalars['BigInt']['output']>;
+  BimParameter: ResolverTypeWrapper<BimParameter>;
+  BimValueType: BimValueType;
   BlobMetadata: ResolverTypeWrapper<BlobStorageItem>;
   BlobMetadataCollection: ResolverTypeWrapper<Omit<BlobMetadataCollection, 'items'> & { items?: Maybe<Array<ResolversTypes['BlobMetadata']>> }>;
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
@@ -4634,12 +4750,13 @@ export type ResolversTypes = {
   CommitsMoveInput: CommitsMoveInput;
   CountOnlyCollection: ResolverTypeWrapper<CountOnlyCollection>;
   CreateAutomateFunctionInput: CreateAutomateFunctionInput;
+  CreateBimParameterInput: CreateBimParameterInput;
   CreateCommentInput: CreateCommentInput;
   CreateCommentReplyInput: CreateCommentReplyInput;
   CreateModelInput: CreateModelInput;
   CreateNamedTableInput: CreateNamedTableInput;
-  CreateParameterInput: CreateParameterInput;
   CreateUserEmailInput: CreateUserEmailInput;
+  CreateUserParameterInput: CreateUserParameterInput;
   CreateVersionInput: CreateVersionInput;
   Currency: Currency;
   DateTime: ResolverTypeWrapper<Scalars['DateTime']['output']>;
@@ -4675,9 +4792,8 @@ export type ResolversTypes = {
   Object: ResolverTypeWrapper<ObjectGraphQLReturn>;
   ObjectCollection: ResolverTypeWrapper<Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversTypes['Object']> }>;
   ObjectCreateInput: ObjectCreateInput;
-  Parameter: ResolverTypeWrapper<Parameter>;
-  ParameterMutationResponse: ResolverTypeWrapper<ParameterMutationResponse>;
-  ParameterType: ParameterType;
+  Parameter: ResolverTypeWrapper<ResolversUnionTypes<ResolversTypes>['Parameter']>;
+  ParameterMutationResponse: ResolverTypeWrapper<Omit<ParameterMutationResponse, 'parameter'> & { parameter: ResolversTypes['Parameter'] }>;
   PasswordStrengthCheckFeedback: ResolverTypeWrapper<PasswordStrengthCheckFeedback>;
   PasswordStrengthCheckResults: ResolverTypeWrapper<PasswordStrengthCheckResults>;
   PendingStreamCollaborator: ResolverTypeWrapper<PendingStreamCollaboratorGraphQLReturn>;
@@ -4773,21 +4889,24 @@ export type ResolversTypes = {
   TokenResourceIdentifierType: TokenResourceIdentifierType;
   TriggeredAutomationsStatus: ResolverTypeWrapper<TriggeredAutomationsStatusGraphQLReturn>;
   UpdateAutomateFunctionInput: UpdateAutomateFunctionInput;
+  UpdateBimParameterInput: UpdateBimParameterInput;
   UpdateModelInput: UpdateModelInput;
   UpdateNamedTableInput: UpdateNamedTableInput;
-  UpdateParameterInput: UpdateParameterInput;
+  UpdateUserParameterInput: UpdateUserParameterInput;
   UpdateVersionInput: UpdateVersionInput;
   User: ResolverTypeWrapper<UserGraphQLReturn>;
   UserAutomateInfo: ResolverTypeWrapper<UserAutomateInfoGraphQLReturn>;
   UserDeleteInput: UserDeleteInput;
   UserEmail: ResolverTypeWrapper<UserEmail>;
   UserEmailMutations: ResolverTypeWrapper<MutationsObjectGraphQLReturn>;
+  UserParameter: ResolverTypeWrapper<UserParameter>;
   UserProjectsFilter: UserProjectsFilter;
   UserProjectsUpdatedMessage: ResolverTypeWrapper<Omit<UserProjectsUpdatedMessage, 'project'> & { project?: Maybe<ResolversTypes['Project']> }>;
   UserProjectsUpdatedMessageType: UserProjectsUpdatedMessageType;
   UserRoleInput: UserRoleInput;
   UserSearchResultCollection: ResolverTypeWrapper<Omit<UserSearchResultCollection, 'items'> & { items: Array<ResolversTypes['LimitedUser']> }>;
   UserUpdateInput: UserUpdateInput;
+  UserValueType: UserValueType;
   UserWorkspacesFilter: UserWorkspacesFilter;
   Version: ResolverTypeWrapper<VersionGraphQLReturn>;
   VersionCollection: ResolverTypeWrapper<Omit<VersionCollection, 'items'> & { items: Array<ResolversTypes['Version']> }>;
@@ -4875,8 +4994,10 @@ export type ResolversParentTypes = {
   AutomationRevisionTriggerDefinition: AutomationRevisionTriggerDefinitionGraphQLReturn;
   AutomationRunTrigger: AutomationRunTriggerGraphQLReturn;
   AvatarUser: AvatarUser;
+  BaseParameter: ResolversInterfaceTypes<ResolversParentTypes>['BaseParameter'];
   BasicGitRepositoryMetadata: BasicGitRepositoryMetadata;
   BigInt: Scalars['BigInt']['output'];
+  BimParameter: BimParameter;
   BlobMetadata: BlobStorageItem;
   BlobMetadataCollection: Omit<BlobMetadataCollection, 'items'> & { items?: Maybe<Array<ResolversParentTypes['BlobMetadata']>> };
   Boolean: Scalars['Boolean']['output'];
@@ -4908,12 +5029,13 @@ export type ResolversParentTypes = {
   CommitsMoveInput: CommitsMoveInput;
   CountOnlyCollection: CountOnlyCollection;
   CreateAutomateFunctionInput: CreateAutomateFunctionInput;
+  CreateBimParameterInput: CreateBimParameterInput;
   CreateCommentInput: CreateCommentInput;
   CreateCommentReplyInput: CreateCommentReplyInput;
   CreateModelInput: CreateModelInput;
   CreateNamedTableInput: CreateNamedTableInput;
-  CreateParameterInput: CreateParameterInput;
   CreateUserEmailInput: CreateUserEmailInput;
+  CreateUserParameterInput: CreateUserParameterInput;
   CreateVersionInput: CreateVersionInput;
   DateTime: Scalars['DateTime']['output'];
   DeleteModelInput: DeleteModelInput;
@@ -4947,8 +5069,8 @@ export type ResolversParentTypes = {
   Object: ObjectGraphQLReturn;
   ObjectCollection: Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversParentTypes['Object']> };
   ObjectCreateInput: ObjectCreateInput;
-  Parameter: Parameter;
-  ParameterMutationResponse: ParameterMutationResponse;
+  Parameter: ResolversUnionTypes<ResolversParentTypes>['Parameter'];
+  ParameterMutationResponse: Omit<ParameterMutationResponse, 'parameter'> & { parameter: ResolversParentTypes['Parameter'] };
   PasswordStrengthCheckFeedback: PasswordStrengthCheckFeedback;
   PasswordStrengthCheckResults: PasswordStrengthCheckResults;
   PendingStreamCollaborator: PendingStreamCollaboratorGraphQLReturn;
@@ -5029,15 +5151,17 @@ export type ResolversParentTypes = {
   TokenResourceIdentifierInput: TokenResourceIdentifierInput;
   TriggeredAutomationsStatus: TriggeredAutomationsStatusGraphQLReturn;
   UpdateAutomateFunctionInput: UpdateAutomateFunctionInput;
+  UpdateBimParameterInput: UpdateBimParameterInput;
   UpdateModelInput: UpdateModelInput;
   UpdateNamedTableInput: UpdateNamedTableInput;
-  UpdateParameterInput: UpdateParameterInput;
+  UpdateUserParameterInput: UpdateUserParameterInput;
   UpdateVersionInput: UpdateVersionInput;
   User: UserGraphQLReturn;
   UserAutomateInfo: UserAutomateInfoGraphQLReturn;
   UserDeleteInput: UserDeleteInput;
   UserEmail: UserEmail;
   UserEmailMutations: MutationsObjectGraphQLReturn;
+  UserParameter: UserParameter;
   UserProjectsFilter: UserProjectsFilter;
   UserProjectsUpdatedMessage: Omit<UserProjectsUpdatedMessage, 'project'> & { project?: Maybe<ResolversParentTypes['Project']> };
   UserRoleInput: UserRoleInput;
@@ -5360,6 +5484,23 @@ export type AvatarUserResolvers<ContextType = GraphQLContext, ParentType extends
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type BaseParameterResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['BaseParameter'] = ResolversParentTypes['BaseParameter']> = {
+  __resolveType: TypeResolveFn<'BimParameter' | 'UserParameter', ParentType, ContextType>;
+  category?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  computed?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
+  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  field?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  header?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  metadata?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  order?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  removable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  source?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  value?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  visible?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+};
+
 export type BasicGitRepositoryMetadataResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['BasicGitRepositoryMetadata'] = ResolversParentTypes['BasicGitRepositoryMetadata']> = {
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -5371,6 +5512,28 @@ export type BasicGitRepositoryMetadataResolvers<ContextType = GraphQLContext, Pa
 export interface BigIntScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['BigInt'], any> {
   name: 'BigInt';
 }
+
+export type BimParameterResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['BimParameter'] = ResolversParentTypes['BimParameter']> = {
+  category?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  computed?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
+  currentGroup?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  fetchedGroup?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  field?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  header?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  kind?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  metadata?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  order?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  removable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  source?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  sourceValue?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  type?: Resolver<ResolversTypes['BimValueType'], ParentType, ContextType>;
+  value?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  visible?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
 
 export type BlobMetadataResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['BlobMetadata'] = ResolversParentTypes['BlobMetadata']> = {
   createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
@@ -5686,8 +5849,9 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   commitUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitUpdateArgs, 'commit'>>;
   commitsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsDeleteArgs, 'input'>>;
   commitsMove?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsMoveArgs, 'input'>>;
+  createBimParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationCreateBimParameterArgs, 'input'>>;
   createNamedTable?: Resolver<ResolversTypes['NamedTableConfig'], ParentType, ContextType, RequireFields<MutationCreateNamedTableArgs, 'input'>>;
-  createParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationCreateParameterArgs, 'input'>>;
+  createUserParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationCreateUserParameterArgs, 'input'>>;
   deleteNamedTable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteNamedTableArgs, 'id'>>;
   deleteParameter?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteParameterArgs, 'id'>>;
   inviteDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationInviteDeleteArgs, 'inviteId'>>;
@@ -5715,8 +5879,9 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   streamUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationStreamUpdateArgs, 'stream'>>;
   streamUpdatePermission?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationStreamUpdatePermissionArgs, 'permissionParams'>>;
   streamsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, Partial<MutationStreamsDeleteArgs>>;
+  updateBimParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationUpdateBimParameterArgs, 'id' | 'input'>>;
   updateNamedTable?: Resolver<ResolversTypes['NamedTableConfig'], ParentType, ContextType, RequireFields<MutationUpdateNamedTableArgs, 'input'>>;
-  updateParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationUpdateParameterArgs, 'id' | 'input'>>;
+  updateUserParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationUpdateUserParameterArgs, 'id' | 'input'>>;
   userCommentThreadActivityBroadcast?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserCommentThreadActivityBroadcastArgs, 'commentId' | 'streamId'>>;
   userDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserDeleteArgs, 'userConfirmation'>>;
   userNotificationPreferencesUpdate?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationUserNotificationPreferencesUpdateArgs, 'preferences'>>;
@@ -5762,26 +5927,7 @@ export type ObjectCollectionResolvers<ContextType = GraphQLContext, ParentType e
 };
 
 export type ParameterResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['Parameter'] = ResolversParentTypes['Parameter']> = {
-  category?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
-  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  equation?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  field?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  group?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  header?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
-  isFetched?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
-  metadata?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  orderIndex?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
-  removable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
-  source?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  type?: Resolver<ResolversTypes['ParameterType'], ParentType, ContextType>;
-  updatedAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
-  userId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
-  value?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  visible?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
-  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+  __resolveType: TypeResolveFn<'BimParameter' | 'UserParameter', ParentType, ContextType>;
 };
 
 export type ParameterMutationResponseResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['ParameterMutationResponse'] = ResolversParentTypes['ParameterMutationResponse']> = {
@@ -6392,6 +6538,28 @@ export type UserEmailMutationsResolvers<ContextType = GraphQLContext, ParentType
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type UserParameterResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['UserParameter'] = ResolversParentTypes['UserParameter']> = {
+  category?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  computed?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
+  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  equation?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  field?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  group?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  header?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  isCustom?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
+  kind?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  metadata?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  order?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  removable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  source?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  type?: Resolver<ResolversTypes['UserValueType'], ParentType, ContextType>;
+  value?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  visible?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type UserProjectsUpdatedMessageResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['UserProjectsUpdatedMessage'] = ResolversParentTypes['UserProjectsUpdatedMessage']> = {
   id?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   project?: Resolver<Maybe<ResolversTypes['Project']>, ParentType, ContextType>;
@@ -6654,8 +6822,10 @@ export type Resolvers<ContextType = GraphQLContext> = {
   AutomationRevisionTriggerDefinition?: AutomationRevisionTriggerDefinitionResolvers<ContextType>;
   AutomationRunTrigger?: AutomationRunTriggerResolvers<ContextType>;
   AvatarUser?: AvatarUserResolvers<ContextType>;
+  BaseParameter?: BaseParameterResolvers<ContextType>;
   BasicGitRepositoryMetadata?: BasicGitRepositoryMetadataResolvers<ContextType>;
   BigInt?: GraphQLScalarType;
+  BimParameter?: BimParameterResolvers<ContextType>;
   BlobMetadata?: BlobMetadataResolvers<ContextType>;
   BlobMetadataCollection?: BlobMetadataCollectionResolvers<ContextType>;
   Branch?: BranchResolvers<ContextType>;
@@ -6746,6 +6916,7 @@ export type Resolvers<ContextType = GraphQLContext> = {
   UserAutomateInfo?: UserAutomateInfoResolvers<ContextType>;
   UserEmail?: UserEmailResolvers<ContextType>;
   UserEmailMutations?: UserEmailMutationsResolvers<ContextType>;
+  UserParameter?: UserParameterResolvers<ContextType>;
   UserProjectsUpdatedMessage?: UserProjectsUpdatedMessageResolvers<ContextType>;
   UserSearchResultCollection?: UserSearchResultCollectionResolvers<ContextType>;
   Version?: VersionResolvers<ContextType>;

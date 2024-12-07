@@ -1,334 +1,155 @@
-import type { ColumnDef, CategoryFilters, NamedTableConfig } from '../tables'
-import type { Parameter, ParameterType } from '../parameters'
-
-// Input Types
-export interface TableColumnInput extends ColumnDef {}
-
-export interface CategoryFiltersGQLInput {
-  selectedParentCategories: string[]
-  selectedChildCategories: string[]
-}
-
-export interface CreateNamedTableGQLInput {
-  name: string
-  parentColumns: TableColumnInput[]
-  childColumns: TableColumnInput[]
-  metadata?: unknown
-  categoryFilters?: CategoryFiltersGQLInput
-}
-
-export interface UpdateNamedTableGQLInput {
-  id: string
-  name?: string
-  parentColumns?: TableColumnInput[]
-  childColumns?: TableColumnInput[]
-  metadata?: unknown
-  categoryFilters?: CategoryFiltersGQLInput
-}
+import type { ColumnDef, CategoryFilters } from '../tables'
+import type { BimValueType, UserValueType } from '../parameters'
 
 /**
- * User response from GraphQL
+ * GraphQL Parameter Types
  */
-export interface UserResponse {
+interface BaseGQLParameter {
+  id: string
+  name: string
+  field: string
+  visible: boolean
+  header: string
+  description?: string
+  category?: string
+  order?: number
+  computed?: unknown
+  source?: string
+  removable: boolean
+  value: string // Always string in GraphQL
+  metadata?: Record<string, unknown>
+}
+
+export interface BimGQLParameter extends BaseGQLParameter {
+  kind: 'bim'
+  type: BimValueType
+  sourceValue: string // BIM value as string
+  fetchedGroup: string
+  currentGroup: string
+  group?: never
+  equation?: never
+  isCustom?: never
+  validationRules?: never
+}
+
+export interface UserGQLParameter extends BaseGQLParameter {
+  kind: 'user'
+  type: UserValueType
+  group: string
+  equation?: string
+  isCustom?: boolean
+  sourceValue?: never
+  fetchedGroup?: never
+  currentGroup?: never
+}
+
+export type GQLParameter = BimGQLParameter | UserGQLParameter
+
+/**
+ * Parameter Input Types
+ */
+export type CreateBimGQLInput = Omit<BimGQLParameter, 'id' | 'kind'>
+export type CreateUserGQLInput = Omit<UserGQLParameter, 'id' | 'kind'>
+
+export type UpdateBimGQLInput = Partial<CreateBimGQLInput>
+export type UpdateUserGQLInput = Partial<CreateUserGQLInput>
+
+/**
+ * Parameter Response Types
+ */
+export interface ParametersQueryResponse {
+  parameters: GQLParameter[]
+}
+
+export interface GetParametersQueryResponse {
   activeUser: {
-    userSettings: Record<string, unknown> | null
-    tables: Record<string, NamedTableConfig> | null
-    parameters: Record<string, unknown> | null
+    parameters: Record<string, GQLParameter>
   }
 }
 
 /**
- * User settings update response
- */
-export interface UserSettingsUpdateResponse {
-  userSettingsUpdate: boolean
-}
-
-/**
- * User tables update response
- */
-export interface UserTablesUpdateResponse {
-  userTablesUpdate: boolean
-}
-
-/**
- * Tables mutation response
- */
-export interface TablesMutationResponse {
-  userTablesUpdate: boolean
-}
-
-/**
- * User parameters update response
- */
-export interface UserParametersUpdateResponse {
-  userParametersUpdate: boolean
-}
-
-/**
- * Parameter response from GraphQL
- */
-export interface ParameterResponse extends Parameter {
-  tables?: Array<{
-    id: string
-    name: string
-  }>
-}
-
-/**
- * Parameters query response
- */
-export interface ParametersQueryResponse {
-  parameters: ParameterResponse[]
-}
-
-/**
- * Table parameters query response
- */
-export interface TableParametersQueryResponse {
-  tableParameters: Parameter[]
-}
-
-/**
- * Parameter mutation response
+ * Mutation Response Types
  */
 export interface ParameterMutationResponse {
-  parameter: Parameter
+  parameter: GQLParameter
 }
 
-/**
- * Create parameter response
- */
 export interface CreateParameterResponse {
   createParameter: ParameterMutationResponse
 }
 
-/**
- * Update parameter response
- */
 export interface UpdateParameterResponse {
   updateParameter: ParameterMutationResponse
 }
 
-/**
- * Delete parameter response
- */
 export interface DeleteParameterResponse {
   deleteParameter: boolean
 }
 
 /**
- * Add parameter to table response
- */
-export interface AddParameterToTableResponse {
-  addParameterToTable: {
-    parameter: ParameterResponse
-  }
-}
-
-/**
- * Remove parameter from table response
- */
-export interface RemoveParameterFromTableResponse {
-  removeParameterFromTable: {
-    parameter: ParameterResponse
-  }
-}
-
-/**
- * Table data interface
- */
-export interface TableData {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-  metadata?: unknown
-  categoryFilters?: CategoryFilters
-}
-
-/**
- * Table configuration response
- */
-export interface TableConfigResponse {
-  id: string
-  name: string
-  data: TableData
-}
-
-/**
- * Get tables response
- */
-export interface GetTablesResponse {
-  namedTableConfigs: TableConfigResponse[]
-}
-
-/**
- * Create table response
- */
-export interface CreateTableResponse {
-  createNamedTable: TableConfigResponse
-}
-
-/**
- * Update table response
- */
-export interface UpdateTableResponse {
-  updateNamedTable: TableConfigResponse
-}
-
-/**
- * Delete table response
- */
-export interface DeleteTableResponse {
-  deleteNamedTable: boolean
-}
-
-/**
- * Table information from GraphQL
- */
-export interface TableInfo {
-  id: string
-  name: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-  metadata?: unknown
-  categoryFilters: CategoryFilters
-  selectedParameterIds: string[]
-}
-
-/**
- * Tables query response
- */
-export interface TablesQueryResponse {
-  namedTableConfigs: TableInfo[]
-}
-
-/**
- * Settings query response
- */
-export interface SettingsQueryResponse {
-  settings: {
-    controlWidth?: number
-    [key: string]: unknown
-  }
-}
-
-/**
- * Create named table input
- */
-export interface CreateNamedTableInput {
-  name: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-  metadata?: unknown
-  categoryFilters: CategoryFilters
-  selectedParameterIds: string[]
-}
-
-/**
- * Update named table input
- */
-export interface UpdateNamedTableInput {
-  id: string
-  name?: string
-  parentColumns?: ColumnDef[]
-  childColumns?: ColumnDef[]
-  metadata?: unknown
-  categoryFilters?: CategoryFilters
-  selectedParameterIds?: string[]
-}
-
-/**
- * Create parameter input
- */
-export interface CreateParameterInput {
-  name: string
-  type: ParameterType
-  value?: unknown
-  field: string
-  header?: string
-  category?: string
-  description?: string
-  metadata?: Record<string, unknown>
-  visible?: boolean
-  order?: number
-  source?: string
-  isFetched?: boolean
-}
-
-/**
- * Update parameter input
- */
-export interface UpdateParameterInput {
-  name?: string
-  type?: ParameterType
-  value?: unknown
-  field?: string
-  header?: string
-  category?: string
-  description?: string
-  metadata?: Record<string, unknown>
-  visible?: boolean
-  order?: number
-  source?: string
-  isFetched?: boolean
-}
-
-/**
- * Table response from GraphQL
+ * Table Types
  */
 export interface TableResponse {
   id: string
   name: string
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-  metadata?: unknown
+  metadata?: Record<string, unknown>
   categoryFilters: CategoryFilters
   selectedParameterIds: string[]
 }
 
-/**
- * Stored table interface
- */
-export interface StoredTable extends NamedTableConfig {
-  id: string
+export interface CreateNamedTableInput {
   name: string
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+  metadata?: Record<string, unknown>
+  categoryFilters: CategoryFilters
+  selectedParameterIds: string[]
+}
+
+export interface UpdateNamedTableInput {
+  id: string
+  name?: string
+  parentColumns?: ColumnDef[]
+  childColumns?: ColumnDef[]
+  metadata?: Record<string, unknown>
+  categoryFilters?: CategoryFilters
+  selectedParameterIds?: string[]
+}
+
+export interface TablesQueryResponse {
+  namedTableConfigs: TableResponse[]
+}
+
+export interface TablesMutationResponse {
+  userTablesUpdate: boolean
 }
 
 /**
- * GraphQL Parameters Query Response
+ * Parameter-Table Operations
  */
-export interface GetParametersQueryResponse {
-  activeUser: {
-    parameters: Record<string, Parameter>
+export interface AddParameterToTableResponse {
+  addParameterToTable: {
+    parameter: GQLParameter
+  }
+}
+
+export interface RemoveParameterFromTableResponse {
+  removeParameterFromTable: {
+    parameter: GQLParameter
   }
 }
 
 /**
- * GraphQL Parameter Mutation Response
- */
-export interface ParameterMutationResponse {
-  userParametersUpdate: boolean
-}
-
-/**
- * GraphQL Parameter Mutation Variables
- */
-export interface ParameterMutationVariables {
-  parameters: Record<string, Parameter>
-}
-
-/**
- * GraphQL Single Parameter Response
+ * Operation Response Types
  */
 export interface SingleParameterResponse {
-  parameter: Parameter
+  parameter: GQLParameter
 }
 
-/**
- * GraphQL Parameters Operation Response
- */
 export interface ParametersOperationResponse {
   status: boolean
   error?: string
-  parameter?: Parameter
+  parameter?: GQLParameter
 }

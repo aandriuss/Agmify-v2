@@ -1,17 +1,18 @@
 import type { Ref } from 'vue'
-import type { ParameterDefinition, CustomParameter } from '../parameters'
+import type { Parameter } from '../parameters'
 
 /**
  * Sort by field type
  */
 export type SortByField = 'name' | 'category' | 'type' | 'fixed' | 'order'
+export type SortDirection = 'asc' | 'desc'
 
 /**
  * Sort by interface
  */
 export interface SortBy {
   field: string
-  direction: 'asc' | 'desc'
+  direction: SortDirection
 }
 
 /**
@@ -30,14 +31,14 @@ export interface UseColumnsOptions {
  * Column definition for tables
  */
 export interface ColumnDef {
-  id: string
+  readonly id: string
   name: string
   field: string
-  header?: string
+  header: string
   type?: string
   source?: string
   category?: string
-  visible?: boolean
+  visible: boolean
   order?: number
   width?: number
   sortable?: boolean
@@ -45,15 +46,14 @@ export interface ColumnDef {
   metadata?: Record<string, unknown>
   headerComponent?: string
   fetchedGroup?: string
-  currentGroup?: string
-  isFetched?: boolean
+  currentGroup: string
   description?: string
   isFixed?: boolean
   isCustomParameter?: boolean
   parameterRef?: string
   color?: string
   expander?: boolean
-  removable?: boolean
+  removable: boolean
 }
 
 /**
@@ -68,13 +68,14 @@ export interface CategoryFilters {
  * Base table configuration interface
  */
 export interface TableConfig {
-  id: string
+  readonly id: string
   name: string
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   categoryFilters: CategoryFilters
   selectedParameterIds: string[]
-  metadata?: unknown
+  metadata?: Record<string, unknown>
+  lastUpdateTimestamp: number
 }
 
 /**
@@ -83,7 +84,7 @@ export interface TableConfig {
 export interface NamedTableConfig extends TableConfig {
   displayName: string
   description?: string
-  customParameters?: CustomParameter[]
+  userParameters?: Parameter[]
 }
 
 /**
@@ -94,7 +95,7 @@ export interface TableState {
   expandedRows: Set<string>
   sortBy?: {
     field: string
-    direction: 'asc' | 'desc'
+    direction: SortDirection
   }
   filters?: Record<string, unknown>
 }
@@ -104,7 +105,7 @@ export interface TableState {
  */
 export interface TableTypeSettings {
   type: 'viewer' | 'schedule' | 'custom'
-  availableColumns: ParameterDefinition[]
+  availableColumns: ColumnDef[]
   defaultColumns: ColumnDef[]
   categoryFilters?: CategoryFilters
 }
@@ -113,7 +114,7 @@ export interface TableTypeSettings {
  * Table instance state interface
  */
 export interface TableInstanceState {
-  id: string
+  readonly id: string
   type: string
   name: string
   parentColumns: ColumnDef[]
@@ -128,8 +129,8 @@ export interface TableInstanceState {
  * Table registry interface
  */
 export interface TableRegistry {
-  tables: Map<string, TableInstanceState>
-  typeSettings: Map<string, TableTypeSettings>
+  tables: Record<string, TableInstanceState>
+  typeSettings: Record<string, TableTypeSettings>
 }
 
 /**
@@ -159,11 +160,11 @@ export interface TableUpdateOperationPayloads {
  * Table update operation interface
  */
 export interface TableUpdateOperation {
-  type: keyof TableUpdateOperationPayloads
-  tableId: string
-  targetView: 'parent' | 'child'
-  payload: TableUpdateOperationPayloads[keyof TableUpdateOperationPayloads]
-  timestamp: number
+  readonly type: keyof TableUpdateOperationPayloads
+  readonly tableId: string
+  readonly targetView: 'parent' | 'child'
+  readonly payload: TableUpdateOperationPayloads[keyof TableUpdateOperationPayloads]
+  readonly timestamp: number
 }
 
 /**
@@ -173,4 +174,13 @@ export interface TablesState {
   tables: Record<string, NamedTableConfig>
   loading: boolean
   error: Error | null
+}
+
+/**
+ * Table settings interface
+ */
+export interface TableSettings {
+  controlWidth: number
+  namedTables: Record<string, NamedTableConfig>
+  customParameters: Parameter[]
 }

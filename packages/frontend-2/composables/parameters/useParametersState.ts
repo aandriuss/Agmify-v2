@@ -1,23 +1,25 @@
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useNuxtApp } from '#app'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import { useParametersGraphQL, type Parameter } from './useParametersGraphQL'
+import { useParametersGraphQL } from './useParametersGraphQL'
 import { useUpdateQueue } from '../settings/useUpdateQueue'
-import type { UnifiedParameter } from '~/composables/core/types'
+import type { Parameter, ParameterTableMapping } from '~/composables/core/types'
 import { ParameterError } from './errors'
+import { getParameterGroup } from '~/composables/core/types/parameters'
 
 export function useParametersState() {
   const nuxtApp = useNuxtApp()
 
   // State
-  const parameters = ref<Record<string, UnifiedParameter>>({})
+  const parameters = ref<Record<string, Parameter>>({})
+  const tableMappings = ref<Record<string, ParameterTableMapping[]>>({})
   const loading = ref(false)
   const error = ref<Error | null>(null)
   const isUpdating = ref(false)
 
   // Initialize GraphQL
-  const graphql = nuxtApp.runWithContext(() => useParametersGraphQL())
-  if (!graphql || graphql instanceof Promise) {
+  const graphqlClient = nuxtApp.runWithContext(() => useParametersGraphQL())
+  if (!graphqlClient || graphqlClient instanceof Promise) {
     throw new ParameterError('Failed to initialize parameters GraphQL')
   }
 
@@ -26,32 +28,34 @@ export function useParametersState() {
     fetchParameters,
     createParameter: createParameterGQL,
     updateParameter: updateParameterGQL,
-    deleteParameter: deleteParameterGQL
-  } = graphql
+    deleteParameter: deleteParameterGQL,
+    addParameterToTable: addParameterToTableGQL,
+    removeParameterFromTable: removeParameterFromTableGQL
+  } = graphqlClient
 
   const { queueUpdate } = useUpdateQueue()
 
-  // Convert GraphQL parameter to UnifiedParameter
-  function convertToUnifiedParameter(param: Parameter): UnifiedParameter {
-    return {
-      id: param.id,
-      name: param.name,
-      type: param.type,
-      value: param.value || '',
-      field: param.field,
-      visible: param.visible,
-      header: param.header || param.name,
-      category: param.category,
-      description: param.description,
-      source: param.source,
-      isFetched: param.isFetched ?? false,
-      currentGroup: param.group || 'Custom',
-      computed: {
-        value: param.value || '',
-        isValid: true
+  // Computed properties for parameter organization
+  const parameterGroups = computed(() => {
+    const groups = new Set<string>()
+    Object.values(parameters.value).forEach((param) => {
+      const group = getParameterGroup(param)
+      if (group) groups.add(group)
+    })
+    return Array.from(groups).sort()
+  })
+
+  const parametersByGroup = computed(() => {
+    const grouped: Record<string, Parameter[]> = {}
+    Object.values(parameters.value).forEach((param) => {
+      const group = getParameterGroup(param)
+      if (group) {
+        if (!grouped[group]) grouped[group] = []
+        grouped[group].push(param)
       }
-    }
-  }
+    })
+    return grouped
+  })
 
   // Watch for remote parameters changes
   watch(
@@ -75,24 +79,12 @@ export function useParametersState() {
       })
 
       try {
-        // Convert each parameter to UnifiedParameter
-        const convertedParameters = Object.entries(newParameters).reduce<
-          Record<string, UnifiedParameter>
-        >((acc, [key, param]) => {
-          if (param) {
-            acc[key] = convertToUnifiedParameter(param)
-          }
-          return acc
-        }, {})
-
-        // Merge with existing parameters
-        parameters.value = {
-          ...parameters.value,
-          ...convertedParameters
-        }
+        // Convert each parameter
+        parameters.value = newParameters
 
         debug.log(DebugCategories.INITIALIZATION, 'Parameters updated', {
-          count: Object.keys(parameters.value).length
+          count: Object.keys(parameters.value).length,
+          groups: parameterGroups.value
         })
       } catch (err) {
         debug.error(DebugCategories.ERROR, 'Failed to process parameters update', err)
@@ -113,20 +105,11 @@ export function useParametersState() {
       const parametersData = await fetchParameters()
 
       if (parametersData && Object.keys(parametersData).length > 0) {
-        // Convert each parameter to UnifiedParameter
-        const convertedParameters = Object.entries(parametersData).reduce<
-          Record<string, UnifiedParameter>
-        >((acc, [key, param]) => {
-          if (param) {
-            acc[key] = convertToUnifiedParameter(param)
-          }
-          return acc
-        }, {})
-
-        parameters.value = convertedParameters
+        parameters.value = parametersData
 
         debug.log(DebugCategories.INITIALIZATION, 'Parameters loaded', {
-          count: Object.keys(parameters.value).length
+          count: Object.keys(parameters.value).length,
+          groups: parameterGroups.value
         })
       }
 
@@ -146,9 +129,7 @@ export function useParametersState() {
     }
   }
 
-  async function createParameter(
-    parameterData: UnifiedParameter
-  ): Promise<UnifiedParameter> {
+  async function createParameter(parameterData: Parameter): Promise<Parameter> {
     return queueUpdate(async () => {
       try {
         debug.startState(DebugCategories.STATE, 'Creating parameter')
@@ -156,16 +137,20 @@ export function useParametersState() {
         error.value = null
         isUpdating.value = true
 
-        // Pass through the existing ID
-        const createdParameter = await createParameterGQL(parameterData)
+        const createdParam = await createParameterGQL(parameterData)
 
         // Update local state
         parameters.value = {
           ...parameters.value,
-          [parameterData.id]: createdParameter
+          [parameterData.id]: createdParam
         }
 
-        return createdParameter
+        debug.log(DebugCategories.STATE, 'Parameter created', {
+          id: createdParam.id,
+          group: getParameterGroup(createdParam)
+        })
+
+        return createdParam
       } catch (err) {
         debug.error(DebugCategories.ERROR, 'Failed to create parameter', err)
         if (err instanceof Error) {
@@ -181,8 +166,8 @@ export function useParametersState() {
 
   async function updateParameter(
     id: string,
-    updates: Partial<Omit<UnifiedParameter, 'id' | 'createdAt' | 'updatedAt'>>
-  ): Promise<UnifiedParameter> {
+    updates: Partial<Omit<Parameter, 'id' | 'kind'>>
+  ): Promise<Parameter> {
     return queueUpdate(async () => {
       try {
         debug.startState(DebugCategories.STATE, 'Updating parameter')
@@ -190,17 +175,21 @@ export function useParametersState() {
         error.value = null
         isUpdating.value = true
 
-        const updatedParameter = await updateParameterGQL(id, updates)
-        const unifiedParameter = convertToUnifiedParameter(updatedParameter)
+        const updatedParam = await updateParameterGQL(id, updates)
 
         // Update local state
         parameters.value = {
           ...parameters.value,
-          [id]: unifiedParameter
+          [id]: updatedParam
         }
 
+        debug.log(DebugCategories.STATE, 'Parameter updated', {
+          id: updatedParam.id,
+          group: getParameterGroup(updatedParam)
+        })
+
         debug.completeState(DebugCategories.STATE, 'Parameter updated successfully')
-        return unifiedParameter
+        return updatedParam
       } catch (err) {
         debug.error(DebugCategories.ERROR, 'Failed to update parameter', err)
         if (err instanceof Error) {
@@ -228,6 +217,13 @@ export function useParametersState() {
         const { [id]: removed, ...rest } = parameters.value
         parameters.value = rest
 
+        // Remove from table mappings
+        Object.keys(tableMappings.value).forEach((tableId) => {
+          tableMappings.value[tableId] = tableMappings.value[tableId].filter(
+            (mapping) => mapping.parameterId !== id
+          )
+        })
+
         debug.completeState(DebugCategories.STATE, 'Parameter deleted successfully')
       } catch (err) {
         debug.error(DebugCategories.ERROR, 'Failed to delete parameter', err)
@@ -242,14 +238,97 @@ export function useParametersState() {
     })
   }
 
+  async function addParameterToTable(
+    parameterId: string,
+    tableId: string
+  ): Promise<void> {
+    return queueUpdate(async () => {
+      try {
+        debug.startState(DebugCategories.STATE, 'Adding parameter to table')
+        loading.value = true
+        error.value = null
+        isUpdating.value = true
+
+        if (!parameters.value[parameterId]) {
+          throw new Error('Parameter not found')
+        }
+
+        // Add mapping to GraphQL
+        await addParameterToTableGQL(parameterId, tableId)
+
+        // Update local state
+        if (!tableMappings.value[tableId]) {
+          tableMappings.value[tableId] = []
+        }
+
+        if (!tableMappings.value[tableId].some((m) => m.parameterId === parameterId)) {
+          tableMappings.value[tableId].push({
+            parameterId,
+            tableId
+          })
+        }
+
+        debug.completeState(DebugCategories.STATE, 'Parameter added to table')
+      } catch (err) {
+        debug.error(DebugCategories.ERROR, 'Failed to add parameter to table', err)
+        throw err instanceof Error ? err : new Error('Failed to add parameter to table')
+      } finally {
+        loading.value = false
+        isUpdating.value = false
+      }
+    })
+  }
+
+  async function removeParameterFromTable(
+    parameterId: string,
+    tableId: string
+  ): Promise<void> {
+    return queueUpdate(async () => {
+      try {
+        debug.startState(DebugCategories.STATE, 'Removing parameter from table')
+        loading.value = true
+        error.value = null
+        isUpdating.value = true
+
+        // Remove mapping from GraphQL
+        await removeParameterFromTableGQL(parameterId, tableId)
+
+        // Update local state
+        if (tableMappings.value[tableId]) {
+          tableMappings.value[tableId] = tableMappings.value[tableId].filter(
+            (mapping) => mapping.parameterId !== parameterId
+          )
+        }
+
+        debug.completeState(DebugCategories.STATE, 'Parameter removed from table')
+      } catch (err) {
+        debug.error(DebugCategories.ERROR, 'Failed to remove parameter from table', err)
+        throw err instanceof Error
+          ? err
+          : new Error('Failed to remove parameter from table')
+      } finally {
+        loading.value = false
+        isUpdating.value = false
+      }
+    })
+  }
+
   return {
+    // State
     parameters,
+    tableMappings,
+    parameterGroups,
+    parametersByGroup,
     loading,
     error,
     isUpdating,
+
+    // Operations
     loadParameters,
     createParameter,
     updateParameter,
-    deleteParameter
+    deleteParameter,
+    addParameterToTable,
+    removeParameterFromTable
   }
 }

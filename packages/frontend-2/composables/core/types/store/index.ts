@@ -1,56 +1,28 @@
 import type { ComputedRef, Ref } from 'vue'
 import type { Viewer } from '@speckle/viewer'
 import type { ElementData, TableRow } from '../data'
-import type {
-  CustomParameter,
-  ParameterValueEntry,
-  ParameterDefinition
-} from '../parameters'
-import type { AvailableHeaders, ProcessedHeader } from '../viewer'
+import type { UserParameter, Parameter } from '../parameters'
+import type { AvailableHeaders } from '../viewer'
 import type { ColumnDef } from '../tables'
+import type { StoreParameterValue, StoreParameterDefinition } from './parameter-store'
+
+export type { StoreParameterValue, StoreParameterDefinition } from './parameter-store'
+
+export {
+  isStoreBimParameter,
+  isStoreUserParameter,
+  isStoreBimDefinition,
+  isStoreUserDefinition,
+  convertToStoreParameter,
+  convertToStoreDefinition,
+  convertToParameter
+} from './parameter-store'
 
 /**
  * Raw parameter types that can be passed to store mutations
  */
-export type RawParameterValue = ProcessedHeader | ParameterValueEntry
-export type RawParameterDefinition = ProcessedHeader | ParameterDefinition
-
-/**
- * Base parameter interface that all parameter types extend
- */
-export interface BaseParameter {
-  id: string
-  name: string
-  type: string
-  value?: unknown
-}
-
-/**
- * Store parameter value that extends base parameter
- */
-export interface StoreParameterValue extends BaseParameter {
-  fetchedValue?: unknown
-  currentValue?: unknown
-  previousValue?: unknown
-  userValue?: unknown
-  isValid?: boolean
-  error?: string
-}
-
-/**
- * Store parameter definition that extends base parameter
- */
-export interface StoreParameterDefinition extends BaseParameter {
-  field: string
-  header?: string
-  visible?: boolean
-  order?: number
-  category?: string
-  description?: string
-  metadata?: Record<string, unknown>
-  removable?: boolean
-  isCustomParameter?: boolean
-}
+export type RawParameterValue = Parameter
+export type RawParameterDefinition = Parameter
 
 /**
  * Table info interface
@@ -97,12 +69,12 @@ export interface StoreState {
   tableData: TableRow[]
 
   // Parameters
-  customParameters: CustomParameter[]
+  customParameters: UserParameter[]
   parameterColumns: ColumnDef[] // Keep for backward compatibility
   parentParameterColumns: ColumnDef[] // Parent-specific parameters
   childParameterColumns: ColumnDef[] // Child-specific parameters
-  mergedParentParameters: CustomParameter[]
-  mergedChildParameters: CustomParameter[]
+  mergedParentParameters: UserParameter[]
+  mergedChildParameters: UserParameter[]
   processedParameters: Record<string, StoreParameterValue>
   parameterDefinitions: Record<string, StoreParameterDefinition>
 
@@ -150,13 +122,13 @@ export interface StoreMutations {
   setTableData: (data: TableRow[]) => void
 
   // Parameter mutations
-  setCustomParameters: (params: CustomParameter[]) => void
+  setCustomParameters: (params: UserParameter[]) => void
   setParameterColumns: (columns: ColumnDef[]) => void
   setParentParameterColumns: (columns: ColumnDef[]) => void
   setChildParameterColumns: (columns: ColumnDef[]) => void
-  setMergedParameters: (parent: CustomParameter[], child: CustomParameter[]) => void
-  setProcessedParameters: (params: Record<string, RawParameterValue>) => void
-  setParameterDefinitions: (defs: Record<string, RawParameterDefinition>) => void
+  setMergedParameters: (parent: UserParameter[], child: UserParameter[]) => void
+  setProcessedParameters: (params: Record<string, StoreParameterValue>) => void
+  setParameterDefinitions: (defs: Record<string, StoreParameterDefinition>) => void
   setParameterVisibility: (parameterId: string, visible: boolean) => void
   setParameterOrder: (parameterId: string, newIndex: number) => void
 
@@ -214,12 +186,12 @@ export interface Store {
   scheduleData: ComputedRef<ElementData[]>
   evaluatedData: ComputedRef<ElementData[]>
   tableData: ComputedRef<TableRow[]>
-  customParameters: ComputedRef<CustomParameter[]>
+  customParameters: ComputedRef<UserParameter[]>
   parameterColumns: ComputedRef<ColumnDef[]>
   parentParameterColumns: ComputedRef<ColumnDef[]>
   childParameterColumns: ComputedRef<ColumnDef[]>
-  mergedParentParameters: ComputedRef<CustomParameter[]>
-  mergedChildParameters: ComputedRef<CustomParameter[]>
+  mergedParentParameters: ComputedRef<UserParameter[]>
+  mergedChildParameters: ComputedRef<UserParameter[]>
   processedParameters: ComputedRef<Record<string, StoreParameterValue>>
   currentTableColumns: ComputedRef<ColumnDef[]>
   currentDetailColumns: ComputedRef<ColumnDef[]>
@@ -250,13 +222,13 @@ export interface Store {
   setScheduleData: (data: ElementData[]) => void
   setEvaluatedData: (data: ElementData[]) => void
   setTableData: (data: TableRow[]) => void
-  setCustomParameters: (params: CustomParameter[]) => void
+  setCustomParameters: (params: UserParameter[]) => void
   setParameterColumns: (columns: ColumnDef[]) => void
   setParentParameterColumns: (columns: ColumnDef[]) => void
   setChildParameterColumns: (columns: ColumnDef[]) => void
-  setMergedParameters: (parent: CustomParameter[], child: CustomParameter[]) => void
-  setProcessedParameters: (params: Record<string, RawParameterValue>) => void
-  setParameterDefinitions: (defs: Record<string, RawParameterDefinition>) => void
+  setMergedParameters: (parent: UserParameter[], child: UserParameter[]) => void
+  setProcessedParameters: (params: Record<string, StoreParameterValue>) => void
+  setParameterDefinitions: (defs: Record<string, StoreParameterDefinition>) => void
   setParameterVisibility: (parameterId: string, visible: boolean) => void
   setParameterOrder: (parameterId: string, newIndex: number) => void
   setCurrentColumns: (table: ColumnDef[], detail: ColumnDef[]) => void
@@ -280,138 +252,12 @@ export interface Store {
   lifecycle: StoreLifecycle
 }
 
-/**
- * Helper functions to convert between parameter types
- */
-export function convertToStoreParameterValue(
-  source: RawParameterValue,
-  id?: string,
-  name?: string,
-  type?: string
-): StoreParameterValue {
-  if ('value' in source && 'id' in source && 'name' in source && 'type' in source) {
-    // ProcessedHeader
-    return {
-      id: source.id,
-      name: source.name,
-      type: source.type,
-      value: source.value,
-      currentValue: source.value,
-      isValid: true
-    }
-  }
-  // ParameterValueEntry
-  if (!id || !name || !type) {
-    throw new Error('Missing required fields for ParameterValueEntry conversion')
-  }
-  return {
-    id,
-    name,
-    type,
-    value: source.currentValue,
-    currentValue: source.currentValue,
-    previousValue: source.previousValue,
-    userValue: source.userValue,
-    fetchedValue: source.fetchedValue,
-    isValid: source.isValid,
-    error: source.error
-  }
-}
-
-export function convertToStoreParameterDefinition(
-  source: RawParameterDefinition
-): StoreParameterDefinition {
-  if ('value' in source && 'id' in source) {
-    // ProcessedHeader
-    return {
-      id: source.id,
-      name: source.name,
-      type: source.type,
-      value: source.value,
-      field: source.id,
-      header: source.name,
-      visible: true,
-      removable: true,
-      isCustomParameter: true
-    }
-  }
-  // ParameterDefinition
-  return {
-    id: source.field,
-    name: source.name,
-    type: source.type,
-    field: source.field,
-    header: source.name,
-    visible: true,
-    removable: true,
-    isCustomParameter: true,
-    category: source.category,
-    description: source.description,
-    metadata: source.metadata
-  }
-}
-
-export function convertParameterMap<T extends RawParameterValue>(
-  params: Record<string, T>
-): Record<string, StoreParameterValue> {
-  return Object.fromEntries(
-    Object.entries(params).map(([key, value]) => [
-      key,
-      'value' in value && 'id' in value && 'name' in value && 'type' in value
-        ? convertToStoreParameterValue(value)
-        : convertToStoreParameterValue(value, key, key, 'string')
-    ])
-  )
-}
-
-export function convertDefinitionMap<T extends RawParameterDefinition>(
-  defs: Record<string, T>
-): Record<string, StoreParameterDefinition> {
-  return Object.fromEntries(
-    Object.entries(defs).map(([key, value]) => [
-      key,
-      convertToStoreParameterDefinition(value)
-    ])
-  )
-}
-
-export function createColumnDef(
-  source: StoreParameterDefinition | ParameterDefinition
-): ColumnDef {
-  return {
-    id: source.field,
-    name: source.name,
-    field: `parameters.${source.field}`,
-    header: 'header' in source ? source.header : source.name,
-    type: source.type,
-    visible: source.visible ?? true,
-    order: source.order ?? 0,
-    removable: 'removable' in source ? source.removable : true,
-    category: source.category,
-    isCustomParameter: 'isCustomParameter' in source ? source.isCustomParameter : true,
-    parameterRef: source.field
-  }
-}
-
-export function isStoreParameterValue(value: unknown): value is StoreParameterValue {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    'name' in value &&
-    'type' in value
-  )
-}
-
-export function isStoreParameterDefinition(
-  value: unknown
-): value is StoreParameterDefinition {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    'name' in value &&
-    'type' in value &&
-    'field' in value
-  )
-}
+// Re-export parameter store utilities
+export {
+  convertToStoreParameter as convertToStoreParameterValue,
+  convertToStoreDefinition as convertToStoreParameterDefinition,
+  convertToParameter as convertParameterMap,
+  convertToParameter as convertDefinitionMap,
+  isStoreBimParameter as isStoreParameterValue,
+  isStoreBimDefinition as isStoreParameterDefinition
+} from './parameter-store'

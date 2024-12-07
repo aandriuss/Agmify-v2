@@ -1,20 +1,27 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef, ColumnGroup, UnifiedParameter } from '~/composables/core/types'
+import type { ColumnDef } from '~/composables/core/types/tables'
+import type { Parameter } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { getParameterGroup, isBimParameter } from '~/composables/core/types/parameters'
 
 type View = 'parent' | 'child'
 type ColumnOperation =
-  | { type: 'add'; column: UnifiedParameter }
+  | { type: 'add'; column: Parameter }
   | { type: 'remove'; column: ColumnDef }
   | { type: 'visibility'; column: ColumnDef; visible: boolean }
   | { type: 'reorder'; fromIndex: number; toIndex: number }
+
+interface ColumnGroup {
+  category: string
+  columns: ColumnDef[]
+}
 
 interface UseColumnManagerOptions {
   tableId: string
   initialParentColumns: ColumnDef[]
   initialChildColumns: ColumnDef[]
-  availableParentParameters: UnifiedParameter[]
-  availableChildParameters: UnifiedParameter[]
+  availableParentParameters: Parameter[]
+  availableChildParameters: Parameter[]
   searchTerm?: string
   sortBy?: 'name' | 'category' | 'type' | 'fixed' | 'group'
   selectedCategories?: string[]
@@ -119,7 +126,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
   })
 
   // Grouped columns
-  const groupedColumns = computed(() => {
+  const groupedColumns = computed<ColumnGroup[]>(() => {
     const groups: Record<string, ColumnDef[]> = {}
 
     processedColumns.value.forEach((col) => {
@@ -140,12 +147,10 @@ export function useColumnManager(options: UseColumnManagerOptions) {
         // Then sort alphabetically
         return a.localeCompare(b)
       })
-      .map(
-        ([group, columns]): ColumnGroup => ({
-          category: group,
-          columns: columns.sort((a, b) => a.header.localeCompare(b.header))
-        })
-      )
+      .map(([group, columns]) => ({
+        category: group,
+        columns: columns.sort((a, b) => a.header.localeCompare(b.header))
+      }))
   })
 
   // View management
@@ -160,21 +165,32 @@ export function useColumnManager(options: UseColumnManagerOptions) {
   }
 
   // Convert parameter to column
-  function createColumnFromParameter(
-    param: UnifiedParameter,
-    order: number
-  ): ColumnDef {
+  function createColumnFromParameter(param: Parameter, order: number): ColumnDef {
+    const group = getParameterGroup(param)
+    const type = isBimParameter(param)
+      ? param.type
+      : param.type === 'equation'
+      ? 'number'
+      : 'string'
+
     return {
+      id: param.id,
+      name: param.name,
       field: param.field,
       header: param.name,
-      type: param.type === 'equation' ? 'number' : 'string',
+      type,
       visible: param.visible ?? true,
       removable: param.removable ?? true,
       order,
-      category: param.category || 'Parameters',
-      source: param.source || 'Parameters',
+      category: param.category || group || 'Parameters',
+      source: isBimParameter(param) ? 'BIM Parameters' : 'User Parameters',
       description: param.description,
-      isFixed: false
+      isFixed: false,
+      metadata: param.metadata,
+      currentGroup: isBimParameter(param) ? param.currentGroup : group || 'Parameters',
+      fetchedGroup: isBimParameter(param) ? param.fetchedGroup : undefined,
+      isCustomParameter: !isBimParameter(param) && param.type === 'equation',
+      parameterRef: param.id
     }
   }
 
@@ -265,13 +281,17 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           operation,
           tableId,
           currentView: currentView.value,
-          groupCounts: groupedColumns.value.reduce((acc, group) => {
-            acc[group.category] = group.columns.length
-            return acc
-          }, {} as Record<string, number>)
+          groupCounts: groupedColumns.value.reduce<Record<string, number>>(
+            (acc, group) => {
+              acc[group.category] = group.columns.length
+              return acc
+            },
+            {}
+          )
         }
       )
-    } catch (error) {
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Unknown error')
       debug.error(DebugCategories.ERROR, 'Column operation failed', error)
       throw error
     } finally {
@@ -320,17 +340,22 @@ export function useColumnManager(options: UseColumnManagerOptions) {
         tableId,
         parentColumns: parentColumns.value.length,
         childColumns: childColumns.value.length,
-        groupCounts: groupedColumns.value.reduce((acc, group) => {
-          acc[group.category] = group.columns.length
-          return acc
-        }, {} as Record<string, number>)
+        groupCounts: groupedColumns.value.reduce<Record<string, number>>(
+          (acc, group) => {
+            acc[group.category] = group.columns.length
+            return acc
+          },
+          {}
+        )
       })
 
       return {
         parentColumns: parentColumns.value,
         childColumns: childColumns.value
       }
-    } catch (error) {
+    } catch (err) {
+      const error =
+        err instanceof Error ? err : new Error('Failed to save column changes')
       debug.error(DebugCategories.ERROR, 'Error saving column changes', error)
       return false
     } finally {

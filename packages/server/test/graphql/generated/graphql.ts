@@ -425,6 +425,23 @@ export type AvatarUser = {
   name: Scalars['String']['output'];
 };
 
+/** Base parameter interface with common fields */
+export type BaseParameter = {
+  category?: Maybe<Scalars['String']['output']>;
+  computed?: Maybe<Scalars['JSONObject']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  metadata?: Maybe<Scalars['JSONObject']['output']>;
+  name: Scalars['String']['output'];
+  order?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  value: Scalars['String']['output'];
+  visible: Scalars['Boolean']['output'];
+};
+
 export type BasicGitRepositoryMetadata = {
   __typename?: 'BasicGitRepositoryMetadata';
   id: Scalars['ID']['output'];
@@ -432,6 +449,39 @@ export type BasicGitRepositoryMetadata = {
   owner: Scalars['String']['output'];
   url: Scalars['String']['output'];
 };
+
+/** BIM parameter type */
+export type BimParameter = BaseParameter & {
+  __typename?: 'BimParameter';
+  category?: Maybe<Scalars['String']['output']>;
+  computed?: Maybe<Scalars['JSONObject']['output']>;
+  currentGroup: Scalars['String']['output'];
+  description?: Maybe<Scalars['String']['output']>;
+  fetchedGroup: Scalars['String']['output'];
+  field: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  kind: Scalars['String']['output'];
+  metadata?: Maybe<Scalars['JSONObject']['output']>;
+  name: Scalars['String']['output'];
+  order?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  sourceValue: Scalars['String']['output'];
+  type: BimValueType;
+  value: Scalars['String']['output'];
+  visible: Scalars['Boolean']['output'];
+};
+
+/** BIM value type enum */
+export enum BimValueType {
+  Array = 'array',
+  Boolean = 'boolean',
+  Date = 'date',
+  Number = 'number',
+  Object = 'object',
+  String = 'string'
+}
 
 export type BlobMetadata = {
   __typename?: 'BlobMetadata';
@@ -809,6 +859,25 @@ export type CreateAutomateFunctionInput = {
   template: AutomateFunctionTemplateLanguage;
 };
 
+/** Input for creating a BIM parameter */
+export type CreateBimParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  currentGroup: Scalars['String']['input'];
+  description?: InputMaybe<Scalars['String']['input']>;
+  fetchedGroup: Scalars['String']['input'];
+  field: Scalars['String']['input'];
+  header: Scalars['String']['input'];
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
+  name: Scalars['String']['input'];
+  order?: InputMaybe<Scalars['Int']['input']>;
+  removable: Scalars['Boolean']['input'];
+  source?: InputMaybe<Scalars['String']['input']>;
+  sourceValue: Scalars['String']['input'];
+  type: BimValueType;
+  value: Scalars['String']['input'];
+  visible: Scalars['Boolean']['input'];
+};
+
 export type CreateCommentInput = {
   content: CommentContentInput;
   projectId: Scalars['String']['input'];
@@ -839,28 +908,27 @@ export type CreateNamedTableInput = {
   name: Scalars['String']['input'];
 };
 
-/** Input for creating a new parameter */
-export type CreateParameterInput = {
+export type CreateUserEmailInput = {
+  email: Scalars['String']['input'];
+};
+
+/** Input for creating a user parameter */
+export type CreateUserParameterInput = {
   category?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   equation?: InputMaybe<Scalars['String']['input']>;
   field: Scalars['String']['input'];
   group: Scalars['String']['input'];
   header: Scalars['String']['input'];
-  isFetched?: InputMaybe<Scalars['Boolean']['input']>;
-  metadata?: InputMaybe<Scalars['String']['input']>;
+  isCustom?: InputMaybe<Scalars['Boolean']['input']>;
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
   name: Scalars['String']['input'];
-  orderIndex?: InputMaybe<Scalars['Int']['input']>;
+  order?: InputMaybe<Scalars['Int']['input']>;
   removable: Scalars['Boolean']['input'];
   source?: InputMaybe<Scalars['String']['input']>;
-  type: ParameterType;
-  userId: Scalars['ID']['input'];
-  value?: InputMaybe<Scalars['String']['input']>;
+  type: UserValueType;
+  value: Scalars['String']['input'];
   visible: Scalars['Boolean']['input'];
-};
-
-export type CreateUserEmailInput = {
-  email: Scalars['String']['input'];
 };
 
 export type CreateVersionInput = {
@@ -1296,10 +1364,12 @@ export type Mutation = {
    * @deprecated Part of the old API surface and will be removed in the future. Use VersionMutations.moveToModel instead.
    */
   commitsMove: Scalars['Boolean']['output'];
+  /** Create a new BIM parameter */
+  createBimParameter: ParameterMutationResponse;
   /** Create a new named table configuration */
   createNamedTable: NamedTableConfig;
-  /** Create a new parameter */
-  createParameter: ParameterMutationResponse;
+  /** Create a new user parameter */
+  createUserParameter: ParameterMutationResponse;
   /** Delete a named table configuration */
   deleteNamedTable: Scalars['Boolean']['output'];
   /** Delete a parameter */
@@ -1394,10 +1464,12 @@ export type Mutation = {
   streamUpdatePermission?: Maybe<Scalars['Boolean']['output']>;
   /** @deprecated Part of the old API surface and will be removed in the future. Use ProjectMutations.batchDelete instead. */
   streamsDelete: Scalars['Boolean']['output'];
+  /** Update a BIM parameter */
+  updateBimParameter: ParameterMutationResponse;
   /** Update an existing named table configuration */
   updateNamedTable: NamedTableConfig;
-  /** Update an existing parameter */
-  updateParameter: ParameterMutationResponse;
+  /** Update a user parameter */
+  updateUserParameter: ParameterMutationResponse;
   /**
    * Used for broadcasting real time typing status in comment threads. Does not persist any info.
    * @deprecated Use broadcastViewerUserActivity
@@ -1567,13 +1639,18 @@ export type MutationCommitsMoveArgs = {
 };
 
 
+export type MutationCreateBimParameterArgs = {
+  input: CreateBimParameterInput;
+};
+
+
 export type MutationCreateNamedTableArgs = {
   input: CreateNamedTableInput;
 };
 
 
-export type MutationCreateParameterArgs = {
-  input: CreateParameterInput;
+export type MutationCreateUserParameterArgs = {
+  input: CreateUserParameterInput;
 };
 
 
@@ -1704,14 +1781,20 @@ export type MutationStreamsDeleteArgs = {
 };
 
 
+export type MutationUpdateBimParameterArgs = {
+  id: Scalars['ID']['input'];
+  input: UpdateBimParameterInput;
+};
+
+
 export type MutationUpdateNamedTableArgs = {
   input: UpdateNamedTableInput;
 };
 
 
-export type MutationUpdateParameterArgs = {
+export type MutationUpdateUserParameterArgs = {
   id: Scalars['ID']['input'];
-  input: UpdateParameterInput;
+  input: UpdateUserParameterInput;
 };
 
 
@@ -1845,41 +1928,14 @@ export type ObjectCreateInput = {
   streamId: Scalars['String']['input'];
 };
 
-/** Base parameter type with common fields */
-export type Parameter = {
-  __typename?: 'Parameter';
-  category?: Maybe<Scalars['String']['output']>;
-  createdAt: Scalars['DateTime']['output'];
-  description?: Maybe<Scalars['String']['output']>;
-  equation?: Maybe<Scalars['String']['output']>;
-  field: Scalars['String']['output'];
-  group: Scalars['String']['output'];
-  header: Scalars['String']['output'];
-  id: Scalars['ID']['output'];
-  isFetched?: Maybe<Scalars['Boolean']['output']>;
-  metadata?: Maybe<Scalars['String']['output']>;
-  name: Scalars['String']['output'];
-  orderIndex?: Maybe<Scalars['Int']['output']>;
-  removable: Scalars['Boolean']['output'];
-  source?: Maybe<Scalars['String']['output']>;
-  type: ParameterType;
-  updatedAt: Scalars['DateTime']['output'];
-  userId: Scalars['ID']['output'];
-  value?: Maybe<Scalars['String']['output']>;
-  visible: Scalars['Boolean']['output'];
-};
+/** Union of all parameter types */
+export type Parameter = BimParameter | UserParameter;
 
 /** Response type for parameter mutations */
 export type ParameterMutationResponse = {
   __typename?: 'ParameterMutationResponse';
   parameter: Parameter;
 };
-
-/** Parameter type enum */
-export enum ParameterType {
-  Equation = 'equation',
-  Fixed = 'fixed'
-}
 
 export type PasswordStrengthCheckFeedback = {
   __typename?: 'PasswordStrengthCheckFeedback';
@@ -3616,6 +3672,24 @@ export type UpdateAutomateFunctionInput = {
   tags?: InputMaybe<Array<Scalars['String']['input']>>;
 };
 
+/** Input for updating a BIM parameter */
+export type UpdateBimParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  currentGroup?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  field?: InputMaybe<Scalars['String']['input']>;
+  header?: InputMaybe<Scalars['String']['input']>;
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  order?: InputMaybe<Scalars['Int']['input']>;
+  removable?: InputMaybe<Scalars['Boolean']['input']>;
+  source?: InputMaybe<Scalars['String']['input']>;
+  sourceValue?: InputMaybe<Scalars['String']['input']>;
+  type?: InputMaybe<BimValueType>;
+  value?: InputMaybe<Scalars['String']['input']>;
+  visible?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
 export type UpdateModelInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
@@ -3630,21 +3704,21 @@ export type UpdateNamedTableInput = {
   name?: InputMaybe<Scalars['String']['input']>;
 };
 
-/** Input for updating an existing parameter */
-export type UpdateParameterInput = {
+/** Input for updating a user parameter */
+export type UpdateUserParameterInput = {
   category?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   equation?: InputMaybe<Scalars['String']['input']>;
   field?: InputMaybe<Scalars['String']['input']>;
   group?: InputMaybe<Scalars['String']['input']>;
   header?: InputMaybe<Scalars['String']['input']>;
-  isFetched?: InputMaybe<Scalars['Boolean']['input']>;
-  metadata?: InputMaybe<Scalars['String']['input']>;
+  isCustom?: InputMaybe<Scalars['Boolean']['input']>;
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-  orderIndex?: InputMaybe<Scalars['Int']['input']>;
+  order?: InputMaybe<Scalars['Int']['input']>;
   removable?: InputMaybe<Scalars['Boolean']['input']>;
   source?: InputMaybe<Scalars['String']['input']>;
-  type?: InputMaybe<ParameterType>;
+  type?: InputMaybe<UserValueType>;
   value?: InputMaybe<Scalars['String']['input']>;
   visible?: InputMaybe<Scalars['Boolean']['input']>;
 };
@@ -3890,6 +3964,29 @@ export type UserEmailMutationsSetPrimaryArgs = {
   input: SetPrimaryUserEmailInput;
 };
 
+/** User parameter type */
+export type UserParameter = BaseParameter & {
+  __typename?: 'UserParameter';
+  category?: Maybe<Scalars['String']['output']>;
+  computed?: Maybe<Scalars['JSONObject']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  equation?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
+  group: Scalars['String']['output'];
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  isCustom?: Maybe<Scalars['Boolean']['output']>;
+  kind: Scalars['String']['output'];
+  metadata?: Maybe<Scalars['JSONObject']['output']>;
+  name: Scalars['String']['output'];
+  order?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  type: UserValueType;
+  value: Scalars['String']['output'];
+  visible: Scalars['Boolean']['output'];
+};
+
 export type UserProjectsFilter = {
   /** Only include projects where user has the specified roles */
   onlyWithRoles?: InputMaybe<Array<Scalars['String']['input']>>;
@@ -3929,6 +4026,12 @@ export type UserUpdateInput = {
   company?: InputMaybe<Scalars['String']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
 };
+
+/** User value type enum */
+export enum UserValueType {
+  Equation = 'equation',
+  Fixed = 'fixed'
+}
 
 export type UserWorkspacesFilter = {
   search?: InputMaybe<Scalars['String']['input']>;

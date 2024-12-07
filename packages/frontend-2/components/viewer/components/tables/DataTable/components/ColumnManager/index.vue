@@ -133,8 +133,19 @@ import Button from 'primevue/button'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import TabSelector from './TabSelector.vue'
 import EnhancedColumnList from './shared/EnhancedColumnList.vue'
-import type { ColumnDef, UnifiedParameter } from '~/composables/core/types'
+import type { ColumnDef } from '~/composables/core/types/tables'
+import type { Parameter } from '~/composables/core/types/parameters'
 import { useColumnManager } from '~/components/viewer/components/tables/DataTable/composables/columns/useColumnManager'
+
+// Helper to determine if item is a Parameter
+function isParameter(item: Parameter | ColumnDef): item is Parameter {
+  return 'kind' in item && ('sourceValue' in item || 'equation' in item)
+}
+
+// Helper to determine if item is a ColumnDef
+function isColumnDef(item: Parameter | ColumnDef): item is ColumnDef {
+  return 'currentGroup' in item && !('kind' in item)
+}
 
 // Props and Emits
 interface Props {
@@ -143,8 +154,8 @@ interface Props {
   tableName: string
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-  availableParentParameters: UnifiedParameter[]
-  availableChildParameters: UnifiedParameter[]
+  availableParentParameters: Parameter[]
+  availableChildParameters: Parameter[]
 }
 
 const props = defineProps<Props>()
@@ -252,46 +263,72 @@ const toggleFilterOptions = () => {
   showFilterOptions.value = !showFilterOptions.value
 }
 
-const handleAdd = async (item: UnifiedParameter | ColumnDef) => {
-  await columnManager.handleColumnOperation({
-    type: 'add',
-    column: item as UnifiedParameter
-  })
-  listRefreshKey.value++
+const handleAdd = async (item: Parameter | ColumnDef) => {
+  if (!isParameter(item)) return
+
+  try {
+    await columnManager.handleColumnOperation({
+      type: 'add',
+      column: item
+    })
+    listRefreshKey.value++
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to add column')
+    loadingError.value = error
+  }
 }
 
-const handleRemove = async (item: UnifiedParameter | ColumnDef) => {
-  await columnManager.handleColumnOperation({
-    type: 'remove',
-    column: item as ColumnDef
-  })
-  listRefreshKey.value++
+const handleRemove = async (item: Parameter | ColumnDef) => {
+  if (!isColumnDef(item)) return
+
+  try {
+    await columnManager.handleColumnOperation({
+      type: 'remove',
+      column: item
+    })
+    listRefreshKey.value++
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to remove column')
+    loadingError.value = error
+  }
 }
 
 const handleReorder = async (fromIndex: number, toIndex: number) => {
-  await columnManager.handleColumnOperation({
-    type: 'reorder',
-    fromIndex,
-    toIndex
-  })
-  listRefreshKey.value++
+  try {
+    await columnManager.handleColumnOperation({
+      type: 'reorder',
+      fromIndex,
+      toIndex
+    })
+    listRefreshKey.value++
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to reorder columns')
+    loadingError.value = error
+  }
 }
 
 const handleVisibilityChange = async (
-  item: UnifiedParameter | ColumnDef,
+  item: Parameter | ColumnDef,
   visible: boolean
 ) => {
-  await columnManager.handleColumnOperation({
-    type: 'visibility',
-    column: item as ColumnDef,
-    visible
-  })
-  listRefreshKey.value++
+  if (!isColumnDef(item)) return
+
+  try {
+    await columnManager.handleColumnOperation({
+      type: 'visibility',
+      column: item,
+      visible
+    })
+    listRefreshKey.value++
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to update visibility')
+    loadingError.value = error
+  }
 }
 
 const handleDragStart = (
   event: DragEvent,
-  item: ColumnDef | UnifiedParameter,
+  item: ColumnDef | Parameter,
   index: number
 ) => {
   dropState.dragging = item.field
@@ -322,41 +359,51 @@ const handleDragEnter = (event: DragEvent, index: number) => {
 const handleDrop = async (event: DragEvent, targetIndex?: number) => {
   if (!dropState.dragging || targetIndex === undefined) return
 
-  const sourceIndex = columnManager.activeColumns.value.findIndex(
-    (col: ColumnDef) => col.field === dropState.dragging
-  )
-
-  if (sourceIndex !== -1) {
-    await handleReorder(sourceIndex, targetIndex)
-  } else {
-    const sourceItem = columnManager.availableParameters.value.find(
-      (p: UnifiedParameter) => p.field === dropState.dragging
+  try {
+    const sourceIndex = columnManager.activeColumns.value.findIndex(
+      (col: ColumnDef) => col.field === dropState.dragging
     )
-    if (sourceItem) {
-      await handleAdd(sourceItem)
+
+    if (sourceIndex !== -1) {
+      await handleReorder(sourceIndex, targetIndex)
+    } else {
+      const sourceItem = columnManager.availableParameters.value.find(
+        (p: Parameter) => p.field === dropState.dragging
+      )
+      if (sourceItem && isParameter(sourceItem)) {
+        await handleAdd(sourceItem)
+      }
     }
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to handle drop')
+    loadingError.value = error
+  } finally {
+    handleDragEnd()
   }
-  handleDragEnd()
 }
 
 const handleCancel = () => {
   try {
     emit('cancel')
     emit('update:open', false)
-  } catch (error) {
-    if (error instanceof Error) {
-      loadingError.value = error
-    }
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to cancel')
+    loadingError.value = error
   }
 }
 
 const showAllColumns = async () => {
-  const promises = columnManager.activeColumns.value
-    .filter((col: ColumnDef) => !col.visible)
-    .map((col: ColumnDef) => handleVisibilityChange(col, true))
+  try {
+    const promises = columnManager.activeColumns.value
+      .filter((col: ColumnDef) => !col.visible)
+      .map((col: ColumnDef) => handleVisibilityChange(col, true))
 
-  await Promise.all(promises)
-  listRefreshKey.value++
+    await Promise.all(promises)
+    listRefreshKey.value++
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to show all columns')
+    loadingError.value = error
+  }
 }
 
 const handleApply = async () => {
@@ -380,11 +427,10 @@ const handleApply = async () => {
 
     emit('apply')
     emit('update:open', false)
-  } catch (error) {
-    if (error instanceof Error) {
-      loadingError.value = error
-      throw error // Re-throw to ensure error is propagated
-    }
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to apply changes')
+    loadingError.value = error
+    throw error // Re-throw to ensure error is propagated
   }
 }
 
@@ -394,9 +440,8 @@ onMounted(() => {
     // Just set initialized to true since columns are already provided via props
     isInitialized.value = true
   } catch (err) {
-    if (err instanceof Error) {
-      loadingError.value = err
-    }
+    const error = err instanceof Error ? err : new Error('Failed to initialize')
+    loadingError.value = error
   }
 })
 </script>
