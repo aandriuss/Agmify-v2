@@ -12,14 +12,11 @@ export function useParameterGroups({ parameters }: UseParameterGroupsParams) {
 
     const groups: Record<string, CustomParameter[]> = {}
 
-    // Ensure parameters is an array and has values
-    const paramArray = Array.isArray(parameters.value) ? parameters.value : []
-
     // Add default Custom group
     groups['Custom'] = []
 
     // Group parameters
-    paramArray.forEach((param) => {
+    parameters.value.forEach((param) => {
       const group = param.group || 'Custom'
       if (!groups[group]) {
         groups[group] = []
@@ -45,9 +42,8 @@ export function useParameterGroups({ parameters }: UseParameterGroupsParams) {
     if (!parameters.value) return ['Custom']
 
     const groups = new Set(['Custom'])
-    const paramArray = Array.isArray(parameters.value) ? parameters.value : []
 
-    paramArray.forEach((param) => {
+    parameters.value.forEach((param) => {
       if (param.group) {
         groups.add(param.group)
       }

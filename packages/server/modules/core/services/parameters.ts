@@ -19,7 +19,7 @@ export interface Parameter {
   orderIndex?: number
   createdAt: Date
   updatedAt: Date
-  metadata?: string
+  metadata?: unknown
   isFetched?: boolean
   source?: string
 }
@@ -38,7 +38,7 @@ export interface CreateParameterInput {
   removable?: boolean
   visible?: boolean
   orderIndex?: number
-  metadata?: string
+  metadata?: unknown
   isFetched?: boolean
   source?: string
 }
@@ -56,7 +56,7 @@ export interface UpdateParameterInput {
   removable?: boolean
   visible?: boolean
   orderIndex?: number
-  metadata?: string
+  metadata?: unknown
   isFetched?: boolean
   source?: string
 }

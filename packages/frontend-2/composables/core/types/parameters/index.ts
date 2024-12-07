@@ -67,17 +67,62 @@ export type Parameters = Record<string, ParameterValueEntry>
 export type ParameterValuesRecord = Parameters
 
 /**
- * Parameter type
+ * Parameter types for BIM model parameters
  */
-export type ParameterType =
+export type BimParameterType =
   | 'string'
   | 'number'
   | 'boolean'
   | 'date'
   | 'object'
   | 'array'
-  | 'equation'
-  | 'fixed'
+
+/**
+ * Parameter types for user-created parameters
+ */
+export type UserParameterType = 'fixed' | 'equation'
+
+/**
+ * Combined parameter type for all parameters
+ */
+export type ParameterType = BimParameterType | UserParameterType
+
+/**
+ * Base interface for all parameters
+ */
+export interface BaseParameter {
+  id: string
+  name: string
+  type: ParameterType
+  value: string
+  visible: boolean
+  field: string
+  header?: string
+  category?: string
+  description?: string
+  source?: string
+}
+
+/**
+ * Interface for BIM model parameters
+ */
+export interface BimParameter extends BaseParameter {
+  type: BimParameterType
+  isFetched: true
+  fetchedGroup: string
+  removable: false
+}
+
+export interface UserParameter extends BaseParameter {
+  type: UserParameterType
+  isFetched: false
+  removable: true
+  group: string
+  equation?: string
+}
+
+// Combined type for any parameter
+export type UnifiedParameter = BimParameter | UserParameter
 
 /**
  * Parameter validation function type
@@ -126,18 +171,20 @@ export interface ParameterDefinition {
 export interface Parameter {
   id: string
   name: string
-  value: unknown
-  type: ParameterType
-  visible: boolean
-  order?: number
+  type: UserParameterType
+  value: string
   field: string
+  visible: boolean
+  isFetched: false
+  removable: true
+  group?: string
+  equation?: string
   header?: string
   category?: string
   description?: string
+  metadata?: unknown
   source?: string
-  isFetched?: boolean
-  fetchedGroup?: string
-  currentGroup?: string
+  order?: number
 }
 
 /**
@@ -147,11 +194,11 @@ export interface CustomParameter extends Parameter {
   description?: string
   metadata?: Record<string, unknown>
   isCustom?: boolean
-  isFetched?: boolean
+  isFetched: false
   source?: string
   equation?: string
   group?: string
-  removable?: boolean
+  removable: true
 }
 
 /**
@@ -176,38 +223,19 @@ export interface FixedParameterGroup {
  * Form data structure for parameter creation/editing
  */
 export interface ParameterFormData {
+  id?: string
   name: string
   type: ParameterType
   value?: unknown
   equation?: unknown
   group?: string
   description?: string
-  metadata?: Record<string, unknown>
+  metadata?: unknown
   field?: string
   errors?: {
     name?: unknown
     value?: unknown
     equation?: unknown
-  }
-}
-
-/**
- * Unified parameter interface combining base and computed properties
- */
-export interface UnifiedParameter extends Parameter {
-  header?: string
-  category?: string
-  description?: string
-  source?: string
-  isFetched?: boolean
-  fetchedGroup?: string
-  currentGroup?: string
-  removable?: boolean
-  selectedParameterIds?: string[]
-  computed?: {
-    value: unknown
-    isValid: boolean
-    error?: string
   }
 }
 
@@ -238,6 +266,8 @@ export type ParameterDefinitions = Record<string, ParameterDefinition>
  * Processed parameters record type - maps parameter IDs to their processed values
  */
 export type ProcessedParameters = Record<string, ProcessedParameter>
+
+export type UnifiedParameters = Record<string, UnifiedParameter>
 
 /**
  * Parameter state interface

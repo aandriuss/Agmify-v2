@@ -15,6 +15,9 @@ export type {
   ParameterFormData,
   ParameterValueState,
   UnifiedParameter,
+  UnifiedParameters,
+  UserParameterType,
+  UserParameter,
   AvailableHeaders,
   ParameterDefinition,
   ParameterDefinitions,
@@ -116,7 +119,12 @@ export type {
   DeleteParameterResponse,
   AddParameterToTableResponse,
   RemoveParameterFromTableResponse,
-  TablesMutationResponse
+  TablesMutationResponse,
+  GetParametersQueryResponse,
+  ParameterMutationResponse,
+  ParameterMutationVariables,
+  SingleParameterResponse,
+  ParametersOperationResponse
 } from './graphql'
 
 // Settings types

@@ -1,27 +1,37 @@
+import { v4 as uuidv4 } from 'uuid'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import { useParametersState } from '../parameters/useParametersState'
-import type { CustomParameter } from '~/composables/core/types'
+import type {
+  CustomParameter,
+  UnifiedParameter,
+  ParameterType
+} from '~/composables/core/types'
 
 interface UseParameterOperationsOptions {
   onError?: (error: string) => void
   onUpdate?: () => void
 }
 
+class ParameterOperationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ParameterOperationError'
+  }
+}
+
 export function useParameterOperations(options: UseParameterOperationsOptions) {
   const { onError, onUpdate } = options
-  const { parameters, saveParameters } = useParametersState()
+  const {
+    parameters,
+    createParameter: createParameterState,
+    updateParameter: updateParameterState,
+    deleteParameter: deleteParameterState
+  } = useParametersState()
 
   const handleError = (err: unknown) => {
     const message = err instanceof Error ? err.message : 'An unknown error occurred'
     if (onError) onError(message)
-  }
-
-  function generateParameterKey(parameter: Omit<CustomParameter, 'id'>): string {
-    // Create a stable key based on name and group
-    const group = parameter.group || 'default'
-    const sanitizedName = parameter.name.toLowerCase().replace(/[^a-z0-9]/g, '_')
-    const sanitizedGroup = group.toLowerCase().replace(/[^a-z0-9]/g, '_')
-    return `${sanitizedGroup}-${sanitizedName}`
+    return new ParameterOperationError(message)
   }
 
   async function createParameter(
@@ -32,52 +42,48 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
 
       // Validate parameter data
       if (!parameter.name || !parameter.type) {
-        throw new Error('Parameter name and type are required')
+        throw new ParameterOperationError('Parameter name and type are required')
       }
 
-      // Generate a stable key for the parameter
-      const parameterKey = generateParameterKey(parameter)
+      // Generate UUID at the start
+      const parameterId = `param_${uuidv4()}`
 
-      // Get current parameters
-      const currentParams = parameters.value || {}
-
-      // Check if parameter with this key already exists
-      if (currentParams[parameterKey]) {
-        throw new Error('A parameter with this name already exists in this group')
-      }
-
-      const newParameter: CustomParameter = {
-        ...parameter,
-        id: parameterKey,
+      // Prepare parameter data for creation
+      const parameterData = {
+        id: parameterId, // Include ID here
+        name: parameter.name,
+        type: parameter.type as ParameterType,
+        value: parameter.type === 'fixed' ? parameter.value : undefined,
+        equation: parameter.type === 'equation' ? parameter.equation : undefined,
         field: parameter.name,
         header: parameter.name,
-        visible: true,
+        category: 'Custom Parameters',
+        description: parameter.description,
         removable: true,
+        visible: true,
         order: 0,
-        category: 'Custom Parameters'
+        source: parameter.source,
+        isFetched: false,
+        currentGroup: parameter.group || 'Custom',
+        computed:
+          parameter.type === 'equation'
+            ? {
+                value: parameter.value,
+                isValid: true
+              }
+            : undefined
       }
 
-      // Merge with current parameters
-      const updatedParameters = {
-        ...currentParams,
-        [parameterKey]: newParameter
-      }
+      debug.log(DebugCategories.PARAMETERS, 'Creating parameter', parameterData)
 
-      debug.log(DebugCategories.PARAMETERS, 'Saving parameter', {
-        parameterId: parameterKey,
-        totalParameters: Object.keys(updatedParameters).length
-      })
-
-      await saveParameters(updatedParameters)
+      const createdParameter = await createParameterState(parameterData)
 
       if (onUpdate) onUpdate()
 
-      debug.completeState(DebugCategories.PARAMETERS, 'Parameter created successfully')
-      return newParameter
+      return createdParameter
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to create parameter:', err)
-      handleError(err)
-      throw err
+      throw handleError(err)
     }
   }
 
@@ -94,59 +100,49 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
       const existingParameter = currentParams[parameterId]
 
       if (!existingParameter) {
-        throw new Error('Parameter not found')
+        throw new ParameterOperationError('Parameter not found')
       }
 
-      // If name or group is being updated, we need to generate a new key
+      // No need for key generation here since we keep the original parameterId
+      // Just check for name conflicts if name is being updated
       if (updates.name || updates.group) {
-        const newKey = generateParameterKey({
-          ...existingParameter,
-          ...updates
-        })
-
-        // Check if new key would conflict with existing parameter (except self)
-        if (newKey !== parameterId && currentParams[newKey]) {
-          throw new Error('A parameter with this name already exists in this group')
-        }
-
-        // Create updated parameter with new key
-        const updatedParameter = {
-          ...existingParameter,
-          ...updates,
-          id: newKey
-        }
-
-        // Remove old key and add new key
-        const { [parameterId]: _, ...remainingParams } = currentParams
-        const updatedParameters = {
-          ...remainingParams,
-          [newKey]: updatedParameter
-        }
-
-        await saveParameters(updatedParameters)
-
-        if (onUpdate) onUpdate()
-
-        debug.completeState(
-          DebugCategories.PARAMETERS,
-          'Parameter updated successfully'
+        const nameConflictExists = Object.values(currentParams).some(
+          (param) =>
+            param.id !== parameterId && // Skip current parameter
+            param.name === (updates.name || existingParameter.name) && // Check name
+            param.group === (updates.group || existingParameter.group) // Check group
         )
-        return updatedParameter
+
+        if (nameConflictExists) {
+          throw new ParameterOperationError(
+            'A parameter with this name already exists in this group'
+          )
+        }
       }
 
-      // If not changing name/group, just update the existing parameter
-      const updatedParameter = {
-        ...existingParameter,
+      // Prepare update data
+      const updateData: Partial<
+        Omit<UnifiedParameter, 'id' | 'createdAt' | 'updatedAt'>
+      > = {
         ...updates,
-        id: parameterId
+        field: updates.name,
+        header: updates.name,
+        currentGroup: updates.group,
+        computed:
+          updates.type === 'equation'
+            ? {
+                value: updates.value,
+                isValid: true
+              }
+            : undefined
       }
 
-      const updatedParameters = {
-        ...currentParams,
-        [parameterId]: updatedParameter
-      }
+      debug.log(DebugCategories.PARAMETERS, 'Updating parameter', {
+        parameterId,
+        updates: updateData
+      })
 
-      await saveParameters(updatedParameters)
+      const updatedParameter = await updateParameterState(parameterId, updateData)
 
       if (onUpdate) onUpdate()
 
@@ -154,8 +150,7 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
       return updatedParameter
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to update parameter:', err)
-      handleError(err)
-      throw err
+      throw handleError(err)
     }
   }
 
@@ -168,26 +163,17 @@ export function useParameterOperations(options: UseParameterOperationsOptions) {
       const currentParams = parameters.value || {}
 
       if (!currentParams[parameterId]) {
-        throw new Error('Parameter not found')
+        throw new ParameterOperationError('Parameter not found')
       }
 
-      // Create new object without the deleted parameter
-      const { [parameterId]: deleted, ...remainingParameters } = currentParams
-
-      debug.log(DebugCategories.PARAMETERS, 'Deleting parameter', {
-        parameterId,
-        remainingCount: Object.keys(remainingParameters).length
-      })
-
-      await saveParameters(remainingParameters)
+      await deleteParameterState(parameterId)
 
       if (onUpdate) onUpdate()
 
       debug.completeState(DebugCategories.PARAMETERS, 'Parameter deleted successfully')
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to delete parameter:', err)
-      handleError(err)
-      throw err
+      throw handleError(err)
     }
   }
 

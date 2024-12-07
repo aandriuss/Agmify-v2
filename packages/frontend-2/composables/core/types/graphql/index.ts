@@ -13,7 +13,7 @@ export interface CreateNamedTableGQLInput {
   name: string
   parentColumns: TableColumnInput[]
   childColumns: TableColumnInput[]
-  metadata?: string
+  metadata?: unknown
   categoryFilters?: CategoryFiltersGQLInput
 }
 
@@ -22,7 +22,7 @@ export interface UpdateNamedTableGQLInput {
   name?: string
   parentColumns?: TableColumnInput[]
   childColumns?: TableColumnInput[]
-  metadata?: string
+  metadata?: unknown
   categoryFilters?: CategoryFiltersGQLInput
 }
 
@@ -141,7 +141,7 @@ export interface RemoveParameterFromTableResponse {
 export interface TableData {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-  metadata?: string
+  metadata?: unknown
   categoryFilters?: CategoryFilters
 }
 
@@ -190,7 +190,7 @@ export interface TableInfo {
   name: string
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-  metadata?: string
+  metadata?: unknown
   categoryFilters: CategoryFilters
   selectedParameterIds: string[]
 }
@@ -219,7 +219,7 @@ export interface CreateNamedTableInput {
   name: string
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-  metadata?: string
+  metadata?: unknown
   categoryFilters: CategoryFilters
   selectedParameterIds: string[]
 }
@@ -232,7 +232,7 @@ export interface UpdateNamedTableInput {
   name?: string
   parentColumns?: ColumnDef[]
   childColumns?: ColumnDef[]
-  metadata?: string
+  metadata?: unknown
   categoryFilters?: CategoryFilters
   selectedParameterIds?: string[]
 }
@@ -281,7 +281,7 @@ export interface TableResponse {
   name: string
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-  metadata?: string
+  metadata?: unknown
   categoryFilters: CategoryFilters
   selectedParameterIds: string[]
 }
@@ -292,4 +292,43 @@ export interface TableResponse {
 export interface StoredTable extends NamedTableConfig {
   id: string
   name: string
+}
+
+/**
+ * GraphQL Parameters Query Response
+ */
+export interface GetParametersQueryResponse {
+  activeUser: {
+    parameters: Record<string, Parameter>
+  }
+}
+
+/**
+ * GraphQL Parameter Mutation Response
+ */
+export interface ParameterMutationResponse {
+  userParametersUpdate: boolean
+}
+
+/**
+ * GraphQL Parameter Mutation Variables
+ */
+export interface ParameterMutationVariables {
+  parameters: Record<string, Parameter>
+}
+
+/**
+ * GraphQL Single Parameter Response
+ */
+export interface SingleParameterResponse {
+  parameter: Parameter
+}
+
+/**
+ * GraphQL Parameters Operation Response
+ */
+export interface ParametersOperationResponse {
+  status: boolean
+  error?: string
+  parameter?: Parameter
 }

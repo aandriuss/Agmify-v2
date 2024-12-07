@@ -160,6 +160,53 @@ const resolvers = {
       }
       return user?.tables || {}
     },
+
+    async userParametersUpdate(_parent, { parameters }, context) {
+      const userId = context.userId;
+      if (!userId) throw new Error('User not authenticated');
+
+      try {
+        // Use transaction to ensure atomicity
+        await db.transaction(async (trx) => {
+          // Get current parameters within transaction
+          const user = await trx('users')
+            .where({ id: userId })
+            .select('parameters')
+            .forUpdate() // Lock the row
+            .first();
+
+          const currentParameters = user?.parameters || {};
+          const mergedParameters = {
+            ...currentParameters,
+            ...parameters
+          };
+
+          // Update within same transaction
+          await trx('users')
+            .where({ id: userId })
+            .update({ parameters: mergedParameters });
+        });
+
+        return true;
+      } catch {
+        console.error('Failed to update parameters:', err);
+        throw new Error('Failed to update parameters');
+      }
+    },
+
+    async parameters(parent, args, context) {
+      // Check authentication
+      if (!context.userId) throw new Error('User not authenticated')
+      
+      // Get user's parameters
+      const user = await db('users')
+        .where({ id: parent.id })
+        .select('parameters')
+        .first()
+      
+      return user?.parameters || {}
+    },
+
     async parameterMappings(parent, args, context) {
       // Check authentication
       if (!context.userId) throw new Error('User not authenticated')

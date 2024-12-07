@@ -74,7 +74,7 @@ export interface TableConfig {
   childColumns: ColumnDef[]
   categoryFilters: CategoryFilters
   selectedParameterIds: string[]
-  metadata?: string
+  metadata?: unknown
 }
 
 /**

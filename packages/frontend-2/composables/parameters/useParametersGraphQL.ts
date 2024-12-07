@@ -1,12 +1,46 @@
 import { useMutation, useQuery, provideApolloClient } from '@vue/apollo-composable'
 import { gql } from 'graphql-tag'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import type { UnifiedParameter } from '~/composables/core/types'
 import { useNuxtApp } from '#app'
+import {
+  ParameterError,
+  ParameterNotFoundError,
+  ParameterDuplicateError,
+  ParameterOperationError
+} from './errors'
+
+import type {
+  UnifiedParameter,
+  UserParameterType,
+  UserParameter
+} from '~/composables/core/types'
+
+export enum ParameterType {
+  fixed = 'fixed',
+  equation = 'equation'
+}
+
+export interface Parameter extends UserParameter {
+  type: UserParameterType
+  id: string
+  name: string
+  value: string
+  equation?: string
+  group: string
+  field: string
+  header: string
+  category?: string
+  description?: string
+  removable: boolean
+  isFetched?: boolean
+  visible: boolean
+  metadata?: unknown
+  source?: string
+}
 
 interface GetParametersResponse {
   activeUser: {
-    parameters: Record<string, UnifiedParameter>
+    parameters: Record<string, Parameter>
   }
 }
 
@@ -14,10 +48,7 @@ interface UpdateParametersResponse {
   userParametersUpdate: boolean
 }
 
-interface UpdateParametersVariables {
-  parameters: Record<string, UnifiedParameter>
-}
-
+// GraphQL Operations
 const GET_USER_PARAMETERS = gql`
   query GetUserParameters {
     activeUser {
@@ -32,131 +63,228 @@ const UPDATE_USER_PARAMETERS = gql`
   }
 `
 
+// Error handling
+function isGraphQLError(err: unknown): err is Error & { graphQLErrors?: unknown[] } {
+  return err instanceof Error && 'graphQLErrors' in err
+}
+
+function handleOperationError(operation: string, err: unknown): never {
+  debug.error(DebugCategories.ERROR, `Failed to ${operation} parameter:`, err)
+
+  if (err instanceof ParameterError) {
+    throw err
+  }
+
+  const message =
+    isGraphQLError(err) && err.graphQLErrors?.length
+      ? String(err.graphQLErrors[0])
+      : err instanceof Error
+      ? err.message
+      : 'Unknown error'
+
+  throw new ParameterOperationError(operation, message)
+}
+
 export function useParametersGraphQL() {
   const nuxtApp = useNuxtApp()
   const apolloClient = nuxtApp.$apollo?.default
 
   if (!apolloClient) {
-    throw new Error('Apollo client not initialized')
+    throw new ParameterError('Apollo client not initialized')
   }
 
   provideApolloClient(apolloClient)
 
+  // Initialize GraphQL operations
   const { mutate: updateParametersMutation } = useMutation<
     UpdateParametersResponse,
-    UpdateParametersVariables
-  >(UPDATE_USER_PARAMETERS, {
-    update: (cache, { data }) => {
-      if (data?.userParametersUpdate) {
-        // Only invalidate the parameters part of activeUser
-        cache.evict({
-          fieldName: 'parameters',
-          id: cache.identify({ __typename: 'User', type: 'activeUser' })
-        })
-        cache.gc()
-      }
-    },
-    refetchQueries: [{ query: GET_USER_PARAMETERS }],
-    awaitRefetchQueries: true
-  })
+    { parameters: Record<string, Parameter> }
+  >(UPDATE_USER_PARAMETERS)
 
   const {
-    result,
+    result: queryResult,
     loading: queryLoading,
     refetch
   } = useQuery<GetParametersResponse>(GET_USER_PARAMETERS, null, {
     fetchPolicy: 'cache-and-network'
   })
 
-  async function fetchParameters(): Promise<Record<string, UnifiedParameter>> {
+  // Parameter operations
+  async function fetchParameters(): Promise<Record<string, Parameter>> {
     try {
       debug.startState(DebugCategories.INITIALIZATION, 'Fetching parameters')
 
       const response = await nuxtApp.runWithContext(() => refetch())
+      const parameters = response?.data?.activeUser?.parameters
 
-      if (!response?.data?.activeUser?.parameters) {
-        debug.warn(DebugCategories.INITIALIZATION, 'No parameters found in response')
+      if (!parameters) {
+        debug.warn(DebugCategories.INITIALIZATION, 'No parameters found')
         return {}
       }
 
-      const parameters = response.data.activeUser.parameters
-
       debug.log(DebugCategories.INITIALIZATION, 'Parameters fetched', {
-        count: Object.keys(parameters).length,
-        hasData: Object.keys(parameters).length > 0
+        count: Object.keys(parameters).length
       })
 
-      debug.completeState(DebugCategories.INITIALIZATION, 'Parameters fetch complete')
       return parameters
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to fetch parameters:', err)
-      throw new Error('Failed to fetch parameters')
+      handleOperationError('fetch', err)
+    }
+  }
+
+  async function createParameter(parameter: UnifiedParameter): Promise<Parameter> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Creating parameter')
+
+      // Get current parameters
+      const currentParameters = await fetchParameters()
+
+      // Convert to Parameter type if needed
+      const parameterToSave: Parameter = {
+        ...parameter,
+        type: parameter.type as UserParameterType,
+        isFetched: false,
+        removable: true
+      }
+
+      // Prepare update
+      const updatedParameters = {
+        ...currentParameters,
+        [parameter.id]: parameterToSave
+      }
+
+      await updateParameters(updatedParameters)
+
+      return parameterToSave
+    } catch (err) {
+      handleOperationError('create', err)
     }
   }
 
   async function updateParameters(
-    newParameters: Record<string, UnifiedParameter>
+    parameters: Record<string, Parameter>
   ): Promise<boolean> {
     try {
       debug.startState(DebugCategories.STATE, 'Updating parameters')
 
-      // First fetch current parameters
-      const currentParameters = await fetchParameters()
-
-      // Create a new object to store merged parameters
-      const mergedParameters: Record<string, UnifiedParameter> = {
-        ...currentParameters
-      }
-
-      // Merge new parameters one by one
-      Object.entries(newParameters).forEach(([key, parameter]) => {
-        // If parameter already exists, preserve its ID and merge other properties
-        if (mergedParameters[key]) {
-          mergedParameters[key] = {
-            ...mergedParameters[key],
-            ...parameter,
-            id: mergedParameters[key].id // Ensure we keep the original ID
-          }
-        } else {
-          // If it's a new parameter, add it as is
-          mergedParameters[key] = parameter
-        }
-      })
-
-      debug.log(DebugCategories.STATE, 'Parameters update payload', {
-        currentCount: Object.keys(currentParameters).length,
-        newCount: Object.keys(newParameters).length,
-        mergedCount: Object.keys(mergedParameters).length
-      })
-
+      // Send update directly without trying to merge locally
       const result = await nuxtApp.runWithContext(() =>
         updateParametersMutation({
-          parameters: mergedParameters
+          parameters // Server will handle the merge
         })
       )
 
       if (!result?.data?.userParametersUpdate) {
-        debug.warn(DebugCategories.STATE, 'Parameters update returned false')
-        return false
+        throw new ParameterOperationError('update', 'Server update failed')
       }
 
-      // Force refetch to ensure we have latest data
+      // After successful update, fetch latest state
       await refetch()
 
-      debug.completeState(DebugCategories.STATE, 'Parameters update complete')
       return true
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to update parameters:', err)
-      throw new Error(
-        err instanceof Error ? err.message : 'Failed to update parameters'
-      )
+      handleOperationError('update', err)
+    }
+  }
+
+  async function updateParameter(
+    id: string,
+    updates: Partial<Omit<UnifiedParameter, 'id' | 'createdAt' | 'updatedAt'>>
+  ): Promise<Parameter> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Updating parameter')
+
+      // Get current state
+      const currentParameters = await fetchParameters()
+      const existingParameter = currentParameters[id]
+
+      if (!existingParameter) {
+        throw new ParameterNotFoundError(id)
+      }
+
+      // Check for name/group conflicts
+      if (updates.name || updates.currentGroup) {
+        const newKey = `${updates.currentGroup || existingParameter.group}-${
+          updates.name || existingParameter.name
+        }`
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '_')
+        if (newKey !== id && currentParameters[newKey]) {
+          throw new ParameterDuplicateError(
+            updates.name || existingParameter.name,
+            updates.currentGroup || existingParameter.group
+          )
+        }
+      }
+
+      // Update parameter
+      const updatedParameter: Parameter = {
+        ...existingParameter,
+        name: updates.name ?? existingParameter.name,
+        type:
+          updates.type === 'equation'
+            ? ParameterType.equation
+            : updates.type === 'fixed'
+            ? ParameterType.fixed
+            : existingParameter.type,
+        value: updates.value?.toString() ?? existingParameter.value,
+        equation:
+          updates.type === 'equation'
+            ? updates.value?.toString()
+            : existingParameter.equation,
+        group: updates.currentGroup ?? existingParameter.group,
+        field: updates.field ?? existingParameter.field,
+        header: updates.header ?? existingParameter.header,
+        category: updates.category ?? existingParameter.category,
+        description: updates.description ?? existingParameter.description,
+        removable: updates.removable ?? existingParameter.removable,
+        visible: updates.visible ?? existingParameter.visible,
+        metadata: updates.computed?.value
+          ? JSON.stringify(updates.computed.value)
+          : existingParameter.metadata,
+        isFetched: updates.isFetched ?? existingParameter.isFetched,
+        source: updates.source ?? existingParameter.source
+      }
+
+      // Update parameters
+      await updateParameters({ [id]: updatedParameter })
+
+      return updatedParameter
+    } catch (err) {
+      handleOperationError('update', err)
+    }
+  }
+
+  async function deleteParameter(id: string): Promise<boolean> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Deleting parameter')
+
+      // Get current state
+      const currentParameters = await fetchParameters()
+
+      if (!currentParameters[id]) {
+        throw new ParameterNotFoundError(id)
+      }
+
+      // Remove parameter
+      const { [id]: removed, ...remainingParameters } = currentParameters
+
+      // Update parameters
+      await updateParameters(remainingParameters)
+
+      return true
+    } catch (err) {
+      handleOperationError('delete', err)
     }
   }
 
   return {
-    result,
-    queryLoading,
+    result: queryResult,
+    loading: queryLoading,
     fetchParameters,
-    updateParameters
+    updateParameters,
+    createParameter,
+    updateParameter,
+    deleteParameter
   }
 }
