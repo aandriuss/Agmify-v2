@@ -1,16 +1,16 @@
 import { computed } from 'vue'
 import type { Ref } from 'vue'
-import type { CustomParameter } from '~/composables/core/types'
+import type { UserParameter } from '~/composables/core/types'
 
 interface UseParameterGroupsParams {
-  parameters: Ref<CustomParameter[]>
+  parameters: Ref<UserParameter[]>
 }
 
 export function useParameterGroups({ parameters }: UseParameterGroupsParams) {
   const groupedParameters = computed(() => {
     if (!parameters.value) return []
 
-    const groups: Record<string, CustomParameter[]> = {}
+    const groups: Record<string, UserParameter[]> = {}
 
     // Add default Custom group
     groups['Custom'] = []

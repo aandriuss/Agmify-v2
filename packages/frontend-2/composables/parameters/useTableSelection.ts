@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import type { Ref } from 'vue'
-import type { CustomParameter } from '~/composables/core/types'
+import type { UserParameter } from '~/composables/core/types'
 
 interface Table {
   id: string
@@ -21,7 +21,7 @@ export function useTableSelection({
   onTableSelectionChange
 }: UseTableSelectionOptions) {
   const selectedTables = ref<string[]>([])
-  const selectedParameter = ref<CustomParameter | null>(null)
+  const selectedParameter = ref<UserParameter | null>(null)
   const showSelectionModal = ref(false)
 
   const availableTables = computed(() =>
@@ -39,7 +39,7 @@ export function useTableSelection({
     return usedIn.length ? usedIn.join(', ') : 'Not used in any table'
   }
 
-  const showTableSelection = (parameter: CustomParameter) => {
+  const showTableSelection = (parameter: UserParameter) => {
     selectedParameter.value = parameter
     selectedTables.value = Object.entries(tables.value)
       .filter(([, table]) => table.selectedParameterIds?.includes(parameter.id))

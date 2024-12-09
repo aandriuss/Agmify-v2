@@ -1,199 +1,217 @@
-export interface ParameterDefinition {
-  name: string
-  field: string
-  type: string
-  header: string
-  category?: string
-  color?: string
-  description?: string
-  removable?: boolean
-  visible?: boolean
-}
+import type { Parameter } from '~/composables/core/types'
 
-export const fixedParentParameters: ParameterDefinition[] = [
+export const fixedParentParameters: Parameter[] = [
   {
+    id: 'fp1',
     name: 'Category',
     field: 'category',
-    type: 'string',
+    visible: true,
     header: 'Category',
     category: 'Classification',
+    type: 'string',
     removable: false,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fp2',
     name: 'ID',
     field: 'id',
-    type: 'string',
+    visible: true,
     header: 'ID',
     category: 'Classification',
+    type: 'string',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fp3',
     name: 'Mark',
     field: 'mark',
-    type: 'string',
+    visible: true,
     header: 'Mark',
     category: 'Classification',
+    type: 'string',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fp4',
     name: 'Host',
     field: 'host',
-    type: 'string',
+    visible: true,
     header: 'Host',
     category: 'Classification',
+    type: 'string',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fp5',
     name: 'Comment',
     field: 'comment',
-    type: 'string',
+    visible: true,
     header: 'Comment',
     category: 'Classification',
+    type: 'string',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
-  // Add numeric parameters
   {
+    id: 'fp6',
     name: 'Width',
     field: 'width',
-    type: 'number',
+    visible: true,
     header: 'Width',
     category: 'Dimensions',
+    type: 'number',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fp7',
     name: 'Height',
     field: 'height',
-    type: 'number',
+    visible: true,
     header: 'Height',
     category: 'Dimensions',
+    type: 'number',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fp8',
     name: 'Thickness',
     field: 'thickness',
-    type: 'number',
+    visible: true,
     header: 'Thickness',
     category: 'Dimensions',
+    type: 'number',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fp9',
     name: 'Area',
     field: 'area',
-    type: 'number',
+    visible: true,
     header: 'Area',
     category: 'Dimensions',
+    type: 'number',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   }
 ]
 
-export const fixedChildParameters: ParameterDefinition[] = [
+export const fixedChildParameters: Parameter[] = [
   {
+    id: 'fc1',
     name: 'Category',
     field: 'category',
-    type: 'string',
+    visible: true,
     header: 'Category',
     category: 'Classification',
+    type: 'string',
     removable: false,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fc2',
     name: 'ID',
     field: 'id',
-    type: 'string',
+    visible: true,
     header: 'ID',
     category: 'Classification',
+    type: 'string',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fc3',
     name: 'Mark',
     field: 'mark',
-    type: 'string',
+    visible: true,
     header: 'Mark',
     category: 'Classification',
+    type: 'string',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fc4',
     name: 'Width',
     field: 'width',
-    type: 'number',
+    visible: true,
     header: 'Width',
     category: 'Dimensions',
+    type: 'number',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fc5',
     name: 'Height',
     field: 'height',
-    type: 'number',
+    visible: true,
     header: 'Height',
     category: 'Dimensions',
+    type: 'number',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   },
   {
+    id: 'fc6',
     name: 'Length',
     field: 'length',
-    type: 'number',
+    visible: true,
     header: 'Length',
     category: 'Dimensions',
+    type: 'number',
     removable: true,
-    visible: true
+    kind: 'bim',
+    sourceValue: '',
+    fetchedGroup: '',
+    currentGroup: ''
   }
 ]
-
-type ParameterCategory = 'Classification' | 'Dimensions' | 'Custom Parameters'
-
-const categoryOrder: Record<ParameterCategory, number> = {
-  Classification: 0,
-  Dimensions: 1,
-  'Custom Parameters': 2
-}
-
-export function mergeAndCategorizeParameters(
-  fixedParams: ParameterDefinition[],
-  availableParams: ParameterDefinition[],
-  selectedCategories: string[]
-): ParameterDefinition[] {
-  // Start with fixed parameters
-  const allParams = [...fixedParams]
-
-  // Add available parameters that aren't already in fixed parameters
-  availableParams.forEach((param) => {
-    const existingParam = allParams.find((p) => p.field === param.field)
-    if (!existingParam) {
-      // If categories are selected, only add params that match
-      if (
-        selectedCategories.length === 0 ||
-        (param.category && selectedCategories.includes(param.category))
-      ) {
-        allParams.push(param)
-      }
-    }
-  })
-
-  // Sort parameters by category and name
-  return allParams.sort((a, b) => {
-    if (a.category === b.category) {
-      return a.name.localeCompare(b.name)
-    }
-    // Put Classification first, then Dimensions, then others
-    const getCategoryOrder = (category: string | undefined): number => {
-      if (!category) return 3
-      return category in categoryOrder
-        ? categoryOrder[category as ParameterCategory]
-        : 3
-    }
-    return getCategoryOrder(a.category) - getCategoryOrder(b.category)
-  })
-}

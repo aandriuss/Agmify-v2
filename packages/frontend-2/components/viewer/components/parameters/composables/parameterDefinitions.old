@@ -1,10 +1,10 @@
-import type { ParameterDefinition } from '../../tables/DataTable/composables/parameters/parameterManagement'
+import type { Parameter } from '~/composables/core/types'
 import {
   mergeAndCategorizeParameters,
   fixedParentParameters
 } from '../../tables/DataTable/composables/parameters/parameterManagement'
 
-export const standardParameters: ParameterDefinition[] = [
+export const standardParameters: Parameter[] = [
   { field: 'id', header: 'ID', type: 'string', category: 'identification' },
   { field: 'category', header: 'Category', type: 'string', category: 'classification' },
   { field: 'mark', header: 'Mark', type: 'string', category: 'identification' },
@@ -12,7 +12,7 @@ export const standardParameters: ParameterDefinition[] = [
   { field: 'comment', header: 'Comment', type: 'string', category: 'documentation' }
 ]
 
-export const extractParametersFromData = (data: any[]): ParameterDefinition[] => {
+export const extractParametersFromData = (data: any[]): Parameter[] => {
   if (!data?.length) return []
 
   const firstItem = data[0]
@@ -29,15 +29,14 @@ export const extractParametersFromData = (data: any[]): ParameterDefinition[] =>
 }
 
 export const mergeParameters = (
-  standardParams: ParameterDefinition[],
-  dataParams: ParameterDefinition[],
+  standardParams: Parameter[],
+  dataParams: Parameter[],
   selectedCategories: string[],
   isParent: boolean
-): ParameterDefinition[] => {
+): Parameter[] => {
   const fixedParams = isParent ? fixedParentParameters : fixedChildParameters
   return mergeAndCategorizeParameters(fixedParams, dataParams, selectedCategories)
 }
 
 // Re-export types and interfaces
-export type { ParameterDefinition }
 export { fixedParentParameters, fixedChildParameters }

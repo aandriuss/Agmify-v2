@@ -322,8 +322,8 @@ import {
 
 import type { ColumnDef } from '~/composables/core/types'
 
-import ParameterItem from '~/components/viewer/components/parameters/components/ParameterItem.vue'
-import ParameterBadge from '~/components/viewer/components/parameters/components/ParameterBadge.vue'
+import ParameterItem from '~/components/parameters/ParameterItem.vue'
+import ParameterBadge from '~/components/parameters/ParameterBadge.vue'
 
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 

@@ -1,13 +1,13 @@
 import { computed } from 'vue'
 import type { Ref } from 'vue'
-import type { CustomParameter } from '~/composables/core/types'
+import type { UserParameter } from '~/composables/core/types'
 
 interface UseParameterEvaluationOptions {
-  parameters: Ref<CustomParameter[]>
+  parameters: Ref<UserParameter[]>
 }
 
 export function useParameterEvaluation({ parameters }: UseParameterEvaluationOptions) {
-  const evaluateParameter = (param: CustomParameter): string => {
+  const evaluateParameter = (param: UserParameter): string => {
     try {
       if (param.type === 'fixed') {
         return param.value || 'N/A'

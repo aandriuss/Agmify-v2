@@ -34,7 +34,7 @@
           severity="primary"
           size="small"
           class="opacity-0 group-hover:opacity-100 transition-opacity"
-          @click="$emit('add', column)"
+          @click="$emit('add', column as Parameter)"
         />
 
         <!-- Remove button and visibility toggle for active items -->
@@ -46,7 +46,7 @@
             severity="danger"
             size="small"
             class="opacity-0 group-hover:opacity-100 transition-opacity"
-            @click="$emit('remove', column)"
+            @click="$emit('remove', column as ColumnDef)"
           />
           <Checkbox
             v-model="isVisible"
@@ -63,11 +63,11 @@
 import { computed } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
-import ParameterBadge from '~/components/viewer/components/parameters/components/ParameterBadge.vue'
-import type { ColumnDef, ParameterDefinition } from '~/composables/core/types'
+import ParameterBadge from '~/components/parameters/ParameterBadge.vue'
+import type { ColumnDef, Parameter } from '~/composables/core/types'
 
 interface Props {
-  column: ColumnDef | ParameterDefinition
+  column: ColumnDef | Parameter
   mode: 'active' | 'available'
   index: number
   isDragging?: boolean
@@ -82,14 +82,10 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  add: [column: ParameterDefinition]
+  add: [column: Parameter]
   remove: [column: ColumnDef]
   'visibility-change': [column: ColumnDef, visible: boolean]
-  'drag-start': [
-    event: DragEvent,
-    column: ColumnDef | ParameterDefinition,
-    index: number
-  ]
+  'drag-start': [event: DragEvent, column: ColumnDef | Parameter, index: number]
   'drag-end': [event: DragEvent]
   'drag-enter': [event: DragEvent, index: number]
   drop: [event: DragEvent, index: number]

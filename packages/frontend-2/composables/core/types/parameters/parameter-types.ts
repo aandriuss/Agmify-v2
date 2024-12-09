@@ -23,7 +23,7 @@ export interface BaseParameter {
   computed?: unknown
   source?: string
   removable: boolean
-  value: ParameterValue
+  value?: ParameterValue
   metadata?: Record<string, unknown>
 }
 

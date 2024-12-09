@@ -49,23 +49,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, watch } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import Tooltip from 'primevue/tooltip'
 
+import type { Parameter } from '~/composables/core/types'
 import ParameterBadge from './ParameterBadge.vue'
-
-interface Parameter {
-  field: string
-  header: string
-  type?: string
-  description?: string
-  category?: string
-  isFixed?: boolean
-  removable?: boolean
-  visible?: boolean
-}
 
 const props = defineProps<{
   parameter: Parameter

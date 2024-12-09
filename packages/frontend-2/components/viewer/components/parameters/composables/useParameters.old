@@ -1,17 +1,10 @@
 import { ref, computed } from 'vue'
 import type { Ref } from 'vue'
 
-export interface ParameterDefinition {
-  field: string
-  header: string
-  type?: string
-  description?: string
-  category?: string
-  isFixed?: boolean
-}
+import type { Parameter } from '~/composables/core/types'
 
 export interface UseParametersOptions {
-  initialParameters: ParameterDefinition[]
+  initialParameters: Parameter[]
   searchTerm?: Ref<string>
   isGrouped?: Ref<boolean>
   sortBy?: Ref<'name' | 'category' | 'type' | 'fixed'>
@@ -27,7 +20,7 @@ export function useParameters({
   selectedCategories = ref([]),
   selectedTypes = ref([])
 }: UseParametersOptions) {
-  const parameters = ref<ParameterDefinition[]>(initialParameters)
+  const parameters = ref<Parameter[]>(initialParameters)
 
   // Base filtered parameters before grouping
   const filteredParameters = computed(() => {
@@ -84,7 +77,7 @@ export function useParameters({
   const groupedParameters = computed(() => {
     if (!isGrouped.value) return []
 
-    const groups: Record<string, ParameterDefinition[]> = {}
+    const groups: Record<string, Parameter[]> = {}
 
     filteredParameters.value.forEach((param) => {
       const category = param.category || 'Other'
@@ -113,15 +106,15 @@ export function useParameters({
   }))
 
   // Utility functions
-  function getUniqueCategories(params: ParameterDefinition[]): string[] {
+  function getUniqueCategories(params: Parameter[]): string[] {
     return [...new Set(params.filter((p) => p.category).map((p) => p.category!))]
   }
 
-  function getUniqueTypes(params: ParameterDefinition[]): string[] {
+  function getUniqueTypes(params: Parameter[]): string[] {
     return [...new Set(params.filter((p) => p.type).map((p) => p.type!))]
   }
 
-  function updateParameters(newParameters: ParameterDefinition[]) {
+  function updateParameters(newParameters: Parameter[]) {
     parameters.value = newParameters
   }
 

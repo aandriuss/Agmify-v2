@@ -1,255 +1,208 @@
-# Schedule System Migration Plan
+# Migration Plan for Frontend-2 Reorganization
 
-## Phase 1: Container Management
+## 1. Directory Structure
 
-### Step 1: Update Schedules.vue
-
-```typescript
-// Before
-const { viewer } = useInjectedViewer() // ❌ Wrong timing
-
-// After
-const viewerContainer = ref<HTMLElement | null>(null)
-onMounted(() => {
-  if (!viewerContainer.value) {
-    throw new Error('Container not mounted')
-  }
-})
+```
+frontend-2/
+├── components/
+│   ├── core/                           # Shared components
+│   │   ├── tables/                     # Reusable table components
+│   │   │   ├── DataTable/
+│   │   │   │   ├── components/
+│   │   │   │   │   └── ColumnManager/
+│   │   │   │   └── composables/
+│   │   │   └── shared/
+│   │   └── parameters/                 # Reusable parameter components
+│   │       ├── ParameterBadge.vue
+│   │       └── ParameterItem.vue
+│   └── viewer/                         # Viewer-specific components
+│       └── schedules/                  # Schedule-specific components
+│           └── components/
+├── composables/
+│   ├── core/                           # Core shared composables
+│   │   ├── types/                      # Already organized
+│   │   ├── tables/                     # Table-related composables
+│   │   │   ├── useTableState.ts
+│   │   │   └── useTableOperations.ts
+│   │   └── parameters/                 # Parameter-related composables
+│   │       ├── useParameterMappings.ts
+│   │       └── useParameterOperations.ts
+│   └── viewer/                         # Viewer-specific composables
+│       └── parameters/                 # Viewer parameter handling
+│           ├── useParameterDiscovery.ts
+│           └── useBIMElements.ts
 ```
 
-### Step 2: Add Container Component
+## 2. Component Migration Steps
 
-```vue
-<template>
-  <div
-    ref="viewerContainer"
-    class="viewer-container"
-    style="width: 100%; height: 100%; min-height: 400px"
-  >
-    <!-- Content -->
-  </div>
-</template>
-```
+### Phase 1: Core Components
 
-## Phase 2: State Management
+1. Tables:
 
-### Step 1: Update useViewerInitialization.ts
+   - Move from: `viewer/components/tables/DataTable`
+   - To: `components/core/tables/DataTable`
+   - Files to migrate:
+     - DataTable components
+     - ColumnManager
+     - Shared utilities
+   - Update imports in all files using these components
 
-```typescript
-// Before
-const viewer = useInjectedViewer() // ❌ Wrong timing
+2. Parameters:
+   - Move from: Various locations
+   - To: `components/core/parameters`
+   - Files to migrate:
+     - ParameterBadge.vue
+     - ParameterItem.vue
+   - Update parameter-related imports
 
-// After
-const viewerState = useInjectedViewerState()
-const viewerInstance = computed(() => viewerState.viewer.instance)
-```
+### Phase 2: Core Composables
 
-### Step 2: Update useScheduleSetup.ts
+1. Table Composables:
 
-```typescript
-// Before
-setup.value = useScheduleSetupInstance() // ❌ Missing args
+   - Move from: `viewer/composables`
+   - To: `composables/core/tables`
+   - Files to migrate:
+     - useTableState.ts
+     - useTableOperations.ts
+   - Update imports and ensure type safety
 
-// After
-setup.value = useScheduleSetupInstance(
-  viewerInstance.value,
-  isViewerInitialized,
-  waitForInitialization
-)
-```
+2. Parameter Composables:
+   - Move from: Various locations
+   - To: `composables/core/parameters`
+   - Files to migrate:
+     - useParameterMappings.ts
+     - useParameterOperations.ts
+   - Update imports and dependencies
 
-## Phase 3: Error Handling
+### Phase 3: Viewer-Specific Components
 
-### Step 1: Add Error Types
+1. Schedule Components:
 
-```typescript
-// Add to core/types.ts
-export class ViewerInitializationError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ViewerInitializationError'
-  }
-}
-```
+   - Keep in: `components/viewer/schedules`
+   - Refactor to use new core components
+   - Update imports to use new paths
 
-### Step 2: Add Error Boundaries
+2. BIM-Related Components:
+   - Keep in: `components/viewer`
+   - Files to keep viewer-specific:
+     - useBIMElements.ts
+     - BIM-related parameter handling
 
-```typescript
-// Add to useViewerInitialization.ts
-const handleError = (err: Error | unknown) => {
-  const errorValue = err instanceof Error ? err : new Error(String(err))
-  error.value = errorValue
-  debug.error(DebugCategories.ERROR, 'Viewer error:', errorValue)
-}
-```
+## 3. Dependency Updates
 
-## Migration Steps
+1. Type Imports:
 
-### 1. Container Management (🎯 Start Here)
+   - Update all type imports to use centralized types from `composables/core/types`
+   - Ensure consistent type usage across components
 
-#### Files to Update
+2. Component Imports:
 
-- [ ] Schedules.vue
-  - Add container ref
-  - Add dimensions
-  - Add validation
+   - Update all component imports to use new paths
+   - Use relative paths for closely related components
+   - Use absolute paths for core components
 
-#### Testing
+3. Composable Imports:
+   - Update composable imports to reflect new structure
+   - Ensure proper typing is maintained
 
-- [ ] Test container mounting
-- [ ] Test dimensions
-- [ ] Test validation
+## 4. Testing Strategy
 
-### 2. State Management (⏳ Next)
+1. Unit Tests:
 
-#### Files to Update
+   - Update import paths in existing tests
+   - Add tests for new core components
+   - Verify component isolation
 
-- [ ] useViewerInitialization.ts
-  - Fix timing
-  - Add validation
-  - Add recovery
+2. Integration Tests:
+   - Test interactions between moved components
+   - Verify data flow remains intact
+   - Test viewer-specific functionality
 
-#### Testing
+## 5. Migration Order
 
-- [ ] Test initialization
-- [ ] Test state flow
-- [ ] Test recovery
+1. Create new directory structure
+2. Move core components (minimal dependencies first)
+3. Move core composables
+4. Update viewer-specific components
+5. Update all imports
+6. Run tests and fix issues
+7. Verify functionality in viewer context
 
-### 3. Error Handling (📅 Then)
+## 6. Safety Measures
 
-#### Files to Update
+1. Version Control:
 
-- [ ] core/types.ts
-  - Add error types
-  - Add guards
-  - Add utilities
+   - Create feature branch for migration
+   - Commit after each logical step
+   - Use meaningful commit messages
 
-#### Testing
+2. Backwards Compatibility:
 
-- [ ] Test error cases
-- [ ] Test recovery
-- [ ] Test boundaries
+   - Maintain existing interfaces
+   - Keep current functionality intact
+   - Document any necessary changes
 
-## Testing Strategy
+3. Error Handling:
+   - Preserve existing error handling
+   - Add additional error checks where needed
 
-### 1. Unit Tests
+## 7. Post-Migration Tasks
 
-```typescript
-// Container tests
-describe('Container Management', () => {
-  it('should mount container', () => {
-    // Test mounting
-  })
+1. Documentation:
 
-  it('should have correct dimensions', () => {
-    // Test dimensions
-  })
-})
-```
+   - Update component documentation
+   - Document new directory structure
+   - Update import examples
 
-### 2. Integration Tests
+2. Clean-up:
 
-```typescript
-// Initialization tests
-describe('Viewer Initialization', () => {
-  it('should initialize in correct order', async () => {
-    // Test initialization
-  })
+   - Remove unused files
+   - Clean up deprecated code
+   - Update README files
 
-  it('should handle errors', async () => {
-    // Test error handling
-  })
-})
-```
+3. Performance:
+   - Verify bundle size
+   - Check for duplicate code
+   - Optimize imports
 
-## Rollback Plan
+## 8. Risks and Mitigations
 
-### 1. Container Changes
+1. Risks:
 
-- Keep old container code
-- Add feature flag
-- Test both paths
-- Monitor errors
+   - Breaking changes in component interfaces
+   - Missing dependencies
+   - Circular dependencies
+   - Type mismatches
 
-### 2. State Changes
+2. Mitigations:
+   - Thorough testing at each step
+   - Gradual migration approach
+   - Type safety checks
+   - Comprehensive documentation
 
-- Keep old state flow
-- Add version check
-- Test compatibility
-- Monitor performance
+## 9. Timeline
 
-### 3. Error Changes
+1. Preparation (1 day):
 
-- Keep old error handling
-- Add new boundaries
-- Test recovery
-- Monitor issues
+   - Create new directory structure
+   - Document current state
+   - Set up testing environment
 
-## Success Validation
+2. Core Migration (2-3 days):
 
-### 1. Container
+   - Move core components
+   - Update dependencies
+   - Initial testing
 
-- [ ] Container mounts
-- [ ] Dimensions correct
-- [ ] No GL errors
-- [ ] Performance good
+3. Viewer Updates (1-2 days):
 
-### 2. State
+   - Update viewer components
+   - Test viewer functionality
+   - Fix any issues
 
-- [ ] Initialization works
-- [ ] State flows correctly
-- [ ] No timing issues
-- [ ] Recovery works
+4. Final Testing (1 day):
+   - Complete test coverage
+   - Performance testing
+   - Documentation updates
 
-### 3. Errors
-
-- [ ] Clear messages
-- [ ] Proper recovery
-- [ ] Good DX
-- [ ] Easy debugging
-
-## Monitoring Plan
-
-### 1. Performance
-
-- Monitor initialization time
-- Track GL errors
-- Watch memory usage
-- Log state changes
-
-### 2. Errors
-
-- Track error rates
-- Monitor recovery
-- Watch timeouts
-- Log boundaries
-
-### 3. Usage
-
-- Track initialization
-- Monitor recovery
-- Watch patterns
-- Log performance
-
-## Documentation Updates
-
-### 1. Architecture
-
-- Update initialization flow
-- Document container
-- Add error handling
-- Document recovery
-
-### 2. Implementation
-
-- Add container guide
-- Update state docs
-- Document errors
-- Add examples
-
-### 3. Migration
-
-- Add step-by-step
-- Document rollback
-- Add validation
-- Update monitoring
+Total estimated time: 5-7 days

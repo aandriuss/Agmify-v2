@@ -1,244 +1,220 @@
 # Parameter System Architecture
 
-## Current System Overview
+## 1. Core Components & Data Flow
 
-### Data Flow
+```mermaid
+graph TD
+    A[Raw Data] --> B[Parameter Discovery]
+    B --> C[Parameter Processing]
+    C --> D[Table Columns]
+    D --> E[Data Display]
 
-```
-Frontend (Vue)                    Backend (Node.js)               Database (PostgreSQL)
-┌─────────────────┐              ┌─────────────────┐            ┌─────────────────┐
-│ ParameterManager│──Query────►│ GraphQL Resolvers│           │  users table    │
-│    Component    │◄──Data─────│    (users.js)    │◄──Query──►│  - parameters   │
-└─────────────────┘              └─────────────────┘            │    (JSONB)     │
-                                                               └─────────────────┘
-```
-
-### Current Implementation
-
-1. Frontend Layer:
-
-   - ParameterManager.vue (UI Component)
-   - useParametersGraphQL.ts (Data Layer)
-     - Current approach: Bulk updates via userParametersUpdate
-     - Alternative approach: Individual CRUD operations
-
-2. GraphQL Layer:
-
-   - Queries:
-     - activeUser { parameters } - Gets all parameters
-   - Mutations:
-     - userParametersUpdate - Bulk update all parameters
-     - updateParameter - Individual parameter update
-     - createParameter - Create single parameter
-     - deleteParameter - Delete single parameter
-
-3. Database Layer:
-   - PostgreSQL users table
-   - parameters stored as JSONB column
-   - parameter_relations for table mappings
-
-## Architectural Options
-
-### Option 1: Bulk Updates (Current)
-
-```
-Pros:
-- Simpler server implementation
-- Single transaction for multiple changes
-- Atomic updates
-
-Cons:
-- Risk of race conditions
-- Overwrites possible with stale data
-- Higher payload size
+    F[User Parameters] --> C
+    G[BIM Parameters] --> C
+    H[Parameter Mappings] --> D
 ```
 
-### Option 2: Individual CRUD
+## 2. System Components
+
+### Data Layer
 
 ```
-Pros:
-- Fine-grained control
-- Less risk of data conflicts
-- Smaller payloads
-
-Cons:
-- Multiple network requests
-- More complex server implementation
-- Transaction management needed
+ElementData
+├── id: string
+├── parameters: Record<string, unknown>
+└── metadata: Record<string, unknown>
 ```
 
-### Option 3: Hybrid Approach (Recommended)
-
-```
-Frontend:
-┌────────────────────────┐
-│   Parameter Manager    │
-└────────────────────────┘
-           ↓
-┌────────────────────────┐
-│  Parameter Operations  │
-│ - Individual CRUD      │
-│ - Batch operations     │
-└────────────────────────┘
-           ↓
-┌────────────────────────┐
-│    GraphQL Client      │
-└────────────────────────┘
-
-Backend:
-┌────────────────────────┐
-│   GraphQL Resolvers    │
-│ - Single param ops     │
-│ - Batch operations     │
-└────────────────────────┘
-           ↓
-┌────────────────────────┐
-│  Parameter Service     │
-│ - Validation          │
-│ - Business logic      │
-└────────────────────────┘
-           ↓
-┌────────────────────────┐
-│  Parameter Repository  │
-│ - Data access         │
-│ - Transaction mgmt    │
-└────────────────────────┘
-```
-
-## Recommended Implementation
-
-1. Frontend:
+### Parameter Types
 
 ```typescript
-// Parameter Operations Interface
-interface ParameterOperations {
-  // Individual Operations
-  createParameter(param: ParameterInput): Promise<Parameter>
-  updateParameter(id: string, updates: ParameterUpdates): Promise<Parameter>
-  deleteParameter(id: string): Promise<boolean>
-
-  // Batch Operations
-  batchUpdateParameters(updates: Record<string, Parameter>): Promise<boolean>
-  batchDeleteParameters(ids: string[]): Promise<boolean>
+interface Parameter {
+  id: string
+  field: string
+  name: string
+  type: string
+  header?: string
+  visible?: boolean
+  removable?: boolean
 }
 
-// GraphQL Operations
-const parameterQueries = {
-  GET_PARAMETERS: gql`
-    query GetParameters {
-      activeUser {
-        parameters
-      }
-    }
-  `,
+interface BimParameter extends Parameter {
+  sourceValue: unknown
+  fetchedGroup: string
+  currentGroup: string
+}
 
-  CREATE_PARAMETER: gql`
-    mutation CreateParameter($input: CreateParameterInput!) {
-      createParameter(input: $input) {
-        parameter { ... }
-      }
-    }
-  `,
-
-  UPDATE_PARAMETER: gql`
-    mutation UpdateParameter($id: ID!, $input: UpdateParameterInput!) {
-      updateParameter(id: $id, input: $input) {
-        parameter { ... }
-      }
-    }
-  `,
-
-  BATCH_UPDATE_PARAMETERS: gql`
-    mutation BatchUpdateParameters($parameters: JSONObject!) {
-      userParametersUpdate(parameters: $parameters)
-    }
-  `
+interface UserParameter extends Parameter {
+  equation: string
+  category: string
 }
 ```
 
-2. Backend:
+### Table Structure
 
 ```typescript
-// Parameter Service Interface
-interface IParameterService {
-  // Individual Operations
-  getParameter(id: string): Promise<Parameter>
-  createParameter(input: CreateParameterInput): Promise<Parameter>
-  updateParameter(id: string, updates: UpdateParameterInput): Promise<Parameter>
-  deleteParameter(id: string): Promise<boolean>
-
-  // Batch Operations
-  batchUpdate(updates: Record<string, Parameter>): Promise<boolean>
-
-  // Validation
-  validateParameter(param: Parameter): boolean
-  validateBatchUpdate(updates: Record<string, Parameter>): boolean
+interface TableConfig {
+  id: string
+  name: string
+  columns: ColumnDef[]
+  parameters: Parameter[]
 }
 
-// Repository Interface
-interface IParameterRepository {
-  findById(id: string): Promise<Parameter>
-  create(param: Parameter): Promise<Parameter>
-  update(id: string, param: Parameter): Promise<Parameter>
-  delete(id: string): Promise<boolean>
-  batchUpdate(updates: Record<string, Parameter>): Promise<boolean>
+interface ColumnDef {
+  id: string
+  field: string
+  header: string
+  type: string
+  visible: boolean
+  parameterRef?: string
 }
 ```
 
-## Decision Points
+## 3. Component Relationships
 
-1. When to use individual vs batch operations:
+### Core Components
 
-   - Use individual operations for:
+```mermaid
+graph LR
+    A[DataTable] --> B[ColumnManager]
+    B --> C[Parameter System]
+    C --> D[Parameter Mappings]
+    D --> E[GraphQL Layer]
+```
 
-     - Single parameter updates
-     - When order of operations matters
-     - When immediate feedback is needed
+### Parameter Processing Flow
 
-   - Use batch operations for:
-     - Initial data load
-     - Bulk imports
-     - When atomic updates are critical
+```mermaid
+graph TD
+    A[Raw Data] --> B[Parameter Discovery]
+    B --> C[Parameter Validation]
+    C --> D[Parameter Processing]
+    D --> E[Column Generation]
+    E --> F[Table Update]
+```
 
-2. Optimistic Updates:
+## 4. State Management
 
-   - Update UI immediately
-   - Queue changes in memory
-   - Sync with server in background
-   - Handle conflicts with merge strategy
+### Parameter State
 
-3. Error Handling:
+```typescript
+interface ParameterState {
+  definitions: Record<string, Parameter>
+  mappings: ParameterMappings
+  processed: Record<string, ProcessedParameter>
+}
+```
 
-   - Individual operations: Retry with exponential backoff
-   - Batch operations: All-or-nothing vs partial updates
-   - Conflict resolution strategy
+### Table State
 
-4. Caching Strategy:
-   - Cache parameters locally
-   - Implement cache invalidation
-   - Handle offline updates
+```typescript
+interface TableState {
+  columns: ColumnDef[]
+  visibleColumns: ColumnDef[]
+  data: ElementData[]
+  processedData: ElementData[]
+}
+```
 
-## Implementation Steps
+## 5. Proposed Organization
 
-1. Create Parameter Service:
+### Core (Shared) Components
 
-   - Implement both individual and batch operations
-   - Add validation layer
-   - Handle optimistic updates
+```
+frontend-2/
+└── components/
+    └── core/
+        ├── tables/
+        │   ├── DataTable/
+        │   └── ColumnManager/
+        └── parameters/
+            ├── ParameterManager/
+            └── shared/
+```
 
-2. Update GraphQL Layer:
+### Viewer-Specific Components
 
-   - Support both operation types
-   - Add proper error handling
-   - Implement batching
+```
+frontend-2/
+└── components/
+    └── viewer/
+        ├── schedules/
+        │   └── components/
+        └── parameters/
+            └── BimParameters/
+```
 
-3. Frontend Updates:
+### Composables Structure
 
-   - Use appropriate operation based on context
-   - Handle offline state
-   - Implement proper error handling
+```
+frontend-2/
+└── composables/
+    ├── core/
+    │   ├── tables/
+    │   │   ├── useTableState.ts
+    │   │   └── useTableOperations.ts
+    │   └── parameters/
+    │       ├── useParameterMappings.ts
+    │       └── useParameterOperations.ts
+    └── viewer/
+        └── parameters/
+            └── useBimParameters.ts
+```
 
-4. Testing:
-   - Unit tests for each layer
-   - Integration tests for common flows
-   - Performance testing for batch operations
+## 6. Key Interactions
+
+1. Parameter Discovery:
+
+   - Raw data analyzed for parameters
+   - BIM parameters automatically discovered
+   - User parameters manually defined
+   - Parameters categorized and grouped
+
+2. Parameter Processing:
+
+   - Parameters validated and normalized
+   - Values processed according to type
+   - Equations evaluated for user parameters
+   - Results cached for performance
+
+3. Table Integration:
+
+   - Parameters mapped to columns
+   - Column definitions generated
+   - Data processed for display
+   - State updates managed
+
+4. State Management:
+   - Parameter state centrally managed
+   - Table state synchronized
+   - Changes persisted via GraphQL
+   - UI updates triggered
+
+## 7. Implementation Considerations
+
+1. Performance:
+
+   - Parameter discovery optimized
+   - Processing results cached
+   - State updates batched
+   - Lazy loading where possible
+
+2. Type Safety:
+
+   - Strong typing throughout
+   - Runtime type validation
+   - Error boundaries defined
+   - Type guards implemented
+
+3. Extensibility:
+
+   - Plugin architecture for parameters
+   - Custom parameter types supported
+   - Processing pipeline extensible
+   - State management modular
+
+4. Maintainability:
+   - Clear component boundaries
+   - Documented interfaces
+   - Testable units
+   - Consistent patterns

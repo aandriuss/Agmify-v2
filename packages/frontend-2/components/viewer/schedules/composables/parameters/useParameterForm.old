@@ -1,13 +1,13 @@
 import { ref } from 'vue'
-import type { CustomParameter, ParameterFormData } from '~/composables/core/types'
+import type { UserParameter, ParameterFormData } from '~/composables/core/types'
 
 interface UseParameterFormOptions {
-  onSave: (data: Omit<CustomParameter, 'id'>) => Promise<void>
+  onSave: (data: Omit<UserParameter, 'id'>) => Promise<void>
 }
 
 export function useParameterForm({ onSave }: UseParameterFormOptions) {
   const showEditModal = ref(false)
-  const editingParameter = ref<CustomParameter | null>(null)
+  const editingParameter = ref<UserParameter | null>(null)
   const form = ref<ParameterFormData>({
     name: '',
     type: 'fixed',
@@ -30,7 +30,7 @@ export function useParameterForm({ onSave }: UseParameterFormOptions) {
     showEditModal.value = true
   }
 
-  const handleEditParameter = (parameter: CustomParameter) => {
+  const handleEditParameter = (parameter: UserParameter) => {
     editingParameter.value = parameter
     form.value = {
       id: parameter.id,

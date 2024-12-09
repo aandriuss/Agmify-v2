@@ -61,13 +61,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import type { LayoutDialogButton } from '@speckle/ui-components'
-import { useParameterOperations } from '~/composables/settings/useParameterOperations'
-import { useParameterGroups } from '../../composables/parameters/useParameterGroups'
-import { useParameterEvaluation } from '../../composables/parameters/useParameterEvaluation'
+import { useParameterOperations } from '~/composables/parameters/useParameterOperations'
+import { useParameterGroups } from '~/composables/parameters/useParameterGroups'
+import { useParameterEvaluation } from '~/composables/parameters/useParameterEvaluation'
 import { useParametersState } from '~/composables/parameters/useParametersState'
-import { useTableSelection } from '../../composables/parameters/useTableSelection'
+import { useTableSelection } from '~/composables/parameters/useTableSelection'
 import { useParameterMappingOperations } from '~/composables/parameters/useParameterMappingOperations'
-import type { CustomParameter } from '~/composables/core/types'
+import type { UserParameter } from '~/composables/core/types'
 
 // Components
 import ParameterList from './ParameterList.vue'
@@ -80,7 +80,7 @@ interface Table {
 
 const error = ref<string | null>(null)
 const showTableSelectionModal = ref(false)
-const selectedParameterForTables = ref<CustomParameter | null>(null)
+const selectedParameterForTables = ref<UserParameter | null>(null)
 const isAddingNew = ref(false)
 const selectedTables = ref<string[]>([])
 
@@ -151,10 +151,10 @@ const dialogButtons = computed<LayoutDialogButton[]>(() => [
   }
 ])
 
-async function handleCreateParameter(paramData: Omit<CustomParameter, 'id'>) {
+async function handleCreateParameter(paramData: Omit<UserParameter, 'id'>) {
   try {
     error.value = null
-    const newParam: CustomParameter = await createParameter(paramData)
+    const newParam: UserParameter = await createParameter(paramData)
 
     // If tables are preselected
     if (props.tableId) {
@@ -168,7 +168,7 @@ async function handleCreateParameter(paramData: Omit<CustomParameter, 'id'>) {
   }
 }
 
-async function handleParameterUpdate(parameter: CustomParameter) {
+async function handleParameterUpdate(parameter: UserParameter) {
   try {
     error.value = null
     await updateParameter(parameter.id, parameter)
@@ -178,7 +178,7 @@ async function handleParameterUpdate(parameter: CustomParameter) {
   }
 }
 
-async function handleDelete(parameter: CustomParameter) {
+async function handleDelete(parameter: UserParameter) {
   try {
     error.value = null
     await deleteParameter(parameter.id)
@@ -188,7 +188,7 @@ async function handleDelete(parameter: CustomParameter) {
   }
 }
 
-function handleAddToTables(parameter: CustomParameter) {
+function handleAddToTables(parameter: UserParameter) {
   try {
     selectedParameterForTables.value = parameter
     selectedTables.value = getParameterTables(parameter.id)
@@ -219,7 +219,7 @@ function closeTableSelectionModal() {
   selectedTables.value = []
 }
 
-async function handleRemoveFromTable(parameter: CustomParameter, tableName: string) {
+async function handleRemoveFromTable(parameter: UserParameter, tableName: string) {
   try {
     error.value = null
     const currentTables = getParameterTables(parameter.id)

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import { useParametersState } from '../parameters/useParametersState'
+import { useParametersState } from './useParametersState'
 import type {
   UserParameter,
   UserValueType,

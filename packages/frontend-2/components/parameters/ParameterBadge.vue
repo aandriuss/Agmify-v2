@@ -17,10 +17,10 @@
 </template>
 
 <script setup lang="ts">
-import type { ParameterDefinition } from '../../../composables/types'
+import type { Parameter } from '~/composables/core/types'
 
 interface Props {
-  parameter: ParameterDefinition
+  parameter: Parameter
   showDetails?: boolean
 }
 
@@ -55,7 +55,7 @@ const props = withDefaults(defineProps<Props>(), {
 .parameter-category {
   font-size: 0.75rem;
   padding: 0 4px;
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: rgb(0 0 0 / 5%);
   border-radius: 3px;
   margin-left: 4px;
 }

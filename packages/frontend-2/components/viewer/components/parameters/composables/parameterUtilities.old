@@ -1,13 +1,11 @@
-import type { ParameterDefinition } from '../../tables/DataTable/composables/parameters/parameterManagement'
+import type { Parameter } from '~/composables/core/types'
 
 export interface ParameterGroup {
   category: string
-  parameters: ParameterDefinition[]
+  parameters: Parameter[]
 }
 
-export function groupParametersByCategory(
-  parameters: ParameterDefinition[]
-): ParameterGroup[] {
+export function groupParametersByCategory(parameters: Parameter[]): ParameterGroup[] {
   const groups = parameters.reduce((acc, param) => {
     const category = param.category || 'Other'
     if (!acc[category]) {
@@ -15,7 +13,7 @@ export function groupParametersByCategory(
     }
     acc[category].push(param)
     return acc
-  }, {} as Record<string, ParameterDefinition[]>)
+  }, {} as Record<string, Parameter[]>)
 
   return Object.entries(groups)
     .map(([category, parameters]) => ({
@@ -26,9 +24,9 @@ export function groupParametersByCategory(
 }
 
 export function searchParameters(
-  parameters: ParameterDefinition[],
+  parameters: Parameter[],
   searchTerm: string
-): ParameterDefinition[] {
+): Parameter[] {
   const normalizedSearch = searchTerm.toLowerCase().trim()
 
   if (!normalizedSearch) return parameters
@@ -43,9 +41,9 @@ export function searchParameters(
 }
 
 export function sortParameters(
-  parameters: ParameterDefinition[],
+  parameters: Parameter[],
   sortBy: 'name' | 'category' | 'type' | 'fixed'
-): ParameterDefinition[] {
+): Parameter[] {
   return [...parameters].sort((a, b) => {
     switch (sortBy) {
       case 'name':
@@ -66,30 +64,28 @@ export function sortParameters(
 }
 
 export function filterParametersByType(
-  parameters: ParameterDefinition[],
+  parameters: Parameter[],
   types: string[]
-): ParameterDefinition[] {
+): Parameter[] {
   if (!types.length) return parameters
   return parameters.filter((param) => param.type && types.includes(param.type))
 }
 
-export function getParameterTypes(parameters: ParameterDefinition[]): string[] {
+export function getParameterTypes(parameters: Parameter[]): string[] {
   return [...new Set(parameters.filter((p) => p.type).map((p) => p.type!))]
 }
 
-export function getCommonParameters(
-  parameters: ParameterDefinition[]
-): ParameterDefinition[] {
+export function getCommonParameters(parameters: Parameter[]): Parameter[] {
   return parameters.filter((param) =>
     ['id', 'name', 'mark', 'category', 'type'].includes(param.field)
   )
 }
 
-export function getUniqueCategories(parameters: ParameterDefinition[]): string[] {
+export function getUniqueCategories(parameters: Parameter[]): string[] {
   return [...new Set(parameters.filter((p) => p.category).map((p) => p.category!))]
 }
 
-export function generateParameterSummary(parameters: ParameterDefinition[]) {
+export function generateParameterSummary(parameters: Parameter[]) {
   return {
     total: parameters.length,
     fixedCount: parameters.filter((p) => p.isFixed).length,
