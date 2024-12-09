@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { ParameterMappings } from '~/composables/core/types/mappings'
+import type { ParameterMappings } from '~/composables/core/types'
 import { useParameterMappingsGraphQL } from './useParameterMappingsGraphQL'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 

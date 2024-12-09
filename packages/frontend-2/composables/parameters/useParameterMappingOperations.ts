@@ -1,9 +1,6 @@
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 import { useParameterMappingsState } from './useParameterMappingsState'
-import type {
-  ParameterMappings,
-  ParameterTableMapping
-} from '~/composables/core/types/mappings'
+import type { ParameterMappings, ParameterTableMapping } from '~/composables/core/types'
 
 interface UseParameterMappingOperationsOptions {
   onError?: (error: string) => void

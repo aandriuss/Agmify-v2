@@ -4,11 +4,11 @@ import type {
   NamedTableConfig,
   CategoryFilters,
   ColumnDef
-} from '~/composables/core/types/tables'
+} from '~/composables/core/types'
 import { useTablesState } from '~/composables/settings/tables/useTablesState'
 import { useParametersState } from '~/composables/parameters/useParametersState'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import { getParameterGroup } from '~/composables/core/types/parameters'
+import { getParameterGroup } from '~/composables/core/types'
 
 const LAST_SELECTED_TABLE_KEY = 'speckle:lastSelectedTableId'
 

@@ -1,23 +1,3 @@
-import type {
-  PrimitiveValue,
-  BimValueType,
-  UserValueType,
-  ParameterValue,
-  EquationValue,
-  ValidationRules,
-  ValidationResult
-} from './value-types'
-
-import type {
-  BaseParameter,
-  BimParameter,
-  UserParameter,
-  Parameter,
-  ParameterCollection,
-  ParameterTableMapping,
-  ParameterState
-} from './parameter-types'
-
 /**
  * Re-export value types
  */
@@ -29,7 +9,7 @@ export type {
   EquationValue,
   ValidationRules,
   ValidationResult
-}
+} from './value-types'
 
 /**
  * Re-export parameter types
@@ -40,14 +20,13 @@ export type {
   UserParameter,
   Parameter,
   ParameterCollection,
-  ParameterTableMapping,
   ParameterState
-}
+} from './parameter-types'
 
 /**
  * Re-export type guards and utilities
  */
-export { isEquationValue, isPrimitiveValue } from './value-types'
+export { isEquationValue, isPrimitiveValue, convertBimToUserType } from './value-types'
 
 export {
   isBimParameter,
@@ -57,3 +36,7 @@ export {
   getParameterGroup,
   createParameterValueState
 } from './parameter-types'
+
+export type { ProcessedHeader } from './header-types'
+
+export { PARAMETER_SETTINGS } from './constants'

@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { useParameterMappingsGraphQL } from './useParameterMappingsGraphQL'
-import type { ParameterMappings } from '~/composables/core/types/mappings'
+import type { ParameterMappings } from '~/composables/core/types'
 
 export function useParameterMappingsState() {
   const mappings = ref<ParameterMappings>({})

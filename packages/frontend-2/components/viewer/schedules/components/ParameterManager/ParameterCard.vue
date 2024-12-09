@@ -4,7 +4,7 @@
     <div class="flex justify-between items-center">
       <div class="flex items-center gap-2">
         <div class="font-medium">{{ parameter.name }}</div>
-        <div class="text-sm text-gray-500">({{ parameter.group || 'Custom' }})</div>
+        <div class="text-sm text-gray-500">({{ parameter.group }})</div>
       </div>
       <div class="flex gap-2">
         <FormButton text size="sm" color="primary" @click="handleTableMapping">
@@ -36,12 +36,16 @@
         <span class="font-medium">Value:</span>
         {{ parameter.value }}
       </div>
-      <div v-else>
+      <div v-else-if="parameter.type === 'equation'">
         <span class="font-medium">Equation:</span>
         {{ parameter.equation }}
       </div>
       <div v-if="parameter.type === 'equation'" class="text-gray-500">
         Current value: {{ currentValue }}
+      </div>
+      <div v-if="parameter.validationRules" class="text-gray-500">
+        <span class="font-medium">Validation:</span>
+        {{ formatValidationRules(parameter.validationRules) }}
       </div>
     </div>
 
@@ -65,6 +69,7 @@
       </div>
     </div>
 
+    <!-- Ignore for now, will create a proper table later. -->
     <!-- Table Selection Dialog -->
     <TableSelectionDialog
       v-if="showTableDialog"
@@ -85,19 +90,19 @@ import {
   TrashIcon,
   XMarkIcon
 } from '@heroicons/vue/24/solid'
-import type { CustomParameter } from '~/composables/core/types'
+import type { UserParameter, ValidationRules } from '~/composables/core/types'
 import TableSelectionDialog from './TableSelectionDialog.vue'
 
 const props = defineProps<{
-  parameter: CustomParameter
+  parameter: UserParameter
   currentValue: string
   availableTables: Array<{ id: string; name: string }>
   mappedTableIds: string[]
 }>()
 
 const emit = defineEmits<{
-  (e: 'edit', parameter: CustomParameter): void
-  (e: 'delete', parameter: CustomParameter): void
+  (e: 'edit', parameter: UserParameter): void
+  (e: 'delete', parameter: UserParameter): void
   (e: 'update-tables', parameterId: string, tableIds: string[]): void
 }>()
 
@@ -123,5 +128,14 @@ function handleSaveTableMapping() {
 function handleRemoveTable(table: { id: string; name: string }) {
   const newTableIds = props.mappedTableIds.filter((id) => id !== table.id)
   emit('update-tables', props.parameter.id, newTableIds)
+}
+
+function formatValidationRules(rules: ValidationRules): string {
+  const parts: string[] = []
+  if ('required' in rules) parts.push('Required')
+  if ('min' in rules) parts.push(`Min: ${rules.min}`)
+  if ('max' in rules) parts.push(`Max: ${rules.max}`)
+  if ('pattern' in rules) parts.push('Has pattern')
+  return parts.join(', ')
 }
 </script>

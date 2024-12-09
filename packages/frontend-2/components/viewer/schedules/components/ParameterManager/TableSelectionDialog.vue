@@ -123,7 +123,7 @@
 import { ref, computed } from 'vue'
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/vue/24/solid'
 import type { LayoutDialogButton } from '@speckle/ui-components'
-import type { CustomParameter } from '~/composables/core/types'
+import type { UserParameter } from '~/composables/core/types'
 
 interface Table {
   id: string
@@ -135,7 +135,7 @@ interface Table {
 const props = defineProps<{
   modelValue: string[]
   tables: Table[]
-  parameter: CustomParameter | null
+  parameter: UserParameter | null
 }>()
 
 const emit = defineEmits<{

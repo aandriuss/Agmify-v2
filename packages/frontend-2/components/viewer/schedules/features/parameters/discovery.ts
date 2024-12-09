@@ -1,23 +1,26 @@
 import type {
   ElementData,
-  ParameterValueType,
-  BIMNodeRaw
+  BimParameter,
+  BimValueType,
+  BIMNodeRaw,
+  PrimitiveValue
 } from '~/composables/core/types'
-import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import { debug, DebugCategories } from '../../debug/useDebug'
 import { getParameterGroup } from '../../config/parameters'
+import { createBimParameter } from '~/composables/core/types'
 
 // Parameter discovery interface
 export interface DiscoveredParameter {
   field: string
   name: string
-  type: ParameterValueType
+  type: BimValueType
   header: string
-  category: string // Element categorys
+  category: string // Element category
   group: string // Parameter group from raw data
   description: string
   visible: boolean
   frequency: number
+  sourceValue: PrimitiveValue
 }
 
 // Parameter discovery options
@@ -39,7 +42,7 @@ const defaultOptions: Required<DiscoveryOptions> = {
 export async function discoverParameters(
   elements: ElementData[],
   options: DiscoveryOptions = {}
-): Promise<ParameterDefinition[]> {
+): Promise<BimParameter[]> {
   debug.log(DebugCategories.PARAMETERS, 'Starting parameter discovery', {
     elementCount: elements.length,
     options
@@ -50,16 +53,16 @@ export async function discoverParameters(
     const sample = await getSampleElements(elements, opts.sampleSize)
     const discovered = await analyzeParameters(sample, opts.batchSize)
     const filtered = await filterParameters(discovered, opts)
-    const definitions = convertToDefinitions(filtered)
+    const parameters = convertToParameters(filtered)
 
     debug.log(DebugCategories.PARAMETERS, 'Parameter discovery complete', {
-      discoveredCount: definitions.length,
-      groups: [...new Set(definitions.map((d) => d.category))],
+      discoveredCount: parameters.length,
+      groups: [...new Set(parameters.map((p) => p.currentGroup))],
       parameterGroups: [...new Set(filtered.map((p) => p.group))],
-      visibleCount: definitions.filter((d) => d.visible).length
+      visibleCount: parameters.filter((p) => p.visible).length
     })
 
-    return definitions
+    return parameters
   } catch (error) {
     debug.error(DebugCategories.PARAMETERS, 'Parameter discovery failed:', error)
     throw new Error(
@@ -85,6 +88,17 @@ async function getSampleElements(
   return Array.from(indices).map((i) => elements[i])
 }
 
+// Convert unknown value to primitive value
+function toPrimitiveValue(value: unknown): PrimitiveValue {
+  if (value === null) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' && !isNaN(value)) return value
+  if (typeof value === 'boolean') return value
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
 // Analyze parameters across elements in batches
 async function analyzeParameters(
   elements: ElementData[],
@@ -102,7 +116,7 @@ async function analyzeParameters(
     await new Promise((resolve) => setTimeout(resolve, 0)) // Yield to event loop
 
     for (const element of batch) {
-      const params = element.parameters || {}
+      const params = (element.parameters || {}) as Record<string, unknown>
       const groups =
         (Object.getOwnPropertyDescriptor(params, '_groups')?.value as Record<
           string,
@@ -130,7 +144,8 @@ async function analyzeParameters(
           group: paramGroup, // Parameter group
           description: `${paramGroup} > ${field}`,
           visible: true, // Default visible
-          frequency: 0
+          frequency: 0,
+          sourceValue: toPrimitiveValue(value)
         }
 
         // Update frequency and merge any new information
@@ -166,27 +181,39 @@ async function filterParameters(
   )
 }
 
-// Convert discovered parameters to definitions
-function convertToDefinitions(
-  discovered: DiscoveredParameter[]
-): ParameterDefinition[] {
-  return discovered.map((param) => ({
-    field: param.field,
-    name: param.name,
-    header: param.header,
-    type: param.type,
-    category: param.category, // Element category
-    source: param.group, // Parameter group as source
-    description: param.description,
-    removable: true,
-    visible: true
-  }))
+// Convert discovered parameters to BimParameters
+function convertToParameters(discovered: DiscoveredParameter[]): BimParameter[] {
+  return discovered.map((param) =>
+    createBimParameter({
+      id: param.field,
+      field: param.field,
+      name: param.name,
+      type: param.type,
+      header: param.header,
+      visible: param.visible,
+      removable: true,
+      value: param.sourceValue,
+      sourceValue: param.sourceValue,
+      fetchedGroup: param.group,
+      currentGroup: param.group,
+      description: param.description,
+      metadata: {
+        category: param.category,
+        frequency: param.frequency
+      }
+    })
+  )
 }
 
 // Infer parameter type from value
-function inferType(value: unknown): ParameterValueType {
+function inferType(value: unknown): BimValueType {
+  if (value === null || value === undefined) return 'string'
   if (typeof value === 'boolean') return 'boolean'
   if (typeof value === 'number') return 'number'
+  if (typeof value === 'string') return 'string'
+  if (value instanceof Date) return 'date'
+  if (Array.isArray(value)) return 'array'
+  if (typeof value === 'object') return 'object'
   return 'string'
 }
 

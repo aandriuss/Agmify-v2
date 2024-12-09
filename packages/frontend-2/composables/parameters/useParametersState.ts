@@ -5,7 +5,7 @@ import { useParametersGraphQL } from './useParametersGraphQL'
 import { useUpdateQueue } from '../settings/useUpdateQueue'
 import type { Parameter, ParameterTableMapping } from '~/composables/core/types'
 import { ParameterError } from './errors'
-import { getParameterGroup } from '~/composables/core/types/parameters'
+import { getParameterGroup } from '~/composables/core/types'
 
 export function useParametersState() {
   const nuxtApp = useNuxtApp()

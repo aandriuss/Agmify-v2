@@ -6,6 +6,8 @@ import type {
   ParameterValue
 } from './value-types'
 
+import type { ParameterTableMapping } from '../mappings'
+
 /**
  * Base parameter properties
  */
@@ -77,12 +79,6 @@ export function isUserParameter(param: Parameter): param is UserParameter {
 export interface ParameterCollection {
   parameters: Map<string, Parameter>
   groups: Set<string>
-}
-
-export interface ParameterTableMapping {
-  readonly parameterId: string
-  readonly tableId: string
-  metadata?: Record<string, unknown>
 }
 
 export interface ParameterState {

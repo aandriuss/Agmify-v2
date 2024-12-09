@@ -187,9 +187,8 @@ import {
   ChevronRightIcon,
   ChevronDownIcon
 } from '@heroicons/vue/24/outline'
-import type { ColumnDef } from '~/composables/core/types/tables'
-import type { Parameter } from '~/composables/core/types/parameters'
-import { getParameterGroup, isBimParameter } from '~/composables/core/types/parameters'
+import type { ColumnDef, Parameter } from '~/composables/core/types'
+import { getParameterGroup, isBimParameter } from '~/composables/core/types'
 
 interface Props {
   items: (ColumnDef | Parameter)[]

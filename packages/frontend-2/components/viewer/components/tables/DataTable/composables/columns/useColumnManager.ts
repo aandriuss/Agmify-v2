@@ -1,8 +1,12 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef } from '~/composables/core/types/tables'
-import type { Parameter } from '~/composables/core/types/parameters'
+import type { ColumnDef, Parameter } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
-import { getParameterGroup, isBimParameter } from '~/composables/core/types/parameters'
+import {
+  getParameterGroup,
+  isBimParameter,
+  isUserParameter,
+  isEquationValue
+} from '~/composables/core/types'
 
 type View = 'parent' | 'child'
 type ColumnOperation =
@@ -31,6 +35,31 @@ interface UseColumnManagerOptions {
 interface ColumnState {
   pendingChanges: ColumnOperation[]
   visibility: Map<string, boolean>
+}
+
+// Helper to determine parameter type for column
+function getColumnType(param: Parameter): string {
+  if (isBimParameter(param)) {
+    return param.type
+  }
+
+  if (isUserParameter(param)) {
+    if (param.type === 'equation') {
+      // Check equation result type if available
+      if (isEquationValue(param.value)) {
+        return param.value.resultType
+      }
+      return 'number' // Default to number for equations
+    }
+    return 'string' // Default for fixed type
+  }
+
+  return 'string' // Fallback
+}
+
+// Helper to determine if parameter is computed
+function isComputedParameter(param: Parameter): boolean {
+  return isUserParameter(param) && param.type === 'equation'
 }
 
 export function useColumnManager(options: UseColumnManagerOptions) {
@@ -167,17 +196,14 @@ export function useColumnManager(options: UseColumnManagerOptions) {
   // Convert parameter to column
   function createColumnFromParameter(param: Parameter, order: number): ColumnDef {
     const group = getParameterGroup(param)
-    const type = isBimParameter(param)
-      ? param.type
-      : param.type === 'equation'
-      ? 'number'
-      : 'string'
+    const type = getColumnType(param)
+    const isComputed = isComputedParameter(param)
 
-    return {
+    const column: ColumnDef = {
       id: param.id,
       name: param.name,
       field: param.field,
-      header: param.name,
+      header: param.header || param.name,
       type,
       visible: param.visible ?? true,
       removable: param.removable ?? true,
@@ -185,13 +211,29 @@ export function useColumnManager(options: UseColumnManagerOptions) {
       category: param.category || group || 'Parameters',
       source: isBimParameter(param) ? 'BIM Parameters' : 'User Parameters',
       description: param.description,
-      isFixed: false,
-      metadata: param.metadata,
+      isFixed: !isComputed,
+      metadata: {
+        ...param.metadata,
+        isComputed,
+        originalType: isBimParameter(param) ? param.type : param.type
+      },
       currentGroup: isBimParameter(param) ? param.currentGroup : group || 'Parameters',
       fetchedGroup: isBimParameter(param) ? param.fetchedGroup : undefined,
-      isCustomParameter: !isBimParameter(param) && param.type === 'equation',
+      isCustomParameter: isUserParameter(param),
       parameterRef: param.id
     }
+
+    // Add equation-specific metadata if applicable
+    if (isUserParameter(param) && isEquationValue(param.value)) {
+      column.metadata = {
+        ...column.metadata,
+        equation: param.value.expression,
+        references: param.value.references,
+        resultType: param.value.resultType
+      }
+    }
+
+    return column
   }
 
   // Column operations
@@ -219,6 +261,8 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             field: newColumn.field,
             source: newColumn.source,
             category: newColumn.category,
+            type: newColumn.type,
+            isComputed: newColumn.metadata?.isComputed,
             view: currentView.value
           })
           break

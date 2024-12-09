@@ -76,3 +76,10 @@ export function isPrimitiveValue(value: unknown): value is PrimitiveValue {
     typeof value === 'boolean'
   )
 }
+
+/**
+ * Convert BIM value type to user value type
+ */
+export function convertBimToUserType(type: BimValueType): UserValueType {
+  return type === 'number' ? 'equation' : 'fixed'
+}

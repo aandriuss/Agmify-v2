@@ -1,13 +1,15 @@
 import type {
   ElementData,
-  ParameterValue,
   TableRow,
-  PrimitiveValue
+  Parameter,
+  ParameterValue
 } from '~/composables/core/types'
-import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 import { debug, DebugCategories } from '../../debug/useDebug'
-import { createParameterValueState } from '~/composables/core/types'
-import { isPrimitiveValue } from '~/composables/core/types/parameters/value-types'
+import {
+  createParameterValueState,
+  isEquationValue,
+  isUserParameter
+} from '~/composables/core/types'
 
 // Custom error class for validation errors
 export class ValidationError extends Error {
@@ -51,14 +53,14 @@ const defaultOptions: Required<ProcessingOptions> = {
 
 // LRU Cache for transformed values
 class ValueCache {
-  private cache = new Map<string, PrimitiveValue>()
+  private cache = new Map<string, ParameterValue>()
   private maxSize: number
 
   constructor(maxSize: number) {
     this.maxSize = maxSize
   }
 
-  get(key: string): PrimitiveValue | undefined {
+  get(key: string): ParameterValue | undefined {
     const value = this.cache.get(key)
     if (value !== undefined) {
       // Move to front (most recently used)
@@ -68,7 +70,7 @@ class ValueCache {
     return value
   }
 
-  set(key: string, value: PrimitiveValue): void {
+  set(key: string, value: ParameterValue): void {
     if (this.cache.size >= this.maxSize) {
       // Remove least recently used
       const firstKey = this.cache.keys().next().value
@@ -81,10 +83,13 @@ class ValueCache {
 }
 
 // Basic type validation
-function validateParameterValue(value: unknown, type: string): boolean {
+function validateParameterValue(value: unknown, param: Parameter): boolean {
   if (value === null || value === undefined) return true
+  if (isEquationValue(value)) {
+    return param.kind === 'user' // Only user parameters can have equations
+  }
 
-  switch (type) {
+  switch (param.type) {
     case 'string':
       return true // All values can be converted to strings
     case 'number':
@@ -111,13 +116,13 @@ function validateParameterValue(value: unknown, type: string): boolean {
 // Process parameters for multiple elements
 export async function processElementParameters(
   elements: ElementData[],
-  definitions: ParameterDefinition[],
+  parameters: Parameter[],
   options: ProcessingOptions = {}
 ): Promise<TableRow[]> {
-  if (!Array.isArray(elements) || !Array.isArray(definitions)) {
+  if (!Array.isArray(elements) || !Array.isArray(parameters)) {
     debug.error(DebugCategories.PARAMETERS, 'Invalid input:', {
       elements: Array.isArray(elements),
-      definitions: Array.isArray(definitions)
+      parameters: Array.isArray(parameters)
     })
     return []
   }
@@ -131,7 +136,7 @@ export async function processElementParameters(
 
   debug.log(DebugCategories.PARAMETERS, 'Starting parameter processing', {
     elementCount: elements.length,
-    definitionCount: definitions.length,
+    parameterCount: parameters.length,
     options: opts
   })
 
@@ -141,7 +146,7 @@ export async function processElementParameters(
 
       const batchResults = await Promise.all(
         batch.map((element) =>
-          processElement(element, definitions, opts.defaultValues, cache).catch(
+          processElement(element, parameters, opts.defaultValues, cache).catch(
             (error) => {
               const processedError: ProcessingError = {
                 elementId: element.id,
@@ -198,7 +203,7 @@ export async function processElementParameters(
 // Process a single element's parameters
 async function processElement(
   element: ElementData,
-  definitions: ParameterDefinition[],
+  parameters: Parameter[],
   defaultValues: Record<string, ParameterValue>,
   cache: ValueCache
 ): Promise<TableRow> {
@@ -206,64 +211,54 @@ async function processElement(
     throw new Error('Invalid element data')
   }
 
-  const processedParams: Record<string, PrimitiveValue> = {}
+  const processedParams: Record<string, ParameterValue> = {}
 
   // Ensure parameters object exists
-  const parameters: Record<string, unknown> =
+  const elementParams: Record<string, unknown> =
     (element.parameters as Record<string, unknown>) || {}
 
-  for (const def of definitions) {
+  for (const param of parameters) {
     try {
-      if (!def || typeof def !== 'object' || !def.field) {
-        debug.warn(DebugCategories.PARAMETERS, 'Invalid parameter definition:', def)
-        continue
-      }
-
-      const value = parameters[def.field]
+      const value = elementParams[param.field]
 
       // Handle undefined/null values
       if (value === undefined || value === null) {
         // Use default value if available
-        if (def.field in defaultValues) {
-          const defaultValue = defaultValues[def.field]
-          if (isPrimitiveValue(defaultValue)) {
-            processedParams[def.field] = defaultValue
-          }
+        if (param.field in defaultValues) {
+          processedParams[param.field] = defaultValues[param.field]
         } else {
-          // Create empty state for missing values
-          processedParams[def.field] =
-            def.type === 'string' ? '' : def.type === 'number' ? 0 : false
+          // Create empty state based on parameter type
+          processedParams[param.field] =
+            param.type === 'string' ? '' : param.type === 'number' ? 0 : false
         }
         continue
       }
 
       // Check cache first
-      const cacheKey = `${def.field}:${JSON.stringify(value)}`
+      const cacheKey = `${param.field}:${JSON.stringify(value)}`
       const cachedValue = cache.get(cacheKey)
       if (cachedValue !== undefined) {
-        processedParams[def.field] = cachedValue
+        processedParams[param.field] = cachedValue
         continue
       }
 
       // Validate and transform the value
-      if (!validateParameterValue(value, def.type)) {
+      if (!validateParameterValue(value, param)) {
         debug.warn(DebugCategories.PARAMETERS, 'Parameter validation failed:', {
-          field: def.field,
+          field: param.field,
           value,
-          type: def.type
+          type: param.type
         })
-        throw new ValidationError(def.field, value, 'Parameter validation failed')
+        throw new ValidationError(param.field, value, 'Parameter validation failed')
       }
 
-      const transformedValue = await transformValue(value, def)
-      if (isPrimitiveValue(transformedValue)) {
-        cache.set(cacheKey, transformedValue)
-        processedParams[def.field] = transformedValue
-      }
+      const transformedValue = await transformValue(value, param)
+      cache.set(cacheKey, transformedValue)
+      processedParams[param.field] = transformedValue
     } catch (error) {
       debug.error(DebugCategories.PARAMETERS, 'Parameter processing error:', {
         elementId: element.id,
-        field: def?.field,
+        field: param.field,
         error
       })
 
@@ -271,8 +266,8 @@ async function processElement(
         throw error
       }
       throw new ValidationError(
-        def.field,
-        parameters[def.field],
+        param.field,
+        elementParams[param.field],
         `Processing failed: ${error instanceof Error ? error.message : String(error)}`
       )
     }
@@ -284,16 +279,22 @@ async function processElement(
   }
 }
 
-// Transform a value according to its parameter definition
+// Transform a value according to its parameter type
 async function transformValue(
   value: unknown,
-  definition: ParameterDefinition
-): Promise<PrimitiveValue> {
+  parameter: Parameter
+): Promise<ParameterValue> {
   // Yield to event loop for complex transformations
   await new Promise((resolve) => setTimeout(resolve, 0))
 
   try {
-    switch (definition.type) {
+    // Handle equation values for user parameters
+    if (isEquationValue(value) && isUserParameter(parameter)) {
+      return value
+    }
+
+    // Handle primitive value transformations
+    switch (parameter.type) {
       case 'string': {
         if (value === null || value === undefined) return ''
         if (typeof value === 'object') return JSON.stringify(value)
@@ -336,19 +337,19 @@ async function transformValue(
 
       default:
         debug.error(DebugCategories.PARAMETERS, 'Unsupported parameter type:', {
-          type: definition.type,
+          type: parameter.type,
           value
         })
         throw new ValidationError(
-          definition.field,
+          parameter.field,
           value,
-          `Unsupported parameter type: ${definition.type}`
+          `Unsupported parameter type: ${parameter.type}`
         )
     }
   } catch (error) {
     debug.error(DebugCategories.PARAMETERS, 'Value transformation failed:', {
       value,
-      type: definition.type,
+      type: parameter.type,
       error
     })
     throw error

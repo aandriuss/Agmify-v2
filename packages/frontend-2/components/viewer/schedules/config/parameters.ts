@@ -1,8 +1,9 @@
-import type { BIMNodeRaw } from '~/composables/core/types'
+import type { BIMNodeRaw, BimParameter } from '~/composables/core/types'
 import { convertToString } from '../utils/dataConversion'
+import { createBimParameter } from '~/composables/core/types'
 
-// Parameter definition type
-export interface BIMParameter {
+// Raw parameter path definition
+export interface ParameterPath {
   name: string
   path: string[]
   fallback: keyof BIMNodeRaw
@@ -94,4 +95,41 @@ export function getParameterGroup(parameterName: string, raw: BIMNodeRaw): strin
 
   // Default to Parameters group for any other case
   return 'Parameters'
+}
+
+// Helper to create BIM parameter from raw data
+export function createBimParameterFromRaw(
+  name: string,
+  value: unknown,
+  group: string
+): BimParameter {
+  const stringValue = convertToString(value)
+  return createBimParameter({
+    id: name,
+    name,
+    field: name,
+    header: name,
+    type: inferTypeFromValue(value),
+    visible: true,
+    removable: true,
+    value: stringValue,
+    sourceValue: stringValue,
+    fetchedGroup: group,
+    currentGroup: group,
+    description: `${group} > ${name}`,
+    metadata: {
+      rawValue: value
+    }
+  })
+}
+
+// Helper to infer type from raw value
+function inferTypeFromValue(value: unknown): BimParameter['type'] {
+  if (value === null || value === undefined) return 'string'
+  if (typeof value === 'boolean') return 'boolean'
+  if (typeof value === 'number') return 'number'
+  if (value instanceof Date) return 'date'
+  if (Array.isArray(value)) return 'array'
+  if (typeof value === 'object') return 'object'
+  return 'string'
 }

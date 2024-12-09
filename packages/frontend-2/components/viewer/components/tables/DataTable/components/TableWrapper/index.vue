@@ -127,8 +127,7 @@ import type {
   DataTableFilterMeta,
   DataTableExpandedRows
 } from 'primevue/datatable'
-import type { ColumnDef } from '~/composables/core/types/tables'
-import type { TableRow, ElementData } from '~/composables/core/types/data'
+import type { ColumnDef, TableRow, ElementData } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
 
 interface Props {

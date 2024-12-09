@@ -1,70 +1,58 @@
-import type { ParameterValuesRecord } from '../parameters'
-import type { ColumnDef, CategoryFilters, NamedTableConfig } from '../tables'
+import type { ParameterValue } from '../parameters'
+import type { ElementData } from '../elements'
 
 /**
- * Base element data interface
+ * Record of parameter values by parameter ID
  */
-export interface ElementData {
-  id: string
-  name?: string
-  type: string
-  mark: string
-  category: string
-  parameters: ParameterValuesRecord
-  metadata?: Record<string, unknown>
-  details?: ElementData[]
-  _visible?: boolean
-  host?: string
-  _raw?: unknown
-  isChild?: boolean
-}
+export type ParameterValuesRecord = Record<string, ParameterValue>
 
 /**
  * Table row interface extending element data
  */
-export interface TableRow extends Omit<ElementData, 'details'> {
-  details?: TableRow[] // Nested rows for hierarchical tables
+export interface TableRow extends ElementData {
   visible?: boolean
   selected?: boolean
-  isChild?: boolean
 }
 
 /**
- * Processed data interface for internal use
+ * Processing state interfaces
+ */
+export interface ProcessingState {
+  isProcessingElements: boolean // Changed from isProcessing to match existing usage
+  processedCount: number
+  totalCount: number
+  error?: Error
+}
+
+/**
+ * Data processing interfaces
  */
 export interface ProcessedData extends ElementData {
-  processed: {
-    [key: string]: unknown
-  }
-  errors?: {
-    [key: string]: string
-  }
+  processed: Record<string, unknown>
+  errors?: Record<string, string>
 }
 
-/**
- * Display data interface for UI rendering
- */
 export interface DisplayData extends ProcessedData {
-  display: {
-    [key: string]: string | number | boolean | null
-  }
+  display: Record<string, string | number | boolean | null>
   visible: boolean
   selected?: boolean
 }
 
 /**
- * Elements processing state interface
+ * Data management interfaces
  */
-export interface ElementsProcessingState {
-  processed: boolean
+export interface DataState {
+  rawElements: ElementData[]
+  parentElements: ElementData[]
+  childElements: ElementData[]
+  matchedElements: ElementData[]
+  orphanedElements: ElementData[]
+  processingState: ProcessingState
   loading: boolean
   error?: Error
 }
 
-/**
- * Elements data return interface
- */
-export interface ElementsDataReturn {
+export interface DataReturn {
   scheduleData: ElementData[]
   tableData: TableRow[]
   availableCategories: {
@@ -79,18 +67,10 @@ export interface ElementsDataReturn {
   stopWorldTreeWatch: () => void
   isLoading: boolean
   hasError: boolean
-  processingState: {
-    isProcessingElements: boolean
-    processedCount: number
-    totalCount: number
-    error?: Error
-  }
-  rawElements: ElementData[]
-  parentElements: ElementData[]
-  childElements: ElementData[]
-  matchedElements: ElementData[]
-  orphanedElements: ElementData[]
+  state: DataState
+  processingState: ProcessingState
 }
 
-// Re-export types from tables that are used in data contexts
-export type { ColumnDef, CategoryFilters, NamedTableConfig }
+// Legacy type aliases for backward compatibility
+export type ElementsProcessingState = ProcessingState
+export type ElementsDataReturn = DataReturn

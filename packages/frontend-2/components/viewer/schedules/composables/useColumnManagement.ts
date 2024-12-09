@@ -1,5 +1,5 @@
 import { debug, DebugCategories } from '../debug/useDebug'
-import type { ColumnDef, CustomParameter } from '~/composables/core/types'
+import type { ColumnDef, UserParameter } from '~/composables/core/types'
 
 interface ColumnManagementOptions {
   state: {
@@ -8,7 +8,7 @@ interface ColumnManagementOptions {
     parameterColumns: ColumnDef[]
     mergedTableColumns: ColumnDef[]
     mergedDetailColumns: ColumnDef[]
-    customParameters: CustomParameter[]
+    UserParameters: UserParameter[]
   }
   updateMergedColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
   updateCurrentColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void

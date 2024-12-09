@@ -25,36 +25,18 @@ import {
   createBimParameter,
   isPrimitiveValue
 } from '~/composables/core/types'
-import type { ParameterDefinition } from '~/components/viewer/components/tables/DataTable/composables/parameters/parameterManagement'
 
-// Import new core functionality
+// Import core functionality
 import { useStore } from '../core/store'
-import { discoverParameters } from '../features/parameters/discovery'
 import { processElementParameters } from '../features/parameters/processing'
 
 // Convert discovered parameter to BIM parameter
-function convertToBimParameter(def: ParameterDefinition): BimParameter {
-  return createBimParameter({
-    id: def.field,
-    field: def.field,
-    name: def.name,
-    type: def.type as BimValueType,
-    header: def.header,
-    visible: def.visible ?? true,
-    removable: def.removable ?? true,
-    value: null,
-    sourceValue: null,
-    fetchedGroup: def.category ?? 'Parameters',
-    currentGroup: def.category ?? 'Parameters'
-  })
-}
-
-// Create BIM parameter from value
-function createBimParameterFromValue(
+function convertToBimParameter(
   field: string,
   value: unknown,
-  type: BimValueType
+  category?: string
 ): BimParameter {
+  const type = determineValueType(value)
   return createBimParameter({
     id: field,
     field,
@@ -64,10 +46,22 @@ function createBimParameterFromValue(
     visible: true,
     removable: true,
     value: isPrimitiveValue(value) ? value : null,
-    sourceValue: null,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
+    sourceValue: isPrimitiveValue(value) ? value : null,
+    fetchedGroup: category ?? 'Parameters',
+    currentGroup: category ?? 'Parameters'
   })
+}
+
+// Determine BIM value type from a value
+function determineValueType(value: unknown): BimValueType {
+  if (value === null || value === undefined) return 'string'
+  if (typeof value === 'string') return 'string'
+  if (typeof value === 'number') return 'number'
+  if (typeof value === 'boolean') return 'boolean'
+  if (value instanceof Date) return 'date'
+  if (Array.isArray(value)) return 'array'
+  if (typeof value === 'object') return 'object'
+  return 'string'
 }
 
 // Type guard for parameters object
@@ -97,12 +91,17 @@ class ParameterError extends Error {
     this.name = 'ParameterError'
   }
 
-  static fromError(error: Error): ParameterError {
-    return new ParameterError(error.message)
+  static fromError(error: unknown): ParameterError {
+    if (error instanceof Error) {
+      return new ParameterError(error.message)
+    }
+    return new ParameterError('Unknown error occurred')
   }
 
-  static fromString(message: string): ParameterError {
-    return new ParameterError(message)
+  static fromString(message: unknown): ParameterError {
+    return new ParameterError(
+      typeof message === 'string' ? message : 'Unknown error occurred'
+    )
   }
 }
 
@@ -137,25 +136,37 @@ async function processParameters() {
   if (!props.isInitialized || !validateElementDataArray(props.scheduleData)) return
 
   try {
-    // Discover parameters
-    const discoveredParams = await discoverParameters(props.scheduleData, {
-      sampleSize: 100,
-      minFrequency: 0.1,
-      excludeParams: new Set(props.customParameters.map((p) => p.field))
-    })
+    // Discover parameters from data
+    const discoveredParams = new Map<string, BimParameter>()
 
-    // Convert discovered parameters to BIM parameters
-    const bimParams = discoveredParams.map(convertToBimParameter)
+    // Process first 100 items to discover parameters
+    const sampleSize = Math.min(100, props.scheduleData.length)
+    for (let i = 0; i < sampleSize; i++) {
+      const element = props.scheduleData[i]
+      if (element && isParametersObject(element.parameters)) {
+        for (const [field, value] of Object.entries(element.parameters)) {
+          // Skip if already a custom parameter
+          if (props.customParameters.some((p) => p.field === field)) continue
+
+          // Create or update BIM parameter
+          if (!discoveredParams.has(field)) {
+            discoveredParams.set(field, convertToBimParameter(field, value))
+          }
+        }
+      }
+    }
+
+    // Convert to array and combine with custom parameters
+    const allParameters: Parameter[] = [
+      ...Array.from(discoveredParams.values()),
+      ...props.customParameters
+    ]
 
     // Process data with all parameters
-    const processed = await processElementParameters(props.scheduleData, [
-      ...discoveredParams,
-      ...props.customParameters
-    ])
-
+    const processed = await processElementParameters(props.scheduleData, allParameters)
     processedData.value = processed
 
-    // Update store with both processed data and parameter definitions
+    // Update store with processed data and parameter definitions
     const safeProcessedParameters: Record<string, StoreParameterValue> = {}
     const safeParamDefinitions: Record<string, StoreParameterDefinition> = {}
 
@@ -165,11 +176,15 @@ async function processParameters() {
       if (isParametersObject(params)) {
         for (const [key, value] of Object.entries(params)) {
           if (typeof key === 'string' && value !== undefined) {
-            // Create a BIM parameter from the value
-            const param = createBimParameterFromValue(key, value, 'string')
-            const result = convertToStoreParameterValue(param)
-            if (result && isStoreParameterValue(result)) {
-              safeProcessedParameters[key] = result
+            const param =
+              discoveredParams.get(key) ??
+              props.customParameters.find((p) => p.field === key)
+
+            if (param) {
+              const result = convertToStoreParameterValue(param)
+              if (result && isStoreParameterValue(result)) {
+                safeProcessedParameters[key] = result
+              }
             }
           }
         }
@@ -177,8 +192,7 @@ async function processParameters() {
     })
 
     // Safely process definitions
-    const allParams = [...bimParams, ...props.customParameters]
-    allParams.forEach((param) => {
+    allParameters.forEach((param) => {
       if (isUserParameter(param) || isBimParameter(param)) {
         const converted = convertToStoreParameterDefinition(param)
         if (converted) {
@@ -194,10 +208,7 @@ async function processParameters() {
       parameterDefinitions: safeParamDefinitions
     })
   } catch (err) {
-    const error =
-      err instanceof Error
-        ? ParameterError.fromError(err)
-        : ParameterError.fromString('Parameter processing failed')
+    const error = ParameterError.fromError(err)
     debug.error(DebugCategories.PARAMETERS, 'Parameter processing error:', error)
     emit('error', error)
   }

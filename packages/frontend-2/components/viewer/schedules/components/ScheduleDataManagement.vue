@@ -8,18 +8,19 @@ import { computed, watch } from 'vue'
 import { debug, DebugCategories } from '../debug/useDebug'
 import { useElementsData } from '../composables/useElementsData'
 import type {
-  CustomParameter,
+  Parameter,
   ElementData,
   TableRow,
-  ColumnDef
+  ColumnDef,
+  ElementsDataReturn
 } from '~/composables/core/types'
 
 const props = defineProps<{
   scheduleData: ElementData[]
   evaluatedData: ElementData[]
-  customParameters: CustomParameter[]
-  mergedTableColumns: ColumnDef[]
-  mergedDetailColumns: ColumnDef[]
+  parameters: Parameter[]
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
   selectedParentCategories: string[]
   selectedChildCategories: string[]
   isInitialized: boolean
@@ -38,14 +39,14 @@ const {
   isLoading,
   hasError,
   processingState
-} = useElementsData({
+}: ElementsDataReturn = useElementsData({
   selectedParentCategories: computed(() => props.selectedParentCategories),
   selectedChildCategories: computed(() => props.selectedChildCategories)
 })
 
 // Watch for data changes
 watch(
-  () => tableData.value,
+  () => tableData,
   (newData) => {
     try {
       if (!props.isInitialized) {
@@ -53,21 +54,25 @@ watch(
         return
       }
 
+      const data = Array.isArray(newData) ? newData : []
+      const filtered = Array.isArray(filteredData) ? filteredData : []
+
       debug.log(DebugCategories.DATA_TRANSFORM, 'Table data updated', {
-        count: newData?.length || 0,
-        filteredCount: filteredData.value.length,
+        count: data.length,
+        filteredCount: filtered.length,
         timestamp: new Date().toISOString(),
         categories: {
           parent: props.selectedParentCategories,
           child: props.selectedChildCategories
         },
-        isLoading: isLoading.value,
-        processingState: processingState.value
+        isLoading,
+        processingState
       })
-      emit('update:tableData', newData || [])
-    } catch (error) {
+      emit('update:tableData', data)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
       debug.error(DebugCategories.ERROR, 'Error updating table data:', error)
-      emit('error', error instanceof Error ? error : new Error(String(error)))
+      emit('error', error)
     }
   },
   { immediate: true }
@@ -90,20 +95,24 @@ watch(
       })
 
       await updateCategories(newParentCats, newChildCats)
-    } catch (error) {
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
       debug.error(DebugCategories.ERROR, 'Error updating categories:', error)
-      emit('error', error instanceof Error ? error : new Error(String(error)))
+      emit('error', error)
     }
   },
   { immediate: true }
 )
 
-// Watch for errors
-watch(hasError, (error) => {
-  if (error) {
-    emit('error', processingState.value.error || new Error('Unknown error occurred'))
+// Watch for errors with proper type handling
+watch(
+  () => hasError,
+  (error) => {
+    if (error && processingState.error) {
+      emit('error', processingState.error)
+    }
   }
-})
+)
 
 // Expose necessary state
 defineExpose({

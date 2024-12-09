@@ -64,11 +64,9 @@
 import { computed } from 'vue'
 import DataTable from '../../../components/tables/DataTable/index.vue'
 import { dummyTableRows, dummyColumns } from '../../mock/dummyData'
-import type { ColumnDef } from '~/composables/core/types'
+import type { ColumnDef, UserParameter } from '~/composables/core/types'
+import { createUserParameter, PARAMETER_SETTINGS } from '~/composables/core/types'
 import { debug, DebugCategories } from '../../debug/useDebug'
-
-// Import CustomParameter type
-import type { CustomParameter } from '../../types/'
 
 // Computed properties for data analysis
 const parentElements = computed(() => dummyTableRows.filter((row) => !row.isChild))
@@ -100,7 +98,7 @@ const hostRelationships = computed(() => {
 })
 
 // Convert parameters to available parameters format
-const availableParameters = computed<CustomParameter[]>(() => {
+const availableParameters = computed<UserParameter[]>(() => {
   const uniqueParams = new Set<string>()
 
   dummyTableRows.forEach((row) => {
@@ -109,14 +107,23 @@ const availableParameters = computed<CustomParameter[]>(() => {
     })
   })
 
-  return Array.from(uniqueParams).map((param) => ({
-    id: param,
-    field: param,
-    name: param.charAt(0).toUpperCase() + param.slice(1),
-    header: param.charAt(0).toUpperCase() + param.slice(1),
-    type: 'fixed' as const,
-    source: 'Parameters'
-  }))
+  return Array.from(uniqueParams).map((param) =>
+    createUserParameter({
+      id: param,
+      name: param.charAt(0).toUpperCase() + param.slice(1),
+      field: param,
+      header: param.charAt(0).toUpperCase() + param.slice(1),
+      type: 'fixed',
+      group: PARAMETER_SETTINGS.defaultGroup,
+      visible: true,
+      removable: true,
+      value: null,
+      metadata: {
+        source: PARAMETER_SETTINGS.systemGroup,
+        order: 0
+      }
+    })
+  )
 })
 
 // Event handlers
@@ -130,8 +137,8 @@ function handleColumnsUpdate(updates: {
   })
 }
 
-function handleTableUpdate(payload: { tableId: string; tableName: string }) {
-  debug.log(DebugCategories.TABLE_UPDATES, 'Table updated:', payload)
+function handleTableUpdate() {
+  debug.log(DebugCategories.TABLE_UPDATES, 'Table updated')
 }
 
 function handleColumnVisibilityChange(column: ColumnDef) {

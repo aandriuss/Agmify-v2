@@ -44,29 +44,13 @@
           ref="dataComponent"
           :schedule-data="scheduleData"
           :evaluated-data="evaluatedData"
-          :custom-parameters="customParameters"
-          :merged-table-columns="parentAvailableColumns"
-          :merged-detail-columns="childAvailableColumns"
+          :parameters="store.availableHeaders.value?.parent || []"
+          :parent-columns="parentAvailableColumns"
+          :child-columns="childAvailableColumns"
           :selected-parent-categories="selectedParentCategories"
           :selected-child-categories="selectedChildCategories"
           :is-initialized="isInitialized"
           @update:table-data="$emit('table-updated')"
-          @error="$emit('error', $event)"
-        />
-
-        <ScheduleParameterHandling
-          v-if="!isLoading"
-          ref="parameterComponent"
-          :schedule-data="scheduleData"
-          :custom-parameters="customParameters"
-          :selected-parent-categories="selectedParentCategories"
-          :selected-child-categories="selectedChildCategories"
-          :available-headers="processedHeaders"
-          :is-initialized="isInitialized"
-          @update:parameter-columns="$emit('update:parameter-columns')"
-          @update:evaluated-data="$emit('update:evaluated-data')"
-          @update:merged-parent-parameters="$emit('update:merged-parent-parameters')"
-          @update:merged-child-parameters="$emit('update:merged-child-parameters')"
           @error="$emit('error', $event)"
         />
 
@@ -100,10 +84,8 @@
           :table-data="tableData"
           :parent-elements="parentElements"
           :child-elements="childElements"
-          :parent-parameter-columns="parentAvailableColumns"
-          :child-parameter-columns="childAvailableColumns"
-          :available-parent-headers="availableParentHeaders"
-          :available-child-headers="availableChildHeaders"
+          :parent-columns="parentVisibleColumns"
+          :child-columns="childVisibleColumns"
           :is-test-mode="isTestMode"
           @update:is-test-mode="$emit('update:is-test-mode', $event)"
         />
@@ -118,19 +100,18 @@ import type {
   ElementData,
   TableRow,
   ColumnDef,
-  TableConfig,
-  CustomParameter,
-  AvailableHeaders
+  TableConfig
 } from '~/composables/core/types'
 import { ScheduleTableView } from './table'
 import ScheduleDataManagement from './ScheduleDataManagement.vue'
-import ScheduleParameterHandling from './ScheduleParameterHandling.vue'
 import ScheduleColumnManagement from './ScheduleColumnManagement.vue'
 import ScheduleParameterManagerModal from './ScheduleParameterManagerModal.vue'
 import DebugPanel from '../debug/DebugPanel.vue'
 import TestDataTable from './test/TestDataTable.vue'
+import { useStore } from '../core/store'
 
 const viewerContainer = ref<HTMLElement | null>(null)
+const store = useStore()
 
 defineProps({
   selectedTableId: {
@@ -221,28 +202,12 @@ defineProps({
     type: Boolean,
     default: false
   },
-  processedHeaders: {
-    type: Object as PropType<AvailableHeaders>,
-    default: () => ({ parent: [], child: [] })
-  },
-  customParameters: {
-    type: Array as PropType<CustomParameter[]>,
-    default: () => []
-  },
   parentElements: {
     type: Array as PropType<ElementData[]>,
     default: () => []
   },
   childElements: {
     type: Array as PropType<ElementData[]>,
-    default: () => []
-  },
-  availableParentHeaders: {
-    type: Array as PropType<ColumnDef[]>,
-    default: () => []
-  },
-  availableChildHeaders: {
-    type: Array as PropType<ColumnDef[]>,
     default: () => []
   },
   isTestMode: {
@@ -260,10 +225,6 @@ defineEmits<{
   'row-expand': [row: TableRow | ElementData]
   'row-collapse': [row: TableRow | ElementData]
   error: [err: Error | unknown]
-  'update:parameter-columns': []
-  'update:evaluated-data': []
-  'update:merged-parent-parameters': []
-  'update:merged-child-parameters': []
   'update:merged-table-columns': []
   'update:merged-detail-columns': []
   'column-order-change': []

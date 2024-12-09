@@ -1,5 +1,5 @@
 import type {
-  CustomParameter,
+  UserParameter,
   ElementData,
   ParameterValue
 } from '~/composables/core/types'
@@ -29,15 +29,14 @@ interface EvalContextType {
 }
 
 export function evaluateParameter(
-  parameter: CustomParameter,
-  allParameters: CustomParameter[],
+  parameter: UserParameter,
+  allParameters: UserParameter[],
   rowData: ElementData
 ): ParameterValue {
   try {
     // For fixed type parameters, return value as is
     if (parameter.type === 'fixed') {
-      const value = parameter.value || ''
-      return value
+      return parameter.value
     }
 
     // For equation type parameters, evaluate the equation
@@ -53,7 +52,7 @@ export function evaluateParameter(
           ...rowData,
           // Add values from other parameters
           ...allParameters.reduce((acc, param) => {
-            if (param.type === 'fixed' && param.value) {
+            if (param.type === 'fixed' && param.value !== null) {
               // Try to convert fixed values to numbers for equations
               const value = Number(param.value)
               if (!isNaN(value)) {
@@ -131,12 +130,12 @@ export function evaluateParameter(
       parameter,
       type: parameter.type
     })
-    return parameter.type === 'equation' ? NaN : ''
+    return parameter.type === 'equation' ? NaN : null
   } catch (error) {
     debug.error(DebugCategories.ERROR, 'Parameter evaluation error:', {
       parameter,
       error: error instanceof Error ? error.message : 'Unknown error'
     })
-    return parameter.type === 'equation' ? NaN : ''
+    return parameter.type === 'equation' ? NaN : null
   }
 }

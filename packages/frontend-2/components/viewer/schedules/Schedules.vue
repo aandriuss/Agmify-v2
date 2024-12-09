@@ -1,4 +1,3 @@
-<!-- Template section unchanged -->
 <template>
   <ScheduleLayout
     :selected-table-id="store.selectedTableId.value || ''"
@@ -95,8 +94,10 @@ import type {
   TableRow,
   ColumnDef,
   NamedTableConfig,
-  StoreState
+  StoreState,
+  UserParameter
 } from '~/composables/core/types'
+import { createUserParameter, isUserParameter } from '~/composables/core/types'
 import ScheduleLayout from './components/ScheduleLayout.vue'
 import ScheduleLoadingState from './components/ScheduleLoadingState.vue'
 import ScheduleMainView from './components/ScheduleMainView.vue'
@@ -313,85 +314,28 @@ const { processedHeaders } = useProcessedHeaders({
   headers: computed(() => store.availableHeaders.value)
 })
 
+// Helper function to safely get parameter ID
+function getParameterId(param: unknown): string | null {
+  if (
+    param &&
+    typeof param === 'object' &&
+    'id' in param &&
+    typeof param.id === 'string'
+  ) {
+    return param.id
+  }
+  return null
+}
+
 // Parameter handling - this will automatically update the store
 useUnifiedParameters({
   discoveredParameters: computed(
     () => store.availableHeaders.value || { parent: [], child: [] }
   ),
-  customParameters: computed(() => store.customParameters.value || [])
+  customParameters: computed<UserParameter[]>(
+    () => (store.customParameters.value as UserParameter[]) || []
+  )
 })
-
-// Helper to apply table settings to store
-async function applyTableSettings(tableId: string) {
-  try {
-    debug.startState(DebugCategories.INITIALIZATION, 'Applying table settings')
-
-    // Find table settings by ID from tablesState
-    const table = Object.values(tablesState.state.value?.tables || {}).find(
-      (t): t is NamedTableConfig => t.id === tableId
-    )
-
-    if (tableId === '') {
-      // Creating new table - keep current settings
-      debug.log(
-        DebugCategories.INITIALIZATION,
-        'Creating new table, keeping current settings'
-      )
-      await store.lifecycle.update({
-        selectedTableId: '',
-        currentTableId: '',
-        tableName: 'New Table',
-        currentTableColumns: store.currentTableColumns?.value || [],
-        currentDetailColumns: store.currentDetailColumns?.value || [],
-        mergedTableColumns: store.currentTableColumns?.value || [],
-        mergedDetailColumns: store.currentDetailColumns?.value || []
-      } as Partial<StoreState>)
-
-      // Keep current categories
-      await categories.loadCategories(
-        categories.selectedParentCategories.value || [],
-        categories.selectedChildCategories.value || []
-      )
-    } else if (table) {
-      // Loading existing table
-      await store.lifecycle.update({
-        selectedTableId: tableId,
-        currentTableId: tableId,
-        tableName: table.name,
-        currentTableColumns: table.parentColumns || [],
-        currentDetailColumns: table.childColumns || [],
-        mergedTableColumns: table.parentColumns || [],
-        mergedDetailColumns: table.childColumns || []
-      } as Partial<StoreState>)
-
-      // Update categories using new composable
-      await categories.loadCategories(
-        table.categoryFilters?.selectedParentCategories || [],
-        table.categoryFilters?.selectedChildCategories || []
-      )
-    } else {
-      // Fallback to default settings
-      await store.lifecycle.update({
-        selectedTableId: tableId,
-        currentTableId: tableId,
-        tableName: 'Default Table',
-        currentTableColumns: defaultTable.parentColumns || [],
-        currentDetailColumns: defaultTable.childColumns || [],
-        mergedTableColumns: defaultTable.parentColumns || [],
-        mergedDetailColumns: defaultTable.childColumns || []
-      } as Partial<StoreState>)
-
-      // Load default categories
-      await categories.loadCategories(
-        defaultTable.categoryFilters.selectedParentCategories || [],
-        defaultTable.categoryFilters.selectedChildCategories || []
-      )
-    }
-  } catch (error) {
-    debug.error(DebugCategories.ERROR, 'Error applying table settings:', error)
-    handleError(error)
-  }
-}
 
 // Computed properties for available headers with required ColumnDef properties
 const availableParentHeaders = computed<ColumnDef[]>(() => {
@@ -427,7 +371,10 @@ const parentElements = computed<ElementData[]>(() => {
   const data = store.scheduleData.value || []
   return data.filter(
     (el): el is ElementData =>
-      typeof el === 'object' && el !== null && 'isChild' in el && el.isChild === false
+      typeof el === 'object' &&
+      el !== null &&
+      'isChild' in el &&
+      (el as ElementData).isChild === false
   )
 })
 
@@ -435,7 +382,10 @@ const childElements = computed<ElementData[]>(() => {
   const data = store.scheduleData.value || []
   return data.filter(
     (el): el is ElementData =>
-      typeof el === 'object' && el !== null && 'isChild' in el && el.isChild === true
+      typeof el === 'object' &&
+      el !== null &&
+      'isChild' in el &&
+      (el as ElementData).isChild === true
   )
 })
 
@@ -610,19 +560,48 @@ async function handleParameterUpdate() {
       (t): t is NamedTableConfig => t.id === store.currentTableId.value
     )
 
+    if (!table) {
+      throw new Error('Table not found')
+    }
+
+    // Get existing parameters to preserve their types and values
+    const existingParams = store.customParameters.value || []
+    const existingParamMap = new Map(
+      existingParams
+        .map((param) => {
+          const id = getParameterId(param)
+          return id ? [id, param] : null
+        })
+        .filter(
+          (entry): entry is [string, UserParameter] =>
+            entry !== null && typeof entry[1] === 'object' && entry[1] !== null
+        )
+    )
+
     // Convert parameter IDs to UserParameter objects
-    const customParameters = (table?.selectedParameterIds || []).map((id) => ({
-      id,
-      kind: 'user' as const,
-      name: id,
-      type: 'fixed' as const,
-      group: 'Custom',
-      field: id,
-      visible: true,
-      header: id,
-      removable: true,
-      value: ''
-    }))
+    const customParameters = (table.selectedParameterIds || []).map(
+      (id): UserParameter => {
+        const existing = existingParamMap.get(id)
+
+        // If parameter exists and is a valid UserParameter, preserve it
+        if (existing && isUserParameter(existing)) {
+          return existing
+        }
+
+        // Create new parameter with default values
+        return createUserParameter({
+          id,
+          name: id,
+          field: id,
+          type: 'fixed',
+          group: 'Custom',
+          visible: true,
+          header: id,
+          removable: true,
+          value: null
+        })
+      }
+    )
 
     // Update store with parameters
     await store.lifecycle.update({
@@ -631,11 +610,126 @@ async function handleParameterUpdate() {
 
     debug.completeState(DebugCategories.PARAMETERS, 'Parameters updated', {
       parameterCount: customParameters.length,
-      tableId: store.currentTableId.value
+      tableId: store.currentTableId.value,
+      parameterTypes: customParameters.map((p) => p.type)
     })
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error updating parameters:', err)
     handleError(err)
+  }
+}
+
+// Update applyTableSettings to use the same safe parameter handling
+async function applyTableSettings(tableId: string) {
+  try {
+    debug.startState(DebugCategories.INITIALIZATION, 'Applying table settings')
+
+    // Find table settings by ID from tablesState
+    const table = Object.values(tablesState.state.value?.tables || {}).find(
+      (t): t is NamedTableConfig => t.id === tableId
+    )
+
+    if (tableId === '') {
+      // Creating new table - keep current settings
+      debug.log(
+        DebugCategories.INITIALIZATION,
+        'Creating new table, keeping current settings'
+      )
+      await store.lifecycle.update({
+        selectedTableId: '',
+        currentTableId: '',
+        tableName: 'New Table',
+        currentTableColumns: store.currentTableColumns?.value || [],
+        currentDetailColumns: store.currentDetailColumns?.value || [],
+        mergedTableColumns: store.currentTableColumns?.value || [],
+        mergedDetailColumns: store.currentDetailColumns?.value || [],
+        customParameters: [] // Reset custom parameters for new table
+      } as Partial<StoreState>)
+
+      // Keep current categories
+      await categories.loadCategories(
+        categories.selectedParentCategories.value || [],
+        categories.selectedChildCategories.value || []
+      )
+    } else if (table) {
+      // Get existing parameters to preserve their types and values
+      const existingParams = store.customParameters.value || []
+      const existingParamMap = new Map(
+        existingParams
+          .map((param) => {
+            const id = getParameterId(param)
+            return id ? [id, param] : null
+          })
+          .filter(
+            (entry): entry is [string, UserParameter] =>
+              entry !== null && typeof entry[1] === 'object' && entry[1] !== null
+          )
+      )
+
+      // Convert parameter IDs to UserParameter objects
+      const customParameters = (table.selectedParameterIds || []).map(
+        (id): UserParameter => {
+          const existing = existingParamMap.get(id)
+
+          // If parameter exists and is a valid UserParameter, preserve it
+          if (existing && isUserParameter(existing)) {
+            return existing
+          }
+
+          // Create new parameter with default values
+          return createUserParameter({
+            id,
+            name: id,
+            field: id,
+            type: 'fixed',
+            group: 'Custom',
+            visible: true,
+            header: id,
+            removable: true,
+            value: null
+          })
+        }
+      )
+
+      // Loading existing table
+      await store.lifecycle.update({
+        selectedTableId: tableId,
+        currentTableId: tableId,
+        tableName: table.name,
+        currentTableColumns: table.parentColumns || [],
+        currentDetailColumns: table.childColumns || [],
+        mergedTableColumns: table.parentColumns || [],
+        mergedDetailColumns: table.childColumns || [],
+        customParameters
+      } as Partial<StoreState>)
+
+      // Update categories using new composable
+      await categories.loadCategories(
+        table.categoryFilters?.selectedParentCategories || [],
+        table.categoryFilters?.selectedChildCategories || []
+      )
+    } else {
+      // Fallback to default settings
+      await store.lifecycle.update({
+        selectedTableId: tableId,
+        currentTableId: tableId,
+        tableName: 'Default Table',
+        currentTableColumns: defaultTable.parentColumns || [],
+        currentDetailColumns: defaultTable.childColumns || [],
+        mergedTableColumns: defaultTable.parentColumns || [],
+        mergedDetailColumns: defaultTable.childColumns || [],
+        customParameters: [] // Reset custom parameters for default table
+      } as Partial<StoreState>)
+
+      // Load default categories
+      await categories.loadCategories(
+        defaultTable.categoryFilters.selectedParentCategories || [],
+        defaultTable.categoryFilters.selectedChildCategories || []
+      )
+    }
+  } catch (error) {
+    debug.error(DebugCategories.ERROR, 'Error applying table settings:', error)
+    handleError(error)
   }
 }
 

@@ -1,17 +1,17 @@
 import { computed, ref, watch } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type {
-  CustomParameter,
+  UserParameter,
   ElementData,
   ParameterValue,
   ColumnDef
 } from '~/composables/core/types'
+import { PARAMETER_SETTINGS } from '~/composables/core/types'
 import { evaluateParameter } from '../utils/parameterEvaluation'
 import { debug, DebugCategories } from '../debug/useDebug'
-import { getParameterGroup } from '../config/parameters'
 
 interface UseParameterManagementOptions {
-  parameters: ComputedRef<CustomParameter[]> | Ref<CustomParameter[]>
+  parameters: ComputedRef<UserParameter[]> | Ref<UserParameter[]>
   data: ComputedRef<ElementData[]> | Ref<ElementData[]>
   isInitialized?: Ref<boolean>
 }
@@ -31,29 +31,28 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
       const field = `param_${param.id}`
       const isVisible = parameterVisibility.value[param.id] ?? true
 
-      // Get parameter group from raw data or use Parameters as default
-      const group = param.raw ? getParameterGroup(param.name, param.raw) : 'Parameters'
-
       return {
+        id: param.id,
         field,
-        header: param.name,
-        type: param.type === 'equation' ? 'number' : 'string', // Equations always return numbers
-        removable: param.removable ?? true,
+        name: param.name,
+        header: param.header,
+        type: param.type === 'equation' ? 'number' : 'string',
+        removable: param.removable,
         visible: isVisible,
-        order: param.order ?? index,
+        order: index,
         parameterRef: param.id,
-        category: param.category || 'Custom Parameters', // Element category
-        source: group, // Legacy support
-        fetchedGroup: param.fetchedGroup || group,
-        currentGroup: param.currentGroup || group,
-        isFetched: param.isFetched ?? false,
+        category: PARAMETER_SETTINGS.defaultGroup,
+        source: param.group,
+        currentGroup: param.group,
+        fetchedGroup: param.group,
         description:
           param.type === 'equation'
             ? `Equation: ${param.equation || ''}`
             : param.type === 'fixed'
             ? `Fixed value: ${param.value || ''}`
-            : `${group} > ${param.name}`,
-        color: param.color || 'purple'
+            : `${param.group} > ${param.name}`,
+        metadata: param.metadata,
+        color: param.metadata?.color as string | undefined
       }
     })
   })
@@ -63,7 +62,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
     const groups = new Map<string, ColumnDef[]>()
 
     parameterColumns.value.forEach((col) => {
-      const group = col.currentGroup || col.source || 'Parameters'
+      const group = col.currentGroup
       if (!groups.has(group)) {
         groups.set(group, [])
       }
@@ -90,13 +89,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
       debug.log(DebugCategories.PARAMETERS, 'Updated parameter visibility state:', {
         parameters: newParams.length,
         visibilityState: newVisibility,
-        groups: [
-          ...new Set(
-            newParams.map((p) =>
-              p.raw ? getParameterGroup(p.name, p.raw) : 'Parameters'
-            )
-          )
-        ]
+        groups: [...new Set(newParams.map((p) => p.group))]
       })
     }
   )
@@ -128,7 +121,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
             field,
             value,
             rowId: row.id,
-            group: param.raw ? getParameterGroup(param.name, param.raw) : 'Parameters'
+            group: param.group
           })
         } catch (error) {
           const field = `param_${param.id}`
@@ -137,7 +130,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
             parameter: param.name,
             field,
             rowId: row.id,
-            group: param.raw ? getParameterGroup(param.name, param.raw) : 'Parameters',
+            group: param.group,
             error: error instanceof Error ? error.message : 'Unknown error'
           })
         }
@@ -167,9 +160,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
                   value,
                   childId: child.id,
                   parentId: row.id,
-                  group: param.raw
-                    ? getParameterGroup(param.name, param.raw)
-                    : 'Parameters'
+                  group: param.group
                 })
               } catch (error) {
                 const field = `param_${param.id}`
@@ -182,9 +173,7 @@ export function useParameterManagement(options: UseParameterManagementOptions) {
                     field,
                     childId: child.id,
                     parentId: row.id,
-                    group: param.raw
-                      ? getParameterGroup(param.name, param.raw)
-                      : 'Parameters',
+                    group: param.group,
                     error: error instanceof Error ? error.message : 'Unknown error'
                   }
                 )

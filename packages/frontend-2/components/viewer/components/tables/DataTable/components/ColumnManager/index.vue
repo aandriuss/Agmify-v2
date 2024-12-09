@@ -133,8 +133,7 @@ import Button from 'primevue/button'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import TabSelector from './TabSelector.vue'
 import EnhancedColumnList from './shared/EnhancedColumnList.vue'
-import type { ColumnDef } from '~/composables/core/types/tables'
-import type { Parameter } from '~/composables/core/types/parameters'
+import type { ColumnDef, Parameter } from '~/composables/core/types'
 import { useColumnManager } from '~/components/viewer/components/tables/DataTable/composables/columns/useColumnManager'
 
 // Helper to determine if item is a Parameter

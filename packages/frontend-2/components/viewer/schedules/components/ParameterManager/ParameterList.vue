@@ -225,15 +225,20 @@ import {
   PlusIcon,
   TrashIcon
 } from '@heroicons/vue/24/solid'
-import type { CustomParameter } from '~/composables/core/types'
+import type {
+  UserParameter,
+  UserValueType,
+  ParameterValue
+} from '~/composables/core/types'
+import { PARAMETER_SETTINGS } from '~/composables/core/types'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 
 const props = defineProps<{
   groupName: string
-  parameters: CustomParameter[]
+  parameters: UserParameter[]
   showAddButton?: boolean
-  getCurrentValue: (parameter: CustomParameter) => string
+  getCurrentValue: (parameter: UserParameter) => string
   getUsedInTables: (parameterId: string) => string
   isAddingNew?: boolean
   availableTables: Array<{ id: string; name: string }>
@@ -241,17 +246,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'add'): void
-  (e: 'edit', parameter: CustomParameter): void
-  (e: 'delete', parameter: CustomParameter): void
-  (e: 'add-to-tables', parameter: CustomParameter): void
-  (e: 'remove-from-table', parameter: CustomParameter, tableName: string): void
-  (e: 'update', parameter: CustomParameter): void
-  (e: 'create', parameter: Omit<CustomParameter, 'id'>): void
+  (e: 'edit', parameter: UserParameter): void
+  (e: 'delete', parameter: UserParameter): void
+  (e: 'add-to-tables', parameter: UserParameter): void
+  (e: 'remove-from-table', parameter: UserParameter, tableName: string): void
+  (e: 'update', parameter: UserParameter): void
+  (e: 'create', parameter: Omit<UserParameter, 'id'>): void
   (e: 'cancel-add'): void
 }>()
 
 const isExpanded = ref(true)
-const editingParameter = ref<CustomParameter | null>(null)
+const editingParameter = ref<UserParameter | null>(null)
 const editForm = ref({
   name: '',
   value: '',
@@ -271,7 +276,7 @@ const sortedParameters = computed(() => {
   return [...props.parameters].sort((a, b) => a.name.localeCompare(b.name))
 })
 
-function detectType(value: string): 'fixed' | 'equation' {
+function detectType(value: string): UserValueType {
   const trimmedValue = value.trim()
   // Check if it's a valid number (including decimals)
   const isNumeric =
@@ -281,14 +286,14 @@ function detectType(value: string): 'fixed' | 'equation' {
   return isNumeric ? 'fixed' : 'equation'
 }
 
-function validateValue(value: string, type: 'fixed' | 'equation'): boolean {
+function validateValue(value: string, type: UserValueType): boolean {
   if (type === 'fixed') {
     return !isNaN(Number(value)) && value.trim() !== ''
   }
   return value.trim() !== ''
 }
 
-function startEdit(parameter: CustomParameter) {
+function startEdit(parameter: UserParameter) {
   editingParameter.value = parameter
   editForm.value = {
     name: parameter.name,
@@ -296,7 +301,7 @@ function startEdit(parameter: CustomParameter) {
       parameter.type === 'fixed'
         ? parameter.value?.toString() || ''
         : parameter.equation?.toString() || '',
-    group: parameter.group?.toString() || '',
+    group: parameter.group || '',
     equation: parameter.equation?.toString() || ''
   }
 }
@@ -312,38 +317,47 @@ function handleCreateNew() {
   const type = detectType(newParameterForm.value.value)
   if (!validateValue(newParameterForm.value.value, type)) return
 
+  const value = type === 'fixed' ? newParameterForm.value.value.trim() : null
+  const equation = type === 'equation' ? newParameterForm.value.value.trim() : undefined
+
   const newParameter = {
     name: newParameterForm.value.name.trim(),
     type,
-    value: type === 'fixed' ? newParameterForm.value.value.trim() : undefined,
-    equation: type === 'equation' ? newParameterForm.value.value.trim() : undefined,
+    value: value as ParameterValue,
+    equation,
     group: newParameterForm.value.group.trim() || props.groupName,
-    field: newParameterForm.value.name.trim(),
+    field: newParameterForm.value.name.trim().toLowerCase().replace(/\s+/g, '_'),
     header: newParameterForm.value.name.trim(),
-    category: 'Custom Parameters',
     visible: true,
     removable: true,
-    order: 0
+    kind: 'user' as const,
+    metadata: {
+      source: PARAMETER_SETTINGS.systemGroup,
+      order: 0
+    }
   }
 
   emit('create', newParameter)
   newParameterForm.value = { name: '', value: '', group: '' }
 }
 
-function handleSave(originalParameter: CustomParameter) {
+function handleSave(originalParameter: UserParameter) {
   if (!editForm.value.name.trim()) return
 
   const type = detectType(editForm.value.value)
   if (!validateValue(editForm.value.value, type)) return
 
-  const updatedParameter: CustomParameter = {
+  const value = type === 'fixed' ? editForm.value.value.trim() : null
+  const equation = type === 'equation' ? editForm.value.value.trim() : undefined
+
+  const updatedParameter = {
     ...originalParameter,
     name: editForm.value.name.trim(),
     type,
-    value: type === 'fixed' ? editForm.value.value.trim() : undefined,
-    equation: type === 'equation' ? editForm.value.value.trim() : undefined,
+    value: value as ParameterValue,
+    equation,
     group: editForm.value.group.trim() || originalParameter.group,
-    field: editForm.value.name.trim(),
+    field: editForm.value.name.trim().toLowerCase().replace(/\s+/g, '_'),
     header: editForm.value.name.trim()
   }
 
@@ -351,11 +365,11 @@ function handleSave(originalParameter: CustomParameter) {
   cancelEdit()
 }
 
-function handleDelete(parameter: CustomParameter) {
+function handleDelete(parameter: UserParameter) {
   emit('delete', parameter)
 }
 
-function handleRemoveFromTable(parameter: CustomParameter, tableName: string) {
+function handleRemoveFromTable(parameter: UserParameter, tableName: string) {
   emit('remove-from-table', parameter, tableName)
 }
 </script>

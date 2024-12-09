@@ -1,5 +1,5 @@
 import type { TableRow } from '~/composables/core/types'
-import { createParameterValueState } from '~/composables/core/types/parameters'
+import { createParameterValueState } from '~/composables/core/types'
 
 // Create dummy table rows
 export const dummyTableRows: TableRow[] = [

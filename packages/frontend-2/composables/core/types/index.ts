@@ -22,7 +22,6 @@ export type {
 
   // Collections and State
   ParameterCollection,
-  ParameterTableMapping,
   ParameterState
 } from './parameters'
 
@@ -40,8 +39,12 @@ export {
   createParameterValueState,
 
   // Parameter Operations
-  getParameterGroup
+  getParameterGroup,
+  convertBimToUserType,
+  PARAMETER_SETTINGS
 } from './parameters'
+
+export type { ElementState, ElementGroup, ElementData } from './elements'
 
 // GraphQL types
 export type {
@@ -100,7 +103,6 @@ export { createColumnDef, createTableConfig } from '../utils/tables'
 
 // Data types
 export type {
-  ElementData,
   TableRow,
   ElementsProcessingState,
   ElementsDataReturn,
@@ -178,3 +180,6 @@ export {
   validateWorldTreeStructure,
   validateElementDataArray
 } from './validators'
+
+// Mappings
+export type { ParameterMappings, ParameterTableMapping } from './mappings'
