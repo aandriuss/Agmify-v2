@@ -1,4 +1,4 @@
-import type { BaseTableRow } from '../../core/tables/DataTable/types'
+import type { BaseTableRow } from '../../tables/DataTable/types'
 
 export interface ScheduleRow extends BaseTableRow {
   name: string

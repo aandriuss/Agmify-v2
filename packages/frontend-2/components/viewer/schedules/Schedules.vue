@@ -79,7 +79,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { isEqual } from 'lodash-es'
-import { useDebug, DebugCategories } from './debug/useDebug'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from './core/store'
 import { useProcessedHeaders } from './composables/useProcessedHeaders'
 import { useElementsData } from './composables/useElementsData'

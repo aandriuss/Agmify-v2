@@ -11,6 +11,9 @@ export type {
   ValidationResult
 } from './value-types'
 
+// Export BimValueType as ParameterValueType for backward compatibility
+export type { BimValueType as ParameterValueType } from './value-types'
+
 /**
  * Re-export parameter types
  */
@@ -20,7 +23,12 @@ export type {
   UserParameter,
   Parameter,
   ParameterCollection,
-  ParameterState
+  ParameterState,
+  EvaluatedParameter,
+  CreateParameterInput,
+  ParameterValueState,
+  createBimParameterWithDefaults,
+  createUserParameterWithDefaults
 } from './parameter-types'
 
 /**

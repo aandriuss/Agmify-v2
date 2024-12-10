@@ -60,7 +60,7 @@ import type {
   TableRow,
   ElementData
 } from '~/composables/core/types'
-import { useDebug, DebugCategories } from '../../../debug/useDebug'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '../../../core/store'
 
 // Import local components

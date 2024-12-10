@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import type { ColumnDef, Parameter } from '~/composables/core/types'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import {
   getParameterGroup,
   isBimParameter,

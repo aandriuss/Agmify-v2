@@ -1,4 +1,4 @@
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useParameterMappingsState } from './useParameterMappingsState'
 import type { ParameterMappings, ParameterTableMapping } from '~/composables/core/types'
 

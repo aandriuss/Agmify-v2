@@ -116,79 +116,92 @@ interface TableState {
 }
 ```
 
-## 5. Proposed Organization
+## 5. Current Organization
 
-### Core (Shared) Components
+### Core Parameter System
 
 ```
 frontend-2/
-└── components/
+└── composables/
     └── core/
-        ├── tables/
-        │   ├── DataTable/
-        │   └── ColumnManager/
-        └── parameters/
-            ├── ParameterManager/
-            └── shared/
+        ├── parameters/
+        │   ├── useParametersState.ts     # State management
+        │   ├── useParameterOperations.ts # CRUD operations
+        │   ├── useParameterEvaluation.ts # Value evaluation
+        │   ├── useParameterForm.ts       # Form handling
+        │   ├── useParameterGroups.ts     # Group management
+        │   ├── useParameterUtils.ts      # Utility functions
+        │   ├── useParameters.ts          # Main functionality
+        │   ├── constants.ts              # Fixed parameters
+        │   └── index.ts                  # Clean exports
+        └── tables/
+            ├── useTableSelection.ts      # Table selection
+            ├── useParameterColumns.ts    # Column conversion
+            └── index.ts                  # Table exports
 ```
 
 ### Viewer-Specific Components
 
 ```
 frontend-2/
-└── components/
-    └── viewer/
-        ├── schedules/
-        │   └── components/
-        └── parameters/
-            └── BimParameters/
-```
-
-### Composables Structure
-
-```
-frontend-2/
 └── composables/
-    ├── core/
-    │   ├── tables/
-    │   │   ├── useTableState.ts
-    │   │   └── useTableOperations.ts
-    │   └── parameters/
-    │       ├── useParameterMappings.ts
-    │       └── useParameterOperations.ts
     └── viewer/
         └── parameters/
-            └── useBimParameters.ts
+            ├── useBIMParameters.ts     # BIM parameter handling
+            ├── useParameterMapping.ts  # Parameter mapping
+            └── index.ts               # Viewer exports
 ```
 
-## 6. Key Interactions
+## 6. Key Features
 
-1. Parameter Discovery:
+### Error Handling
 
-   - Raw data analyzed for parameters
-   - BIM parameters automatically discovered
-   - User parameters manually defined
-   - Parameters categorized and grouped
+Each module includes dedicated error types:
 
-2. Parameter Processing:
+```typescript
+export class ParameterOperationError extends Error {}
+export class ParameterEvaluationError extends Error {}
+export class ParameterFormError extends Error {}
+export class ParameterGroupError extends Error {}
+export class ParameterUtilsError extends Error {}
+export class TableSelectionError extends Error {}
+```
 
-   - Parameters validated and normalized
-   - Values processed according to type
-   - Equations evaluated for user parameters
-   - Results cached for performance
+### Debug Logging
 
-3. Table Integration:
+Comprehensive debug logging using categories:
 
-   - Parameters mapped to columns
-   - Column definitions generated
-   - Data processed for display
-   - State updates managed
+```typescript
+enum DebugCategories {
+  PARAMETERS = 'parameters',
+  PARAMETER_VALIDATION = 'parameter-validation',
+  PARAMETER_UPDATES = 'parameter-updates',
+  TABLE_DATA = 'table-data',
+  TABLE_UPDATES = 'table-updates',
+  TABLE_VALIDATION = 'table-validation'
+}
+```
 
-4. State Management:
-   - Parameter state centrally managed
-   - Table state synchronized
-   - Changes persisted via GraphQL
-   - UI updates triggered
+### Parameter Constants
+
+Fixed parameter definitions:
+
+```typescript
+export const PARAMETER_CATEGORIES = {
+  CLASSIFICATION: 'Classification',
+  DIMENSIONS: 'Dimensions',
+  CUSTOM: 'Custom'
+} as const
+
+export const PARAMETER_TYPES = {
+  STRING: 'string',
+  NUMBER: 'number',
+  BOOLEAN: 'boolean',
+  DATE: 'date',
+  OBJECT: 'object',
+  ARRAY: 'array'
+} as const
+```
 
 ## 7. Implementation Considerations
 
@@ -214,7 +227,21 @@ frontend-2/
    - State management modular
 
 4. Maintainability:
+
    - Clear component boundaries
    - Documented interfaces
    - Testable units
    - Consistent patterns
+
+5. Error Handling:
+
+   - Dedicated error types per module
+   - Consistent error propagation
+   - Error recovery strategies
+   - User-friendly error messages
+
+6. Debugging:
+   - Comprehensive debug logging
+   - State tracking
+   - Performance monitoring
+   - Error tracing

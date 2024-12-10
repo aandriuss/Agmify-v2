@@ -5,7 +5,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   ElementData,
   Parameter,

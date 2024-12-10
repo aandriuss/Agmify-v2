@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { useStore } from '../core/store'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   TableConfig,
   ScheduleInitializationInstance

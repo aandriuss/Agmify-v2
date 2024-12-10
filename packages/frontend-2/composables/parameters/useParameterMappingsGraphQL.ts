@@ -1,6 +1,6 @@
 import { useMutation, useQuery, provideApolloClient } from '@vue/apollo-composable'
 import { gql } from 'graphql-tag'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { ParameterMappings } from '~/composables/core/types'
 import { useNuxtApp } from '#app'
 

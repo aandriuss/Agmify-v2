@@ -3,7 +3,11 @@
     <!-- Parameter Groups Section -->
     <div class="mb-6">
       <h3 class="text-lg font-medium mb-3">Parameter Groups</h3>
-      <ParameterGroupList :groups="parameterGroups" @row-click="handleParameterClick" />
+      <ParameterGroupList
+        :groups="parameterGroups"
+        :is-loading="isLoading"
+        @row-click="handleParameterClick"
+      />
     </div>
 
     <!-- Category Filter Section -->
@@ -12,6 +16,7 @@
       <CategoryFilter
         :categories="availableCategories"
         :selected-categories="selectedCategories"
+        :is-loading="isLoading"
         @update:selected-categories="handleCategoryUpdate"
       />
     </div>
@@ -21,6 +26,7 @@
       <FormButton
         v-if="canCreateParameters"
         color="primary"
+        :disabled="isLoading"
         @click="$emit('create-parameter')"
       >
         Create Parameter
@@ -28,6 +34,7 @@
       <FormButton
         v-if="hasSelectedParameters"
         color="outline"
+        :disabled="isLoading"
         @click="$emit('edit-parameters')"
       >
         Edit Selected
@@ -37,7 +44,11 @@
     <!-- Error Display -->
     <div v-if="error" class="mt-4 p-4 bg-red-50 text-red-600 rounded">
       {{ error.message }}
-      <button class="ml-2 text-sm underline hover:text-red-700" @click="handleRetry">
+      <button
+        class="ml-2 text-sm underline hover:text-red-700"
+        :disabled="isLoading"
+        @click="handleRetry"
+      >
         Retry
       </button>
     </div>
@@ -49,20 +60,21 @@ import { ref, computed } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import CategoryFilter from './CategoryFilter.vue'
 import ParameterGroupList from './ParameterGroupList.vue'
-import type { ScheduleRow } from '../types'
-import { TableError } from '../../../core/tables/DataTable/utils'
+import type { Parameter } from '~/composables/core/types/parameters'
+import { TableError } from '~/components/tables/DataTable/utils'
 
 interface Props {
-  parameterGroups: Map<string, ScheduleRow[]>
+  parameterGroups: Map<string, Parameter[]>
   availableCategories: string[]
   selectedCategories: string[]
   canCreateParameters?: boolean
-  selectedParameters?: ScheduleRow[]
+  selectedParameters?: Parameter[]
+  isLoading?: boolean
 }
 
 interface Emits {
   (e: 'update:selected-categories', categories: string[]): void
-  (e: 'parameter-click', parameter: ScheduleRow): void
+  (e: 'parameter-click', parameter: Parameter): void
   (e: 'create-parameter'): void
   (e: 'edit-parameters'): void
   (e: 'error', error: TableError): void
@@ -71,7 +83,8 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   canCreateParameters: false,
-  selectedParameters: () => []
+  selectedParameters: () => [],
+  isLoading: false
 })
 
 const emit = defineEmits<Emits>()
@@ -96,7 +109,7 @@ function handleCategoryUpdate(categories: string[]): void {
   }
 }
 
-function handleParameterClick(parameter: ScheduleRow): void {
+function handleParameterClick(parameter: Parameter): void {
   try {
     emit('parameter-click', parameter)
   } catch (err) {

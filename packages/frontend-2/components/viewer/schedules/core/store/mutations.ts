@@ -5,9 +5,9 @@ import type {
   TableRow,
   ProcessedHeader,
   ColumnDef,
-  CustomParameter
+  UserParameter
 } from '~/composables/core/types'
-import { useDebug, DebugCategories } from '../../debug/useDebug'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 
 // Initialize debug
 const debug = useDebug()
@@ -30,7 +30,7 @@ export function createMutations(state: Ref<StoreState>) {
       state.value.tableData = [...data]
     },
 
-    setCustomParameters(params: CustomParameter[]) {
+    setCustomParameters(params: UserParameter[]) {
       state.value.customParameters = [...params]
     },
 
@@ -46,10 +46,7 @@ export function createMutations(state: Ref<StoreState>) {
       state.value.childParameterColumns = [...columns]
     },
 
-    setMergedParameters(
-      parentParams: CustomParameter[],
-      childParams: CustomParameter[]
-    ) {
+    setMergedParameters(parentParams: UserParameter[], childParams: UserParameter[]) {
       state.value.mergedParentParameters = [...parentParams]
       state.value.mergedChildParameters = [...childParams]
     },

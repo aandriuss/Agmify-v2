@@ -1,6 +1,6 @@
 import { ref, watch, computed } from 'vue'
 import { useNuxtApp } from '#app'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useParametersGraphQL } from './useParametersGraphQL'
 import { useUpdateQueue } from '../settings/useUpdateQueue'
 import type { Parameter, ParameterTableMapping } from '~/composables/core/types'

@@ -1,6 +1,6 @@
 import type { ComputedRef, Ref } from 'vue'
 import type { Viewer } from '@speckle/viewer'
-import type { ElementData, TableRow } from '../data'
+import type { ElementData, TableRow } from '~/composables/core/types'
 import type { UserParameter, Parameter } from '../parameters'
 import type { AvailableHeaders } from '../viewer'
 import type { ColumnDef } from '../tables'
@@ -69,7 +69,7 @@ export interface StoreState {
   tableData: TableRow[]
 
   // Parameters
-  customParameters: UserParameter[]
+  userParameters: UserParameter[] // Changed from customParameters
   parameterColumns: ColumnDef[] // Keep for backward compatibility
   parentParameterColumns: ColumnDef[] // Parent-specific parameters
   childParameterColumns: ColumnDef[] // Child-specific parameters
@@ -122,7 +122,7 @@ export interface StoreMutations {
   setTableData: (data: TableRow[]) => void
 
   // Parameter mutations
-  setCustomParameters: (params: UserParameter[]) => void
+  setUserParameters: (params: UserParameter[]) => void // Changed from setCustomParameters
   setParameterColumns: (columns: ColumnDef[]) => void
   setParentParameterColumns: (columns: ColumnDef[]) => void
   setChildParameterColumns: (columns: ColumnDef[]) => void
@@ -186,7 +186,7 @@ export interface Store {
   scheduleData: ComputedRef<ElementData[]>
   evaluatedData: ComputedRef<ElementData[]>
   tableData: ComputedRef<TableRow[]>
-  customParameters: ComputedRef<UserParameter[]>
+  userParameters: ComputedRef<UserParameter[]> // Changed from customParameters
   parameterColumns: ComputedRef<ColumnDef[]>
   parentParameterColumns: ComputedRef<ColumnDef[]>
   childParameterColumns: ComputedRef<ColumnDef[]>
@@ -222,7 +222,7 @@ export interface Store {
   setScheduleData: (data: ElementData[]) => void
   setEvaluatedData: (data: ElementData[]) => void
   setTableData: (data: TableRow[]) => void
-  setCustomParameters: (params: UserParameter[]) => void
+  setUserParameters: (params: UserParameter[]) => void // Changed from setCustomParameters
   setParameterColumns: (columns: ColumnDef[]) => void
   setParentParameterColumns: (columns: ColumnDef[]) => void
   setChildParameterColumns: (columns: ColumnDef[]) => void

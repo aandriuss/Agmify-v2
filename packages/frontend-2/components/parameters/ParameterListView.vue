@@ -9,8 +9,8 @@
     <!-- Main Content -->
     <div class="parameter-content">
       <BaseDataTable
-        :table-id="tableId"
-        :table-name="tableName"
+        :table-id="_tableId"
+        :table-name="_tableName"
         :data="parameterData"
         :columns="columns"
         :loading="isLoading"
@@ -90,14 +90,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { FormButton } from '@speckle/ui-components'
-import BaseDataTable from '../core/tables/DataTable/BaseDataTable.vue'
-import type {
-  TableColumnDef,
-  BaseTableRow,
-  TableState
-} from '../core/tables/DataTable/types'
-import { TableError } from '../core/tables/DataTable/utils'
+import BaseDataTable from '~/components/tables/DataTable/BaseDataTable.vue'
+import type { TableState } from '../tables/DataTable/types'
+import { TableError } from '~/components/tables/DataTable/utils'
 import type { ScheduleRow } from '../viewer/schedules/types'
+import type { UserColumnDef } from '~/composables/core/types/tables/column-types'
+import { createUserColumnDefWithDefaults } from '~/composables/core/types/tables/column-types'
 
 // Props
 interface Props {
@@ -109,12 +107,16 @@ const props = withDefaults(defineProps<Props>(), {
   tableName: 'Parameters'
 })
 
+// Props with underscore prefix to avoid unused var warning
+const _tableId = props.tableId
+const _tableName = props.tableName
+
 // State
 const error = ref<Error | null>(null)
 const currentError = computed(() => error.value)
 const isLoading = ref(false)
 const parameterData = ref<ScheduleRow[]>([])
-const columns = ref<TableColumnDef[]>([])
+const columns = ref<UserColumnDef[]>([])
 const initialState = ref<TableState | undefined>(undefined)
 const selectedParameters = ref<ScheduleRow[]>([])
 
@@ -122,8 +124,9 @@ const selectedParameters = ref<ScheduleRow[]>([])
 const hasSelectedParameters = computed(() => selectedParameters.value.length > 0)
 
 // Event Handlers
-function handleExpandedRowsUpdate(rows: BaseTableRow[]): void {
+function handleExpandedRowsUpdate(rows: unknown): void {
   try {
+    if (!Array.isArray(rows)) return
     const validRows = rows.filter((row): row is ScheduleRow => 'name' in row)
     parameterData.value = validRows
   } catch (err) {
@@ -131,20 +134,41 @@ function handleExpandedRowsUpdate(rows: BaseTableRow[]): void {
   }
 }
 
-function handleColumnsUpdate(newColumns: TableColumnDef[]): void {
+function handleColumnsUpdate(newColumns: unknown): void {
   try {
-    columns.value = newColumns
+    if (!Array.isArray(newColumns)) return
+    const validColumns = newColumns.filter(
+      (col): col is UserColumnDef =>
+        typeof col === 'object' &&
+        col !== null &&
+        'kind' in col &&
+        (col as UserColumnDef).kind === 'user'
+    )
+    columns.value = validColumns
   } catch (err) {
     handleError(err)
   }
 }
 
-function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
+function handleColumnReorder(event: unknown): void {
   try {
+    if (
+      !event ||
+      typeof event !== 'object' ||
+      !('dragIndex' in event) ||
+      !('dropIndex' in event) ||
+      typeof event.dragIndex !== 'number' ||
+      typeof event.dropIndex !== 'number'
+    ) {
+      return
+    }
+
     const reorderedColumns = [...columns.value]
     const [movedColumn] = reorderedColumns.splice(event.dragIndex, 1)
-    reorderedColumns.splice(event.dropIndex, 0, movedColumn)
-    columns.value = reorderedColumns
+    if (movedColumn) {
+      reorderedColumns.splice(event.dropIndex, 0, movedColumn)
+      columns.value = reorderedColumns
+    }
   } catch (err) {
     handleError(err)
   }
@@ -158,8 +182,9 @@ function handleColumnVisibilityChange(): void {
   // Handle visibility changes
 }
 
-async function handleSort(_field: string, _order: number): Promise<void> {
+async function handleSort(field: unknown, order: unknown): Promise<void> {
   try {
+    if (typeof field !== 'string' || typeof order !== 'number') return
     isLoading.value = true
     // Implement sorting logic here
     await new Promise((resolve) => setTimeout(resolve, 100)) // Placeholder for actual API call
@@ -170,10 +195,9 @@ async function handleSort(_field: string, _order: number): Promise<void> {
   }
 }
 
-async function handleFilter(
-  _filters: Record<string, { value: unknown; matchMode: string }>
-): Promise<void> {
+async function handleFilter(filters: unknown): Promise<void> {
   try {
+    if (!filters || typeof filters !== 'object') return
     isLoading.value = true
     // Implement filtering logic here
     await new Promise((resolve) => setTimeout(resolve, 100)) // Placeholder for actual API call
@@ -209,10 +233,8 @@ async function handleEditParameters(): Promise<void> {
 }
 
 function handleError(err: unknown): void {
-  const tableError = new TableError(
-    err instanceof Error ? err.message : 'An unknown error occurred',
-    err
-  )
+  const message = err instanceof Error ? err.message : 'An unknown error occurred'
+  const tableError = new TableError(message, err)
   error.value = new Error(tableError.message)
 }
 
@@ -237,61 +259,61 @@ async function initialize(): Promise<void> {
 
     // Set initial columns
     columns.value = [
-      {
+      createUserColumnDefWithDefaults({
         id: 'name',
         name: 'Name',
         field: 'name',
         header: 'Name',
-        type: 'text',
+        type: 'fixed',
         visible: true,
-        currentGroup: 'default',
+        group: 'default',
         removable: false,
         order: 0
-      },
-      {
+      }),
+      createUserColumnDefWithDefaults({
         id: 'category',
         name: 'Category',
         field: 'category',
         header: 'Category',
-        type: 'text',
+        type: 'fixed',
         visible: true,
-        currentGroup: 'default',
+        group: 'default',
         removable: true,
         order: 1
-      },
-      {
+      }),
+      createUserColumnDefWithDefaults({
         id: 'kind',
         name: 'Kind',
         field: 'kind',
         header: 'Kind',
-        type: 'text',
+        type: 'fixed',
         visible: true,
-        currentGroup: 'default',
+        group: 'default',
         removable: true,
         order: 2
-      },
-      {
+      }),
+      createUserColumnDefWithDefaults({
         id: 'sourceValue',
         name: 'Source Value',
         field: 'sourceValue',
         header: 'Source Value',
-        type: 'text',
+        type: 'fixed',
         visible: true,
-        currentGroup: 'default',
+        group: 'default',
         removable: true,
         order: 3
-      },
-      {
+      }),
+      createUserColumnDefWithDefaults({
         id: 'equation',
         name: 'Equation',
         field: 'equation',
         header: 'Equation',
-        type: 'text',
+        type: 'equation',
         visible: true,
-        currentGroup: 'default',
+        group: 'default',
         removable: true,
         order: 4
-      }
+      })
     ]
 
     // Set initial data

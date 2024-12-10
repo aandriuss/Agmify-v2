@@ -2,7 +2,7 @@ import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type { ColumnDef } from '~/composables/core/types'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 interface UseMergedColumnsOptions {
   currentTableColumns: ComputedRef<ColumnDef[]>

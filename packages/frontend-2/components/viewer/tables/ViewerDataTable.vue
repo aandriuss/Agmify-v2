@@ -3,23 +3,25 @@
     <BaseDataTable
       :table-id="tableId"
       :table-name="tableName"
-      :data="data"
-      :columns="columns"
-      :detail-columns="detailColumns"
-      :loading="loading"
+      :data="tableState.rows.value"
+      :columns="tableState.columns.value"
+      :detail-columns="tableState.detailColumns.value"
+      :loading="tableState.isLoading.value"
+      :error="error"
       :initial-state="initialState"
-      @[`update:expanded-rows`]="(e: unknown[]) => handleExpandedRowsUpdate(e)"
-      @[`update:columns`]="(e: unknown[]) => handleColumnsUpdate(e)"
-      @[`update:detail-columns`]="(e: unknown[]) => handleDetailColumnsUpdate(e)"
-      @[`update:both-columns`]="(e: unknown) => handleBothColumnsUpdate(e)"
-      @column-reorder="(e: unknown) => handleColumnReorder(e)"
-      @row-expand="(e: unknown) => handleRowExpand(e)"
-      @row-collapse="(e: unknown) => handleRowCollapse(e)"
+      @update:expanded-rows="handleExpandedRowsUpdate"
+      @update:columns="handleColumnsUpdate"
+      @update:detail-columns="handleDetailColumnsUpdate"
+      @update:both-columns="handleBothColumnsUpdate"
+      @column-reorder="handleColumnReorder"
+      @row-expand="handleRowExpand"
+      @row-collapse="handleRowCollapse"
       @table-updated="$emit('table-updated')"
       @column-visibility-change="$emit('column-visibility-change')"
-      @sort="(e: unknown) => handleSort(e as DataTableSortEvent)"
-      @filter="(e: unknown) => handleFilter(e as DataTableFilterEvent)"
+      @sort="handleSort"
+      @filter="handleFilter"
       @error="handleError"
+      @retry="handleRetry"
     >
       <template #empty>
         <slot name="empty">
@@ -42,10 +44,10 @@
       </template>
 
       <template #error>
-        <slot name="error" :error="currentError">
+        <slot name="error" :error="error">
           <div class="p-4 text-center text-red-500">
             <div class="flex flex-col items-center gap-2">
-              <span>{{ currentError?.message || 'An error occurred' }}</span>
+              <span>{{ error?.message || 'An error occurred' }}</span>
               <button
                 class="text-sm text-primary-600 hover:text-primary-700"
                 @click="handleRetry"
@@ -61,211 +63,257 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import BaseDataTable from '../../core/tables/DataTable/BaseDataTable.vue'
-import type {
-  TableColumnDef,
-  BaseTableRow,
-  TableProps
-} from '../../core/tables/DataTable/types'
-import { TableError } from '../../core/tables/DataTable/utils'
+import { ref, onBeforeUnmount } from 'vue'
+import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
+import type { ColumnDef, ViewerTableRow } from '~/composables/core/types'
+import type { TableProps } from '~/components/tables/DataTable/types'
+import { useViewerTableState } from '~/composables/core/tables'
+import { TableStateError } from '~/composables/core/types/errors'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { DataTableSortEvent, DataTableFilterEvent } from 'primevue/datatable'
-import { useViewerTable } from '~/composables/tables/useViewerTable'
 
 // Props
-const props = defineProps<TableProps>()
+const props = defineProps<TableProps<ViewerTableRow>>()
 
 // Emits
 const emit = defineEmits<{
-  'update:expanded-rows': [rows: BaseTableRow[]]
-  'update:columns': [columns: TableColumnDef[]]
-  'update:detail-columns': [columns: TableColumnDef[]]
+  'update:expanded-rows': [rows: ViewerTableRow[]]
+  'update:columns': [columns: ColumnDef[]]
+  'update:detail-columns': [columns: ColumnDef[]]
   'update:both-columns': [
-    updates: { parentColumns: TableColumnDef[]; childColumns: TableColumnDef[] }
+    updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
   ]
   'column-reorder': [event: { dragIndex: number; dropIndex: number }]
-  'row-expand': [row: BaseTableRow]
-  'row-collapse': [row: BaseTableRow]
+  'row-expand': [row: ViewerTableRow]
+  'row-collapse': [row: ViewerTableRow]
   'table-updated': []
   'column-visibility-change': []
   sort: [field: string, order: number]
   filter: [filters: Record<string, { value: unknown; matchMode: string }>]
-  error: [error: TableError]
+  error: [error: Error]
   retry: []
 }>()
 
-// State
+// Error state
 const error = ref<Error | null>(null)
-const currentError = computed(() => error.value)
 
-// Initialize viewer table
-const { expandRow, collapseRow, updateSort, updateFilters, reset } = useViewerTable({
+// Initialize viewer table state
+const tableState = useViewerTableState({
   tableId: props.tableId,
-  initialParentColumns: props.columns,
-  initialChildColumns: props.detailColumns || [],
-  onError: (err: TableError) => {
-    error.value = new Error(err.message)
-    emit('error', err)
-  }
+  initialState: props.initialState,
+  onError: (err) => {
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Table state error')
+    error.value = tableError
+    emit('error', tableError)
+  },
+  onUpdate: () => emit('table-updated')
 })
 
-// Type Guards
-function isBaseTableRow(value: unknown): value is BaseTableRow {
-  return value !== null && typeof value === 'object' && 'id' in value
-}
-
-function isTableColumnDef(value: unknown): value is TableColumnDef {
-  return (
-    value !== null && typeof value === 'object' && 'id' in value && 'field' in value
-  )
-}
+// Initialize elements
+tableState.initializeElements().catch((err) => {
+  const tableError =
+    err instanceof Error
+      ? new TableStateError(err.message, err)
+      : new TableStateError('Failed to initialize viewer table')
+  error.value = tableError
+  emit('error', tableError)
+  debug.error(DebugCategories.ERROR, 'Failed to initialize viewer table:', err)
+})
 
 // Event Handlers
-function handleExpandedRowsUpdate(rows: unknown[]): void {
-  const validRows = rows.filter(isBaseTableRow)
-  emit('update:expanded-rows', validRows)
-}
-
-function handleColumnsUpdate(columns: unknown[]): void {
-  const validColumns = columns.filter(isTableColumnDef)
-  emit('update:columns', validColumns)
-}
-
-function handleDetailColumnsUpdate(columns: unknown[]): void {
-  const validColumns = columns.filter(isTableColumnDef)
-  emit('update:detail-columns', validColumns)
-}
-
-function handleBothColumnsUpdate(updates: unknown): void {
-  if (
-    updates &&
-    typeof updates === 'object' &&
-    'parentColumns' in updates &&
-    'childColumns' in updates
-  ) {
-    const { parentColumns, childColumns } = updates as {
-      parentColumns: unknown[]
-      childColumns: unknown[]
-    }
-    emit('update:both-columns', {
-      parentColumns: parentColumns.filter(isTableColumnDef),
-      childColumns: childColumns.filter(isTableColumnDef)
-    })
-  }
-}
-
-function handleColumnReorder(event: unknown): void {
-  if (
-    event &&
-    typeof event === 'object' &&
-    'dragIndex' in event &&
-    'dropIndex' in event &&
-    typeof (event as { dragIndex: number }).dragIndex === 'number' &&
-    typeof (event as { dropIndex: number }).dropIndex === 'number'
-  ) {
-    const { dragIndex, dropIndex } = event as { dragIndex: number; dropIndex: number }
-    emit('column-reorder', { dragIndex, dropIndex })
-  }
-}
-
-async function handleRowExpand(row: unknown): Promise<void> {
+function handleExpandedRowsUpdate(rows: ViewerTableRow[]): void {
   try {
-    if (isBaseTableRow(row)) {
-      await expandRow(row)
-      emit('row-expand', row)
-    }
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Updating expanded rows')
+    emit('update:expanded-rows', rows)
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Expanded rows updated')
   } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to expand row',
-      err
-    )
-    error.value = new Error(tableError.message)
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to update expanded rows')
+    error.value = tableError
     emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to update expanded rows:', err)
   }
 }
 
-async function handleRowCollapse(row: unknown): Promise<void> {
+function handleColumnsUpdate(columns: ColumnDef[]): void {
   try {
-    if (isBaseTableRow(row)) {
-      await collapseRow(row)
-      emit('row-collapse', row)
-    }
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Updating columns')
+    tableState.updateColumns(columns)
+    emit('update:columns', columns)
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Columns updated')
   } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to collapse row',
-      err
-    )
-    error.value = new Error(tableError.message)
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to update columns')
+    error.value = tableError
     emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to update columns:', err)
+  }
+}
+
+function handleDetailColumnsUpdate(columns: ColumnDef[]): void {
+  try {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Updating detail columns')
+    tableState.updateDetailColumns(columns)
+    emit('update:detail-columns', columns)
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Detail columns updated')
+  } catch (err) {
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to update detail columns')
+    error.value = tableError
+    emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to update detail columns:', err)
+  }
+}
+
+function handleBothColumnsUpdate(updates: {
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+}): void {
+  try {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Updating both columns')
+    tableState.updateColumns(updates.parentColumns)
+    tableState.updateDetailColumns(updates.childColumns)
+    emit('update:both-columns', updates)
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Both columns updated')
+  } catch (err) {
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to update both columns')
+    error.value = tableError
+    emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to update both columns:', err)
+  }
+}
+
+function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
+  try {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Reordering columns')
+    emit('column-reorder', event)
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Columns reordered')
+  } catch (err) {
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to reorder columns')
+    error.value = tableError
+    emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to reorder columns:', err)
+  }
+}
+
+function handleRowExpand(row: ViewerTableRow): void {
+  try {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Expanding row')
+    emit('row-expand', row)
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Row expanded')
+  } catch (err) {
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to expand row')
+    error.value = tableError
+    emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to expand row:', err)
+  }
+}
+
+function handleRowCollapse(row: ViewerTableRow): void {
+  try {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Collapsing row')
+    emit('row-collapse', row)
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Row collapsed')
+  } catch (err) {
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to collapse row')
+    error.value = tableError
+    emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to collapse row:', err)
   }
 }
 
 function handleSort(event: DataTableSortEvent): void {
   try {
-    if (
-      event &&
-      typeof event === 'object' &&
-      'sortField' in event &&
-      'sortOrder' in event &&
-      typeof event.sortField === 'string' &&
-      typeof event.sortOrder === 'number'
-    ) {
-      updateSort(event.sortField, event.sortOrder)
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Updating sort')
+    if (typeof event.sortField === 'string' && typeof event.sortOrder === 'number') {
+      tableState.updateSort(event.sortField, event.sortOrder)
       emit('sort', event.sortField, event.sortOrder)
     }
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Sort updated')
   } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to update sort',
-      err
-    )
-    error.value = new Error(tableError.message)
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to update sort')
+    error.value = tableError
     emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to update sort:', err)
   }
 }
 
 function handleFilter(event: DataTableFilterEvent): void {
   try {
-    if (event && typeof event === 'object' && 'filters' in event) {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Updating filters')
+    if (event.filters && typeof event.filters === 'object') {
       const filters = event.filters as Record<
         string,
         { value: unknown; matchMode: string }
       >
-      updateFilters(filters)
+      tableState.updateFilters(filters)
       emit('filter', filters)
     }
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Filters updated')
   } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to update filters',
-      err
-    )
-    error.value = new Error(tableError.message)
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to update filters')
+    error.value = tableError
     emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to update filters:', err)
   }
 }
 
-function handleError(err: unknown): void {
-  const tableError = new TableError(
-    err instanceof Error ? err.message : 'An unknown error occurred',
-    err
-  )
-  error.value = new Error(tableError.message)
-  emit('error', tableError)
+function handleError(err: Error): void {
+  error.value = err
+  emit('error', err)
+  debug.error(DebugCategories.ERROR, 'Table error:', err)
 }
 
 async function handleRetry(): Promise<void> {
   try {
+    debug.startState(DebugCategories.TABLE_UPDATES, 'Retrying initialization')
     error.value = null
-    await reset()
+    await tableState.initializeElements()
     emit('retry')
+    debug.completeState(DebugCategories.TABLE_UPDATES, 'Initialization retried')
   } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to retry operation',
-      err
-    )
-    error.value = new Error(tableError.message)
+    const tableError =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Failed to retry operation')
+    error.value = tableError
     emit('error', tableError)
+    debug.error(DebugCategories.ERROR, 'Failed to retry initialization:', err)
   }
 }
+
+// Cleanup
+onBeforeUnmount(() => {
+  debug.log(DebugCategories.STATE, 'Cleaning up viewer table')
+  tableState.cleanup()
+})
 </script>
 
 <style scoped>

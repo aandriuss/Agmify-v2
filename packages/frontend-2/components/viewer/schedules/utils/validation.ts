@@ -6,7 +6,7 @@ import type {
   BIMNodeRaw,
   BIMNodeValue
 } from '~/composables/core/types'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export class ValidationError extends Error {
   constructor(message: string, public details?: unknown) {

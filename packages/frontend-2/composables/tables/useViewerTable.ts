@@ -1,16 +1,16 @@
 import { ref, computed } from 'vue'
 import type {
-  TableColumnDef,
+  ColumnDef,
   BaseTableRow,
   TableState
-} from '../../components/core/tables/DataTable/types'
+} from '../../components/tables/DataTable/types'
 import type { DataTableFilterMeta } from 'primevue/datatable'
-import { TableError } from '../../components/core/tables/DataTable/utils'
+import { TableError } from '~/components/tables/DataTable/utils'
 
 interface UseViewerTableOptions {
   tableId: string
-  initialParentColumns: TableColumnDef[]
-  initialChildColumns: TableColumnDef[]
+  initialParentColumns: ColumnDef[]
+  initialChildColumns: ColumnDef[]
   onError?: (error: TableError) => void
 }
 
@@ -18,8 +18,8 @@ export function useViewerTable(options: UseViewerTableOptions) {
   // State
   const isLoading = ref(false)
   const error = ref<Error | null>(null)
-  const parentColumns = ref<TableColumnDef[]>([...options.initialParentColumns])
-  const childColumns = ref<TableColumnDef[]>([...options.initialChildColumns])
+  const parentColumns = ref<ColumnDef[]>([...options.initialParentColumns])
+  const childColumns = ref<ColumnDef[]>([...options.initialChildColumns])
   const expandedRows = ref<BaseTableRow[]>([])
   const isColumnManagerOpen = ref(false)
   const sortField = ref<string | undefined>(undefined)
@@ -45,8 +45,8 @@ export function useViewerTable(options: UseViewerTableOptions) {
 
   // Column Operations
   function updateColumns(updates: {
-    parentColumns: TableColumnDef[]
-    childColumns: TableColumnDef[]
+    parentColumns: ColumnDef[]
+    childColumns: ColumnDef[]
   }): void {
     try {
       isLoading.value = true

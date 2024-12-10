@@ -61,11 +61,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import type { LayoutDialogButton } from '@speckle/ui-components'
-import { useParameterOperations } from '~/composables/parameters/useParameterOperations'
-import { useParameterGroups } from '~/composables/parameters/useParameterGroups'
-import { useParameterEvaluation } from '~/composables/parameters/useParameterEvaluation'
-import { useParametersState } from '~/composables/parameters/useParametersState'
-import { useTableSelection } from '~/composables/parameters/useTableSelection'
+import { useParameterOperations } from '~/composables/core/parameters/useParameterOperations'
+import { useParameterGroups } from '~/composables/core/parameters/useParameterGroups'
+import { useParameterEvaluation } from '~/composables/core/parameters/useParameterEvaluation'
+import { useParametersState } from '~/composables/core/parameters/useParametersState'
+import { useTableSelection } from '~/composables/core/tables/useTableSelection'
 import { useParameterMappingOperations } from '~/composables/parameters/useParameterMappingOperations'
 import type { UserParameter } from '~/composables/core/types'
 

@@ -5,7 +5,7 @@ import {
   defaultColumns,
   defaultDetailColumns
 } from '~/components/viewer/schedules/config/defaultColumns'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export interface UseColumnStateOptions {
   tableId: string

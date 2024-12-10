@@ -1,30 +1,35 @@
 <template>
   <div class="flex-1 border rounded flex flex-col">
     <EnhancedColumnList
-      :items="parameters"
+      :items="filteredParameters"
       mode="available"
       :search-term="searchTerm"
       :is-grouped="isGrouped"
       :sort-by="sortBy"
+      show-filter-options
       @update:search-term="$emit('update:searchTerm', $event)"
       @update:is-grouped="$emit('update:isGrouped', $event)"
-      @update:sort-by="$emit('update:sortBy', $event)"
-      @remove="handleRemove"
+      @update:sort-by="handleSortChange"
       @add="handleAdd"
+      @remove="handleRemove"
+      @drag-start="handleDragStart"
+      @drag-end="handleDragEnd"
+      @drag-enter="handleDragEnter"
+      @drop="handleDrop"
+      @visibility-change="handleVisibilityChange"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-
-import type { ParameterDefinition } from '../../../composables/types'
-import { useParameterFiltering } from '../../../../../parameters/composables/useParameterFiltering'
-
+import type { ColumnDef } from '~/composables/core/types/tables'
+import type { Parameter } from '~/composables/core/types/parameters/parameter-types'
+import { useParameterFiltering } from '~/composables/parameters/useParameterFiltering'
 import EnhancedColumnList from '../shared/EnhancedColumnList.vue'
 
 const props = defineProps<{
-  parameters: ParameterDefinition[]
+  parameters: ColumnDef[]
   searchTerm: string
   isGrouped: boolean
   sortBy: 'name' | 'category' | 'type' | 'fixed'
@@ -35,60 +40,67 @@ const emit = defineEmits<{
   'update:searchTerm': [value: string]
   'update:isGrouped': [value: boolean]
   'update:sortBy': [value: 'name' | 'category' | 'type' | 'fixed']
-  add: [param: ParameterDefinition]
-  'drag-start': [event: DragEvent, param: ParameterDefinition]
+  add: [param: ColumnDef]
+  'drag-start': [event: DragEvent, param: ColumnDef]
 }>()
 
-const { filteredParameters, groupedParameters } = useParameterFiltering({
+const { filteredParameters } = useParameterFiltering({
   parameters: props.parameters,
   searchTerm: computed(() => props.searchTerm),
   isGrouped: computed(() => props.isGrouped),
   sortBy: computed(() => props.sortBy)
 })
 
-// Local state with two-way binding
-const localSearchTerm = computed({
-  get: () => props.searchTerm,
-  set: (value) => emit('update:searchTerm', value)
-})
+// Methods
+const handleAdd = (item: ColumnDef | Parameter) => {
+  if (!isParameterActive(item) && 'field' in item) {
+    emit('add', item as ColumnDef)
+  }
+}
 
-const localIsGrouped = computed({
-  get: () => props.isGrouped,
-  set: (value) => emit('update:isGrouped', value)
-})
+const handleRemove = (_item: ColumnDef | Parameter) => {
+  // No-op for available columns
+}
 
-const localSortBy = computed({
-  get: () => props.sortBy,
-  set: (value) => emit('update:sortBy', value)
-})
+const handleDragStart = (
+  event: DragEvent,
+  item: ColumnDef | Parameter,
+  _index: number
+) => {
+  if ('field' in item) {
+    emit('drag-start', event, item as ColumnDef)
+  }
+}
 
-// Sort options
-const sortOptions = [
-  { value: 'name', label: 'Name' },
-  { value: 'category', label: 'Category' },
-  { value: 'type', label: 'Type' },
-  { value: 'fixed', label: 'Fixed First' }
-]
+const handleDragEnd = () => {
+  // No-op for available columns
+}
+
+const handleDragEnter = (_event: DragEvent, _index: number) => {
+  // No-op for available columns
+}
+
+const handleDrop = (_event: DragEvent, _index: number) => {
+  // No-op for available columns
+}
+
+const handleVisibilityChange = (_item: ColumnDef | Parameter, _visible: boolean) => {
+  // No-op for available columns
+}
+
+const handleSortChange = (value: string) => {
+  if (
+    value === 'name' ||
+    value === 'category' ||
+    value === 'type' ||
+    value === 'fixed'
+  ) {
+    emit('update:sortBy', value)
+  }
+}
 
 // Computed properties
-const hasFilters = computed(() => {
-  return (
-    localSearchTerm.value || localSortBy.value !== 'category' || !localIsGrouped.value
-  )
-})
-
-// Methods
-const toggleGrouping = () => {
-  localIsGrouped.value = !localIsGrouped.value
-}
-
-const clearFilters = () => {
-  localSearchTerm.value = ''
-  localSortBy.value = 'category'
-  localIsGrouped.value = true
-}
-
-const isParameterActive = (param: ParameterDefinition) => {
-  return props.activeColumns.some((col) => col.field === param.field)
+const isParameterActive = (item: ColumnDef | Parameter) => {
+  return 'field' in item && props.activeColumns.some((col) => col.field === item.field)
 }
 </script>

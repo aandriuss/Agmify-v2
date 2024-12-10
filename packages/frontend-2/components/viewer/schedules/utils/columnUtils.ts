@@ -1,5 +1,5 @@
 import type { ColumnDef } from '~/composables/core/types'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 /**
  * Merge columns while preserving order and settings.

@@ -101,7 +101,7 @@ import {
   XMarkIcon,
   ArrowDownTrayIcon
 } from '@heroicons/vue/24/solid'
-import { useDebug, DebugCategories } from '../debug/useDebug'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 
 const debug = useDebug()
 

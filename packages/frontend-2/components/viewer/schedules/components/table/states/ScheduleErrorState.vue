@@ -29,7 +29,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 interface Props {
   error: Error

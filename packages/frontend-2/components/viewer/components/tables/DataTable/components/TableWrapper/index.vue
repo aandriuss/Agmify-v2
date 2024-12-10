@@ -128,7 +128,7 @@ import type {
   DataTableExpandedRows
 } from 'primevue/datatable'
 import type { ColumnDef, TableRow, ElementData } from '~/composables/core/types'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 interface Props {
   data: (TableRow | ElementData)[]

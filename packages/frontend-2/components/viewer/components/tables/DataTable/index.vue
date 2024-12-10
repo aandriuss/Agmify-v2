@@ -88,7 +88,7 @@ import type {
   ElementData,
   TableRow
 } from '~/composables/core/types'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   DataTableColumnReorderEvent,
   DataTableFilterMeta,

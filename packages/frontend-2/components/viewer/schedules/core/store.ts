@@ -8,7 +8,7 @@ import type {
   ColumnDef,
   CustomParameter
 } from '~/composables/core/types'
-import { useDebug, DebugCategories } from '../debug/useDebug'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 
 // Initialize debug

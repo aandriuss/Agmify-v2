@@ -6,7 +6,7 @@ import type {
   Parameters,
   ColumnDef
 } from '~/composables/core/types'
-import { useDebug, DebugCategories } from '../debug/useDebug'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
 import { createColumnsFromParameters, mergeColumns } from './columnUtils'
 

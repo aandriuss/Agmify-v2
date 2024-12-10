@@ -4,7 +4,7 @@ import type {
   TableRow,
   ElementData
 } from '~/composables/core/types'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export function safeJSONClone<T>(obj: T): T {
   const jsonString = JSON.stringify(obj)

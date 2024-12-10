@@ -11,8 +11,8 @@
     <!-- Main Content -->
     <div class="schedule-content">
       <ScheduleTable
-        :table-id="tableId"
-        :table-name="tableName"
+        :table-id="_tableId"
+        :table-name="_tableName"
         :data="scheduleData"
         :columns="columns"
         :detail-columns="detailColumns"
@@ -52,14 +52,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import ScheduleTable from './ScheduleTable.vue'
-import type {
-  TableColumnDef,
-  BaseTableRow,
-  TableState
-} from '../../core/tables/DataTable/types'
-import { TableError } from '../../core/tables/DataTable/utils'
+import type { TableState } from '../../tables/DataTable/types'
+import { TableError } from '~/components/tables/DataTable/utils'
 import type { ScheduleRow } from './types'
 import { useScheduleTable } from './composables/useScheduleTable'
+import type { BimColumnDef } from '~/composables/core/types/tables/column-types'
+import { createBimColumnDefWithDefaults } from '~/composables/core/types/tables/column-types'
+import type { SortEvent } from '~/composables/core/types/events/table-events'
 
 // Props
 interface Props {
@@ -71,17 +70,21 @@ const props = withDefaults(defineProps<Props>(), {
   tableName: 'Schedule'
 })
 
+// Props with underscore prefix to avoid unused var warning
+const _tableId = props.tableId
+const _tableName = props.tableName
+
 // State
 const error = ref<Error | null>(null)
 const isLoading = ref(false)
 const scheduleData = ref<ScheduleRow[]>([])
-const columns = ref<TableColumnDef[]>([])
-const detailColumns = ref<TableColumnDef[]>([])
+const columns = ref<BimColumnDef[]>([])
+const detailColumns = ref<BimColumnDef[]>([])
 const initialState = ref<TableState | undefined>(undefined)
 
 // Initialize schedule table
 const { expandRow, collapseRow, reset } = useScheduleTable({
-  tableId: props.tableId,
+  tableId: _tableId,
   initialParentColumns: columns.value,
   initialChildColumns: detailColumns.value,
   onError: (err: TableError) => {
@@ -90,12 +93,12 @@ const { expandRow, collapseRow, reset } = useScheduleTable({
 })
 
 // Event Handlers
-async function handleExpandedRowsUpdate(rows: BaseTableRow[]): Promise<void> {
+async function handleExpandedRowsUpdate(rows: unknown): Promise<void> {
   try {
+    if (!Array.isArray(rows)) return
     const validRows = rows.filter((row): row is ScheduleRow => 'name' in row)
     await Promise.all(
       validRows.map(async (row) => {
-        // Perform any async operations needed for each row
         await expandRow(row)
       })
     )
@@ -105,48 +108,103 @@ async function handleExpandedRowsUpdate(rows: BaseTableRow[]): Promise<void> {
   }
 }
 
-function handleColumnsUpdate(newColumns: TableColumnDef[]): void {
+function handleColumnsUpdate(newColumns: unknown): void {
   try {
-    columns.value = newColumns
+    if (!Array.isArray(newColumns)) return
+    const validColumns = newColumns.filter(
+      (col): col is BimColumnDef =>
+        typeof col === 'object' && col !== null && (col as BimColumnDef).kind === 'bim'
+    )
+    columns.value = validColumns
   } catch (err) {
     handleError(err)
   }
 }
 
-function handleDetailColumnsUpdate(newColumns: TableColumnDef[]): void {
+function handleDetailColumnsUpdate(newColumns: unknown): void {
   try {
-    detailColumns.value = newColumns
+    if (!Array.isArray(newColumns)) return
+    const validColumns = newColumns.filter(
+      (col): col is BimColumnDef =>
+        typeof col === 'object' &&
+        col !== null &&
+        'kind' in col &&
+        (col as { kind: string }).kind === 'bim'
+    )
+    detailColumns.value = validColumns
   } catch (err) {
     handleError(err)
   }
 }
 
-function handleBothColumnsUpdate(updates: {
-  parentColumns: TableColumnDef[]
-  childColumns: TableColumnDef[]
-}): void {
+interface ColumnUpdates {
+  parentColumns: unknown[]
+  childColumns: unknown[]
+}
+
+function handleBothColumnsUpdate(updates: unknown): void {
   try {
-    columns.value = updates.parentColumns
-    detailColumns.value = updates.childColumns
+    // Type guard for ColumnUpdates
+    function isColumnUpdates(value: unknown): value is ColumnUpdates {
+      return (
+        typeof value === 'object' &&
+        value !== null &&
+        'parentColumns' in value &&
+        'childColumns' in value &&
+        Array.isArray((value as ColumnUpdates).parentColumns) &&
+        Array.isArray((value as ColumnUpdates).childColumns)
+      )
+    }
+
+    // Type guard for BimColumnDef
+    function isBimColumnDef(value: unknown): value is BimColumnDef {
+      return (
+        typeof value === 'object' &&
+        value !== null &&
+        'kind' in value &&
+        (value as BimColumnDef).kind === 'bim'
+      )
+    }
+
+    if (!isColumnUpdates(updates)) return
+
+    const validParentColumns = updates.parentColumns.filter(isBimColumnDef)
+    const validChildColumns = updates.childColumns.filter(isBimColumnDef)
+
+    columns.value = validParentColumns
+    detailColumns.value = validChildColumns
   } catch (err) {
     handleError(err)
   }
 }
 
-function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
+function handleColumnReorder(event: unknown): void {
   try {
+    if (
+      !event ||
+      typeof event !== 'object' ||
+      !('dragIndex' in event) ||
+      !('dropIndex' in event) ||
+      typeof event.dragIndex !== 'number' ||
+      typeof event.dropIndex !== 'number'
+    ) {
+      return
+    }
+
     const reorderedColumns = [...columns.value]
     const [movedColumn] = reorderedColumns.splice(event.dragIndex, 1)
-    reorderedColumns.splice(event.dropIndex, 0, movedColumn)
-    columns.value = reorderedColumns
+    if (movedColumn) {
+      reorderedColumns.splice(event.dropIndex, 0, movedColumn)
+      columns.value = reorderedColumns
+    }
   } catch (err) {
     handleError(err)
   }
 }
 
-async function handleRowExpand(row: BaseTableRow): Promise<void> {
+async function handleRowExpand(row: unknown): Promise<void> {
   try {
-    if ('name' in row) {
+    if (typeof row === 'object' && row !== null && 'name' in row) {
       await expandRow(row as ScheduleRow)
     }
   } catch (err) {
@@ -154,9 +212,9 @@ async function handleRowExpand(row: BaseTableRow): Promise<void> {
   }
 }
 
-async function handleRowCollapse(row: BaseTableRow): Promise<void> {
+async function handleRowCollapse(row: unknown): Promise<void> {
   try {
-    if ('name' in row) {
+    if (typeof row === 'object' && row !== null && 'name' in row) {
       await collapseRow(row as ScheduleRow)
     }
   } catch (err) {
@@ -172,10 +230,24 @@ function handleColumnVisibilityChange(): void {
   // Emit event to parent if needed
 }
 
-async function handleSort(_field: string, _order: number): Promise<void> {
+async function handleSort(event: unknown): Promise<void> {
   try {
+    // Type guard for SortEvent
+    function isSortEvent(value: unknown): value is SortEvent {
+      return (
+        typeof value === 'object' &&
+        value !== null &&
+        'field' in value &&
+        'order' in value &&
+        typeof (value as SortEvent).field === 'string' &&
+        typeof (value as SortEvent).order === 'number'
+      )
+    }
+
+    if (!isSortEvent(event)) return
+
     isLoading.value = true
-    // Implement sorting logic here
+    // Implement sorting logic here using event.field and event.order
     await new Promise((resolve) => setTimeout(resolve, 100)) // Placeholder for actual API call
   } catch (err) {
     handleError(err)
@@ -184,10 +256,9 @@ async function handleSort(_field: string, _order: number): Promise<void> {
   }
 }
 
-async function handleFilter(
-  _filters: Record<string, { value: unknown; matchMode: string }>
-): Promise<void> {
+async function handleFilter(filters: unknown): Promise<void> {
   try {
+    if (!filters || typeof filters !== 'object') return
     isLoading.value = true
     // Implement filtering logic here
     await new Promise((resolve) => setTimeout(resolve, 100)) // Placeholder for actual API call
@@ -223,10 +294,8 @@ async function handleEditParameters(): Promise<void> {
 }
 
 function handleError(err: unknown): void {
-  const tableError = new TableError(
-    err instanceof Error ? err.message : 'An unknown error occurred',
-    err
-  )
+  const message = err instanceof Error ? err.message : 'An unknown error occurred'
+  const tableError = new TableError(message, err)
   error.value = new Error(tableError.message)
 }
 
@@ -252,65 +321,75 @@ async function initialize(): Promise<void> {
 
     // Set initial columns
     columns.value = [
-      {
+      createBimColumnDefWithDefaults({
         id: 'name',
         name: 'Name',
         field: 'name',
         header: 'Name',
-        type: 'text',
+        type: 'string',
         visible: true,
+        sourceValue: null,
+        fetchedGroup: 'default',
         currentGroup: 'default',
         removable: false,
         order: 0
-      },
-      {
+      }),
+      createBimColumnDefWithDefaults({
         id: 'category',
         name: 'Category',
         field: 'category',
         header: 'Category',
-        type: 'text',
+        type: 'string',
         visible: true,
+        sourceValue: null,
+        fetchedGroup: 'default',
         currentGroup: 'default',
         removable: true,
         order: 1
-      },
-      {
+      }),
+      createBimColumnDefWithDefaults({
         id: 'kind',
         name: 'Kind',
         field: 'kind',
         header: 'Kind',
-        type: 'text',
+        type: 'string',
         visible: true,
+        sourceValue: null,
+        fetchedGroup: 'default',
         currentGroup: 'default',
         removable: true,
         order: 2
-      }
+      })
     ]
 
     // Set initial detail columns
     detailColumns.value = [
-      {
+      createBimColumnDefWithDefaults({
         id: 'sourceValue',
         name: 'Source Value',
         field: 'sourceValue',
         header: 'Source Value',
-        type: 'text',
+        type: 'string',
         visible: true,
+        sourceValue: null,
+        fetchedGroup: 'details',
         currentGroup: 'details',
         removable: true,
         order: 0
-      },
-      {
+      }),
+      createBimColumnDefWithDefaults({
         id: 'equation',
         name: 'Equation',
         field: 'equation',
         header: 'Equation',
-        type: 'text',
+        type: 'string',
         visible: true,
+        sourceValue: null,
+        fetchedGroup: 'details',
         currentGroup: 'details',
         removable: true,
         order: 1
-      }
+      })
     ]
 
     // Set initial data

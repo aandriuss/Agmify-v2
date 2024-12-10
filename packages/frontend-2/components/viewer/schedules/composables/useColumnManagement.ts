@@ -1,4 +1,4 @@
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { ColumnDef, UserParameter } from '~/composables/core/types'
 
 interface ColumnManagementOptions {

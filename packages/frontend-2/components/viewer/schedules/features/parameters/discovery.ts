@@ -5,7 +5,7 @@ import type {
   BIMNodeRaw,
   PrimitiveValue
 } from '~/composables/core/types'
-import { debug, DebugCategories } from '../../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { getParameterGroup } from '../../config/parameters'
 import { createBimParameter } from '~/composables/core/types'
 

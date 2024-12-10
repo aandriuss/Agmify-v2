@@ -4,7 +4,7 @@ import type {
   Parameter,
   ParameterValue
 } from '~/composables/core/types'
-import { debug, DebugCategories } from '../../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import {
   createParameterValueState,
   isEquationValue,

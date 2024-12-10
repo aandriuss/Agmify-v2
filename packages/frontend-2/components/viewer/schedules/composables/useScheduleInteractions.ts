@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 import type { Ref } from 'vue'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   ColumnDef,
   NamedTableConfig,

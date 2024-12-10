@@ -1,5 +1,6 @@
 <template>
-  <div
+  <button
+    type="button"
     class="column-list-item group"
     :class="{
       'is-dragging': isDragging,
@@ -21,7 +22,10 @@
           v-if="mode === 'active'"
           class="pi pi-bars text-gray-400 cursor-move opacity-0 group-hover:opacity-100 transition-opacity"
         />
-        <ParameterBadge v-if="column" :parameter="column" />
+        <ParameterBadge
+          v-if="column"
+          :parameter="isParameter(column) ? column : columnDefToParameter(column)"
+        />
       </div>
 
       <!-- Right side with action buttons -->
@@ -34,19 +38,19 @@
           severity="primary"
           size="small"
           class="opacity-0 group-hover:opacity-100 transition-opacity"
-          @click="$emit('add', column as Parameter)"
+          @click="handleAdd"
         />
 
         <!-- Remove button and visibility toggle for active items -->
         <template v-if="mode === 'active'">
           <Button
-            v-if="column?.removable"
+            v-if="isColumnDef(column) && column.removable"
             icon="pi pi-arrow-left"
             text
             severity="danger"
             size="small"
             class="opacity-0 group-hover:opacity-100 transition-opacity"
-            @click="$emit('remove', column as ColumnDef)"
+            @click="handleRemove"
           />
           <Checkbox
             v-model="isVisible"
@@ -56,7 +60,7 @@
         </template>
       </div>
     </div>
-  </div>
+  </button>
 </template>
 
 <script setup lang="ts">
@@ -65,6 +69,10 @@ import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import ParameterBadge from '~/components/parameters/ParameterBadge.vue'
 import type { ColumnDef, Parameter } from '~/composables/core/types'
+import {
+  columnDefToParameter,
+  isParameter
+} from '~/composables/parameters/useParameterConversion'
 
 interface Props {
   column: ColumnDef | Parameter
@@ -91,15 +99,35 @@ const emit = defineEmits<{
   drop: [event: DragEvent, index: number]
 }>()
 
+function isColumnDef(value: ColumnDef | Parameter): value is ColumnDef {
+  return 'visible' in value && 'removable' in value
+}
+
 // Local state
 const isVisible = computed({
-  get: () => (props.column as ColumnDef)?.visible ?? true,
+  get: () => (isColumnDef(props.column) ? props.column.visible : true),
   set: (value: boolean) => {
-    emit('visibility-change', props.column as ColumnDef, value)
+    if (isColumnDef(props.column)) {
+      emit('visibility-change', props.column, value)
+    }
   }
 })
 
-// Drag event handlers
+// Event handlers
+function handleAdd() {
+  if (isParameter(props.column)) {
+    emit('add', props.column)
+  } else {
+    emit('add', columnDefToParameter(props.column))
+  }
+}
+
+function handleRemove() {
+  if (isColumnDef(props.column)) {
+    emit('remove', props.column)
+  }
+}
+
 function handleDragStart(event: DragEvent) {
   if (!event.dataTransfer) return
 
@@ -124,13 +152,18 @@ function handleDrop(event: DragEvent) {
 }
 
 function handleVisibilityChange() {
-  emit('visibility-change', props.column as ColumnDef, isVisible.value)
+  if (isColumnDef(props.column)) {
+    emit('visibility-change', props.column, isVisible.value)
+  }
 }
 </script>
 
 <style scoped>
 .column-list-item {
   @apply relative flex items-center rounded transition-colors duration-200 cursor-grab active:cursor-grabbing;
+  @apply w-full text-left;
+
+  user-select: none;
 }
 
 .column-list-item:hover:not(.is-dragging) {
@@ -152,12 +185,5 @@ function handleVisibilityChange() {
 
 .drop-position-above::before {
   @apply -top-px;
-}
-
-[draggable] {
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
 }
 </style>

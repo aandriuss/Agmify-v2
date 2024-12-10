@@ -1,208 +1,196 @@
-# Migration Plan for Frontend-2 Reorganization
+# Tables and Parameters Migration Plan
 
-## 1. Directory Structure
+# Tables and Parameters Migration Plan
+
+## 0. New Architecture
+
+### Core Table System
 
 ```
-frontend-2/
-├── components/
-│   ├── core/                           # Shared components
-│   │   ├── tables/                     # Reusable table components
-│   │   │   ├── DataTable/
-│   │   │   │   ├── components/
-│   │   │   │   │   └── ColumnManager/
-│   │   │   │   └── composables/
-│   │   │   └── shared/
-│   │   └── parameters/                 # Reusable parameter components
-│   │       ├── ParameterBadge.vue
-│   │       └── ParameterItem.vue
-│   └── viewer/                         # Viewer-specific components
-│       └── schedules/                  # Schedule-specific components
-│           └── components/
-├── composables/
-│   ├── core/                           # Core shared composables
-│   │   ├── types/                      # Already organized
-│   │   ├── tables/                     # Table-related composables
-│   │   │   ├── useTableState.ts
-│   │   │   └── useTableOperations.ts
-│   │   └── parameters/                 # Parameter-related composables
-│   │       ├── useParameterMappings.ts
-│   │       └── useParameterOperations.ts
-│   └── viewer/                         # Viewer-specific composables
-│       └── parameters/                 # Viewer parameter handling
-│           ├── useParameterDiscovery.ts
-│           └── useBIMElements.ts
+frontend-2/composables/core/tables/
+├── state/                    # State Management
+│   ├── useTableState.ts     # Core table state (renamed from useNamedTableState)
+│   └── useColumnState.ts    # Column management
+├── events/                  # Event System
+│   ├── types.ts            # Event type definitions
+│   └── handlers.ts         # Reusable event handlers
+└── components/             # Base Components
+    ├── BaseTable.vue       # Core table functionality
+    └── TableWrapper.vue    # Common wrapper functionality
 ```
 
-## 2. Component Migration Steps
+### Parameter Integration
 
-### Phase 1: Core Components
+```
+frontend-2/composables/core/parameters/
+├── state/                  # Parameter State
+│   ├── useParameters.ts   # Parameter management
+│   └── useColumnMapping.ts # Parameter-to-column mapping
+└── components/            # Parameter Components
+    └── ParameterTable.vue # Parameter-specific table
+```
 
-1. Tables:
+### Event System Hierarchy
 
-   - Move from: `viewer/components/tables/DataTable`
-   - To: `components/core/tables/DataTable`
-   - Files to migrate:
-     - DataTable components
-     - ColumnManager
-     - Shared utilities
-   - Update imports in all files using these components
+```
+BaseTable (core events)
+    ↓
+ParameterTable (adds parameter events)
+    ↓
+ScheduleTable (adds schedule-specific events)
+```
 
-2. Parameters:
-   - Move from: Various locations
-   - To: `components/core/parameters`
-   - Files to migrate:
-     - ParameterBadge.vue
-     - ParameterItem.vue
-   - Update parameter-related imports
+## 1. Core Event System ✅
 
-### Phase 2: Core Composables
+### Event Types ✅
 
-1. Table Composables:
+- [x] Define base TableEventMap
+- [x] Add ParameterEventMap
+- [x] Add ScheduleEventMap
+- [x] Create event handler types
+- [x] Add emit helper types
 
-   - Move from: `viewer/composables`
-   - To: `composables/core/tables`
-   - Files to migrate:
-     - useTableState.ts
-     - useTableOperations.ts
-   - Update imports and ensure type safety
+### Event Handlers ✅
 
-2. Parameter Composables:
-   - Move from: Various locations
-   - To: `composables/core/parameters`
-   - Files to migrate:
-     - useParameterMappings.ts
-     - useParameterOperations.ts
-   - Update imports and dependencies
+- [x] Create useTableEventHandlers
+- [x] Add useParameterEventHandlers
+- [x] Add useScheduleEventHandlers
+- [x] Implement type-safe error handling
 
-### Phase 3: Viewer-Specific Components
+## 2. State Management
 
-1. Schedule Components:
+### Table State
 
-   - Keep in: `components/viewer/schedules`
-   - Refactor to use new core components
-   - Update imports to use new paths
+- [ ] Update useTableState (renamed from useNamedTableState)
+- [ ] Add column state management
+- [ ] Add row state management
+- [ ] Add selection state management
 
-2. BIM-Related Components:
-   - Keep in: `components/viewer`
-   - Files to keep viewer-specific:
-     - useBIMElements.ts
-     - BIM-related parameter handling
+### Parameter State
 
-## 3. Dependency Updates
+- [ ] Create useParameterState
+- [ ] Add parameter validation
+- [ ] Add parameter conversion
+- [ ] Add parameter persistence
 
-1. Type Imports:
+### Schedule State
 
-   - Update all type imports to use centralized types from `composables/core/types`
-   - Ensure consistent type usage across components
+- [ ] Create useScheduleState
+- [ ] Add category management
+- [ ] Add parameter group management
+- [ ] Add schedule persistence
 
-2. Component Imports:
+## 3. Component Hierarchy
 
-   - Update all component imports to use new paths
-   - Use relative paths for closely related components
-   - Use absolute paths for core components
+### Base Components
 
-3. Composable Imports:
-   - Update composable imports to reflect new structure
-   - Ensure proper typing is maintained
+- [ ] Create BaseTable.vue
+  - [ ] Add core table functionality
+  - [ ] Implement event handling
+  - [ ] Add state management integration
 
-## 4. Testing Strategy
+### Parameter Components
 
-1. Unit Tests:
+- [ ] Create ParameterTable.vue
+  - [ ] Extend BaseTable
+  - [ ] Add parameter-specific features
+  - [ ] Implement parameter events
 
-   - Update import paths in existing tests
-   - Add tests for new core components
-   - Verify component isolation
+### Schedule Components
 
-2. Integration Tests:
-   - Test interactions between moved components
-   - Verify data flow remains intact
-   - Test viewer-specific functionality
+- [ ] Update ScheduleTable.vue
+  - [ ] Use new component hierarchy
+  - [ ] Implement schedule events
+  - [ ] Add schedule-specific features
 
-## 5. Migration Order
+## 4. Migration Steps
 
-1. Create new directory structure
-2. Move core components (minimal dependencies first)
-3. Move core composables
-4. Update viewer-specific components
-5. Update all imports
-6. Run tests and fix issues
-7. Verify functionality in viewer context
+### Phase 1: Core Infrastructure (Current)
 
-## 6. Safety Measures
+1. ✅ Set up event system
+2. [ ] Implement state management
+3. [ ] Create base components
 
-1. Version Control:
+### Phase 2: Parameter System
 
-   - Create feature branch for migration
-   - Commit after each logical step
-   - Use meaningful commit messages
+1. [ ] Create parameter components
+2. [ ] Implement parameter state
+3. [ ] Add parameter validation
+4. [ ] Test parameter functionality
 
-2. Backwards Compatibility:
+### Phase 3: Schedule Integration
 
-   - Maintain existing interfaces
-   - Keep current functionality intact
-   - Document any necessary changes
+1. [ ] Update schedule components
+2. [ ] Implement schedule state
+3. [ ] Add schedule-specific features
+4. [ ] Test schedule functionality
 
-3. Error Handling:
-   - Preserve existing error handling
-   - Add additional error checks where needed
+### Phase 4: Migration Support
 
-## 7. Post-Migration Tasks
+1. [ ] Create compatibility layer
+2. [ ] Add migration utilities
+3. [ ] Document upgrade path
+4. [ ] Test backwards compatibility
 
-1. Documentation:
+## 5. Next Steps
 
-   - Update component documentation
-   - Document new directory structure
-   - Update import examples
+1. [ ] State Management
 
-2. Clean-up:
+   - Create useTableState composable
+   - Implement column management
+   - Add row state handling
 
-   - Remove unused files
-   - Clean up deprecated code
-   - Update README files
+2. [ ] Base Components
 
-3. Performance:
-   - Verify bundle size
-   - Check for duplicate code
-   - Optimize imports
+   - Create BaseTable component
+   - Add event handling
+   - Implement state management
 
-## 8. Risks and Mitigations
+3. [ ] Parameter Integration
+   - Create ParameterTable component
+   - Add parameter state management
+   - Implement parameter events
 
-1. Risks:
+## 6. Benefits
 
-   - Breaking changes in component interfaces
-   - Missing dependencies
-   - Circular dependencies
-   - Type mismatches
+1. Type Safety ✅
 
-2. Mitigations:
-   - Thorough testing at each step
-   - Gradual migration approach
-   - Type safety checks
-   - Comprehensive documentation
+   - Strict typing for events
+   - Better error detection
+   - Improved IDE support
 
-## 9. Timeline
+2. Code Organization
 
-1. Preparation (1 day):
+   - Clear separation of concerns
+   - Reusable components
+   - Better maintainability
 
-   - Create new directory structure
-   - Document current state
-   - Set up testing environment
+3. Performance
 
-2. Core Migration (2-3 days):
+   - Optimized state management
+   - Reduced prop drilling
+   - Better memory usage
 
-   - Move core components
-   - Update dependencies
-   - Initial testing
+4. Developer Experience
+   - Consistent API
+   - Better documentation
+   - Easier debugging
 
-3. Viewer Updates (1-2 days):
+## 7. Questions to Address
 
-   - Update viewer components
-   - Test viewer functionality
-   - Fix any issues
+1. State Management
 
-4. Final Testing (1 day):
-   - Complete test coverage
-   - Performance testing
-   - Documentation updates
+   - How to handle shared state between tables?
+   - Best approach for state persistence?
+   - Strategy for state synchronization?
 
-Total estimated time: 5-7 days
+2. Component Design
+
+   - How to handle complex layouts?
+   - Best practices for slot usage?
+   - Approach for responsive design?
+
+3. Performance
+   - Strategy for large datasets?
+   - Approach to virtualization?
+   - Handling of frequent updates?

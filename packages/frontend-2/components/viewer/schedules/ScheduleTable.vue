@@ -7,66 +7,65 @@
           :table-id="tableId"
           :table-name="tableName"
           :data="data"
-          :columns="columns"
-          :detail-columns="detailColumns"
+          :columns="columns || []"
+          :detail-columns="detailColumns || []"
           :loading="loading"
-          :initial-state="initialState"
-          @[`update:expanded-rows`]="(e: unknown) => handleExpandedRowsUpdate(e as BaseTableRow[])"
-          @[`update:columns`]="(e: unknown) => $emit('update:columns', e as TableColumnDef[])"
-          @[`update:detail-columns`]="(e: unknown) => $emit('update:detail-columns', e as TableColumnDef[])"
-          @[`update:both-columns`]="(e: unknown) => handleBothColumnsUpdate(e)"
-          @column-reorder="(e: unknown) => handleColumnReorder(e)"
-          @row-expand="(e: unknown) => handleRowExpand(e as BaseTableRow)"
-          @row-collapse="(e: unknown) => handleRowCollapse(e as BaseTableRow)"
-          @table-updated="$emit('table-updated')"
-          @column-visibility-change="$emit('column-visibility-change')"
-          @sort="(e: unknown) => handleSort(e)"
-          @filter="(e: unknown) => handleFilter(e)"
-          @error="handleError"
-          @retry="handleRetry"
+          :error="currentError"
+          :initial-state="{
+            columns: columns || [],
+            detailColumns: detailColumns || [],
+            expandedRows: initialState?.expandedRows || []
+          }"
+          @expanded-rows-change="onExpandedRowsChange"
+          @columns-change="onColumnsChange"
+          @detail-columns-change="onDetailColumnsChange"
+          @both-columns-change="onBothColumnsChange"
+          @column-reorder="onColumnReorder"
+          @row-expand="onRowExpand"
+          @row-collapse="onRowCollapse"
+          @table-updated="onTableUpdated"
+          @column-visibility-change="onColumnVisibilityChange"
+          @sort="onSort"
+          @filter="onFilter"
+          @error="onError"
+          @retry="onRetry"
         >
           <template #empty>
-            <slot name="empty">
-              <div class="p-4 text-center text-gray-500">
-                <div class="flex flex-col items-center gap-2">
-                  <span>No schedule data available.</span>
-                  <span class="text-sm">
-                    Try selecting different categories or adjusting your filters.
-                  </span>
-                </div>
+            <div class="p-4 text-center text-gray-500">
+              <div class="flex flex-col items-center gap-2">
+                <span>No schedule data available.</span>
+                <span class="text-sm">
+                  Try selecting different categories or adjusting your filters.
+                </span>
               </div>
-            </slot>
+            </div>
           </template>
 
           <template #loading>
-            <slot name="loading">
-              <div class="p-4 text-center text-gray-500">
-                <div class="flex flex-col items-center gap-2">
-                  <span>Loading schedule data...</span>
-                  <span class="text-sm">
-                    This might take a moment for large schedules.
-                  </span>
-                </div>
+            <div class="p-4 text-center text-gray-500">
+              <div class="flex flex-col items-center gap-2">
+                <span>Loading schedule data...</span>
+                <span class="text-sm">
+                  This might take a moment for large schedules.
+                </span>
               </div>
-            </slot>
+            </div>
           </template>
 
           <template #error>
-            <slot name="error">
-              <div class="p-4 text-center text-red-500">
-                <div class="flex flex-col items-center gap-2">
-                  <span>
-                    {{ currentError?.message || 'Failed to load schedule data' }}
-                  </span>
-                  <button
-                    class="text-sm text-primary-600 hover:text-primary-700"
-                    @click="handleRetry"
-                  >
-                    Retry Loading Schedule
-                  </button>
-                </div>
+            <div class="p-4 text-center text-red-500">
+              <div class="flex flex-col items-center gap-2">
+                <span>
+                  {{ currentError?.message || 'Failed to load schedule data' }}
+                </span>
+                <button
+                  class="text-sm text-primary-600 hover:text-primary-700"
+                  @click="onRetry"
+                >
+                  Retry Loading Schedule
+                </button>
               </div>
-            </slot>
+            </div>
           </template>
         </BaseDataTable>
       </div>
@@ -79,12 +78,13 @@
           :selected-categories="selectedCategories"
           :can-create-parameters="true"
           :selected-parameters="selectedParameters"
+          :is-loading="loading"
           @update:selected-categories="handleCategoryUpdate"
           @parameter-click="handleParameterClick"
-          @create-parameter="$emit('create-parameter')"
-          @edit-parameters="$emit('edit-parameters')"
-          @error="handleError"
-          @retry="handleRetry"
+          @create-parameter="$emit('create-parameter', { timestamp: Date.now() })"
+          @edit-parameters="$emit('edit-parameters', { timestamp: Date.now() })"
+          @error="onError"
+          @retry="onRetry"
         />
       </div>
     </div>
@@ -93,61 +93,68 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import BaseDataTable from '../../core/tables/DataTable/BaseDataTable.vue'
+import BaseDataTable from '~/components/tables/DataTable/BaseDataTable.vue'
 import ScheduleParameterManager from './components/ScheduleParameterManager.vue'
-import type {
-  TableColumnDef,
-  TableProps,
-  BaseTableRow
-} from '../../core/tables/DataTable/types'
-import { TableError } from '../../core/tables/DataTable/utils'
 import { useScheduleTable } from './composables/useScheduleTable'
-import type { ScheduleRow } from './types'
-import type { DataTableSortEvent, DataTableFilterEvent } from 'primevue/datatable'
+import type { Parameter } from '~/composables/core/types/parameters'
+import type {
+  TableEmits,
+  TableModelProps,
+  ColumnUpdateEvent,
+  SortEvent,
+  ColumnReorderEvent
+} from '~/composables/core/types/events/table-events'
+import type { ColumnDef } from '~/composables/core/types'
+import type { DataTableFilterMeta } from 'primevue/datatable'
 
 // Props
-const props = defineProps<TableProps>()
+export interface ScheduleTableProps extends TableModelProps<Parameter> {
+  tableId: string
+  tableName?: string
+  data: Parameter[]
+  loading?: boolean
+  initialState?: {
+    expandedRows?: Parameter[]
+    selectedRows?: Parameter[]
+  }
+}
+
+// Custom emits for schedule-specific events
+export interface ScheduleEmits<T> {
+  (e: 'update:expanded-rows', payload: { rows: T[] }): void
+  (e: 'update:columns', payload: { columns: ColumnDef[] }): void
+  (e: 'update:detail-columns', payload: { columns: ColumnDef[] }): void
+  (e: 'update:both-columns', payload: ColumnUpdateEvent): void
+  (e: 'update:selected-categories', payload: { categories: string[] }): void
+  (e: 'column-reorder', payload: ColumnReorderEvent): void
+  (e: 'row-expand', payload: { row: T }): void
+  (e: 'row-collapse', payload: { row: T }): void
+  (e: 'table-updated', payload: { timestamp: number }): void
+  (e: 'column-visibility-change', payload: { visible: boolean }): void
+  (e: 'sort', payload: SortEvent): void
+  (e: 'filter', payload: { filters: DataTableFilterMeta }): void
+  (e: 'error', payload: { error: Error }): void
+  (e: 'retry', payload: { timestamp: number }): void
+  (e: 'parameter-click', payload: { parameter: T }): void
+  (e: 'create-parameter', payload: { timestamp: number }): void
+  (e: 'edit-parameters', payload: { timestamp: number }): void
+}
+
+const props = withDefaults(defineProps<ScheduleTableProps>(), {
+  tableName: 'Schedule',
+  loading: false,
+  columns: () => [],
+  detailColumns: () => [],
+  initialState: () => ({})
+})
 
 // Emits
-const emit = defineEmits<{
-  'update:expanded-rows': [rows: BaseTableRow[]]
-  'update:columns': [columns: TableColumnDef[]]
-  'update:detail-columns': [columns: TableColumnDef[]]
-  'update:both-columns': [
-    updates: { parentColumns: TableColumnDef[]; childColumns: TableColumnDef[] }
-  ]
-  'column-reorder': [event: { dragIndex: number; dropIndex: number }]
-  'row-expand': [row: BaseTableRow]
-  'row-collapse': [row: BaseTableRow]
-  'table-updated': []
-  'column-visibility-change': []
-  sort: [field: string, order: number]
-  filter: [filters: Record<string, { value: unknown; matchMode: string }>]
-  error: [error: TableError]
-  retry: []
-  'create-parameter': []
-  'edit-parameters': []
-}>()
+const emit = defineEmits<ScheduleEmits<Parameter> & TableEmits<Parameter>>()
 
 // State
 const error = ref<Error | null>(null)
 const currentError = computed(() => error.value)
-const selectedParameters = ref<ScheduleRow[]>([])
-
-// Type Guards
-function isScheduleRow(row: BaseTableRow): row is ScheduleRow {
-  return 'name' in row && typeof row.name === 'string'
-}
-
-interface ColumnUpdate {
-  parentColumns: unknown[]
-  childColumns: unknown[]
-}
-
-interface ColumnReorderEvent {
-  dragIndex: number
-  dropIndex: number
-}
+const selectedParameters = ref<Parameter[]>([])
 
 // Initialize schedule table
 const {
@@ -161,169 +168,140 @@ const {
 } = useScheduleTable({
   tableId: props.tableId,
   initialParentColumns: props.columns,
-  initialChildColumns: props.detailColumns || [],
-  onError: (err: TableError) => {
-    error.value = new Error(err.message)
-    emit('error', err)
+  initialChildColumns: props.detailColumns,
+  onError: (err: Error) => {
+    error.value = err
+    emit('error', { error: err })
   }
 })
 
 // Event Handlers
-function handleExpandedRowsUpdate(rows: BaseTableRow[]): void {
-  emit('update:expanded-rows', rows)
-}
-
-function handleBothColumnsUpdate(updates: unknown): void {
-  if (
-    updates &&
-    typeof updates === 'object' &&
-    'parentColumns' in updates &&
-    'childColumns' in updates &&
-    Array.isArray((updates as ColumnUpdate).parentColumns) &&
-    Array.isArray((updates as ColumnUpdate).childColumns)
-  ) {
-    const typedUpdates = {
-      parentColumns: (updates as ColumnUpdate).parentColumns.filter(isTableColumnDef),
-      childColumns: (updates as ColumnUpdate).childColumns.filter(isTableColumnDef)
-    }
-    emit('update:both-columns', typedUpdates)
+const onExpandedRowsChange = (payload: unknown) => {
+  if (Array.isArray(payload)) {
+    emit('update:expanded-rows', { rows: payload as Parameter[] })
   }
 }
 
-function isTableColumnDef(value: unknown): value is TableColumnDef {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'id' in value &&
-    'field' in value &&
-    typeof (value as TableColumnDef).id === 'string' &&
-    typeof (value as TableColumnDef).field === 'string'
-  )
-}
-
-function handleColumnReorder(event: unknown): void {
-  if (
-    event &&
-    typeof event === 'object' &&
-    'dragIndex' in event &&
-    'dropIndex' in event &&
-    typeof (event as ColumnReorderEvent).dragIndex === 'number' &&
-    typeof (event as ColumnReorderEvent).dropIndex === 'number'
-  ) {
-    const typedEvent = event as ColumnReorderEvent
-    emit('column-reorder', typedEvent)
+const onColumnsChange = (payload: unknown) => {
+  if (Array.isArray(payload)) {
+    emit('update:columns', { columns: payload as ColumnDef[] })
   }
 }
 
-async function handleRowExpand(row: BaseTableRow): Promise<void> {
-  try {
-    if (isScheduleRow(row)) {
+const onDetailColumnsChange = (payload: unknown) => {
+  if (Array.isArray(payload)) {
+    emit('update:detail-columns', { columns: payload as ColumnDef[] })
+  }
+}
+
+const onBothColumnsChange = (payload: unknown) => {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'parentColumns' in payload &&
+    'childColumns' in payload
+  ) {
+    emit('update:both-columns', payload as ColumnUpdateEvent)
+  }
+}
+
+const onColumnReorder = (payload: unknown) => {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'dragIndex' in payload &&
+    'dropIndex' in payload &&
+    typeof (payload as ColumnReorderEvent).dragIndex === 'number' &&
+    typeof (payload as ColumnReorderEvent).dropIndex === 'number'
+  ) {
+    emit('column-reorder', payload as ColumnReorderEvent)
+  }
+}
+
+const onRowExpand = async (payload: unknown) => {
+  if (payload && typeof payload === 'object' && 'id' in payload) {
+    const row = payload as Parameter
+    try {
       await expandRow(row)
-      emit('row-expand', row)
+      emit('row-expand', { row })
+    } catch (err) {
+      const tableError = err instanceof Error ? err : new Error('Failed to expand row')
+      error.value = tableError
+      emit('error', { error: tableError })
     }
-  } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to expand row',
-      err
-    )
-    error.value = new Error(tableError.message)
-    emit('error', tableError)
   }
 }
 
-async function handleRowCollapse(row: BaseTableRow): Promise<void> {
-  try {
-    if (isScheduleRow(row)) {
+const onRowCollapse = async (payload: unknown) => {
+  if (payload && typeof payload === 'object' && 'id' in payload) {
+    const row = payload as Parameter
+    try {
       await collapseRow(row)
-      emit('row-collapse', row)
+      emit('row-collapse', { row })
+    } catch (err) {
+      const tableError =
+        err instanceof Error ? err : new Error('Failed to collapse row')
+      error.value = tableError
+      emit('error', { error: tableError })
     }
-  } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to collapse row',
-      err
-    )
-    error.value = new Error(tableError.message)
-    emit('error', tableError)
   }
 }
 
-function handleSort(event: unknown): void {
-  const typedEvent = event as DataTableSortEvent
-  if (
-    typedEvent &&
-    typeof typedEvent === 'object' &&
-    'sortField' in typedEvent &&
-    'sortOrder' in typedEvent &&
-    typeof typedEvent.sortField === 'string' &&
-    typeof typedEvent.sortOrder === 'number'
-  ) {
-    emit('sort', typedEvent.sortField, typedEvent.sortOrder)
-  }
+const onTableUpdated = () => {
+  emit('table-updated', { timestamp: Date.now() })
 }
 
-function handleFilter(event: unknown): void {
-  const typedEvent = event as DataTableFilterEvent
-  if (
-    typedEvent &&
-    typeof typedEvent === 'object' &&
-    'filters' in typedEvent &&
-    typeof typedEvent.filters === 'object'
-  ) {
-    emit(
-      'filter',
-      typedEvent.filters as Record<string, { value: unknown; matchMode: string }>
-    )
-  }
+const onColumnVisibilityChange = () => {
+  emit('column-visibility-change', { visible: true })
 }
 
-function handleError(err: unknown): void {
-  const tableError = new TableError(
-    err instanceof Error ? err.message : 'An unknown error occurred',
-    err
-  )
-  error.value = new Error(tableError.message)
-  emit('error', tableError)
+const onSort = (event: SortEvent) => {
+  emit('sort', event)
 }
 
-async function handleRetry(): Promise<void> {
+const onFilter = (filters: DataTableFilterMeta) => {
+  emit('filter', { filters })
+}
+
+const onError = (err: Error) => {
+  error.value = err
+  emit('error', { error: err })
+}
+
+const onRetry = async () => {
   try {
     error.value = null
     await reset()
-    emit('retry')
+    emit('retry', { timestamp: Date.now() })
   } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to retry operation',
-      err
-    )
-    error.value = new Error(tableError.message)
-    emit('error', tableError)
+    const tableError =
+      err instanceof Error ? err : new Error('Failed to retry operation')
+    error.value = tableError
+    emit('error', { error: tableError })
   }
 }
 
 function handleCategoryUpdate(categories: string[]): void {
   try {
     updateCategories(categories)
+    emit('update:selected-categories', { categories })
   } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to update categories',
-      err
-    )
-    error.value = new Error(tableError.message)
-    emit('error', tableError)
+    const tableError =
+      err instanceof Error ? err : new Error('Failed to update categories')
+    error.value = tableError
+    emit('error', { error: tableError })
   }
 }
 
-function handleParameterClick(row: ScheduleRow): void {
+function handleParameterClick(parameter: Parameter): void {
   try {
-    expandRow(row)
-    emit('row-expand', row)
+    expandRow(parameter)
+    emit('parameter-click', { parameter })
   } catch (err) {
-    const tableError = new TableError(
-      err instanceof Error ? err.message : 'Failed to handle parameter click',
-      err
-    )
-    error.value = new Error(tableError.message)
-    emit('error', tableError)
+    const tableError =
+      err instanceof Error ? err : new Error('Failed to handle parameter click')
+    error.value = tableError
+    emit('error', { error: tableError })
   }
 }
 </script>

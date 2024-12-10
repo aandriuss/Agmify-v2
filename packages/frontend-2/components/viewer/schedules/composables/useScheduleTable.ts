@@ -1,127 +1,143 @@
-import { ref, computed, watch } from 'vue'
-import type { TableColumnDef } from '../../../core/tables/DataTable/types'
-import { TableError } from '../../../core/tables/DataTable/utils'
-import { useViewerTable } from '~/composables/tables/useViewerTable'
-import type { ScheduleRow } from '../types'
+import { computed, watch } from 'vue'
+import { TableStateError } from '~/composables/core/types/errors'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
+import { useViewerTableState } from '~/composables/core/tables'
+import { useCategoryTableState } from '~/composables/core/tables/state/useCategoryTableState'
+import { useParameterGroups } from '~/composables/core/parameters/useParameterGroups'
+import type { CategoryTableRow } from '~/composables/core/types/tables/category-types'
+import type { ViewerTableRow } from '~/composables/core/types/elements'
+import type { ColumnDef, UserParameter, UserValueType } from '~/composables/core/types'
+
+/**
+ * Schedule row interface combining viewer and category functionality
+ */
+export interface ScheduleRow
+  extends ViewerTableRow,
+    Omit<CategoryTableRow, keyof ViewerTableRow> {
+  kind?: string
+}
 
 interface UseScheduleTableOptions {
   tableId: string
-  initialParentColumns: TableColumnDef[]
-  initialChildColumns: TableColumnDef[]
-  onError?: (error: TableError) => void
+  initialParentColumns: ColumnDef[]
+  initialChildColumns: ColumnDef[]
+  onError?: (error: Error) => void
 }
 
+/**
+ * Schedule-specific table state management
+ * Combines viewer table state with category and parameter group functionality
+ */
 export function useScheduleTable(options: UseScheduleTableOptions) {
-  // Initialize viewer table
-  const viewerTable = useViewerTable(options)
+  // Initialize core states
+  const viewerState = useViewerTableState({
+    tableId: options.tableId,
+    initialColumns: options.initialParentColumns,
+    initialState: {
+      expandedRows: [],
+      detailColumns: options.initialChildColumns
+    },
+    onError: handleError
+  })
 
-  // Schedule-specific state
-  const selectedCategories = ref<string[]>([])
-  const filteredRows = ref<ScheduleRow[]>([])
-  const parameterGroups = ref<Map<string, ScheduleRow[]>>(new Map())
+  const categoryState = useCategoryTableState({ onError: handleError })
 
-  // Computed
-  const hasSelectedCategories = computed(() => selectedCategories.value.length > 0)
+  // Convert viewer rows to schedule rows
+  const scheduleRows = computed<ScheduleRow[]>(() => {
+    return viewerState.rows.value.map((row) => ({
+      ...row,
+      category: (row as ScheduleRow).category,
+      kind: (row as ScheduleRow).kind
+    }))
+  })
+
+  // Convert rows to parameters for parameter groups
+  const parameters = computed<UserParameter[]>(() => {
+    return categoryState.filteredRows.value.map((row) => ({
+      id: row.id,
+      kind: 'user' as const,
+      name: row.name,
+      field: row.id,
+      type: 'text' as UserValueType,
+      header: row.name,
+      visible: true,
+      removable: true,
+      value: null,
+      group: (row as ScheduleRow).kind || 'Custom'
+    }))
+  })
+
+  const parameterState = useParameterGroups({
+    parameters,
+    onError: (message) => handleError(new Error(message))
+  })
+
+  // Computed properties
   const availableCategories = computed(() => {
-    const categories = new Set<string>()
-    viewerTable.expandedRows.value.forEach((row) => {
+    return categoryState.getAvailableCategories(scheduleRows.value)
+  })
+
+  // For backward compatibility with ScheduleTable.vue
+  const parameterGroups = computed(() => {
+    const groups = new Map<string, ScheduleRow[]>()
+    categoryState.filteredRows.value.forEach((row) => {
       const scheduleRow = row as ScheduleRow
-      if (scheduleRow.category) {
-        categories.add(scheduleRow.category)
+      if (scheduleRow.kind) {
+        const existingGroup = groups.get(scheduleRow.kind) || []
+        existingGroup.push(scheduleRow)
+        groups.set(scheduleRow.kind, existingGroup)
       }
     })
-    return Array.from(categories).sort()
+    return groups
   })
 
-  // Category Operations
-  function updateCategories(categories: string[]): void {
-    try {
-      selectedCategories.value = [...categories]
-      filterRowsByCategories()
-    } catch (err) {
-      handleError(err)
-    }
-  }
-
-  function filterRowsByCategories(): void {
-    try {
-      if (!hasSelectedCategories.value) {
-        filteredRows.value = []
-        return
-      }
-
-      filteredRows.value = viewerTable.expandedRows.value.filter(
-        (row): row is ScheduleRow => {
-          const scheduleRow = row as ScheduleRow
-          return (
-            typeof scheduleRow.category === 'string' &&
-            selectedCategories.value.includes(scheduleRow.category) &&
-            typeof scheduleRow.name === 'string'
-          )
-        }
-      )
-    } catch (err) {
-      handleError(err)
-    }
-  }
-
-  // Parameter Group Operations
-  function updateParameterGroups(): void {
-    try {
-      const groups = new Map<string, ScheduleRow[]>()
-
-      filteredRows.value.forEach((row) => {
-        if (row.kind) {
-          const existingGroup = groups.get(row.kind) || []
-          existingGroup.push(row)
-          groups.set(row.kind, existingGroup)
-        }
-      })
-
-      parameterGroups.value = groups
-    } catch (err) {
-      handleError(err)
-    }
-  }
-
-  // Watch for changes that affect parameter groups
-  watch(filteredRows, () => {
-    updateParameterGroups()
+  // Watch for changes that affect filtering and grouping
+  watch(scheduleRows, (rows) => {
+    categoryState.filterRowsByCategories(rows)
   })
 
-  // Error Handler
+  // Error handling
   function handleError(err: unknown): void {
-    const error = err instanceof Error ? err : new Error('An unknown error occurred')
-    options.onError?.(new TableError(error.message, err))
+    const error =
+      err instanceof Error
+        ? new TableStateError(err.message, err)
+        : new TableStateError('Schedule table error')
+    options.onError?.(error)
+    debug.error(DebugCategories.ERROR, 'Schedule table error:', err)
   }
 
-  // Reset Operations
+  // Reset operations
   async function reset(): Promise<void> {
     try {
-      selectedCategories.value = []
-      filteredRows.value = []
-      parameterGroups.value = new Map()
-      await viewerTable.reset()
+      debug.startState(DebugCategories.TABLE_UPDATES, 'Resetting schedule table')
+
+      categoryState.reset()
+      await viewerState.initializeElements()
+
+      debug.completeState(DebugCategories.TABLE_UPDATES, 'Schedule table reset')
     } catch (err) {
       handleError(err)
     }
   }
 
   return {
-    // Base table operations
-    ...viewerTable,
+    // Base table state
+    ...viewerState,
 
     // Schedule-specific state
-    selectedCategories,
-    filteredRows,
-    parameterGroups,
-    hasSelectedCategories,
-    availableCategories,
+    scheduleRows,
 
-    // Schedule-specific operations
-    updateCategories,
-    filterRowsByCategories,
-    updateParameterGroups,
+    // Category state
+    selectedCategories: categoryState.selectedCategories,
+    filteredRows: categoryState.filteredRows,
+    hasSelectedCategories: categoryState.hasSelectedCategories,
+    availableCategories,
+    updateCategories: categoryState.updateCategories,
+
+    // Parameter groups state
+    groupedParameters: parameterState.groupedParameters,
+    uniqueGroups: parameterState.uniqueGroups,
+    parameterGroups, // For backward compatibility
 
     // Reset operations
     reset

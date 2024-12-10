@@ -7,7 +7,7 @@ import type {
   Parameters,
   ParameterValueState
 } from '~/composables/core/types'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { isValidBIMNodeRaw } from '~/composables/core/types'
 
 export function convertToString(value: unknown): string {

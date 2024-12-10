@@ -1,6 +1,6 @@
 import { useUserSettingsState } from './settings/userSettings'
 import { useTablesState, useTableOperations } from './settings/tables'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export function useUserSettings() {
   // User settings (controlWidth)

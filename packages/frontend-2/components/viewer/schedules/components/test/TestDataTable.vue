@@ -66,7 +66,7 @@ import DataTable from '../../../components/tables/DataTable/index.vue'
 import { dummyTableRows, dummyColumns } from '../../mock/dummyData'
 import type { ColumnDef, UserParameter } from '~/composables/core/types'
 import { createUserParameter, PARAMETER_SETTINGS } from '~/composables/core/types'
-import { debug, DebugCategories } from '../../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 // Computed properties for data analysis
 const parentElements = computed(() => dummyTableRows.filter((row) => !row.isChild))

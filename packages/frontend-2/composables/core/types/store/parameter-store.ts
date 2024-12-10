@@ -15,11 +15,11 @@ export interface StoreParameterValueState {
   readonly id: string
   name: string
   type: BimValueType | UserValueType
-  value: ParameterValue
-  currentValue?: ParameterValue
-  previousValue?: ParameterValue
-  userValue?: ParameterValue
-  fetchedValue?: PrimitiveValue
+  value: ParameterValue | null
+  currentValue?: ParameterValue | null
+  previousValue?: ParameterValue | null
+  userValue?: ParameterValue | null
+  fetchedValue?: PrimitiveValue | null
   isValid: boolean
   error?: string
 }
@@ -30,7 +30,7 @@ export interface StoreParameterValueState {
 export interface StoreBimParameter extends StoreParameterValueState {
   kind: 'bim'
   type: BimValueType
-  sourceValue: PrimitiveValue
+  sourceValue: PrimitiveValue | null
   fetchedGroup: string
   currentGroup: string
   group?: never
@@ -140,9 +140,9 @@ export function convertToStoreParameter(param: Parameter): StoreParameterValue {
       kind: 'bim',
       name: param.name,
       type: param.type,
-      value: param.value,
-      currentValue: param.value,
-      sourceValue: param.sourceValue,
+      value: param.value ?? null,
+      currentValue: param.value ?? null,
+      sourceValue: param.sourceValue ?? null,
       fetchedGroup: param.fetchedGroup,
       currentGroup: param.currentGroup,
       isValid: true
@@ -153,8 +153,8 @@ export function convertToStoreParameter(param: Parameter): StoreParameterValue {
       kind: 'user',
       name: param.name,
       type: param.type,
-      value: param.value,
-      currentValue: param.value,
+      value: param.value ?? null,
+      currentValue: param.value ?? null,
       group: param.group,
       equation: param.equation,
       isValid: true
@@ -213,8 +213,8 @@ export function convertToParameter(
       header: 'header' in store ? store.header : store.name,
       visible: 'visible' in store ? store.visible : true,
       removable: 'removable' in store ? store.removable : true,
-      value: 'value' in store ? store.value : null,
-      sourceValue: 'sourceValue' in store ? store.sourceValue : null,
+      value: 'value' in store ? store.value ?? null : null,
+      sourceValue: 'sourceValue' in store ? store.sourceValue ?? null : null,
       fetchedGroup: store.fetchedGroup,
       currentGroup: store.currentGroup
     } as BimParameter
@@ -228,7 +228,7 @@ export function convertToParameter(
       header: 'header' in store ? store.header : store.name,
       visible: 'visible' in store ? store.visible : true,
       removable: 'removable' in store ? store.removable : true,
-      value: 'value' in store ? store.value : null,
+      value: 'value' in store ? store.value ?? null : null,
       group: store.group,
       equation: store.equation
     } as UserParameter

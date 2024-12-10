@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { onMounted, watch, computed } from 'vue'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   NamedTableConfig,
   ElementData,

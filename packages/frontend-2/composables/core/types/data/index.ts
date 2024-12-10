@@ -8,8 +8,9 @@ export type ParameterValuesRecord = Record<string, ParameterValue>
 
 /**
  * Table row interface extending element data
+ * Note: visible is required in ElementData but optional here for UI state
  */
-export interface TableRow extends ElementData {
+export interface TableRow extends Omit<ElementData, 'visible'> {
   visible?: boolean
   selected?: boolean
 }

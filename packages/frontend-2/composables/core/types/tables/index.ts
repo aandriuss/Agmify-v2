@@ -1,5 +1,61 @@
 import type { Ref } from 'vue'
 import type { Parameter } from '../parameters'
+import type {
+  BaseColumnDef,
+  BimColumnDef,
+  UserColumnDef,
+  ColumnDef
+} from './column-types'
+import type {
+  TableEvents,
+  BimTableEvents,
+  UserTableEvents,
+  CombinedTableEvents,
+  BaseTableProps,
+  BimTableProps,
+  UserTableProps,
+  CombinedTableProps
+} from './event-types'
+
+export type {
+  // Column types
+  BaseColumnDef,
+  BimColumnDef,
+  UserColumnDef,
+  ColumnDef,
+  // Event types
+  TableEvents,
+  BimTableEvents,
+  UserTableEvents,
+  CombinedTableEvents,
+  // Props types
+  BaseTableProps,
+  BimTableProps,
+  UserTableProps,
+  CombinedTableProps
+}
+
+export type {
+  TableStateOptions,
+  CoreTableState,
+  NamedTableStateOptions,
+  NamedTableState,
+  FilterDef,
+  DataTableState,
+  DataTableStateOptions
+} from './state-types'
+
+export {
+  isBimColumnDef,
+  isUserColumnDef,
+  isColumnDef,
+  createBaseColumnDef,
+  createBimColumnDef,
+  createUserColumnDef,
+  createBimColumnDefWithDefaults,
+  createUserColumnDefWithDefaults,
+  getColumnGroup
+} from './column-types'
 
 /**
  * Sort by field type
@@ -25,35 +81,6 @@ export interface UseColumnsOptions {
   sortBy?: Ref<SortByField>
   selectedCategories?: Ref<string[]>
   onUpdate?: (columns: ColumnDef[]) => void
-}
-
-/**
- * Column definition for tables
- */
-export interface ColumnDef {
-  readonly id: string
-  name: string
-  field: string
-  header: string
-  type?: string
-  source?: string
-  category?: string
-  visible: boolean
-  order?: number
-  width?: number
-  sortable?: boolean
-  filterable?: boolean
-  metadata?: Record<string, unknown>
-  headerComponent?: string
-  fetchedGroup?: string
-  currentGroup: string
-  description?: string
-  isFixed?: boolean
-  isCustomParameter?: boolean
-  parameterRef?: string
-  color?: string
-  expander?: boolean
-  removable: boolean
 }
 
 /**
@@ -183,4 +210,21 @@ export interface TableSettings {
   controlWidth: number
   namedTables: Record<string, NamedTableConfig>
   customParameters: Parameter[]
+}
+
+/**
+ * DataTable event types from PrimeVue
+ */
+export interface DataTableColumnReorderEvent {
+  originalEvent: Event
+  dragIndex: number
+  dropIndex: number
+}
+
+/**
+ * DataTable column resize event
+ */
+export interface DataTableColumnResizeEvent {
+  element: HTMLElement
+  delta: number
 }

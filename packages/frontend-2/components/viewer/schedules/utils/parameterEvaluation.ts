@@ -3,7 +3,7 @@ import type {
   ElementData,
   ParameterValue
 } from '~/composables/core/types'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export class EquationError extends Error {
   constructor(message: string, public details?: Record<string, unknown>) {

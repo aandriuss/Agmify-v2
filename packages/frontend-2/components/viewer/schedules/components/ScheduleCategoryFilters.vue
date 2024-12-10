@@ -83,7 +83,7 @@
 import { FormButton } from '@speckle/ui-components'
 import { CheckCircleIcon as CheckCircleIconSolid } from '@heroicons/vue/24/solid'
 import { CheckCircleIcon as CheckCircleIconOutline } from '@heroicons/vue/24/outline'
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 const props = defineProps<{
   showCategoryOptions: boolean

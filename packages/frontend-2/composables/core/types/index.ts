@@ -7,7 +7,7 @@ export * from './errors'
 export type {
   // Value Types
   PrimitiveValue,
-  BimValueType,
+  ParameterValueType,
   UserValueType,
   EquationValue,
   ParameterValue,
@@ -19,10 +19,14 @@ export type {
   BimParameter,
   UserParameter,
   Parameter,
+  BimValueType,
 
   // Collections and State
   ParameterCollection,
-  ParameterState
+  ParameterState,
+  EvaluatedParameter,
+  CreateParameterInput,
+  ParameterValueState
 } from './parameters'
 
 // Parameter System Functions
@@ -44,7 +48,15 @@ export {
   PARAMETER_SETTINGS
 } from './parameters'
 
-export type { ElementState, ElementGroup, ElementData } from './elements'
+// Element types
+export type {
+  ElementState,
+  ElementGroup,
+  ElementData,
+  ViewerTableRow
+} from './elements'
+
+export { createElementData, toViewerTableRow, isElementData } from './elements'
 
 // GraphQL types
 export type {
@@ -95,11 +107,19 @@ export type {
   SortByField,
   SortDirection,
   UseColumnsOptions,
-  TableSettings
+  TableSettings,
+  TableStateOptions,
+  CoreTableState,
+  NamedTableStateOptions,
+  NamedTableState,
+  FilterDef,
+  DataTableState,
+  DataTableStateOptions
 } from './tables'
 
 // Table Functions
-export { createColumnDef, createTableConfig } from '../utils/tables'
+export { createTableConfig } from '../tables/utils/'
+export { createColumnDef } from '~/composables/parameters/'
 
 // Data types
 export type {
@@ -107,7 +127,8 @@ export type {
   ElementsProcessingState,
   ElementsDataReturn,
   ProcessedData,
-  DisplayData
+  DisplayData,
+  DataState
 } from './data'
 
 // Store types
@@ -139,6 +160,7 @@ export {
 export type {
   TreeItemComponentModel,
   BIMNodeRaw,
+  BIMNodeData,
   ViewerTree,
   TreeNode,
   DeepBIMNode,
@@ -147,7 +169,9 @@ export type {
   ProcessingState,
   BIMNode,
   BIMNodeValue,
-  ScheduleInitializationInstance
+  ScheduleInitializationInstance,
+  AvailableHeaders,
+  ScheduleTreeItemModel
 } from './viewer'
 
 // Settings types

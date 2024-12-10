@@ -1,11 +1,12 @@
-import type { UnifiedParameter } from '../parameters'
+import type { Parameter } from '../parameters'
+import type { BaseItem } from '../common/base-types'
 
 /**
  * Available headers structure for parameter organization
  */
 export interface AvailableHeaders {
-  parent: UnifiedParameter[]
-  child: UnifiedParameter[]
+  parent: Parameter[]
+  child: Parameter[]
 }
 
 /**
@@ -14,6 +15,17 @@ export interface AvailableHeaders {
 export interface BIMNodeRaw {
   id: string
   type: string
+  [key: string]: unknown
+}
+
+/**
+ * BIM node data interface
+ */
+export interface BIMNodeData {
+  id: string
+  type: string
+  parameters: Record<string, unknown>
+  metadata?: Record<string, unknown>
   [key: string]: unknown
 }
 
@@ -51,17 +63,37 @@ export interface NodeModel {
   id: string
   type: string
   children: NodeModel[]
-  [key: string]: unknown
+  data: BIMNodeData
 }
 
 /**
- * Processed header interface
+ * Processed header interface extending BaseItem
  */
-export interface ProcessedHeader {
+export interface ProcessedHeader extends BaseItem {
+  // BaseItem requirements
   id: string
   name: string
+  field: string
+  header: string
+  visible: boolean
+  removable: boolean
+  order?: number
+  category?: string
+  description?: string
+
+  // Additional ProcessedHeader properties
   type: string
   value: unknown
+  source: string
+  fetchedGroup: string
+  currentGroup: string
+  isFetched: boolean
+  isCustom?: boolean
+  isCustomParameter?: boolean
+  parameterRef?: string
+
+  // Index signature for additional properties
+  [key: string]: unknown
 }
 
 /**
@@ -82,6 +114,7 @@ export interface BIMNode {
   type: string
   value: BIMNodeValue
   children: BIMNode[]
+  data: BIMNodeData
 }
 
 /**
@@ -97,7 +130,8 @@ export interface TreeItemComponentModel {
   name: string
   type: string
   children: TreeItemComponentModel[]
-  data: Record<string, unknown>
+  data: BIMNodeData
+  rawNode?: BIMNode
 }
 
 /**
@@ -115,7 +149,7 @@ export interface ScheduleInitializationInstance {
 export interface ScheduleTreeItemModel extends TreeItemComponentModel {
   id: string
   label: string
-  rawNode?: BIMNode
+  rawNode: BIMNode
   children: ScheduleTreeItemModel[]
 }
 
@@ -125,4 +159,87 @@ export interface ScheduleTreeItemModel extends TreeItemComponentModel {
 export interface NodeConversionResult {
   node: ScheduleTreeItemModel
   children: ScheduleTreeItemModel[]
+}
+
+/**
+ * Type guards
+ */
+export function isValidTreeItemComponentModel(
+  value: unknown
+): value is TreeItemComponentModel {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    'name' in value &&
+    'type' in value &&
+    'children' in value &&
+    'data' in value &&
+    Array.isArray((value as TreeItemComponentModel).children)
+  )
+}
+
+export function isValidViewerTree(value: unknown): value is ViewerTree {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    'children' in value &&
+    'data' in value &&
+    Array.isArray((value as ViewerTree).children)
+  )
+}
+
+export function isValidBIMNodeRaw(value: unknown): value is BIMNodeRaw {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    'type' in value &&
+    typeof (value as BIMNodeRaw).id === 'string' &&
+    typeof (value as BIMNodeRaw).type === 'string'
+  )
+}
+
+export function isValidBIMNodeData(value: unknown): value is BIMNodeData {
+  if (!value || typeof value !== 'object') return false
+  const data = value as BIMNodeData
+  return (
+    typeof data.id === 'string' &&
+    typeof data.type === 'string' &&
+    typeof data.parameters === 'object' &&
+    data.parameters !== null
+  )
+}
+
+export function isValidBIMNodeValue(value: unknown): value is BIMNodeValue {
+  return (
+    value === null ||
+    value === undefined ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  )
+}
+
+export function isValidProcessedHeader(value: unknown): value is ProcessedHeader {
+  if (!value || typeof value !== 'object') return false
+
+  const header = value as ProcessedHeader
+  return (
+    // BaseItem properties
+    typeof header.id === 'string' &&
+    typeof header.name === 'string' &&
+    typeof header.field === 'string' &&
+    typeof header.header === 'string' &&
+    typeof header.visible === 'boolean' &&
+    typeof header.removable === 'boolean' &&
+    // ProcessedHeader properties
+    typeof header.type === 'string' &&
+    'value' in header &&
+    typeof header.source === 'string' &&
+    typeof header.fetchedGroup === 'string' &&
+    typeof header.currentGroup === 'string' &&
+    typeof header.isFetched === 'boolean'
+  )
 }

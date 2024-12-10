@@ -4,47 +4,64 @@
       <h3 class="text-sm font-medium mb-2">Parameter Groups</h3>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div
-          v-for="[kind, rows] in Array.from(groups.entries())"
+          v-for="[kind, parameters] in Array.from(groups.entries())"
           :key="kind"
           class="parameter-group"
         >
           <h4 class="font-medium mb-2">{{ kind }}</h4>
           <div class="space-y-2">
             <button
-              v-for="row in rows"
-              :key="row.id"
+              v-for="param in parameters"
+              :key="param.id"
               type="button"
               class="parameter-row"
-              @click="$emit('row-click', row)"
-              @keydown.enter="$emit('row-click', row)"
+              @click="$emit('row-click', param)"
+              @keydown.enter="$emit('row-click', param)"
             >
-              <span class="parameter-name">{{ row.name }}</span>
-              <span v-if="row.sourceValue" class="parameter-source">
+              <span class="parameter-name">{{ param.name }}</span>
+              <span v-if="isBimParameter(param)" class="parameter-source">
                 (BIM Parameter)
+                <span v-if="param.sourceValue" class="parameter-value">
+                  {{ param.sourceValue }}
+                </span>
               </span>
-              <span v-else-if="row.equation" class="parameter-source">
-                (Custom Parameter)
+              <span v-else-if="isUserParameter(param)" class="parameter-source">
+                <span v-if="param.equation" class="parameter-equation">
+                  ({{ param.equation }})
+                </span>
+                <span v-else>(Custom Parameter)</span>
               </span>
             </button>
           </div>
         </div>
       </div>
     </div>
+    <div v-else class="empty-state">
+      <p class="text-sm text-gray-500">No parameters available</p>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { ScheduleRow } from '../types'
+import type { Parameter } from '~/composables/core/types/parameters'
+import {
+  isBimParameter,
+  isUserParameter
+} from '~/composables/core/types/parameters/parameter-types'
 
 interface Props {
-  groups: Map<string, ScheduleRow[]>
+  groups: Map<string, Parameter[]>
+  isLoading?: boolean
 }
 
 interface Emits {
-  (e: 'row-click', row: ScheduleRow): void
+  (e: 'row-click', parameter: Parameter): void
 }
 
-defineProps<Props>()
+withDefaults(defineProps<Props>(), {
+  isLoading: false
+})
+
 defineEmits<Emits>()
 </script>
 
@@ -70,6 +87,18 @@ defineEmits<Emits>()
 }
 
 .parameter-source {
-  @apply text-xs text-gray-500;
+  @apply text-xs text-gray-500 flex items-center gap-1;
+}
+
+.parameter-value {
+  @apply text-xs text-primary-600 font-medium;
+}
+
+.parameter-equation {
+  @apply text-xs text-secondary-600 font-mono;
+}
+
+.empty-state {
+  @apply p-4 text-center border rounded-lg bg-white;
 }
 </style>

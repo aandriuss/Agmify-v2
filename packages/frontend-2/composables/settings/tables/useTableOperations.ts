@@ -1,5 +1,5 @@
 import type { NamedTableConfig, ColumnDef } from '~/composables/core/types'
-import { debug, DebugCategories } from '~/components/viewer/schedules/debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 interface UseTableOperationsOptions {
   settings: { value: { namedTables?: Record<string, NamedTableConfig> } }

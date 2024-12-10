@@ -1,4 +1,4 @@
-import { debug, DebugCategories } from '../debug/useDebug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 /**
  * Configuration for BIM element type keywords
