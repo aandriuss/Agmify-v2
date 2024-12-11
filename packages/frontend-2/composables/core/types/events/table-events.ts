@@ -1,18 +1,14 @@
+import type { BaseItem } from '../common/base-types'
 import type { ColumnDef } from '../tables/column-types'
-import type { BaseTableRow } from '~/components/tables/DataTable/types'
+import type { EventEmits, EventHandler } from './base-events'
 import type { DataTableFilterMeta } from 'primevue/datatable'
 
 /**
- * Common event payloads
+ * Column event interfaces
  */
 export interface ColumnUpdateEvent {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
-}
-
-export interface ColumnReorderEvent {
-  dragIndex: number
-  dropIndex: number
 }
 
 export interface ColumnResizeEvent {
@@ -20,50 +16,51 @@ export interface ColumnResizeEvent {
   delta: number
 }
 
+export interface ColumnReorderEvent {
+  dragIndex: number
+  dropIndex: number
+}
+
+/**
+ * Sort event interface
+ */
 export interface SortEvent {
   field: string
   order: number
 }
 
-export interface ParameterGroupEvent {
-  id: string
-  parameters: BaseTableRow[]
-}
-
-export interface ExpandedRowsEvent<TRow> {
-  rows: TRow[]
+/**
+ * Filter event interface
+ */
+export interface FilterEvent {
+  filters: DataTableFilterMeta
 }
 
 /**
- * Base event map with object types for all events
+ * Table event payloads combining all base events
  */
-export interface TableEventMap<TRow extends BaseTableRow = BaseTableRow> {
-  // Column Events
+export interface TableEventPayloads<TRow extends BaseItem = BaseItem> {
+  'table-updated': { timestamp: number }
   'update:columns': { columns: ColumnDef[] }
   'update:detail-columns': { columns: ColumnDef[] }
   'update:both-columns': ColumnUpdateEvent
   'column-reorder': ColumnReorderEvent
   'column-resize': ColumnResizeEvent
-  'column-visibility-change': { visible: boolean }
-
-  // Row Events
-  'update:expanded-rows': ExpandedRowsEvent<TRow>
+  'column-visibility-change': { column: ColumnDef; visible: boolean }
+  'update:expanded-rows': { rows: TRow[] }
   'row-expand': { row: TRow }
   'row-collapse': { row: TRow }
-
-  // Table Events
-  'table-updated': { timestamp: number }
   sort: SortEvent
-  filter: { filters: DataTableFilterMeta }
+  filter: FilterEvent
   error: { error: Error }
   retry: { timestamp: number }
 }
 
 /**
- * Parameter-specific event map
+ * Parameter-specific event payloads
  */
-export interface ParameterEventMap<TRow extends BaseTableRow = BaseTableRow>
-  extends TableEventMap<TRow> {
+export interface ParameterEventPayloads<TRow extends BaseItem = BaseItem>
+  extends TableEventPayloads<TRow> {
   'create-parameter': { timestamp: number }
   'edit-parameters': { timestamp: number }
   'parameter-click': { parameter: TRow }
@@ -71,132 +68,73 @@ export interface ParameterEventMap<TRow extends BaseTableRow = BaseTableRow>
 }
 
 /**
- * Schedule-specific event map
+ * Schedule-specific event payloads
  */
-export interface ScheduleEventMap<TRow extends BaseTableRow = BaseTableRow>
-  extends ParameterEventMap<TRow> {
+export interface ScheduleEventPayloads<TRow extends BaseItem = BaseItem>
+  extends ParameterEventPayloads<TRow> {
   'schedule-update': { schedule: TRow }
   'category-update': { categories: string[] }
-  'parameter-group-update': { groups: ParameterGroupEvent[] }
+  'parameter-group-update': { groups: Array<{ id: string; parameters: TRow[] }> }
+  'update:is-test-mode': { value: boolean }
 }
 
 /**
- * Event handler types
+ * Vue emit types for each event category
  */
-export type TableEventHandler<
-  TEvents extends TableEventMap | ParameterEventMap | ScheduleEventMap,
-  K extends keyof TEvents
-> = (event: TEvents[K]) => void | Promise<void>
+export type TableEmits<TRow extends BaseItem = BaseItem> = EventEmits<
+  TableEventPayloads<TRow>
+>
+export type ParameterEmits<TRow extends BaseItem = BaseItem> = EventEmits<
+  ParameterEventPayloads<TRow>
+>
+export type ScheduleEmits<TRow extends BaseItem = BaseItem> = EventEmits<
+  ScheduleEventPayloads<TRow>
+>
 
 /**
- * Emit types for defineEmits
+ * Event handlers for each event category
  */
-export type TableEmits<TRow extends BaseTableRow = BaseTableRow> = {
-  [K in keyof TableEventMap<TRow>]: [TableEventMap<TRow>[K]]
-}
-
-export type ParameterEmits<TRow extends BaseTableRow = BaseTableRow> = {
-  [K in keyof ParameterEventMap<TRow>]: [ParameterEventMap<TRow>[K]]
-}
-
-export type ScheduleEmits<TRow extends BaseTableRow = BaseTableRow> = {
-  [K in keyof ScheduleEventMap<TRow>]: [ScheduleEventMap<TRow>[K]]
-}
-
-/**
- * Props types for v-model
- */
-export interface TableModelProps<TRow extends BaseTableRow = BaseTableRow> {
-  columns?: ColumnDef[]
-  detailColumns?: ColumnDef[]
-  expandedRows?: TRow[]
-}
-
-export interface ParameterModelProps<TRow extends BaseTableRow = BaseTableRow>
-  extends TableModelProps<TRow> {
-  selectedCategories?: string[]
-}
-
-/**
- * Table State Types
- */
-export interface TableState<TRow extends BaseTableRow = BaseTableRow> {
-  columns: ColumnDef[]
-  detailColumns?: ColumnDef[]
-  expandedRows: TRow[]
-  sortField?: string
-  sortOrder?: number
-  filters?: DataTableFilterMeta
-}
+export type TableEventHandler<TRow extends BaseItem = BaseItem> = EventHandler<
+  TableEventPayloads<TRow>
+>
+export type ParameterEventHandler<TRow extends BaseItem = BaseItem> = EventHandler<
+  ParameterEventPayloads<TRow>
+>
+export type ScheduleEventHandler<TRow extends BaseItem = BaseItem> = EventHandler<
+  ScheduleEventPayloads<TRow>
+>
 
 /**
  * Event type guards
  */
-const TABLE_EVENTS = new Set([
-  'update:columns',
-  'update:detail-columns',
-  'update:both-columns',
-  'update:expanded-rows',
-  'column-reorder',
-  'column-resize',
-  'row-expand',
-  'row-collapse',
-  'table-updated',
-  'column-visibility-change',
-  'sort',
-  'filter',
-  'error',
-  'retry'
-])
+const TABLE_EVENTS = new Set(Object.keys({} as TableEventPayloads))
+const PARAMETER_EVENTS = new Set(Object.keys({} as ParameterEventPayloads))
+const SCHEDULE_EVENTS = new Set(Object.keys({} as ScheduleEventPayloads))
 
-const PARAMETER_EVENTS = new Set([
-  ...TABLE_EVENTS,
-  'create-parameter',
-  'edit-parameters',
-  'parameter-click',
-  'update:selected-categories'
-])
-
-const SCHEDULE_EVENTS = new Set([
-  ...PARAMETER_EVENTS,
-  'schedule-update',
-  'category-update',
-  'parameter-group-update'
-])
-
-export function isTableEvent<K extends keyof TableEventMap>(event: string): event is K {
+export function isTableEvent<K extends keyof TableEventPayloads>(
+  event: string
+): event is K {
   return TABLE_EVENTS.has(event)
 }
 
-export function isParameterEvent<K extends keyof ParameterEventMap>(
+export function isParameterEvent<K extends keyof ParameterEventPayloads>(
   event: string
 ): event is K {
   return PARAMETER_EVENTS.has(event)
 }
 
-export function isScheduleEvent<K extends keyof ScheduleEventMap>(
+export function isScheduleEvent<K extends keyof ScheduleEventPayloads>(
   event: string
 ): event is K {
   return SCHEDULE_EVENTS.has(event)
 }
 
 /**
- * Event creation utilities
+ * Event creation utility
  */
-export function createSortEvent(field: string, order: number): SortEvent {
-  return { field, order }
-}
-
-export function createColumnUpdateEvent(
-  parentColumns: ColumnDef[],
-  childColumns: ColumnDef[]
-): ColumnUpdateEvent {
-  return { parentColumns, childColumns }
-}
-
-export function createParameterGroupEvent(
-  id: string,
-  parameters: BaseTableRow[]
-): ParameterGroupEvent {
-  return { id, parameters }
+export function createEvent<T, K extends keyof T>(
+  event: K,
+  payload: T[K]
+): { event: K; payload: T[K] } {
+  return { event, payload }
 }

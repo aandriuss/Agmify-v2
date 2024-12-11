@@ -17,7 +17,7 @@
     <div
       class="flex items-center gap-2 p-2 rounded border"
       :class="{
-        'border-primary-500': dropPosition === 'above',
+        'border-primary': dropPosition === 'above',
         'border-transparent': dropPosition !== 'above'
       }"
     >
@@ -32,7 +32,7 @@
         <button
           v-if="mode === 'available'"
           type="button"
-          class="p-1 text-gray-500 hover:text-primary-600"
+          class="p-1 text-gray-500 hover:text-primary-focus"
           :aria-label="`Add ${column.name} column`"
           @click.stop="$emit('add', column)"
         >
@@ -41,7 +41,7 @@
         <button
           v-if="mode === 'active'"
           type="button"
-          class="p-1 text-gray-500 hover:text-primary-600"
+          class="p-1 text-gray-500 hover:text-primary-focus"
           :aria-label="`Remove ${column.name} column`"
           @click.stop="$emit('remove', column)"
         >
@@ -50,7 +50,7 @@
         <button
           v-if="mode === 'active' && column.removable"
           type="button"
-          class="p-1 text-gray-500 hover:text-primary-600"
+          class="p-1 text-gray-500 hover:text-primary-focus"
           :aria-label="`${column.visible ? 'Hide' : 'Show'} ${column.name} column`"
           @click.stop="$emit('visibility-change', column, !column.visible)"
         >

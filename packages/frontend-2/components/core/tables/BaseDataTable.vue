@@ -20,8 +20,8 @@
               {{ (error || tableState.error.value)?.message || 'An error occurred' }}
             </span>
             <button
-              class="text-sm text-primary-600 hover:text-primary-700"
-              @click="$emit('retry')"
+              class="text-sm text-primary hover:text-primary-focus"
+              @click="handleRetry"
             >
               Retry
             </button>
@@ -57,6 +57,7 @@
       @column-reorder="handleColumnReorder"
       @row-expand="handleRowExpand"
       @row-collapse="handleRowCollapse"
+      @filter="handleFilter"
     >
       <!-- Row Expansion Template -->
       <template #expansion="slotProps">
@@ -97,6 +98,7 @@
         :data-field="col.field"
         :style="{ width: col.width ? `${col.width}px` : 'auto' }"
         sortable
+        @visibility-change="handleColumnVisibilityChange(col)"
       />
     </DataTable>
   </div>
@@ -106,13 +108,17 @@
 import { computed, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import type { ColumnDef } from '~/composables/core/types'
 import type { BaseTableRow } from '~/components/tables/DataTable/types'
+import type { ColumnDef } from '~/composables/core/types'
 import { useDataTableState } from '~/composables/core/tables'
-import { TableStateError } from '~/composables/core/types/errors'
-import { isBaseTableRow } from '~/components/tables/DataTable/types'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
+import { type TableEmits } from '~/composables/core/types/events'
+import type { DataTableFilterEvent } from '~/composables/core/types/tables/filter-types'
+import filterUtils from '~/composables/core/types/tables/filter-types'
 
-export interface BaseTableProps<T extends BaseTableRow> {
+const debug = useDebug()
+
+interface BaseTableProps<T extends BaseTableRow> {
   tableId: string
   tableName?: string
   data: T[]
@@ -136,22 +142,7 @@ const props = withDefaults(defineProps<BaseTableProps<T>>(), {
 })
 
 // Emits
-const emit = defineEmits<{
-  'update:expanded-rows': [rows: T[]]
-  'update:columns': [columns: ColumnDef[]]
-  'update:detail-columns': [columns: ColumnDef[]]
-  'update:both-columns': [
-    updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
-  ]
-  'column-reorder': [event: { dragIndex: number; dropIndex: number }]
-  'column-resize': [event: { element: HTMLElement; delta: number }]
-  'row-expand': [row: T]
-  'row-collapse': [row: T]
-  'table-updated': []
-  'column-visibility-change': []
-  retry: []
-  error: [error: Error]
-}>()
+const emit = defineEmits<TableEmits<T>>()
 
 // Initialize table state
 const tableState = useDataTableState({
@@ -160,8 +151,8 @@ const tableState = useDataTableState({
     expandedRows: props.initialState?.expandedRows,
     detailColumns: props.detailColumns
   },
-  onError: (error) => emit('error', error),
-  onUpdate: () => emit('table-updated')
+  onError: (error) => emit('error', { error }),
+  onUpdate: () => emit('table-updated', { timestamp: Date.now() })
 })
 
 // Computed values
@@ -193,7 +184,36 @@ watch(
 )
 
 // Event handlers
-const handleColumnResize = (event: { element: HTMLElement; delta: number }) => {
+function handleFilter(event: DataTableFilterEvent): void {
+  try {
+    const payload = filterUtils.createFilterPayload(event)
+    emit('filter', payload)
+  } catch (err) {
+    handleError(err instanceof Error ? err : new Error('Failed to apply filters'))
+  }
+}
+
+function handleError(err: Error): void {
+  const error = err instanceof Error ? err : new Error(String(err))
+  emit('error', { error })
+}
+
+function handleColumnVisibilityChange(column: ColumnDef): void {
+  try {
+    debug.log(DebugCategories.COLUMNS, 'Column visibility change requested', {
+      field: column.field,
+      visible: !column.visible
+    })
+
+    emit('column-visibility-change', { column, visible: !column.visible })
+  } catch (err) {
+    const error =
+      err instanceof Error ? err : new Error('Failed to update column visibility')
+    emit('error', { error })
+  }
+}
+
+function handleColumnResize(event: { element: HTMLElement; delta: number }): void {
   try {
     const field = event.element.dataset.field
     if (!field) return
@@ -205,17 +225,14 @@ const handleColumnResize = (event: { element: HTMLElement; delta: number }) => {
       tableState.updateColumns(columns)
     }
 
-    emit('column-resize', event)
+    emit('column-resize', { element: event.element, delta: event.delta })
   } catch (err) {
-    const error =
-      err instanceof Error
-        ? new TableStateError(err.message, err)
-        : new TableStateError('Failed to resize column')
-    emit('error', error)
+    const error = err instanceof Error ? err : new Error('Failed to resize column')
+    emit('error', { error })
   }
 }
 
-const handleColumnReorder = (event: { dragIndex: number; dropIndex: number }) => {
+function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
   try {
     const { dragIndex, dropIndex } = event
     const columns = [...tableState.columns.value]
@@ -228,70 +245,46 @@ const handleColumnReorder = (event: { dragIndex: number; dropIndex: number }) =>
     })
 
     tableState.updateColumns(columns)
-    emit('column-reorder', event)
+    emit('column-reorder', { dragIndex, dropIndex })
   } catch (err) {
-    const error =
-      err instanceof Error
-        ? new TableStateError(err.message, err)
-        : new TableStateError('Failed to reorder columns')
-    emit('error', error)
+    const error = err instanceof Error ? err : new Error('Failed to reorder columns')
+    emit('error', { error })
   }
 }
 
-const handleRowExpand = (event: { data: unknown }) => {
+function handleRowExpand(event: { data: T }): void {
   try {
-    if (!isBaseTableRow(event.data)) {
-      throw new TableStateError('Invalid row data')
-    }
     tableState.expandRow(event.data)
-    emit('row-expand', event.data as T)
+    emit('row-expand', { row: event.data })
   } catch (err) {
-    const error =
-      err instanceof Error
-        ? new TableStateError(err.message, err)
-        : new TableStateError('Failed to expand row')
-    emit('error', error)
+    const error = err instanceof Error ? err : new Error('Failed to expand row')
+    emit('error', { error })
   }
 }
 
-const handleRowCollapse = (event: { data: unknown }) => {
+function handleRowCollapse(event: { data: T }): void {
   try {
-    if (!isBaseTableRow(event.data)) {
-      throw new TableStateError('Invalid row data')
-    }
     tableState.collapseRow(event.data)
-    emit('row-collapse', event.data as T)
+    emit('row-collapse', { row: event.data })
   } catch (err) {
-    const error =
-      err instanceof Error
-        ? new TableStateError(err.message, err)
-        : new TableStateError('Failed to collapse row')
-    emit('error', error)
+    const error = err instanceof Error ? err : new Error('Failed to collapse row')
+    emit('error', { error })
   }
+}
+
+function handleRetry(): void {
+  emit('retry', { timestamp: Date.now() })
 }
 </script>
 
-<style scoped>
-.base-table {
-  width: 100%;
-  height: 100%;
-}
-
-.table-state {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-:deep(.p-datatable) {
+<style>
+.base-table ::v-deep .p-datatable {
   background-color: var(--surface-card);
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
 }
 
-:deep(.p-datatable .p-datatable-header) {
+.base-table ::v-deep .p-datatable .p-datatable-header {
   background-color: var(--surface-section);
   border-top-left-radius: 0.5rem;
   border-top-right-radius: 0.5rem;
@@ -300,7 +293,7 @@ const handleRowCollapse = (event: { data: unknown }) => {
   height: 3rem;
 }
 
-:deep(.p-datatable .p-datatable-thead > tr > th) {
+.base-table ::v-deep .p-datatable .p-datatable-thead > tr > th {
   background-color: var(--surface-section);
   color: var(--text-color);
   font-weight: 600;
@@ -309,38 +302,44 @@ const handleRowCollapse = (event: { data: unknown }) => {
   height: 3rem;
 }
 
-:deep(.p-datatable .p-datatable-tbody > tr) {
+.base-table ::v-deep .p-datatable .p-datatable-tbody > tr {
   color: var(--text-color);
   transition: background-color 0.2s;
 }
 
-:deep(.p-datatable .p-datatable-tbody > tr > td) {
+.base-table ::v-deep .p-datatable .p-datatable-tbody > tr > td {
   padding: 0.2rem;
   border-bottom: 1px solid var(--surface-border);
 }
 
-:deep(.p-datatable .p-datatable-tbody > tr:hover) {
+.base-table ::v-deep .p-datatable .p-datatable-tbody > tr:hover {
   background-color: #f0f7ff;
 }
 
-:deep(.p-datatable-expanded-row > td) {
+.base-table ::v-deep .p-datatable-expanded-row > td {
   padding: 0 !important;
 }
 
-:deep(.p-datatable-expanded-row .p-datatable) {
+.base-table ::v-deep .p-datatable-expanded-row .p-datatable {
   margin: 0 !important;
 }
 
-:deep(.p-datatable-expanded-row .p-datatable .p-datatable-thead > tr > th) {
+.base-table
+  ::v-deep
+  .p-datatable-expanded-row
+  .p-datatable
+  .p-datatable-thead
+  > tr
+  > th {
   background-color: #f8f9fa;
 }
 
-:deep(.p-datatable-expanded-row .p-datatable .p-column-resizer) {
+.base-table ::v-deep .p-datatable-expanded-row .p-datatable .p-column-resizer {
   width: 0;
   background-color: transparent;
 }
 
-:deep(.p-datatable-expanded-row .p-datatable .p-column-resizer:hover) {
+.base-table ::v-deep .p-datatable-expanded-row .p-datatable .p-column-resizer:hover {
   background-color: #e9ecef;
 }
 </style>

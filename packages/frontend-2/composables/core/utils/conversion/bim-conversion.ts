@@ -2,13 +2,15 @@ import type {
   TreeItemComponentModel,
   ElementData,
   BIMNode,
-  ParameterValue,
-  BIMNodeRaw,
-  Parameters,
-  ParameterValueState
+  BIMNodeData
 } from '~/composables/core/types'
+import type {
+  ParameterValue,
+  ParameterValueState
+} from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '../debug'
-import { isValidBIMNodeRaw } from '~/composables/core/types/viewer'
+import { isValidBIMNodeData } from '~/composables/core/types/viewer/viewer-base'
+import { createParameterValueState } from '~/composables/core/types/parameters'
 
 /**
  * Convert any value to a string representation
@@ -31,8 +33,8 @@ export function convertToString(value: unknown): string {
  */
 export function isValidBIMNode(node: unknown): node is BIMNode {
   if (!node || typeof node !== 'object') return false
-  const bimNode = node as { raw?: unknown }
-  return bimNode.raw !== undefined && isValidBIMNodeRaw(bimNode.raw)
+  const bimNode = node as { data?: unknown }
+  return bimNode.data !== undefined && isValidBIMNodeData(bimNode.data)
 }
 
 /**
@@ -40,9 +42,9 @@ export function isValidBIMNode(node: unknown): node is BIMNode {
  */
 export function isValidTreeItem(item: unknown): item is TreeItemComponentModel {
   if (!item || typeof item !== 'object') return false
-  const treeItem = item as { rawNode?: unknown; children?: unknown[] }
+  const treeItem = item as { data?: unknown; children?: unknown[] }
   return (
-    isValidBIMNode(treeItem.rawNode) &&
+    isValidBIMNodeData(treeItem.data) &&
     (treeItem.children === undefined ||
       (Array.isArray(treeItem.children) &&
         treeItem.children.every((child) => isValidTreeItem(child))))
@@ -50,25 +52,13 @@ export function isValidTreeItem(item: unknown): item is TreeItemComponentModel {
 }
 
 /**
- * Create a new parameter value state
+ * Extract parameters from BIM node data
  */
-export function createParameterState(value: ParameterValue): ParameterValueState {
-  return {
-    fetchedValue: value,
-    currentValue: value,
-    previousValue: value,
-    userValue: null
-  }
-}
-
-/**
- * Extract parameters from BIM node raw data
- */
-export function extractParameters(raw: BIMNodeRaw): Parameters {
-  const parameters: Parameters = {}
+export function extractParameters(data: BIMNodeData): Record<string, ParameterValue> {
+  const parameterStates: Record<string, ParameterValueState> = {}
 
   // Helper to safely convert values
-  const convertValue = (value: unknown): ParameterValue => {
+  const convertValue = (value: unknown): string | number | boolean | null => {
     if (value === null) return null
     if (typeof value === 'string') return value
     if (typeof value === 'number') return value
@@ -77,9 +67,9 @@ export function extractParameters(raw: BIMNodeRaw): Parameters {
     return String(value)
   }
 
-  // Only process parameters from the parameters object
-  if (raw.parameters && typeof raw.parameters === 'object') {
-    Object.entries(raw.parameters).forEach(([key, value]) => {
+  // Process parameters from BIMNodeData
+  if (data.parameters && typeof data.parameters === 'object') {
+    Object.entries(data.parameters).forEach(([key, value]) => {
       if (key === '_raw' || key === '__proto__') return
 
       // If value is already a ParameterValueState, use it directly
@@ -91,13 +81,19 @@ export function extractParameters(raw: BIMNodeRaw): Parameters {
         'previousValue' in value &&
         'userValue' in value
       ) {
-        parameters[key] = value as ParameterValueState
+        parameterStates[key] = value as ParameterValueState
       } else {
         // Otherwise create a new ParameterValueState
-        parameters[key] = createParameterState(convertValue(value))
+        parameterStates[key] = createParameterValueState(convertValue(value))
       }
     })
   }
+
+  // Convert ParameterValueState to ParameterValue using currentValue
+  const parameters: Record<string, ParameterValue> = {}
+  Object.entries(parameterStates).forEach(([key, state]) => {
+    parameters[key] = state.currentValue
+  })
 
   return parameters
 }
@@ -106,27 +102,27 @@ export function extractParameters(raw: BIMNodeRaw): Parameters {
  * Extract element data from BIM node
  */
 export function extractElementData(node: BIMNode): ElementData {
-  if (!isValidBIMNodeRaw(node.raw)) {
+  if (!isValidBIMNodeData(node.data)) {
     throw new Error('Invalid BIM node data')
   }
 
-  const raw = node.raw
-  const other = raw.Other || {}
+  const data = node.data
+  const metadata = data.metadata || {}
 
-  // Extract parameters from parameters object only
-  const parameters = extractParameters(raw)
+  // Extract parameters
+  const parameters = extractParameters(data)
 
   // Extract essential fields
   return {
-    id: convertToString(raw.id),
-    type: convertToString(raw.speckleType || raw.type),
-    mark: convertToString(raw.Mark),
-    category: convertToString(other.Category),
+    id: String(data.id),
+    type: String(data.type),
+    mark: convertToString(metadata.Mark),
+    category: convertToString(metadata.Category),
     parameters,
     _visible: true,
-    name: convertToString(raw.name || raw.Mark || raw.id),
-    field: convertToString(raw.id),
-    header: convertToString(raw.name || raw.Mark || raw.id),
+    name: convertToString(data.id),
+    field: convertToString(data.id),
+    header: convertToString(data.id),
     visible: true,
     removable: true
   }
@@ -142,9 +138,13 @@ export function convertTreeItemToElementData(
     throw new Error('Invalid tree item data')
   }
 
+  if (!treeItem.rawNode) {
+    throw new Error('Missing raw node data')
+  }
+
   debug.log(DebugCategories.DATA, 'Converting tree item to element data', {
-    nodeId: convertToString(treeItem.rawNode.raw.id),
-    nodeType: convertToString(treeItem.rawNode.raw.type),
+    nodeId: treeItem.id,
+    nodeType: treeItem.type,
     childCount: treeItem.children?.length || 0
   })
 

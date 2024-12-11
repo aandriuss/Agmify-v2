@@ -3,7 +3,7 @@ import type {
   BIMNodeRaw,
   ProcessedHeader,
   BIMNode
-} from '~/composables/core/types/viewer'
+} from '~/composables/core/types/viewer/viewer-base'
 import type { Parameter, BimParameter, UserParameter } from '~/composables/core/types'
 import { useBIMParameters } from './useBIMParameters'
 

@@ -49,7 +49,7 @@
             <div class="flex flex-col items-center gap-2">
               <span>{{ error?.message || 'An error occurred' }}</span>
               <button
-                class="text-sm text-primary-600 hover:text-primary-700"
+                class="text-sm text-primary hover:text-primary-focus"
                 @click="handleRetry"
               >
                 Retry

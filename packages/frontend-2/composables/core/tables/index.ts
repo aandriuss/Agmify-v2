@@ -23,7 +23,6 @@ export type {
   TableTypeSettings,
   TableUpdateOperation,
   TableUpdateOperationPayloads,
-  TablesState,
   CategoryFilters,
   SortBy,
   SortByField,

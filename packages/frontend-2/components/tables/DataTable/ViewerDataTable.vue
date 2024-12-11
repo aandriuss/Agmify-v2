@@ -10,11 +10,13 @@
       @row-expand="$emit('row-expand', $event)"
       @row-collapse="$emit('row-collapse', $event)"
       @table-updated="$emit('table-updated', { timestamp: Date.now() })"
-      @column-visibility-change="$emit('column-visibility-change', { visible: true })"
-      @sort="(event) => $emit('sort', event)"
-      @filter="(event) => $emit('filter', event)"
-      @error="handleError"
-      @retry="handleRetry"
+      @column-visibility-change="
+        (payload) => handleColumnVisibilityChange(payload.column, payload.visible)
+      "
+      @sort="$emit('sort', $event)"
+      @filter="(payload) => handleFilter(payload.filters)"
+      @error="$emit('error', $event)"
+      @retry="$emit('retry', { timestamp: Date.now() })"
     >
       <template #empty>
         <slot name="empty">
@@ -41,16 +43,22 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import BaseDataTable from './BaseDataTable.vue'
-import type { TableProps, TableEvents } from './types'
+import type { DataTableFilterMeta } from 'primevue/datatable'
+import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
+import type { TableProps } from './types'
+import type { ColumnDef } from '~/composables/core/types'
 import { TableError } from './utils'
-import { useDataTableState } from './composables/useDataTableState'
+import { useDataTableState } from '~/composables/core/tables'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
+import type { TableEmits } from '~/composables/core/types/events'
+
+const debug = useDebug()
 
 // Props
 const props = defineProps<TableProps>()
 
 // Emits
-const emit = defineEmits<TableEvents>()
+const emit = defineEmits<TableEmits>()
 
 // State
 const error = ref<TableError | null>(null)
@@ -68,9 +76,7 @@ const tableProps = computed(() => ({
 }))
 
 // Initialize table state
-
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-const { resetState } = useDataTableState({
+const { resetState: _resetState } = useDataTableState({
   tableId: props.tableId,
   onError: (err: unknown) => {
     const tableError = createTableError(err)
@@ -91,20 +97,33 @@ function createTableError(err: unknown): TableError {
 }
 
 // Event Handlers
+function handleColumnVisibilityChange(column: ColumnDef, visible: boolean): void {
+  try {
+    debug.log(DebugCategories.COLUMNS, 'Column visibility change in ViewerDataTable', {
+      field: column.field,
+      visible
+    })
+    emit('column-visibility-change', { column, visible })
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+function handleFilter(filters: DataTableFilterMeta): void {
+  try {
+    debug.log(DebugCategories.TABLE_DATA, 'Filter event in ViewerDataTable', {
+      filters
+    })
+    emit('filter', { filters })
+  } catch (err) {
+    handleError(err)
+  }
+}
+
 function handleError(err: unknown): void {
   const tableError = createTableError(err)
   error.value = tableError
   emit('error', { error: tableError })
-}
-
-async function handleRetry(): Promise<void> {
-  try {
-    error.value = null
-    await Promise.resolve(resetState())
-    emit('retry', { timestamp: Date.now() })
-  } catch (err) {
-    handleError(err)
-  }
 }
 </script>
 

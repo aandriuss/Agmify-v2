@@ -1,9 +1,5 @@
 import { ref, computed } from 'vue'
-import type {
-  ColumnDef,
-  BaseTableRow,
-  TableState
-} from '../../components/tables/DataTable/types'
+import type { ColumnDef, BaseTableRow, TableState } from '~/composables/core/types'
 import type { DataTableFilterMeta } from 'primevue/datatable'
 import { TableError } from '~/components/tables/DataTable/utils'
 

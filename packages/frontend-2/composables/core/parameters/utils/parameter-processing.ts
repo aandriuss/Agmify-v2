@@ -1,5 +1,5 @@
 import { debug, DebugCategories } from '../../utils/debug'
-import type { ProcessedHeader } from '../../types/viewer'
+import type { ProcessedHeader } from '../../types/viewer/viewer-base'
 import type { DiscoveryProgressEvent } from '../../types/parameters/discovery-types'
 
 /**

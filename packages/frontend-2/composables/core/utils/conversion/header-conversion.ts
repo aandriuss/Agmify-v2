@@ -1,4 +1,4 @@
-import type { ProcessedHeader } from '~/composables/core/types/viewer'
+import type { ProcessedHeader } from '~/composables/core/types/viewer/viewer-base'
 import type {
   Parameter,
   BimParameter,

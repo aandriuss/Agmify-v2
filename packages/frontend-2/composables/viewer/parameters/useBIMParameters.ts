@@ -1,5 +1,8 @@
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import type { BIMNodeRaw, ProcessedHeader } from '~/composables/core/types/viewer'
+import type {
+  BIMNodeRaw,
+  ProcessedHeader
+} from '~/composables/core/types/viewer/viewer-base'
 import type {
   BimParameter,
   BimValueType,

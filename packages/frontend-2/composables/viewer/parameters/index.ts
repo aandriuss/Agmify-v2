@@ -37,4 +37,4 @@ export type {
   BIMNodeRaw,
   BIMNode,
   ProcessedHeader
-} from '~/composables/core/types/viewer'
+} from '~/composables/core/types/viewer/viewer-base'

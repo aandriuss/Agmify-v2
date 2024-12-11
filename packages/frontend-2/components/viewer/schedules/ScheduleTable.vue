@@ -6,16 +6,12 @@
         <BaseDataTable
           :table-id="tableId"
           :table-name="tableName"
-          :data="data"
-          :columns="columns || []"
-          :detail-columns="detailColumns || []"
+          :data="tableData"
+          :columns="columns"
+          :detail-columns="detailColumns"
           :loading="loading"
           :error="currentError"
-          :initial-state="{
-            columns: columns || [],
-            detailColumns: detailColumns || [],
-            expandedRows: initialState?.expandedRows || []
-          }"
+          :initial-state="tableState"
           @expanded-rows-change="onExpandedRowsChange"
           @columns-change="onColumnsChange"
           @detail-columns-change="onDetailColumnsChange"
@@ -59,7 +55,7 @@
                   {{ currentError?.message || 'Failed to load schedule data' }}
                 </span>
                 <button
-                  class="text-sm text-primary-600 hover:text-primary-700"
+                  class="text-sm text-primary hover:text-primary-focus"
                   @click="onRetry"
                 >
                   Retry Loading Schedule
@@ -93,51 +89,29 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import BaseDataTable from '~/components/tables/DataTable/BaseDataTable.vue'
+import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import ScheduleParameterManager from './components/ScheduleParameterManager.vue'
-import { useScheduleTable } from './composables/useScheduleTable'
-import type { Parameter } from '~/composables/core/types/parameters'
+import { useScheduleTable } from '~/composables/viewer/schedules/useScheduleTable'
+import type { SortEvent } from '~/composables/core/types'
+import type { ColumnDef } from '~/composables/core/types/tables/column-types'
 import type {
-  TableEmits,
-  TableModelProps,
+  TableState,
+  ScheduleEvents,
+  BaseTableProps,
   ColumnUpdateEvent,
-  SortEvent,
   ColumnReorderEvent
-} from '~/composables/core/types/events/table-events'
-import type { ColumnDef } from '~/composables/core/types'
-import type { DataTableFilterMeta } from 'primevue/datatable'
+} from '~/composables/core/types/tables/event-types'
+import { toScheduleRows } from '~/composables/core/tables/utils/schedule-conversion'
+import type { ScheduleRow } from '~/composables/core/types/tables/schedule-types'
+import type { DataTableFilterMeta } from '~/composables/core/types/tables/filter-types'
+import { createFilterPayload } from '~/composables/core/types/tables/filter-types'
 
 // Props
-export interface ScheduleTableProps extends TableModelProps<Parameter> {
-  tableId: string
-  tableName?: string
-  data: Parameter[]
-  loading?: boolean
-  initialState?: {
-    expandedRows?: Parameter[]
-    selectedRows?: Parameter[]
-  }
-}
-
-// Custom emits for schedule-specific events
-export interface ScheduleEmits<T> {
-  (e: 'update:expanded-rows', payload: { rows: T[] }): void
-  (e: 'update:columns', payload: { columns: ColumnDef[] }): void
-  (e: 'update:detail-columns', payload: { columns: ColumnDef[] }): void
-  (e: 'update:both-columns', payload: ColumnUpdateEvent): void
-  (e: 'update:selected-categories', payload: { categories: string[] }): void
-  (e: 'column-reorder', payload: ColumnReorderEvent): void
-  (e: 'row-expand', payload: { row: T }): void
-  (e: 'row-collapse', payload: { row: T }): void
-  (e: 'table-updated', payload: { timestamp: number }): void
-  (e: 'column-visibility-change', payload: { visible: boolean }): void
-  (e: 'sort', payload: SortEvent): void
-  (e: 'filter', payload: { filters: DataTableFilterMeta }): void
-  (e: 'error', payload: { error: Error }): void
-  (e: 'retry', payload: { timestamp: number }): void
-  (e: 'parameter-click', payload: { parameter: T }): void
-  (e: 'create-parameter', payload: { timestamp: number }): void
-  (e: 'edit-parameters', payload: { timestamp: number }): void
+export interface ScheduleTableProps
+  extends Omit<BaseTableProps<ScheduleRow>, 'columns' | 'detailColumns'> {
+  columns: ColumnDef[]
+  detailColumns?: ColumnDef[]
+  initialState?: TableState<ScheduleRow>
 }
 
 const props = withDefaults(defineProps<ScheduleTableProps>(), {
@@ -145,16 +119,38 @@ const props = withDefaults(defineProps<ScheduleTableProps>(), {
   loading: false,
   columns: () => [],
   detailColumns: () => [],
-  initialState: () => ({})
+  initialState: () => ({
+    columns: [],
+    detailColumns: [],
+    expandedRows: []
+  })
 })
 
+// Convert ScheduleEvents to Vue emit type
+type EmitEvents = {
+  [K in keyof ScheduleEvents<ScheduleRow>]: [payload: ScheduleEvents<ScheduleRow>[K]]
+}
+
 // Emits
-const emit = defineEmits<ScheduleEmits<Parameter> & TableEmits<Parameter>>()
+const emit = defineEmits<EmitEvents>()
 
 // State
 const error = ref<Error | null>(null)
 const currentError = computed(() => error.value)
-const selectedParameters = ref<Parameter[]>([])
+const selectedParameters = ref<ScheduleRow[]>([])
+
+// Convert data to schedule rows
+const tableData = computed(() => toScheduleRows(props.data))
+
+// Computed table state
+const tableState = computed<TableState<ScheduleRow>>(() => ({
+  columns: props.columns,
+  detailColumns: props.detailColumns,
+  expandedRows: props.initialState?.expandedRows || [],
+  sortField: props.initialState?.sortField,
+  sortOrder: props.initialState?.sortOrder,
+  filters: props.initialState?.filters
+}))
 
 // Initialize schedule table
 const {
@@ -178,7 +174,7 @@ const {
 // Event Handlers
 const onExpandedRowsChange = (payload: unknown) => {
   if (Array.isArray(payload)) {
-    emit('update:expanded-rows', { rows: payload as Parameter[] })
+    emit('update:expanded-rows', { rows: payload as ScheduleRow[] })
   }
 }
 
@@ -218,9 +214,13 @@ const onColumnReorder = (payload: unknown) => {
   }
 }
 
+const onColumnVisibilityChange = (payload: { column: ColumnDef; visible: boolean }) => {
+  emit('column-visibility-change', { column: payload.column, visible: payload.visible })
+}
+
 const onRowExpand = async (payload: unknown) => {
   if (payload && typeof payload === 'object' && 'id' in payload) {
-    const row = payload as Parameter
+    const row = payload as ScheduleRow
     try {
       await expandRow(row)
       emit('row-expand', { row })
@@ -234,7 +234,7 @@ const onRowExpand = async (payload: unknown) => {
 
 const onRowCollapse = async (payload: unknown) => {
   if (payload && typeof payload === 'object' && 'id' in payload) {
-    const row = payload as Parameter
+    const row = payload as ScheduleRow
     try {
       await collapseRow(row)
       emit('row-collapse', { row })
@@ -251,21 +251,21 @@ const onTableUpdated = () => {
   emit('table-updated', { timestamp: Date.now() })
 }
 
-const onColumnVisibilityChange = () => {
-  emit('column-visibility-change', { visible: true })
-}
-
 const onSort = (event: SortEvent) => {
-  emit('sort', event)
+  if (typeof event.field === 'string' && typeof event.order === 'number') {
+    emit('sort', { field: event.field, order: event.order })
+  }
 }
 
 const onFilter = (filters: DataTableFilterMeta) => {
-  emit('filter', { filters })
+  emit('filter', createFilterPayload(filters))
 }
 
 const onError = (err: Error) => {
-  error.value = err
-  emit('error', { error: err })
+  if (err instanceof Error) {
+    error.value = err
+    emit('error', { error: err })
+  }
 }
 
 const onRetry = async () => {
@@ -293,7 +293,7 @@ function handleCategoryUpdate(categories: string[]): void {
   }
 }
 
-function handleParameterClick(parameter: Parameter): void {
+function handleParameterClick(parameter: ScheduleRow): void {
   try {
     expandRow(parameter)
     emit('parameter-click', { parameter })

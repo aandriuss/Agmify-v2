@@ -56,4 +56,4 @@ export {
 } from '../types'
 
 // Re-export viewer types
-export type { BIMNodeRaw, BIMNode, ProcessedHeader } from '../types/viewer'
+export type { BIMNodeRaw, BIMNode, ProcessedHeader } from '../types/viewer/viewer-base'

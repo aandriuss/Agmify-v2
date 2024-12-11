@@ -13,7 +13,7 @@ import { processDataPipeline } from '../utils/dataPipeline'
 import { useStore } from '~/composables/core/store'
 import { convertViewerTreeToTreeItem } from '~/composables/core/utils/conversion/tree-conversion'
 import { processedHeaderToParameter } from '~/composables/core/utils/conversion/header-conversion'
-import { createElementData } from '~/composables/core/types/elements'
+import { createElementData } from '~/composables/core/types/elements/elements-base'
 
 interface UseElementsDataOptions {
   selectedParentCategories: Ref<string[]>

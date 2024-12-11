@@ -1,5 +1,5 @@
 import type { Parameter } from './parameter-types'
-import type { ProcessedHeader } from '../viewer'
+import type { ProcessedHeader } from '../viewer/viewer-base'
 
 /**
  * Base parameter discovery options

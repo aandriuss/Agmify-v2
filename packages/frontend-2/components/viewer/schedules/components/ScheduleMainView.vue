@@ -1,122 +1,121 @@
 <template>
-  <div
-    ref="viewerContainer"
-    class="viewer-container"
-    style="width: 100%; height: 100%; min-height: 400px"
-  >
-    <TestDataTable v-if="isTestMode" />
-
-    <template v-else>
-      <div class="schedule-table-container">
-        <ScheduleTableView
-          v-if="!isLoading"
-          :selected-table-id="selectedTableId"
-          :current-table="currentTable"
-          :is-initialized="isInitialized"
-          :table-name="tableName"
-          :current-table-id="currentTableId"
-          :table-key="tableKey"
-          :loading-error="error"
-          :parent-base-columns="parentBaseColumns"
-          :parent-available-columns="parentAvailableColumns"
-          :parent-visible-columns="parentVisibleColumns"
-          :child-base-columns="childBaseColumns"
-          :child-available-columns="childAvailableColumns"
-          :child-visible-columns="childVisibleColumns"
-          :schedule-data="scheduleData"
-          :evaluated-data="evaluatedData"
-          :table-data="tableData"
-          :is-loading="isLoading"
-          :is-loading-additional-data="isLoadingAdditionalData"
-          :no-categories-selected="!hasSelectedCategories"
-          :selected-parent-categories="selectedParentCategories"
-          :selected-child-categories="selectedChildCategories"
-          @update:both-columns="$emit('update:both-columns', $event)"
-          @table-updated="$emit('table-updated')"
-          @column-visibility-change="$emit('column-visibility-change')"
-          @row-expand="$emit('row-expand', $event)"
-          @row-collapse="$emit('row-collapse', $event)"
-          @error="$emit('error', $event)"
-        />
-
-        <ScheduleDataManagement
-          v-if="!isLoading"
-          ref="dataComponent"
-          :schedule-data="scheduleData"
-          :evaluated-data="evaluatedData"
-          :parameters="store.availableHeaders.value?.parent || []"
-          :parent-columns="parentAvailableColumns"
-          :child-columns="childAvailableColumns"
-          :selected-parent-categories="selectedParentCategories"
-          :selected-child-categories="selectedChildCategories"
-          :is-initialized="isInitialized"
-          @update:table-data="$emit('table-updated')"
-          @error="$emit('error', $event)"
-        />
-
-        <ScheduleColumnManagement
-          v-if="!isLoading"
-          ref="columnComponent"
-          :current-table-columns="parentVisibleColumns"
-          :current-detail-columns="childVisibleColumns"
-          :parameter-columns="parentBaseColumns"
-          :is-initialized="isInitialized"
-          @update:merged-table-columns="$emit('update:merged-table-columns')"
-          @update:merged-detail-columns="$emit('update:merged-detail-columns')"
-          @column-visibility-change="$emit('column-visibility-change')"
-          @column-order-change="$emit('column-order-change')"
-          @error="$emit('error', $event)"
-        />
-
-        <ScheduleParameterManagerModal
-          v-if="showParameterManager"
-          :show="showParameterManager"
-          :table-id="currentTableId"
-          @update:show="$emit('update:show-parameter-manager', $event)"
-          @update="$emit('parameter-update')"
-          @update:visibility="$emit('parameter-visibility-update')"
-          @update:order="$emit('parameter-order-update')"
-        />
-
-        <DebugPanel
-          :schedule-data="scheduleData"
-          :evaluated-data="evaluatedData"
-          :table-data="tableData"
-          :parent-elements="parentElements"
-          :child-elements="childElements"
-          :parent-columns="parentVisibleColumns"
-          :child-columns="childVisibleColumns"
-          :is-test-mode="isTestMode"
-          @update:is-test-mode="$emit('update:is-test-mode', $event)"
-        />
+  <TableLayout class="viewer-container">
+    <template #controls>
+      <div class="flex items-center gap-4">
+        <slot name="table-controls" />
       </div>
     </template>
-  </div>
+
+    <template #actions>
+      <div class="flex items-center gap-2">
+        <slot name="table-actions" />
+      </div>
+    </template>
+
+    <LoadingState
+      :is-loading="isLoading"
+      :error="error"
+      loading-message="Loading schedule data..."
+    >
+      <div class="schedule-table-container">
+        <TestDataTable v-if="isTestMode" />
+
+        <template v-else>
+          <BaseDataTable
+            :table-id="selectedTableId"
+            :table-name="tableName"
+            :data="convertedTableData"
+            :columns="parentVisibleColumns"
+            :detail-columns="childVisibleColumns"
+            :loading="isLoading"
+            :error="error"
+            @row-expand="({ row }) => events.handleRowExpand({ row })"
+            @row-collapse="({ row }) => events.handleRowCollapse({ row })"
+            @column-visibility-change="
+              (payload) => events.handleColumnVisibilityChange(payload)
+            "
+            @column-reorder="(payload) => events.handleColumnReorder(payload)"
+            @column-resize="(payload) => events.handleColumnResize(payload)"
+            @error="({ error }) => events.handleError({ error })"
+            @retry="() => events.handleRetry({ timestamp: Date.now() })"
+          />
+
+          <ParameterManager
+            v-if="showParameterManager"
+            :parameter-groups="parameterGroups"
+            :available-categories="availableCategories"
+            :selected-categories="selectedCategories"
+            :can-create-parameters="true"
+            :selected-parameters="selectedParameters"
+            :is-loading="isLoadingAdditionalData"
+            @update:selected-categories="handleCategoryUpdate"
+            @parameter-click="(parameter: TableParameter) => events.handleParameterClick({ parameter })"
+            @create-parameter="
+              () => events.handleCreateParameter({ timestamp: Date.now() })
+            "
+            @edit-parameters="
+              () => events.handleEditParameters({ timestamp: Date.now() })
+            "
+            @error="(error) => events.handleError({ error })"
+            @retry="() => events.handleRetry({ timestamp: Date.now() })"
+          />
+
+          <DebugPanel
+            v-if="isTestMode"
+            :schedule-data="convertedScheduleData"
+            :evaluated-data="evaluatedData"
+            :table-data="tableData"
+            :parent-elements="parentElements"
+            :child-elements="childElements"
+            :parent-columns="parentVisibleColumns"
+            :child-columns="childVisibleColumns"
+            :is-test-mode="isTestMode"
+            @update:is-test-mode="(value) => events.handleTestModeUpdate({ value })"
+          />
+        </template>
+      </div>
+    </LoadingState>
+  </TableLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, type PropType } from 'vue'
+import { computed, watch, type PropType } from 'vue'
 import type {
   ElementData,
   TableRow,
   ColumnDef,
   TableConfig
 } from '~/composables/core/types'
-import { ScheduleTableView } from './table'
-import ScheduleDataManagement from './ScheduleDataManagement.vue'
-import ScheduleColumnManagement from './ScheduleColumnManagement.vue'
-import ScheduleParameterManagerModal from './ScheduleParameterManagerModal.vue'
-import DebugPanel from '../debug/DebugPanel.vue'
+import type { TableParameter } from '~/composables/core/types/tables/parameter-table-types'
+import { toTableParameter } from '~/composables/core/types/tables/parameter-table-types'
+import type { PrimitiveValue, BimValueType } from '~/composables/core/types/parameters'
+import {
+  convertBimToUserType,
+  createUserParameterWithDefaults
+} from '~/composables/core/types/parameters'
+import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
+import ParameterManager from '~/components/core/parameters/ParameterManager.vue'
+import LoadingState from '~/components/core/LoadingState.vue'
+import TableLayout from '~/components/core/tables/TableLayout.vue'
+import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 import TestDataTable from './test/TestDataTable.vue'
-import { useStore } from '../core/store'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
+import { useElementsData } from '~/composables/core/tables/state/useElementsData'
+import { useScheduleEvents } from '~/composables/core/tables/events/useScheduleEvents'
+import {
+  isElementData,
+  isTableRow,
+  toElementData
+} from '~/composables/core/utils/conversion/table-conversion'
+import type { TableEmits, ScheduleEmits } from '~/composables/core/types/events'
 
-const viewerContainer = ref<HTMLElement | null>(null)
-const store = useStore()
+const debugInstance = useDebug()
 
-defineProps({
+// Define props first
+const props = defineProps({
   selectedTableId: {
     type: String,
-    default: ''
+    required: true
   },
   currentTable: {
     type: Object as PropType<TableConfig | null>,
@@ -167,7 +166,7 @@ defineProps({
     default: () => []
   },
   scheduleData: {
-    type: Array as PropType<ElementData[]>,
+    type: Array as PropType<(ElementData | TableRow)[]>,
     default: () => []
   },
   evaluatedData: {
@@ -175,7 +174,7 @@ defineProps({
     default: () => []
   },
   tableData: {
-    type: Array as PropType<ElementData[]>,
+    type: Array as PropType<TableRow[]>,
     default: () => []
   },
   isLoading: {
@@ -213,33 +212,140 @@ defineProps({
   isTestMode: {
     type: Boolean,
     default: false
+  },
+  parameterGroups: {
+    type: Object as PropType<Map<string, TableParameter[]>>,
+    default: () => new Map()
+  },
+  availableCategories: {
+    type: Array as PropType<string[]>,
+    default: () => []
+  },
+  selectedCategories: {
+    type: Array as PropType<string[]>,
+    default: () => []
+  },
+  selectedParameters: {
+    type: Array as PropType<TableParameter[]>,
+    default: () => []
   }
 })
 
-defineEmits<{
-  'update:both-columns': [
-    updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
-  ]
-  'table-updated': []
-  'column-visibility-change': []
-  'row-expand': [row: TableRow | ElementData]
-  'row-collapse': [row: TableRow | ElementData]
-  error: [err: Error | unknown]
-  'update:merged-table-columns': []
-  'update:merged-detail-columns': []
-  'column-order-change': []
-  'update:show-parameter-manager': [value: boolean]
-  'parameter-update': []
-  'parameter-visibility-update': []
-  'parameter-order-update': []
-  'update:is-test-mode': [value: boolean]
-}>()
+// Define emits with proper type
+const emit = defineEmits<TableEmits<TableParameter> & ScheduleEmits<TableParameter>>()
+
+// Initialize core functionality
+const { updateCategories } = useElementsData({
+  selectedParentCategories: computed(() => props.selectedParentCategories),
+  selectedChildCategories: computed(() => props.selectedChildCategories)
+})
+
+// Initialize events
+const events = useScheduleEvents<TableParameter>({
+  onError: (error) => emit('error', { error }),
+  onRetry: () => emit('retry', { timestamp: Date.now() })
+})
+
+// Convert schedule data to ElementData
+const convertedScheduleData = computed<ElementData[]>(() => {
+  return props.scheduleData
+    .map((item) => {
+      if (isElementData(item)) {
+        return item
+      }
+      if (isTableRow(item)) {
+        return toElementData(item)
+      }
+      // Log invalid data for debugging
+      debugInstance.warn(
+        DebugCategories.DATA_VALIDATION,
+        'Invalid schedule data item',
+        {
+          item,
+          type: typeof item,
+          hasId: item && typeof item === 'object' && 'id' in item,
+          hasType: item && typeof item === 'object' && 'type' in item
+        }
+      )
+      // Skip invalid items instead of creating potentially meaningless defaults
+      return null
+    })
+    .filter((item): item is ElementData => item !== null)
+})
+
+// Convert ElementData to TableParameter for BaseDataTable
+const convertedTableData = computed<TableParameter[]>(() => {
+  return convertedScheduleData.value.map((item) => {
+    const userParam = createUserParameterWithDefaults({
+      id: item.id,
+      name: item.name,
+      field: item.field,
+      header: item.header,
+      type: convertBimToUserType(item.type as BimValueType),
+      group: item.category || 'default',
+      value: null as PrimitiveValue,
+      visible: item.visible,
+      removable: item.removable,
+      order: item.order,
+      metadata: item.metadata
+    })
+    return toTableParameter(userParam)
+  })
+})
+
+function handleCategoryUpdate(categories: string[]): void {
+  emit('update:selected-categories', { categories })
+}
+
+// Watch for category changes
+watch(
+  [() => props.selectedParentCategories, () => props.selectedChildCategories],
+  async ([newParentCats, newChildCats]) => {
+    if (!props.isInitialized) {
+      debugInstance.warn(DebugCategories.STATE, 'Waiting for initialization')
+      return
+    }
+
+    try {
+      await updateCategories(newParentCats, newChildCats)
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      events.handleError({ error })
+    }
+  },
+  { immediate: true }
+)
+
+// Watch for column changes
+watch(
+  [() => props.parentVisibleColumns, () => props.childVisibleColumns],
+  ([parentCols, childCols]) => {
+    if (!props.isInitialized) return
+
+    try {
+      // Update parent columns
+      parentCols.forEach((col) => {
+        events.handleColumnVisibilityChange({ column: col, visible: col.visible })
+      })
+
+      // Update child columns
+      childCols.forEach((col) => {
+        events.handleColumnVisibilityChange({ column: col, visible: col.visible })
+      })
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      events.handleError({ error })
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
 .viewer-container {
-  position: relative;
-  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
 }
 
 .schedule-table-container {

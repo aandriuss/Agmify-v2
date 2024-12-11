@@ -7,7 +7,7 @@ import type {
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { processedHeaderToParameter } from '~/composables/core/utils/conversion/header-conversion'
-import { isValidBIMNodeData } from '~/composables/core/types/viewer'
+import { isValidBIMNodeData } from '~/composables/core/types/viewer/viewer-base'
 import {
   processInChunks,
   extractParametersFromObject,

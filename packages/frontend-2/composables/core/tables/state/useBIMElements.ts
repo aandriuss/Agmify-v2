@@ -6,7 +6,7 @@ import type {
   BIMNodeRaw
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { isValidBIMNodeRaw } from '~/composables/core/types/viewer'
+import { isValidBIMNodeRaw } from '~/composables/core/types/viewer/viewer-base'
 
 interface BIMElementsState {
   elements: ElementData[]

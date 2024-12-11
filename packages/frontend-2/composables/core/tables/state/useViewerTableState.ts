@@ -9,8 +9,8 @@ import type {
 import { TableStateError } from '~/composables/core/types/errors'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useDataTableState } from './useDataTableState'
-import { useBIMElements } from '~/components/viewer/schedules/composables/useBIMElements'
-import { toViewerTableRow } from '~/composables/core/types/elements'
+import { useBIMElements } from './useBIMElements'
+import { toViewerTableRow } from '~/composables/core/types/elements/elements-base'
 
 export interface ViewerTableStateOptions extends DataTableStateOptions {
   activeParameters?: string[]

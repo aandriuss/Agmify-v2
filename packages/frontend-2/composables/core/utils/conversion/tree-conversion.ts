@@ -4,7 +4,10 @@ import type {
   NodeModel,
   TreeItemComponentModel
 } from '~/composables/core/types'
-import { isValidBIMNodeRaw, isValidBIMNodeData } from '~/composables/core/types/viewer'
+import {
+  isValidBIMNodeRaw,
+  isValidBIMNodeData
+} from '~/composables/core/types/viewer/viewer-base'
 import { debug, DebugCategories } from '../debug'
 
 /**

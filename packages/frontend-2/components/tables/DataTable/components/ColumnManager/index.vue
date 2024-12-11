@@ -65,7 +65,7 @@
               <Button
                 v-if="hasHiddenColumns"
                 type="button"
-                class="p-1 text-gray-500 hover:text-primary-600"
+                class="p-1 text-gray-500 hover:text-primary-focus"
                 @click="showAllColumns"
               >
                 Show All

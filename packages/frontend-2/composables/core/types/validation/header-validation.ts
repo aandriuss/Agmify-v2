@@ -1,4 +1,4 @@
-import type { ProcessedHeader } from '../viewer'
+import type { ProcessedHeader } from '../viewer/viewer-base'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 /**

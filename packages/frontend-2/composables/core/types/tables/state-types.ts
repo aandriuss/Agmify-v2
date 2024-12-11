@@ -1,7 +1,6 @@
 import type { Ref } from 'vue'
-import type { ColumnDef } from './column-types'
 import type { NamedTableConfig } from './index'
-import type { BaseTableRow } from '~/components/tables/DataTable/types'
+import type { BaseTableRow, CategoryFilters, ColumnDef } from '~/composables/core/types'
 
 /**
  * Filter definition type
@@ -101,4 +100,18 @@ export interface DataTableState extends CoreTableState {
   expandRow: (row: BaseTableRow) => void
   collapseRow: (row: BaseTableRow) => void
   updateDetailColumns: (columns: ColumnDef[]) => void
+}
+
+/**
+ * Base table configuration interface
+ */
+export interface TableConfig {
+  readonly id: string
+  name: string
+  parentColumns: ColumnDef[]
+  childColumns: ColumnDef[]
+  categoryFilters: CategoryFilters
+  selectedParameterIds: string[]
+  metadata?: Record<string, unknown>
+  lastUpdateTimestamp: number
 }

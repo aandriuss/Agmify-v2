@@ -7,7 +7,11 @@ import type {
   ParameterValue
 } from '../types'
 
-import type { GQLParameter, BimGQLParameter, UserGQLParameter } from '../types/graphql'
+import type {
+  GQLParameter,
+  BimGQLParameter,
+  UserGQLParameter
+} from '../types/graphql/graphql-base'
 
 import { isEquationValue } from './parameters'
 
