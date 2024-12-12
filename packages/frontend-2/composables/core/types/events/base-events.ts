@@ -43,7 +43,7 @@ export interface DataEventPayloads {
  * Vue emit type helper - converts payload types to tuple types
  * This matches Vue's expected emit format of arrays
  */
-export type EventEmits<T> = {
+export type EventEmits<T extends Record<string, unknown>> = {
   [K in keyof T]: [payload: T[K]]
 }
 

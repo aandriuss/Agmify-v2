@@ -6,7 +6,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { useElementsData } from '../composables/useElementsData'
+import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import type {
   Parameter,
   ElementData,

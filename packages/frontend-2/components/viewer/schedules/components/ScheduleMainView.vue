@@ -84,15 +84,21 @@ import type {
   ElementData,
   TableRow,
   ColumnDef,
-  TableConfig
+  TableConfig,
+  PrimitiveValue,
+  BimValueType,
+  TableParameter,
+  TableEmits,
+  ScheduleEmits
 } from '~/composables/core/types'
-import type { TableParameter } from '~/composables/core/types/tables/parameter-table-types'
-import { toTableParameter } from '~/composables/core/types/tables/parameter-table-types'
-import type { PrimitiveValue, BimValueType } from '~/composables/core/types/parameters'
+
 import {
-  convertBimToUserType,
-  createUserParameterWithDefaults
-} from '~/composables/core/types/parameters'
+  createUserParameterWithDefaults,
+  convertBimToUserType
+} from '~/composables/core/types'
+
+import { toTableParameter } from '~/composables/core/types/tables/parameter-table-types'
+
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import ParameterManager from '~/components/core/parameters/ParameterManager.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
@@ -107,7 +113,6 @@ import {
   isTableRow,
   toElementData
 } from '~/composables/core/utils/conversion/table-conversion'
-import type { TableEmits, ScheduleEmits } from '~/composables/core/types/events'
 
 const debugInstance = useDebug()
 

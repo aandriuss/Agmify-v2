@@ -1,5 +1,5 @@
-import type { TableState, FilterDef } from '../../types/tables/state-types'
-import type { BaseTableRow, ComponentState } from '~/components/tables/DataTable/types'
+import type { TableState, FilterDef, BaseTableRow } from '~/composables/core/types'
+import type { ComponentState } from '~/components/tables/DataTable/types'
 
 /**
  * Convert component state to core table state
