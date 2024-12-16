@@ -3,12 +3,15 @@ import type {
   TableRow,
   ParameterValue,
   ParameterValueState,
-  Parameters,
   ColumnDef
 } from '~/composables/core/types'
+import { createElementData } from '~/composables/core/types'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
-import { createColumnsFromParameters, mergeColumns } from './columnUtils'
+import {
+  createColumnsFromParameters,
+  mergeColumns
+} from '~/composables/core/utils/columnUtils'
 
 const debug = useDebug()
 
@@ -50,6 +53,25 @@ function createParameterState(value: ParameterValue): ParameterValueState {
     previousValue: value,
     userValue: null
   }
+}
+
+function processParameters(
+  rawParameters: Record<string, unknown>
+): Record<string, ParameterValue> {
+  // First create parameter states
+  const parameterStates = Object.fromEntries(
+    Object.entries(rawParameters).map(([key, value]) => [
+      key,
+      isParameterValueState(value)
+        ? value
+        : createParameterState(value as ParameterValue)
+    ])
+  )
+
+  // Then extract current values
+  return Object.fromEntries(
+    Object.entries(parameterStates).map(([key, state]) => [key, state.currentValue])
+  )
 }
 
 export async function processDataPipeline(
@@ -113,6 +135,7 @@ function processQuickPass(
   const activeParentParameters = defaultColumns.map((col) => col.field)
   const activeChildParameters = defaultDetailColumns.map((col) => col.field)
 
+  // Create columns from field strings, using default columns as templates
   const parentColumns = createColumnsFromParameters(
     activeParentParameters,
     defaultColumns
@@ -123,15 +146,22 @@ function processQuickPass(
   )
 
   // Step 3: Basic element processing
-  const processedElements = [...parents, ...children].map(
-    (el): ElementData => ({
+  const processedElements = [...parents, ...children].map((el) => {
+    return createElementData({
       ...el,
+      id: el.id,
+      type: el.type,
       mark: el.mark || el.id,
+      name: el.name,
+      field: el.field,
+      header: el.header,
+      visible: el.visible,
+      removable: el.removable,
       category: el.category || 'Uncategorized',
-      parameters: {},
+      parameters: processParameters(el.parameters || {}),
       details: []
     })
-  )
+  })
 
   // Step 4: Basic relationship establishment
   const tableData = establishBasicRelationships(parents, children)
@@ -159,20 +189,15 @@ function processFullPass(
   })
 
   // Step 1: Full parameter processing
-  const processedElements = filteredElements.map(
-    (el): ElementData => ({
+  const processedElements = filteredElements.map((el) => {
+    return createElementData({
       ...el,
-      parameters: Object.fromEntries(
-        Object.entries(el.parameters || {}).map(([key, value]) => [
-          key,
-          isParameterValueState(value)
-            ? value
-            : createParameterState(value as ParameterValue)
-        ])
-      ) as Parameters,
+      id: el.id,
+      type: el.type,
+      parameters: processParameters(el.parameters || {}),
       details: el.details || []
     })
-  )
+  })
 
   // Step 2: Full column processing
   const parentColumns = mergeColumns(baseParentCols, defaultColumns)
@@ -201,11 +226,13 @@ function splitElementsByCategory(
   if (!selectedParent.length && !selectedChild.length) {
     return elements.reduce<CategorySplit>(
       (acc, element) => {
-        const elementCopy: ElementData = {
+        const elementCopy = createElementData({
           ...element,
+          id: element.id,
+          type: element.type,
           details: [],
           isChild: !!element.host
-        }
+        })
         if (element.host) {
           acc.children.push(elementCopy)
         } else {
@@ -220,14 +247,16 @@ function splitElementsByCategory(
   // Use selected categories
   return elements.reduce<CategorySplit>(
     (acc, element) => {
-      const elementCopy: ElementData = {
+      const elementCopy = createElementData({
         ...element,
+        id: element.id,
+        type: element.type,
         details: [],
-        isChild: selectedChild.includes(element.category)
-      }
-      if (selectedParent.includes(element.category)) {
+        isChild: selectedChild.includes(element.category || '')
+      })
+      if (selectedParent.includes(element.category || '')) {
         acc.parents.push(elementCopy)
-      } else if (selectedChild.includes(element.category)) {
+      } else if (selectedChild.includes(element.category || '')) {
         acc.children.push(elementCopy)
       }
       return acc
@@ -242,8 +271,13 @@ function establishBasicRelationships(
 ): TableRow[] {
   const parentMap = new Map<string, ElementData>(
     parents.map((parent): [string, ElementData] => [
-      parent.mark,
-      { ...parent, details: [] }
+      parent.mark || parent.id,
+      createElementData({
+        ...parent,
+        id: parent.id,
+        type: parent.type,
+        details: []
+      })
     ])
   )
 
@@ -252,6 +286,7 @@ function establishBasicRelationships(
     const host = child.host || 'Ungrouped'
     const parent = parentMap.get(host) || parentMap.get('Ungrouped')
     if (parent) {
+      parent.details = parent.details || []
       parent.details.push(child)
     }
   })
@@ -265,8 +300,13 @@ function establishFullRelationships(
 ): TableRow[] {
   const parentMap = new Map<string, ElementData>(
     parents.map((parent): [string, ElementData] => [
-      parent.mark,
-      { ...parent, details: [] }
+      parent.mark || parent.id,
+      createElementData({
+        ...parent,
+        id: parent.id,
+        type: parent.type,
+        details: []
+      })
     ])
   )
 
@@ -274,7 +314,15 @@ function establishFullRelationships(
   const childrenByHost = children.reduce((acc, child) => {
     const host = child.host || 'Ungrouped'
     if (!acc.has(host)) acc.set(host, [])
-    acc.get(host)!.push({ ...child, details: [] })
+    const group = acc.get(host)!
+    group.push(
+      createElementData({
+        ...child,
+        id: child.id,
+        type: child.type,
+        details: []
+      })
+    )
     return acc
   }, new Map<string, ElementData[]>())
 
@@ -283,22 +331,29 @@ function establishFullRelationships(
     if (host === 'Ungrouped' || !parentMap.has(host)) {
       // Create ungrouped parent if needed
       if (!parentMap.has('Ungrouped')) {
-        const ungroupedParent: ElementData = {
+        const ungroupedParent = createElementData({
           id: 'ungrouped',
           type: 'Group',
+          name: 'Ungrouped',
+          field: 'ungrouped',
+          header: 'Ungrouped',
+          visible: true,
+          removable: false,
           mark: 'Ungrouped',
           category: 'Groups',
           parameters: {},
           details: [],
           _visible: true,
           isChild: false
-        }
+        })
         parentMap.set('Ungrouped', ungroupedParent)
       }
       const ungrouped = parentMap.get('Ungrouped')!
+      ungrouped.details = ungrouped.details || []
       ungrouped.details.push(...groupChildren)
     } else {
       const parent = parentMap.get(host)!
+      parent.details = parent.details || []
       parent.details.push(...groupChildren)
     }
   })
@@ -309,14 +364,19 @@ function establishFullRelationships(
 function elementToTableRow(element: ElementData): TableRow {
   return {
     id: element.id,
+    name: element.name,
+    field: element.field,
+    header: element.header,
+    removable: element.removable,
     type: element.type || '',
-    mark: element.mark,
-    category: element.category,
+    mark: element.mark || element.id,
+    category: element.category || '',
     parameters: element.parameters,
     _visible: element._visible ?? true,
     isChild: element.isChild ?? false,
     host: element.host,
     _raw: element._raw,
-    details: element.details?.map(elementToTableRow) || []
+    details: element.details?.map(elementToTableRow) || [],
+    order: element.order
   }
 }

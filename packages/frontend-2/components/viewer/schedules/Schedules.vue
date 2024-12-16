@@ -4,7 +4,15 @@
     <TableLayout class="viewer-container">
       <template #controls>
         <div class="flex items-center gap-4">
-          <slot name="table-controls" />
+          <FormButton
+            text
+            size="sm"
+            color="subtle"
+            :icon-right="showCategoryOptions ? ChevronUpIcon : ChevronDownIcon"
+            @click="showCategoryOptions = !showCategoryOptions"
+          >
+            Category filter options
+          </FormButton>
         </div>
       </template>
 
@@ -19,6 +27,60 @@
         :error="error"
         loading-message="Loading schedule data..."
       >
+        <!-- Category Options Section -->
+        <div
+          v-show="showCategoryOptions"
+          class="sticky top-10 px-2 py-2 border-b-2 border-primary-muted bg-foundation"
+        >
+          <div class="flex flex-row justify-between">
+            <!-- Parent Categories -->
+            <div class="flex-1 mr-4">
+              <span class="text-body-xs text-foreground font-medium mb-2 block">
+                Host Categories
+              </span>
+              <div class="max-h-[200px] overflow-y-auto">
+                <div v-for="category in parentCategories" :key="category">
+                  <FormButton
+                    size="sm"
+                    :icon-left="
+                      categories.selectedParentCategories.value.includes(category)
+                        ? CheckCircleIcon
+                        : CheckCircleIconOutlined
+                    "
+                    text
+                    @click="toggleParentCategory(category)"
+                  >
+                    {{ category }}
+                  </FormButton>
+                </div>
+              </div>
+            </div>
+
+            <!-- Child Categories -->
+            <div class="flex-1">
+              <span class="text-body-xs text-foreground font-medium mb-2 block">
+                Child Categories
+              </span>
+              <div class="max-h-[200px] overflow-y-auto">
+                <div v-for="category in childCategories" :key="category">
+                  <FormButton
+                    size="sm"
+                    :icon-left="
+                      categories.selectedChildCategories.value.includes(category)
+                        ? CheckCircleIcon
+                        : CheckCircleIconOutlined
+                    "
+                    text
+                    @click="toggleChildCategory(category)"
+                  >
+                    {{ category }}
+                  </FormButton>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="schedule-container">
           <ScheduleMainView
             :selected-table-id="store.selectedTableId.value || ''"
@@ -58,40 +120,168 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useTableInteractions } from '~/composables/core/tables/interactions/useTableInteractions'
 import { useTableInitialization } from '~/composables/core/tables/initialization/useTableInitialization'
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
-import type { NamedTableConfig, ElementData, ColumnDef } from '~/composables/core/types'
-import type { ParameterValue } from '~/composables/core/types/parameters'
+import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
+import type { NamedTableConfig, ColumnDef, ElementData } from '~/composables/core/types'
 import { useTablesState } from '~/composables/settings/tables/useTablesState'
-import TableLayout from '~/components/core/tables/TableLayout.vue'
-import LoadingState from '~/components/core/LoadingState.vue'
+import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
+import {
+  CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
+} from '@heroicons/vue/24/solid'
+import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/outline'
 import ScheduleMainView from './components/ScheduleMainView.vue'
-import { defaultTable } from './config/defaultColumns'
+import LoadingState from '~/components/core/LoadingState.vue'
+import TableLayout from '~/components/core/tables/TableLayout.vue'
+import { useViewerEventListener } from '~~/lib/viewer/composables/viewer'
+import { ViewerEvent } from '@speckle/viewer'
 
-// Initialize debug system
+import type { WorldTreeRoot } from '~/composables/core/types/viewer/viewer-types'
+
+// Available categories
+const parentCategories = ['Walls', 'Floors', 'Roofs']
+const childCategories = [
+  'Structural Framing',
+  'Structural Connections',
+  'Windows',
+  'Doors',
+  'Ducts',
+  'Pipes',
+  'Cable Trays',
+  'Conduits',
+  'Lighting Fixtures'
+]
+
+// Type-safe array utilities
+function safeArrayFrom<T>(value: T[] | undefined | null): T[] {
+  return value ? Array.from(value) : []
+}
+
+function safeArrayIncludes<T>(array: T[] | undefined | null, value: T): boolean {
+  return array ? array.includes(value) : false
+}
+
+// Type-safe error handling utility
+function createSafeError(err: unknown): Error {
+  if (err instanceof Error) return err
+  if (typeof err === 'string') return new Error(err)
+  return new Error('An unknown error occurred')
+}
+
+// Type-safe object utilities
+function safeObjectEntries<T extends Record<string, unknown>>(
+  obj: T | undefined | null
+): [string, T[keyof T]][] {
+  if (!obj) return []
+  return Object.entries(obj) as [string, T[keyof T]][]
+}
+
+// Initialize systems
 const debug = useDebug()
-
-// Initialize refs
-const error = ref<Error | null>(null)
-
-// Initialize core composables
 const store = useStore()
 const tablesState = useTablesState()
+const bimElements = useBIMElements({
+  childCategories
+})
 
-// Get current table from tablesState
+// Get viewer state
+const {
+  viewer: {
+    metadata: { worldTree },
+    init
+  }
+} = useInjectedViewerState()
+
+// Watch for viewer events
+useViewerEventListener(ViewerEvent.LoadComplete, () => {
+  debug.log(DebugCategories.INITIALIZATION, 'Viewer load complete')
+  debug.log(DebugCategories.DATA, 'World tree state', {
+    exists: !!worldTree.value,
+    hasRoot: !!worldTree.value?._root,
+    childrenCount: worldTree.value?._root?.children?.length || 0
+  })
+})
+
+// Watch world tree changes
+watch(
+  worldTree,
+  async (newTree) => {
+    // Type-safe access to world tree data
+    const worldTreeData = newTree as WorldTreeRoot | null
+    const children = worldTreeData?._root?.children || []
+
+    debug.log(DebugCategories.DATA, 'World tree updated', {
+      exists: !!worldTreeData,
+      hasRoot: !!worldTreeData?._root,
+      childrenCount: children.length
+    })
+
+    if (children.length) {
+      // Create world tree root with verified children
+      const treeRoot: WorldTreeRoot = {
+        _root: {
+          children
+        }
+      }
+      await bimElements.initializeElements(treeRoot)
+    }
+  },
+  { immediate: true }
+)
+
+// Initialize refs with proper types
+const error = ref<Error | null>(null)
+const showCategoryOptions = ref(false)
+
+// Initialize data composables with category refs
+const categories = useTableCategories({
+  initialState: {
+    selectedParentCategories: parentCategories,
+    selectedChildCategories: childCategories
+  },
+  onUpdate: async (state) => {
+    await store.lifecycle.update({
+      selectedParentCategories: state.selectedParentCategories,
+      selectedChildCategories: state.selectedChildCategories
+    })
+  },
+  onError: (err) => updateErrorState(createSafeError(err))
+})
+
+const elementsData = useElementsData({
+  selectedParentCategories: categories.selectedParentCategories,
+  selectedChildCategories: categories.selectedChildCategories
+})
+
+// Safe computed properties from state
+const parentElements = computed<ElementData[]>(() => {
+  if (!elementsData.state.value) return []
+  return safeArrayFrom(elementsData.state.value.parentElements)
+})
+
+const childElements = computed<ElementData[]>(() => {
+  if (!elementsData.state.value) return []
+  return safeArrayFrom(elementsData.state.value.childElements)
+})
+
+// Get current table from tablesState with type safety
 const _currentTable = computed(() => {
   const selectedId = store.selectedTableId.value
   if (!selectedId) return null
 
+  const tables = tablesState.state.value?.tables
+  if (!tables) return null
+
+  const tableValues = safeArrayFrom(Object.values(tables))
   return (
-    Object.values(tablesState.state.value?.tables || {}).find(
-      (table): table is NamedTableConfig => table.id === selectedId
-    ) || null
+    tableValues.find((table): table is NamedTableConfig => isValidTable(table)) || null
   )
 })
 
@@ -103,10 +293,10 @@ const { initComponent } = useTableInitialization({
     tableName: '',
     currentTableColumns: [],
     currentDetailColumns: [],
-    selectedParentCategories: defaultTable.categoryFilters.selectedParentCategories,
-    selectedChildCategories: defaultTable.categoryFilters.selectedChildCategories
+    selectedParentCategories: parentCategories,
+    selectedChildCategories: childCategories
   },
-  onError: handleError
+  onError: (err) => handleError(createSafeError(err))
 })
 
 const _interactions = useTableInteractions({
@@ -115,8 +305,8 @@ const _interactions = useTableInteractions({
     selectedTableId: '',
     tableName: '',
     currentTable: null,
-    selectedParentCategories: [],
-    selectedChildCategories: [],
+    selectedParentCategories: parentCategories,
+    selectedChildCategories: childCategories,
     currentTableColumns: [],
     currentDetailColumns: []
   },
@@ -129,139 +319,77 @@ const _interactions = useTableInteractions({
       mergedDetailColumns: childColumns
     })
   },
-  handleError
-})
-
-const categories = useTableCategories({
-  initialState: {
-    selectedParentCategories: defaultTable.categoryFilters.selectedParentCategories,
-    selectedChildCategories: defaultTable.categoryFilters.selectedChildCategories
-  },
-  onUpdate: async (state) => {
-    await store.lifecycle.update({
-      selectedParentCategories: state.selectedParentCategories,
-      selectedChildCategories: state.selectedChildCategories
-    })
-  },
-  onError: handleError
-})
-
-// Initialize data composables with new category refs
-const elementsData = useElementsData({
-  selectedParentCategories: categories.selectedParentCategories,
-  selectedChildCategories: categories.selectedChildCategories
+  handleError: (err) => handleError(createSafeError(err))
 })
 
 // Loading state - only show loading when we have no data
 const isLoading = computed(() => {
-  if (store.scheduleData.value?.length > 0) return false
-  if (store.tableData.value?.length > 0) return false
-  if (elementsData.processingState?.isProcessingElements) return true
-  return true
+  const scheduleLength = store.scheduleData.value?.length ?? 0
+  const tableLength = store.tableData.value?.length ?? 0
+  if (scheduleLength > 0 || tableLength > 0) return false
+  return elementsData.state.value.loading
 })
 
 const isInitialized = computed(() => store.initialized.value ?? false)
 
-const isUpdating = computed(() => {
-  return elementsData.processingState?.isProcessingElements ?? false
-})
+const isUpdating = computed(() => elementsData.state.value.loading)
 
-// Type guard for raw table data
-interface RawTableData extends Omit<ElementData, 'parameters'> {
-  id: string
-  name: string
-  field: string
-  header: string
-  visible: boolean
-  removable: boolean
-  type: string
-  isChild: boolean
-  parameters: Record<string, ParameterValue>
-  details?: ElementData[]
-  metadata?: Record<string, unknown>
+// Category toggle handlers with type safety
+const toggleParentCategory = async (category: string) => {
+  const current = safeArrayFrom(categories.selectedParentCategories.value)
+  const index = current.indexOf(category)
+  if (index === -1) {
+    current.push(category)
+  } else {
+    current.splice(index, 1)
+  }
+  await store.lifecycle.update({
+    selectedParentCategories: current
+  })
+  await elementsData.initializeData()
 }
 
-function isValidTableData(value: unknown): value is RawTableData {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    typeof value.id === 'string' &&
-    'name' in value &&
-    typeof value.name === 'string' &&
-    'field' in value &&
-    typeof value.field === 'string' &&
-    'header' in value &&
-    typeof value.header === 'string' &&
-    'visible' in value &&
-    typeof value.visible === 'boolean' &&
-    'removable' in value &&
-    typeof value.removable === 'boolean' &&
-    'type' in value &&
-    typeof value.type === 'string' &&
-    'isChild' in value &&
-    typeof value.isChild === 'boolean' &&
-    'parameters' in value &&
-    typeof value.parameters === 'object'
-  )
+const toggleChildCategory = async (category: string) => {
+  const current = safeArrayFrom(categories.selectedChildCategories.value)
+  const index = current.indexOf(category)
+  if (index === -1) {
+    current.push(category)
+  } else {
+    current.splice(index, 1)
+  }
+  await store.lifecycle.update({
+    selectedChildCategories: current
+  })
+  await elementsData.initializeData()
 }
 
-// Computed properties for relationship data
-const parentElements = computed<ElementData[]>(() => {
-  const data = store.scheduleData.value || []
-  return data
-    .filter((el): el is RawTableData => isValidTableData(el) && !el.isChild)
-    .map((raw) => ({
-      ...raw,
-      parameters: raw.parameters as Record<string, ParameterValue>,
-      id: String(raw.id),
-      name: String(raw.name),
-      field: String(raw.field),
-      header: String(raw.header),
-      type: String(raw.type),
-      isChild: Boolean(raw.isChild),
-      visible: Boolean(raw.visible),
-      removable: Boolean(raw.removable)
-    }))
-})
-
-const childElements = computed<ElementData[]>(() => {
-  const data = store.scheduleData.value || []
-  return data
-    .filter((el): el is RawTableData => isValidTableData(el) && el.isChild)
-    .map((raw) => ({
-      ...raw,
-      parameters: raw.parameters as Record<string, ParameterValue>,
-      id: String(raw.id),
-      name: String(raw.name),
-      field: String(raw.field),
-      header: String(raw.header),
-      type: String(raw.type),
-      isChild: Boolean(raw.isChild),
-      visible: Boolean(raw.visible),
-      removable: Boolean(raw.removable)
-    }))
-})
-
-// Handler functions
-function handleTableDataUpdate() {
-  error.value = null
+// Handler functions with type safety
+function handleTableDataUpdate(): void {
+  updateErrorState(null)
 }
 
-async function handleColumnVisibilityChange(column: ColumnDef) {
+function isValidTable(table: unknown): table is NamedTableConfig {
+  if (!table || typeof table !== 'object') return false
+  const candidate = table as { id?: unknown }
+  return typeof candidate.id === 'string'
+}
+
+async function handleColumnVisibilityChange(column: ColumnDef): Promise<void> {
   try {
     debug.log(DebugCategories.COLUMNS, 'Column visibility changed', {
       field: column.field,
       visible: column.visible
     })
 
-    // Update parent columns
-    const updatedParentColumns = (store.parentVisibleColumns.value || []).map((col) =>
+    // Update parent columns with type safety
+    const parentColumns = safeArrayFrom(store.parentVisibleColumns.value)
+    const updatedParentColumns = parentColumns.map((col) =>
       col.field === column.field ? { ...col, visible: column.visible } : col
     )
 
-    // Update child columns
-    const updatedChildColumns = (store.childVisibleColumns.value || []).map((col) =>
+    // Update child columns with type safety
+    const childColumns = safeArrayFrom(store.childVisibleColumns.value)
+    const updatedChildColumns = childColumns.map((col) =>
       col.field === column.field ? { ...col, visible: column.visible } : col
     )
 
@@ -273,68 +401,110 @@ async function handleColumnVisibilityChange(column: ColumnDef) {
 
     debug.log(DebugCategories.COLUMNS, 'Column visibility updated in store')
   } catch (err) {
-    handleError(err)
+    updateErrorState(createSafeError(err))
   }
 }
 
-function handleError(err: Error | unknown): void {
-  const safeError =
-    err instanceof Error
-      ? err
-      : new Error(typeof err === 'string' ? err : 'Unknown error occurred')
-  error.value = safeError
+// Type-safe error handling
+function updateErrorState(newError: Error | null): void {
+  const currentError = error.value
+  const shouldUpdate =
+    !currentError || !newError || currentError.message !== newError.message
 
-  debug.error(DebugCategories.ERROR, 'Schedule error:', {
-    name: err instanceof Error ? err.name : 'Error',
-    message: safeError.message,
-    stack: err instanceof Error && typeof err.stack === 'string' ? err.stack : undefined
-  })
+  if (shouldUpdate) {
+    error.value = newError
+  }
+
+  if (newError) {
+    debug.error(DebugCategories.ERROR, 'Schedule error:', {
+      name: newError.name,
+      message: newError.message,
+      stack: newError.stack
+    })
+  }
+}
+
+function handleError(err: unknown): void {
+  updateErrorState(createSafeError(err))
 }
 
 onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
 
+    // First initialize store
+    await store.lifecycle.init()
+    debug.log(DebugCategories.STATE, 'Store initialized')
+
+    // Wait for viewer initialization
+    debug.log(DebugCategories.INITIALIZATION, 'Waiting for viewer initialization')
+    await init.promise
+    debug.log(DebugCategories.INITIALIZATION, 'Viewer initialized')
+
+    // Initialize data
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing element data')
+    await elementsData.initializeData()
+    debug.completeState(DebugCategories.INITIALIZATION, 'Element data initialized')
+
+    // Load tables
+    debug.startState(DebugCategories.INITIALIZATION, 'Loading tables')
     await tablesState.loadTables()
 
-    const tables = Object.values(tablesState.state.value?.tables || {})
-      .filter((table): table is NamedTableConfig => {
-        if (!table || typeof table !== 'object') return false
-        return 'id' in table && table.id !== 'defaultTable'
-      })
-      .map((table) => ({
-        id: table.id,
-        name: table.name || 'Unnamed Table'
-      }))
+    const tables = tablesState.state.value?.tables
+    if (!tables) {
+      throw new Error('Failed to load tables')
+    }
 
-    await store.lifecycle.update({
-      tablesArray: tables
+    debug.log(DebugCategories.DATA, 'Tables loaded', {
+      count: Object.keys(tables).length,
+      tableIds: Object.keys(tables)
     })
 
+    // Type-safe table processing
+    type TablesType = Record<string, NamedTableConfig>
+    const tableEntries = safeObjectEntries<TablesType>(tables as TablesType)
+    const validTableEntries = tableEntries.filter(
+      (entry): entry is [string, NamedTableConfig] => isValidTable(entry[1])
+    )
+    const filteredEntries = validTableEntries.filter(
+      ([_, table]) => table.id !== 'defaultTable'
+    )
+    const tablesList = filteredEntries.map(([_, table]) => ({
+      id: table.id,
+      name: table.name || 'Unnamed Table'
+    }))
+
+    // Update store with tables
+    await store.lifecycle.update({
+      tablesArray: tablesList
+    })
+
+    // Select table with type safety
     const lastSelectedId = localStorage.getItem('speckle:lastSelectedTableId')
     const tableIdToSelect =
-      lastSelectedId && tables.some((table) => table.id === lastSelectedId)
+      lastSelectedId &&
+      safeArrayIncludes(
+        tablesList.map((t) => t.id),
+        lastSelectedId
+      )
         ? lastSelectedId
-        : tables.length > 0
-        ? tables[0].id
+        : tablesList.length > 0
+        ? tablesList[0].id
         : 'default'
 
+    // Initialize table component (which triggers column merging)
     await initComponent.update({ selectedTableId: tableIdToSelect })
-    await elementsData.initializeData()
 
     debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
   } catch (err) {
-    handleError(err)
+    debug.error(DebugCategories.ERROR, 'Failed to initialize schedules', err)
+    updateErrorState(createSafeError(err))
   }
-})
-
-onBeforeUnmount(() => {
-  elementsData.stopWorldTreeWatch()
 })
 
 // Expose necessary functions
 defineExpose({
-  handleError,
+  handleError: (err: unknown) => updateErrorState(createSafeError(err)),
   handleTableDataUpdate,
   handleColumnVisibilityChange
 })

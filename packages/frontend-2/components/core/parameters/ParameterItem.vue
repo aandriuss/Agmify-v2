@@ -57,7 +57,7 @@ import Checkbox from 'primevue/checkbox'
 import Tooltip from 'primevue/tooltip'
 
 import type { Parameter, ColumnDef } from '~/composables/core/types'
-import { columnDefToParameter } from '~/composables/parameters/useParameterConversion'
+import { columnDefToParameter } from '~/composables/core/parameters'
 import ParameterBadge from './ParameterBadge.vue'
 
 const props = defineProps<{

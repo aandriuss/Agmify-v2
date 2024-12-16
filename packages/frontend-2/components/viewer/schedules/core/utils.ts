@@ -4,8 +4,8 @@ import type {
   DisplayData,
   ParameterDefinition,
   ParameterValue
-} from '../types/'
-import { ValidationError } from '../types/'
+} from '~/composables/core/types/'
+import { ValidationError } from '~/composables/core/types/'
 
 // Data filtering
 export function filterData(

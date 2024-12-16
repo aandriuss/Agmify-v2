@@ -15,6 +15,20 @@ export interface AvailableHeaders {
 export interface BIMNodeRaw {
   id: string
   type: string
+  Name?: string
+  Other?: {
+    Category?: string
+  }
+  'Identity Data'?: {
+    Mark?: string
+  }
+  Constraints?: {
+    Host?: string
+  }
+  speckle_type?: string
+  parameters?: Record<string, unknown>
+  metadata?: Record<string, unknown>
+  children?: BIMNodeRaw[]
   [key: string]: unknown
 }
 
@@ -94,16 +108,6 @@ export interface ProcessedHeader extends BaseItem {
 
   // Index signature for additional properties
   [key: string]: unknown
-}
-
-/**
- * Processing state interface
- */
-export interface ProcessingState {
-  isProcessingElements: boolean
-  processedCount: number
-  totalCount: number
-  error?: Error
 }
 
 /**

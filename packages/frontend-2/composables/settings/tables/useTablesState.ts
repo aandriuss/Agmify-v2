@@ -2,22 +2,40 @@ import { ref, watch } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTablesGraphQL } from './useTablesGraphQL'
 import { useUpdateQueue } from '../useUpdateQueue'
-import type { NamedTableConfig, TablesState, ColumnDef } from '~/composables/core/types'
+import type { NamedTableConfig, ColumnDef, TableConfig } from '~/composables/core/types'
 import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
+import {
+  createBimColumnDefWithDefaults,
+  createUserColumnDefWithDefaults,
+  isBimColumnDef,
+  isUserColumnDef
+} from '~/composables/core/types'
+import { useStore } from '~/composables/core/store'
 
 const LAST_SELECTED_TABLE_KEY = 'speckle:lastSelectedTableId'
 
-type RawTable = {
-  id: string
-  name: string
+// Default categories
+const DEFAULT_PARENT_CATEGORIES = ['Walls', 'Floors', 'Roofs']
+const DEFAULT_CHILD_CATEGORIES = [
+  'Structural Framing',
+  'Structural Connections',
+  'Windows',
+  'Doors',
+  'Ducts',
+  'Pipes',
+  'Cable Trays',
+  'Conduits',
+  'Lighting Fixtures'
+]
+
+interface TablesState {
+  tables: Record<string, NamedTableConfig>
+  loading: boolean
+  error: Error | null
+}
+
+type RawTable = Omit<TableConfig, 'lastUpdateTimestamp'> & {
   displayName?: string
-  parentColumns?: ColumnDef[]
-  childColumns?: ColumnDef[]
-  categoryFilters?: {
-    selectedParentCategories: string[]
-    selectedChildCategories: string[]
-  }
-  selectedParameterIds?: string[]
   description?: string
 }
 
@@ -26,11 +44,11 @@ function deepClone<T extends Record<string, unknown>>(obj: T): T {
 }
 
 export function useTablesState() {
-  // Initialize with default table
+  const store = useStore()
+
+  // Initialize with empty state
   const state = ref<TablesState>({
-    tables: {
-      defaultTable
-    },
+    tables: {},
     loading: false,
     error: null
   })
@@ -47,36 +65,55 @@ export function useTablesState() {
   const { queueUpdate } = useUpdateQueue()
 
   function formatTableKey(table: NamedTableConfig): string {
-    // Create a key in format name_id
     const sanitizedName = table.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
     return `${sanitizedName}_${table.id}`
   }
 
-  function isColumnDef(value: unknown): value is ColumnDef {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      'id' in value &&
-      'name' in value &&
-      'field' in value
-    )
-  }
-
   function validateColumnDefs(arr: unknown[]): ColumnDef[] {
-    const validColumns = arr.filter(isColumnDef)
-    return validColumns.map((col) => ({
-      ...col,
-      type: col.type || 'string',
-      source: col.source || 'Parameters',
-      category: col.category || 'Uncategorized',
-      description: col.description || '',
-      visible: col.visible ?? true,
-      removable: col.removable ?? true,
-      order: col.order ?? 0
-    }))
+    return arr.filter((col): col is ColumnDef => {
+      if (!col || typeof col !== 'object') return false
+
+      // Check if it's already a valid ColumnDef
+      if (isBimColumnDef(col) || isUserColumnDef(col)) return true
+
+      // Try to convert to appropriate type
+      const candidate = col as Record<string, unknown>
+      if ('sourceValue' in candidate && 'fetchedGroup' in candidate) {
+        return isBimColumnDef(
+          createBimColumnDefWithDefaults({
+            ...candidate,
+            field: String(candidate.field || '')
+          })
+        )
+      }
+
+      if ('group' in candidate) {
+        return isUserColumnDef(
+          createUserColumnDefWithDefaults({
+            ...candidate,
+            field: String(candidate.field || '')
+          })
+        )
+      }
+
+      return false
+    })
   }
 
   function validateAndTransformTable(rawTable: RawTable): NamedTableConfig {
+    // Get existing categories or use defaults
+    const existingFilters = rawTable.categoryFilters || {}
+    const categoryFilters = {
+      selectedParentCategories:
+        existingFilters.selectedParentCategories?.length > 0
+          ? existingFilters.selectedParentCategories
+          : DEFAULT_PARENT_CATEGORIES,
+      selectedChildCategories:
+        existingFilters.selectedChildCategories?.length > 0
+          ? existingFilters.selectedChildCategories
+          : DEFAULT_CHILD_CATEGORIES
+    }
+
     return {
       id: rawTable.id,
       name: rawTable.name,
@@ -87,16 +124,14 @@ export function useTablesState() {
       childColumns: Array.isArray(rawTable.childColumns)
         ? validateColumnDefs(rawTable.childColumns)
         : [],
-      categoryFilters: rawTable.categoryFilters || {
-        selectedParentCategories: [],
-        selectedChildCategories: []
-      },
+      categoryFilters,
       selectedParameterIds: Array.isArray(rawTable.selectedParameterIds)
         ? rawTable.selectedParameterIds.filter(
             (id): id is string => typeof id === 'string'
           )
         : [],
-      description: rawTable.description
+      description: rawTable.description,
+      lastUpdateTimestamp: Date.now()
     }
   }
 
@@ -104,7 +139,6 @@ export function useTablesState() {
   watch(
     () => result.value?.activeUser?.tables,
     (newTables) => {
-      // Skip if we're updating or if this is a response to our own update
       const timeSinceLastUpdate = Date.now() - lastUpdateTime.value
       if (isUpdating.value || timeSinceLastUpdate < 500) {
         debug.log(
@@ -121,13 +155,10 @@ export function useTablesState() {
       })
 
       try {
-        // Update tables in state
-        if (newTables) {
-          const processedTables: Record<string, NamedTableConfig> = {
-            defaultTable
-          }
+        // Process tables from the response
+        if (newTables && Object.keys(newTables).length > 0) {
+          const processedTables: Record<string, NamedTableConfig> = {}
 
-          // Process tables from the response
           Object.entries(newTables).forEach(([_, tableData]) => {
             if (
               tableData &&
@@ -152,34 +183,34 @@ export function useTablesState() {
             tables: processedTables,
             error: null
           }
-
-          // Store original state for change detection
-          originalTables.value = deepClone(processedTables)
-
-          // If no table is selected but we have a stored ID, try to select it
-          if (!selectedTableId.value) {
-            const storedId = localStorage.getItem(LAST_SELECTED_TABLE_KEY)
-            if (storedId) {
-              const tableExists = Object.values(processedTables).some(
-                (table) => table.id === storedId
-              )
-              if (tableExists) {
-                selectTable(storedId)
-              }
-            }
-          }
         } else {
+          // Only use default table if no tables exist
           state.value = {
             ...state.value,
             tables: { defaultTable },
             error: null
           }
-          originalTables.value = { defaultTable }
+        }
+
+        // Store original state for change detection
+        originalTables.value = deepClone(state.value.tables)
+
+        // Handle table selection
+        if (!selectedTableId.value) {
+          const storedId = localStorage.getItem(LAST_SELECTED_TABLE_KEY)
+          if (storedId) {
+            const tableExists = Object.values(state.value.tables).some(
+              (table) => table.id === storedId
+            )
+            if (tableExists) {
+              selectTable(storedId)
+            }
+          }
         }
       } catch (err) {
-        debug.error(DebugCategories.ERROR, 'Failed to process tables', err)
-        state.value.error =
-          err instanceof Error ? err : new Error('Failed to process tables')
+        const error = err instanceof Error ? err : new Error('Failed to process tables')
+        debug.error(DebugCategories.ERROR, 'Failed to process tables', error)
+        state.value.error = error
       }
     },
     { deep: true }
@@ -192,20 +223,20 @@ export function useTablesState() {
       state.value.error = null
 
       const tables = await fetchTables()
-
-      // Remember selected table ID
       const currentSelectedId = selectedTableId.value
 
-      // Merge with default table
-      state.value.tables = {
-        defaultTable,
-        ...tables
+      // Only use default table if no tables exist
+      if (Object.keys(tables).length > 0) {
+        state.value.tables = tables
+      } else {
+        state.value.tables = { defaultTable }
+        debug.log(DebugCategories.INITIALIZATION, 'No tables found, using default')
       }
 
       // Store original state for change detection
       originalTables.value = deepClone(state.value.tables)
 
-      // Restore selected table if it still exists
+      // Restore selected table if it exists
       if (currentSelectedId) {
         const tableExists = Object.values(tables).some(
           (table) => table.id === currentSelectedId
@@ -217,18 +248,19 @@ export function useTablesState() {
 
       debug.log(DebugCategories.INITIALIZATION, 'Tables loaded', {
         tablesCount: Object.keys(state.value.tables).length,
-        selectedTableId: selectedTableId.value
+        selectedTableId: selectedTableId.value,
+        usingDefault: Object.keys(tables).length === 0
       })
 
       debug.completeState(DebugCategories.INITIALIZATION, 'Tables loaded successfully')
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to load tables', err)
-      state.value.error =
-        err instanceof Error ? err : new Error('Failed to load tables')
+      const error = err instanceof Error ? err : new Error('Failed to load tables')
+      debug.error(DebugCategories.ERROR, 'Failed to load tables', error)
+      state.value.error = error
       // Use default table on error
       state.value.tables = { defaultTable }
       originalTables.value = { defaultTable }
-      throw state.value.error
+      throw error
     } finally {
       state.value.loading = false
     }
@@ -286,10 +318,7 @@ export function useTablesState() {
 
         const success = await updateTables(mergedTables)
         if (success) {
-          state.value.tables = {
-            defaultTable,
-            ...mergedTables
-          }
+          state.value.tables = mergedTables
 
           // Update original state after successful save
           originalTables.value = deepClone(state.value.tables)
@@ -308,10 +337,10 @@ export function useTablesState() {
         debug.completeState(DebugCategories.STATE, 'Tables saved')
         return success
       } catch (err) {
-        debug.error(DebugCategories.ERROR, 'Failed to save tables', err)
-        state.value.error =
-          err instanceof Error ? err : new Error('Failed to save tables')
-        throw state.value.error
+        const error = err instanceof Error ? err : new Error('Failed to save tables')
+        debug.error(DebugCategories.ERROR, 'Failed to save tables', error)
+        state.value.error = error
+        throw error
       } finally {
         state.value.loading = false
         isUpdating.value = false
@@ -319,17 +348,36 @@ export function useTablesState() {
     })
   }
 
-  function selectTable(tableId: string) {
+  async function selectTable(tableId: string) {
     debug.log(DebugCategories.STATE, 'Selecting table', { tableId })
     selectedTableId.value = tableId
-    // Store the selected table ID
     localStorage.setItem(LAST_SELECTED_TABLE_KEY, tableId)
+
+    // Find selected table
+    const selectedTable = Object.values(state.value.tables).find(
+      (table) => table.id === tableId
+    )
+
+    if (selectedTable) {
+      // Update store with selected table's data
+      await store.lifecycle.update({
+        selectedTableId: selectedTable.id,
+        currentTableId: selectedTable.id,
+        tableName: selectedTable.name,
+        parentBaseColumns: selectedTable.parentColumns,
+        childBaseColumns: selectedTable.childColumns,
+        parentVisibleColumns: selectedTable.parentColumns,
+        childVisibleColumns: selectedTable.childColumns,
+        selectedParentCategories:
+          selectedTable.categoryFilters.selectedParentCategories,
+        selectedChildCategories: selectedTable.categoryFilters.selectedChildCategories
+      })
+    }
   }
 
   function deselectTable() {
     debug.log(DebugCategories.STATE, 'Deselecting table')
     selectedTableId.value = null
-    // Clear the stored table ID
     localStorage.removeItem(LAST_SELECTED_TABLE_KEY)
   }
 
@@ -359,7 +407,7 @@ export function useTablesState() {
     isUpdating,
     lastUpdateTime,
     selectedTableId,
-    originalTables, // Expose originalTables
+    originalTables,
     loadTables,
     saveTables,
     selectTable,

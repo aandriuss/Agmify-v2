@@ -1,5 +1,5 @@
 import { ref, computed, watch } from 'vue'
-import type { ColumnDef, ParameterDefinition } from '~/composables/core/types'
+import type { ColumnDef, Parameter } from '~/composables/core/types'
 import { useUserSettings } from '~/composables/useUserSettings'
 import {
   defaultColumns,
@@ -11,12 +11,12 @@ export interface UseColumnStateOptions {
   tableId: string
   initialParentColumns: ColumnDef[]
   initialChildColumns: ColumnDef[]
-  availableParentParameters: ParameterDefinition[]
-  availableChildParameters: ParameterDefinition[]
+  availableParentParameters: Parameter[]
+  availableChildParameters: Parameter[]
 }
 
 export interface DragItem {
-  item: ColumnDef | ParameterDefinition
+  item: ColumnDef | Parameter
   sourceList: 'active' | 'available'
 }
 
@@ -67,7 +67,7 @@ export function useColumnState({
   }
 
   // User settings
-  const { settings, updateNamedTable } = useUserSettings()
+  const { settings, updateTableColumns } = useUserSettings()
 
   // View state
   const currentView = ref<'parent' | 'child'>('parent')
@@ -86,7 +86,7 @@ export function useColumnState({
   const pendingOperations = ref<PendingOperation[]>([])
 
   const draggedItem = ref<{
-    item: ColumnDef | ParameterDefinition
+    item: ColumnDef | Parameter
     sourceList: 'active' | 'available'
     sourceIndex: number
   } | null>(null)
@@ -156,29 +156,31 @@ export function useColumnState({
         return
       }
 
-      const updatedColumns = {
-        ...currentSettings,
-        parentColumns: parentColumns.value.map((col: ColumnDef, index: number) => ({
+      const updatedParentColumns = parentColumns.value.map(
+        (col: ColumnDef, index: number) => ({
           ...col,
           order: index,
           visible: col.visible ?? true,
           removable: col.removable ?? true
-        })),
-        childColumns: childColumns.value.map((col: ColumnDef, index: number) => ({
+        })
+      )
+
+      const updatedChildColumns = childColumns.value.map(
+        (col: ColumnDef, index: number) => ({
           ...col,
           order: index,
           visible: col.visible ?? true,
           removable: col.removable ?? true
-        }))
-      }
+        })
+      )
 
       debug.log(DebugCategories.COLUMNS, 'Saving column state:', {
-        parentColumnsCount: updatedColumns.parentColumns.length,
-        childColumnsCount: updatedColumns.childColumns.length,
+        parentColumnsCount: updatedParentColumns.length,
+        childColumnsCount: updatedChildColumns.length,
         timestamp: new Date().toISOString()
       })
 
-      await updateNamedTable(tableId, updatedColumns)
+      await updateTableColumns(tableId, updatedParentColumns, updatedChildColumns)
       isDirty.value = false
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Failed to save column state:', error)
@@ -193,13 +195,10 @@ export function useColumnState({
     return currentView.value === 'parent' ? parentColumns.value : childColumns.value
   })
 
-  const availableParameters = computed(() => {
-    const params =
-      currentView.value === 'parent'
-        ? availableParentParameters
-        : availableChildParameters
-
-    return params
+  const availableParameters = computed((): Parameter[] => {
+    return currentView.value === 'parent'
+      ? availableParentParameters
+      : availableChildParameters
   })
 
   // Initialize columns on setup

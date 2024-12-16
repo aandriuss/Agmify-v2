@@ -1,225 +1,206 @@
 import { ref, computed, watch } from 'vue'
-import type { Ref } from 'vue'
+import type { Ref, ComputedRef } from 'vue'
 import type {
   ElementData,
   ProcessingState,
   TableRow,
-  ElementsDataReturn
+  DataState
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { useBIMElements } from './useBIMElements'
-import { useParameterDiscovery } from './useParameterDiscovery'
-import { processDataPipeline } from '../utils/dataPipeline'
 import { useStore } from '~/composables/core/store'
-import { convertViewerTreeToTreeItem } from '~/composables/core/utils/conversion/tree-conversion'
-import { processedHeaderToParameter } from '~/composables/core/utils/conversion/header-conversion'
-import { createElementData } from '~/composables/core/types/elements/elements-base'
+import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
+import { useBIMElements } from './useBIMElements'
 
 interface UseElementsDataOptions {
   selectedParentCategories: Ref<string[]>
   selectedChildCategories: Ref<string[]>
 }
 
-/**
- * Ensure required element properties
- */
-function ensureElementProps(data: unknown): { id: string; type: string } {
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid element data')
+interface UseElementsDataReturn {
+  scheduleData: ComputedRef<ElementData[]>
+  tableData: Ref<TableRow[]>
+  availableCategories: {
+    parent: Set<string>
+    child: Set<string>
   }
-
-  const id = (data as { id?: unknown }).id
-  const type = (data as { type?: unknown }).type
-
-  if (typeof id !== 'string' || typeof type !== 'string') {
-    throw new Error('Invalid element data: missing id or type')
-  }
-
-  return { id, type }
+  updateCategories: (
+    parentCategories: string[],
+    childCategories: string[]
+  ) => Promise<void>
+  initializeData: () => Promise<void>
+  elementsMap: Ref<Map<string, ElementData>>
+  childElementsList: Ref<ElementData[]>
+  isLoading: ComputedRef<boolean>
+  hasError: ComputedRef<boolean>
+  state: ComputedRef<DataState>
+  processingState: Ref<ProcessingState>
 }
 
-/**
- * Core elements data composable
- * Handles BIM element data processing and state management
- */
-export function useElementsData({
-  selectedParentCategories,
-  selectedChildCategories
-}: UseElementsDataOptions): ElementsDataReturn {
+export function useElementsData(
+  options: UseElementsDataOptions
+): UseElementsDataReturn {
   const store = useStore()
-  const {
-    allElements,
-    rawWorldTree,
-    isLoading: bimLoading,
-    hasError: bimError,
-    stopWorldTreeWatch,
-    initializeElements
-  } = useBIMElements()
-
-  const { availableParentHeaders, availableChildHeaders, discoverParameters } =
-    useParameterDiscovery({
-      selectedParentCategories,
-      selectedChildCategories
-    })
+  const bimElements = useBIMElements()
+  const elementsMap = ref<Map<string, ElementData>>(new Map())
+  const childElementsList = ref<ElementData[]>([])
+  const tableData = ref<TableRow[]>([])
 
   const processingState = ref<ProcessingState>({
     isProcessingElements: false,
     processedCount: 0,
     totalCount: 0,
-    error: undefined
+    error: undefined,
+    isProcessingFullData: false
   })
 
-  const scheduleDataRef = ref<ElementData[]>([])
-  const tableDataRef = ref<TableRow[]>([])
+  async function processElements() {
+    if (!bimElements.allElements.value?.length) {
+      debug.warn(DebugCategories.DATA, 'No BIM elements available')
+      return
+    }
 
-  // Update data when source data or categories change
-  const updateData = async (elements: ElementData[]) => {
+    debug.startState(DebugCategories.INITIALIZATION, 'Processing elements')
+
+    // Clear existing data
+    elementsMap.value.clear()
+    childElementsList.value = []
+
+    // Get current categories or use defaults
+    const selectedParentCats =
+      options.selectedParentCategories.value.length > 0
+        ? options.selectedParentCategories.value
+        : defaultTable.categoryFilters.selectedParentCategories
+
+    const selectedChildCats =
+      options.selectedChildCategories.value.length > 0
+        ? options.selectedChildCategories.value
+        : defaultTable.categoryFilters.selectedChildCategories
+
+    // Process all elements
+    bimElements.allElements.value.forEach((element) => {
+      const category = element.category || 'Uncategorized'
+      const mark = element.mark || `Element-${element.id}`
+
+      // Process parent elements
+      const isParentCategory =
+        selectedParentCats.length === 0 || selectedParentCats.includes(category)
+
+      if (isParentCategory && !element.isChild) {
+        elementsMap.value.set(mark, element)
+      }
+
+      // Process child elements
+      const isChildCategory =
+        selectedChildCats.length === 0 || selectedChildCats.includes(category)
+
+      if (isChildCategory && element.isChild) {
+        childElementsList.value.push(element)
+      }
+    })
+
+    // Update store with processed data
     try {
-      if (!elements?.length) {
-        debug.warn(DebugCategories.DATA, 'No elements available for processing')
-        scheduleDataRef.value = []
-        tableDataRef.value = []
-        return
-      }
-
-      debug.startState(DebugCategories.DATA_TRANSFORM, 'Processing data', {
-        elementCount: elements.length,
-        selectedParent: selectedParentCategories.value,
-        selectedChild: selectedChildCategories.value
-      })
-      processingState.value.isProcessingElements = true
-
-      // First, discover ALL available parameters
-      if (rawWorldTree.value) {
-        const treeItem = convertViewerTreeToTreeItem(rawWorldTree.value)
-        if (treeItem) {
-          await discoverParameters(treeItem)
-
-          // Add user parameters
-          const userParams = store.userParameters.value || []
-          const discoveredParentParams = [
-            ...availableParentHeaders.value,
-            ...userParams
-              .map((param) => ({
-                ...param,
-                isFetched: true,
-                value: param.value || null,
-                source: 'User Parameters',
-                fetchedGroup: 'User Parameters',
-                currentGroup: 'User Parameters'
-              }))
-              .map(processedHeaderToParameter)
-          ]
-          const discoveredChildParams = [
-            ...availableChildHeaders.value,
-            ...userParams
-              .map((param) => ({
-                ...param,
-                isFetched: true,
-                value: param.value || null,
-                source: 'User Parameters',
-                fetchedGroup: 'User Parameters',
-                currentGroup: 'User Parameters'
-              }))
-              .map(processedHeaderToParameter)
-          ]
-
-          // Update store with available parameters
-          await store.lifecycle.update({
-            availableHeaders: {
-              parent: discoveredParentParams,
-              child: discoveredChildParams
-            }
-          })
-        }
-      }
-
-      // Process data
-      const result = await processDataPipeline({
-        allElements: elements,
-        selectedParent: selectedParentCategories.value,
-        selectedChild: selectedChildCategories.value
-      })
-
-      // Get current columns
-      const currentParentColumns = store.parentVisibleColumns.value || []
-      const currentChildColumns = store.childVisibleColumns.value || []
-
-      // Update store with processed data
       await store.lifecycle.update({
-        scheduleData: result.filteredElements,
-        evaluatedData: result.processedElements,
-        tableData: result.tableData,
-        parentVisibleColumns: currentParentColumns,
-        childVisibleColumns: currentChildColumns,
-        parentBaseColumns: result.parentColumns,
-        childBaseColumns: result.childColumns,
-        initialized: true
-      })
-
-      // Update local refs
-      scheduleDataRef.value = result.filteredElements
-      tableDataRef.value = result.tableData
-
-      // Update processing state
-      processingState.value.processedCount = result.processedElements.length
-      processingState.value.totalCount = elements.length
-
-      debug.completeState(DebugCategories.DATA_TRANSFORM, 'Data processing complete', {
-        filteredCount: result.filteredElements.length,
-        processedCount: result.processedElements.length,
-        isComplete: result.isProcessingComplete
+        scheduleData: Array.from(elementsMap.value.values()),
+        tableData: Array.from(elementsMap.value.values()).map((element) => ({
+          ...element,
+          visible: true
+        }))
       })
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Error processing data:', err)
-      processingState.value.error = err instanceof Error ? err : new Error(String(err))
-    } finally {
-      processingState.value.isProcessingElements = false
+      debug.error(DebugCategories.ERROR, 'Failed to update store:', err)
+      throw err
     }
+
+    debug.completeState(DebugCategories.INITIALIZATION, 'Elements processed')
   }
 
-  // Watch for BIM elements changes
-  watch(() => allElements.value, updateData, { immediate: true })
+  const scheduleData = computed<ElementData[]>(() => {
+    const parentsWithChildren = Array.from(elementsMap.value.values()).map(
+      (parent) => ({
+        ...parent,
+        details:
+          options.selectedChildCategories.value.length > 0
+            ? childElementsList.value
+                .filter((child) => child.host === parent.mark)
+                .map((child) => ({
+                  ...child,
+                  host: parent.mark
+                }))
+            : []
+      })
+    )
 
-  // Add watch for category changes
-  watch(
-    () => [selectedParentCategories.value, selectedChildCategories.value],
-    () => {
-      if (allElements.value?.length) {
-        updateData(allElements.value)
-      }
+    let result = [...parentsWithChildren]
+
+    // Add unattached children if child categories are selected
+    if (options.selectedChildCategories.value.length > 0) {
+      const unattachedChildren = childElementsList.value
+        .filter(
+          (child) =>
+            !child.host || !Array.from(elementsMap.value.keys()).includes(child.host)
+        )
+        .map((child) => ({
+          ...child,
+          host: 'No Host',
+          details: []
+        }))
+
+      result = [...result, ...unattachedChildren]
     }
+
+    // Add unmarked parents
+    const unmarkedParents = Array.from(elementsMap.value.values())
+      .filter((parent) => !parent.mark)
+      .map((parent) => ({
+        ...parent,
+        mark: 'No Mark',
+        details: []
+      }))
+
+    return [...result, ...unmarkedParents]
+  })
+
+  // Watch scheduleData changes and update store
+  watch(
+    scheduleData,
+    async (newData) => {
+      try {
+        await store.lifecycle.update({
+          scheduleData: newData,
+          tableData: newData.map((element) => ({
+            ...element,
+            visible: true
+          }))
+        })
+      } catch (err) {
+        debug.error(DebugCategories.ERROR, 'Failed to update store:', err)
+        throw err
+      }
+    },
+    { deep: true }
   )
 
-  // Initialize data
-  const initializeData = async (): Promise<void> => {
-    try {
-      debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
-      processingState.value.isProcessingElements = true
-      await initializeElements()
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Error initializing data:', err)
-      processingState.value.error =
-        err instanceof Error ? err : new Error('Failed to initialize data')
-      throw err
-    } finally {
-      processingState.value.isProcessingElements = false
-    }
-  }
-
-  // Category update handler
   const updateCategories = async (
-    _parentCategories: string[],
-    _childCategories: string[]
+    parentCategories: string[],
+    childCategories: string[]
   ): Promise<void> => {
-    try {
-      debug.startState(DebugCategories.CATEGORY_UPDATES, 'Updating categories')
-      processingState.value.isProcessingElements = true
-      processingState.value.error = undefined
+    debug.startState(DebugCategories.CATEGORY_UPDATES, 'Updating categories')
+    processingState.value.isProcessingElements = true
+    processingState.value.error = undefined
 
-      if (allElements.value?.length) {
-        await updateData(allElements.value)
-      }
+    try {
+      // Update store first
+      await store.lifecycle.update({
+        selectedParentCategories: parentCategories,
+        selectedChildCategories: childCategories
+      })
+
+      await processElements()
+      // Wait for Vue to update the DOM
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+
+      debug.completeState(DebugCategories.CATEGORY_UPDATES, 'Categories updated')
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Error updating categories:', err)
       processingState.value.error =
@@ -230,88 +211,70 @@ export function useElementsData({
     }
   }
 
-  // Computed properties for elements
-  const parentElements = computed(() =>
-    tableDataRef.value
-      .filter(
-        (row): row is TableRow & { details: TableRow[] } =>
-          !row.isChild && Array.isArray(row.details)
-      )
-      .map((row) => {
-        const { id, type } = ensureElementProps(row)
-        return createElementData({
-          ...row,
-          id,
-          type,
-          visible: true,
-          details: row.details.map((child) => {
-            const { id: childId, type: childType } = ensureElementProps(child)
-            return createElementData({
-              ...child,
-              id: childId,
-              type: childType,
-              visible: true,
-              details: []
-            })
-          })
-        })
-      })
-  )
+  const initializeData = async (): Promise<void> => {
+    try {
+      debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
+      processingState.value.isProcessingElements = true
 
-  const childElements = computed(() => {
-    const children: ElementData[] = []
-    tableDataRef.value.forEach((row) => {
-      if (Array.isArray(row.details) && row.details.length > 0) {
-        children.push(
-          ...row.details.map((child) => {
-            const { id, type } = ensureElementProps(child)
-            return createElementData({
-              ...(child as Partial<ElementData>),
-              id,
-              type,
-              visible: true,
-              details: []
-            })
-          })
-        )
-      }
-    })
-    return children
-  })
+      await processElements()
+      // Wait for Vue to update the DOM
+      await new Promise((resolve) => requestAnimationFrame(resolve))
 
-  const matchedElements = computed(() =>
-    childElements.value.filter((child) => child.host && child.host !== 'Without Host')
-  )
+      debug.completeState(DebugCategories.INITIALIZATION, 'Data initialized')
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Error initializing data:', err)
+      processingState.value.error =
+        err instanceof Error ? err : new Error('Failed to initialize data')
+      throw err
+    } finally {
+      processingState.value.isProcessingElements = false
+    }
+  }
 
-  const orphanedElements = computed(() =>
-    childElements.value.filter((child) => !child.host || child.host === 'Without Host')
-  )
+  // Computed properties for state
+  const isLoading = computed(() => processingState.value.isProcessingElements)
+  const hasError = computed(() => !!processingState.value.error)
 
-  // Create data state
-  const state = computed(() => ({
-    rawElements: allElements.value,
-    parentElements: parentElements.value,
-    childElements: childElements.value,
-    matchedElements: matchedElements.value,
-    orphanedElements: orphanedElements.value,
+  const state = computed<DataState>(() => ({
+    rawElements: scheduleData.value,
+    parentElements: scheduleData.value.filter((el) => !el.isChild),
+    childElements: scheduleData.value.filter((el) => el.isChild),
+    matchedElements: scheduleData.value.filter(
+      (el) => el.isChild && el.host && el.host !== 'No Host'
+    ),
+    orphanedElements: scheduleData.value.filter(
+      (el) => el.isChild && (!el.host || el.host === 'No Host')
+    ),
     processingState: processingState.value,
-    loading: bimLoading.value,
+    loading: isLoading.value,
     error: processingState.value.error
   }))
 
+  // Watch for BIM elements changes
+  watch(
+    bimElements.allElements,
+    (newElements) => {
+      if (newElements?.length) {
+        processElements()
+      }
+    },
+    { immediate: true }
+  )
+
   return {
-    scheduleData: scheduleDataRef.value,
-    tableData: tableDataRef.value,
+    scheduleData,
+    tableData,
     availableCategories: {
-      parent: new Set(selectedParentCategories.value),
-      child: new Set(selectedChildCategories.value)
+      parent: new Set(options.selectedParentCategories.value),
+      child: new Set(options.selectedChildCategories.value)
     },
     updateCategories,
     initializeData,
-    stopWorldTreeWatch,
-    isLoading: bimLoading.value || processingState.value.isProcessingElements,
-    hasError: bimError.value || !!processingState.value.error,
-    state: state.value,
-    processingState: processingState.value
+    elementsMap,
+    childElementsList,
+    isLoading,
+    hasError,
+    state,
+    processingState
   }
 }

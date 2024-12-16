@@ -4,8 +4,11 @@ import type {
   UserParameter,
   ParameterValue,
   EquationValue,
-  PrimitiveValue
-} from '../types/parameters'
+  PrimitiveValue,
+  BIMNodeData,
+  BIMNodeRaw
+} from '../types'
+import { isValidBIMNodeData } from '../types/viewer/viewer-base'
 
 /**
  * Type Guards
@@ -96,4 +99,21 @@ export function setParameterGroup(param: Parameter, group: string): Parameter {
     return { ...param, currentGroup: group }
   }
   return { ...param, group }
+}
+
+/**
+ * Extract category from BIM node
+ */
+export function extractCategory(node: BIMNodeData | BIMNodeRaw): string {
+  if (
+    isValidBIMNodeData(node) &&
+    node.parameters &&
+    typeof node.parameters === 'object'
+  ) {
+    const category = node.parameters.category
+    if (typeof category === 'string') {
+      return category
+    }
+  }
+  return 'Uncategorized'
 }

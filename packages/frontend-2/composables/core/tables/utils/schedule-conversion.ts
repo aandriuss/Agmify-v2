@@ -1,12 +1,16 @@
-import type { ElementData, TableRow } from '~/composables/core/types'
-import type { ScheduleRow } from '~/composables/core/types/tables/schedule-types'
+import type {
+  ElementData,
+  TableRow,
+  BimValueType,
+  PrimitiveValue,
+  ScheduleRow
+} from '~/composables/core/types'
 import { toTableParameter } from '~/composables/core/types/tables/parameter-table-types'
 import { toScheduleRow } from '~/composables/core/types/tables/schedule-types'
 import {
   convertBimToUserType,
   createUserParameterWithDefaults
-} from '~/composables/core/types/parameters'
-import type { BimValueType, PrimitiveValue } from '~/composables/core/types/parameters'
+} from '~/composables/core/types'
 import {
   isElementData,
   isTableRow,

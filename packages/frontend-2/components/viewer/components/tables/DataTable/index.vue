@@ -86,8 +86,17 @@ import type {
   ColumnDef,
   Parameter,
   ElementData,
-  TableRow
+  TableRow,
+  UserValueType,
+  BimValueType
 } from '~/composables/core/types'
+import {
+  createBimColumnDefWithDefaults,
+  createUserColumnDefWithDefaults,
+  isBimColumnDef,
+  isUserColumnDef
+} from '~/composables/core/types/tables/column-types'
+import { createBaseItem } from '~/composables/core/types/common/base-types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   DataTableColumnReorderEvent,
@@ -266,17 +275,60 @@ function handleRowCollapse(row: TableRow | ElementData): void {
 
 // Helper function to ensure column properties
 function ensureColumnProperties(column: ColumnDef): ColumnDef {
-  const group = column.currentGroup || 'Parameters'
-  return {
-    ...column,
+  // Create base item first with type safety
+  const base = createBaseItem({
+    field: String(column.field || ''),
+    id: String(column.id || crypto.randomUUID()),
+    name: String(column.name || column.field || ''),
+    header: String(column.header || column.name || column.field || ''),
     visible: column.visible ?? true,
     removable: column.removable ?? true,
-    type: column.type || 'string',
-    category: column.category || 'Parameters',
-    description:
-      column.description || `${column.category || 'Parameters'} > ${column.field}`,
-    currentGroup: group
+    order: column.order,
+    metadata: column.metadata,
+    description: column.description,
+    category: column.category
+  })
+
+  // First check if it's already a properly typed column
+  if (isBimColumnDef(column)) {
+    return createBimColumnDefWithDefaults({
+      ...base,
+      type: column.type as BimValueType,
+      sourceValue: column.sourceValue ?? null,
+      fetchedGroup: column.fetchedGroup || 'Default',
+      currentGroup: column.currentGroup || column.fetchedGroup || 'Default',
+      source: column.source,
+      width: column.width,
+      sortable: column.sortable,
+      filterable: column.filterable,
+      headerComponent: column.headerComponent,
+      color: column.color,
+      expander: column.expander
+    })
   }
+
+  if (isUserColumnDef(column)) {
+    return createUserColumnDefWithDefaults({
+      ...base,
+      type: column.type as UserValueType,
+      group: column.group || 'Default',
+      isCustomParameter: column.isCustomParameter,
+      parameterRef: column.parameterRef,
+      width: column.width,
+      sortable: column.sortable,
+      filterable: column.filterable,
+      headerComponent: column.headerComponent,
+      color: column.color,
+      expander: column.expander
+    })
+  }
+
+  // If it's not a typed column, create a default user column
+  return createUserColumnDefWithDefaults({
+    ...base,
+    type: 'fixed' as UserValueType,
+    group: 'Default'
+  })
 }
 
 // Update initialization to properly type expanded rows

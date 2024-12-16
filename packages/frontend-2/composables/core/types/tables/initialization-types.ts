@@ -1,6 +1,7 @@
 import type { ComputedRef } from 'vue'
 import type { ColumnDef } from './column-types'
 import type { ParameterValue } from '../parameters'
+import type { EventEmits } from '../events/base-events'
 
 /**
  * Table initialization state
@@ -65,11 +66,16 @@ export interface TableEventHandlers {
 }
 
 /**
- * Table event emits
+ * Table initialization event payloads
  */
-export interface TableEventEmits {
-  (e: 'row-expand', row: TableRowData): void
-  (e: 'row-collapse', row: TableRowData): void
-  (e: 'parameter-visibility-update', parameterId: string, visible: boolean): void
-  (e: 'parameter-order-update', parameterId: string, newIndex: number): void
+export interface TableInitializationEventPayloads {
+  'row-expand': { row: TableRowData }
+  'row-collapse': { row: TableRowData }
+  'parameter-visibility-update': { parameterId: string; visible: boolean }
+  'parameter-order-update': { parameterId: string; newIndex: number }
 }
+
+/**
+ * Table initialization event emits
+ */
+export type TableInitializationEmits = EventEmits<TableInitializationEventPayloads>

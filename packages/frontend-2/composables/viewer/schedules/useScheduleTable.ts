@@ -1,5 +1,8 @@
 import { computed, watch, ref } from 'vue'
-import { TableStateError } from '~/composables/core/types'
+import {
+  TableStateError,
+  createUserParameterWithDefaults
+} from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTableInitialization } from '~/composables/core/tables/initialization/useTableInitialization'
 import { useCategoryTableState } from '~/composables/core/tables/state/useCategoryTableState'
@@ -11,7 +14,6 @@ import {
   isTableUserParameter
 } from '~/composables/core/types/tables/parameter-table-types'
 import { scheduleRowToCategoryRow } from '~/composables/core/types/tables/schedule-types'
-import { createUserParameterWithDefaults } from '~/composables/core/types/parameters/parameter-types'
 import type {
   ViewerTableRow,
   ColumnDef,

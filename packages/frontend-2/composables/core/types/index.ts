@@ -10,7 +10,9 @@ export type {
   ElementsDataReturn,
   ProcessedData,
   DisplayData,
-  DataState
+  DataState,
+  ProcessingState,
+  ParameterValuesRecord
 } from './data'
 
 // Element types
@@ -39,12 +41,7 @@ export type {
   EventEmits,
   EventHandler,
   EventHandlerProps,
-  ColumnUpdateEvent,
-  ColumnReorderEvent,
-  SortEvent,
-  FilterEvent,
   TableEventPayloads,
-  ColumnResizeEvent,
   ParameterEventPayloads,
   ScheduleEventPayloads,
   TableEmits,
@@ -93,9 +90,6 @@ export type { ParameterMappings, ParameterTableMapping } from './mappings'
 
 // Parameter System Types
 export type {
-  // Constants
-  PARAMETER_SETTINGS,
-
   // Discovery Types
   BaseParameterDiscoveryOptions,
   DiscoveryProgressEvent,
@@ -103,9 +97,6 @@ export type {
   ParameterDiscoveryEvents,
   ParameterExtractionUtils,
   ParameterDiscoveryImplementation,
-
-  // need to revise duplicates with viewer
-  // ProcessedHeader,
 
   // Parameters, Collections and State
   ParameterValueState,
@@ -129,11 +120,15 @@ export type {
   ParameterValue,
   ValidationRules,
   ValidationResult,
+  ParameterDefinition, // backward compatibility
   ParameterValueType // backward compatibility
 } from './parameters'
 
 // Parameter System Functions
 export {
+  // Constants
+  PARAMETER_SETTINGS,
+
   // Type Guards
   isBimParameter,
   isUserParameter,
@@ -150,7 +145,10 @@ export {
   convertBimToUserType
 } from './parameters'
 
-export { createUserParameterWithDefaults } from './parameters'
+export {
+  createUserParameterWithDefaults,
+  createBimParameterWithDefaults
+} from './parameters'
 
 // Settings types
 export type {
@@ -259,7 +257,8 @@ export type {
   TableInitializationOptions,
   TableRowData,
   TableEventHandlers,
-  TableEventEmits,
+  TableInitializationEventPayloads,
+  TableInitializationEmits,
 
   // Instance Types
   TableInstanceState,
@@ -301,11 +300,17 @@ export type {
   TableConfig
 } from './tables'
 
-export { createBimColumnDefWithDefaults, toTableParameters } from './tables'
+export {
+  createBimColumnDefWithDefaults,
+  toTableParameters,
+  createUserColumnDefWithDefaults,
+  isBimColumnDef,
+  isUserColumnDef
+} from './tables'
 
 // Table Functions
 export { createTableConfig } from '../tables/utils/'
-export { createColumnDef } from '~/composables/parameters/'
+export { createColumnDef } from '~/composables/core/parameters/'
 
 // Validators
 export {
@@ -331,11 +336,13 @@ export type {
   DeepBIMNode,
   NodeModel,
   ProcessedHeader,
-  ProcessingState,
   BIMNode,
   BIMNodeValue,
   TreeItemComponentModel,
   ScheduleInitializationInstance,
   ScheduleTreeItemModel,
-  NodeConversionResult
+  NodeConversionResult,
+  ViewerNode,
+  WorldTreeRoot,
+  ViewerNodeRaw
 } from './viewer'

@@ -1,9 +1,33 @@
-import type { TableParameter } from '../../types'
-import { createUserParameterWithDefaults } from '../../types/parameters/parameter-types'
-import { toTableParameters } from '../../types/tables/parameter-table-types'
+import type {
+  TableParameter,
+  ViewerTableRow,
+  ParameterValue,
+  Parameter
+} from '~/composables/core/types'
+import {
+  createUserParameterWithDefaults,
+  toTableParameters
+} from '~/composables/core/types'
+import { stringToParameterValue } from '~/composables/core/utils/parameters'
 import type { CategoryTableRow } from '../../tables/state/useCategoryTableState'
-import type { ViewerTableRow } from '../../types/elements/elements-base'
-import type { ParameterValue } from '../../types/parameters'
+
+/**
+ * Convert parameter value based on parameter type
+ */
+export function convertParameterValue(
+  value: unknown,
+  parameter: Parameter
+): ParameterValue {
+  // Handle null/undefined
+  if (value === null || value === undefined) return null
+
+  // Convert to string first for consistent handling
+  const stringValue = String(value)
+  if (!stringValue) return null
+
+  // Convert based on parameter type
+  return stringToParameterValue(stringValue, parameter.type)
+}
 
 /**
  * Convert custom parameters to table parameters

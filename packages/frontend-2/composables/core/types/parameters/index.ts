@@ -9,3 +9,5 @@ export * from './value-types'
 
 // Export BimValueType as ParameterValueType for backward compatibility
 export type { BimValueType as ParameterValueType } from './value-types'
+
+export type { Parameter as ParameterDefinition } from './parameter-types'

@@ -1,5 +1,6 @@
 import type { ParameterValue } from '../parameters'
 import type { ElementData } from '../elements/elements-base'
+import type { ProcessingState } from './'
 
 /**
  * Record of parameter values by parameter ID
@@ -13,16 +14,6 @@ export type ParameterValuesRecord = Record<string, ParameterValue>
 export interface TableRow extends Omit<ElementData, 'visible'> {
   visible?: boolean
   selected?: boolean
-}
-
-/**
- * Processing state interfaces
- */
-export interface ProcessingState {
-  isProcessingElements: boolean // Changed from isProcessing to match existing usage
-  processedCount: number
-  totalCount: number
-  error?: Error
 }
 
 /**

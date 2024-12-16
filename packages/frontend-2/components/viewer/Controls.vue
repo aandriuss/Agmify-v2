@@ -29,6 +29,15 @@
         <IconFileExplorer class="h-4 w-4 md:h-5 md:w-5" />
       </ViewerControlsButtonToggle>
 
+      <!-- Debug -->
+      <ViewerControlsButtonToggle
+        v-tippy="isSmallerOrEqualSm ? undefined : debugShortcut"
+        :active="activeControl === 'debug'"
+        @click="toggleActiveControl('debug')"
+      >
+        <IconFileExplorer class="h-4 w-4 md:h-5 md:w-5" />
+      </ViewerControlsButtonToggle>
+
       <!-- Datasets -->
       <ViewerControlsButtonToggle
         v-tippy="isSmallerOrEqualSm ? undefined : datasetsShortcut"
@@ -219,6 +228,12 @@
             class="pointer-events-auto"
             @close="activeControl = 'none'"
           />
+        </KeepAlive>
+      </div>
+
+      <div v-show="resourceItems.length !== 0 && activeControl === 'debug'">
+        <KeepAlive>
+          <ViewerDebug class="pointer-events-auto" @close="activeControl = 'none'" />
         </KeepAlive>
       </div>
 
@@ -433,6 +448,7 @@ const isGendoEnabled = useIsGendoModuleEnabled()
 enum ViewerKeyboardActions {
   ToggleModels = 'ToggleModels',
   ToggleSchedules = 'ToggleSchedules',
+  ToggleDebug = 'ToggleDebug',
   ToggleDatasets = 'ToggleDatasets',
   ToggleExplorer = 'ToggleExplorer',
   ToggleDiscussions = 'ToggleDiscussions',
@@ -473,6 +489,7 @@ type ActiveControl =
   | 'none'
   | 'models'
   | 'schedules'
+  | 'debug'
   | 'datasets'
   | 'explorer'
   | 'filters'
@@ -527,6 +544,7 @@ const {
 const map: Record<ViewerKeyboardActions, [ModifierKeys[], string]> = {
   [ViewerKeyboardActions.ToggleModels]: [[ModifierKeys.Shift], 'm'],
   [ViewerKeyboardActions.ToggleSchedules]: [[ModifierKeys.Shift], 's'],
+  [ViewerKeyboardActions.ToggleDebug]: [[ModifierKeys.Shift], 'w'],
   [ViewerKeyboardActions.ToggleDatasets]: [[ModifierKeys.Shift], 'd'],
   [ViewerKeyboardActions.ToggleExplorer]: [[ModifierKeys.Shift], 'e'],
   [ViewerKeyboardActions.ToggleDiscussions]: [[ModifierKeys.Shift], 't'],
@@ -544,6 +562,9 @@ const modelsShortcut = ref(
 )
 const schedulesShortcut = ref(
   `Schedules ${getShortcutTitle(ViewerKeyboardActions.ToggleSchedules)}`
+)
+const debugShortcut = ref(
+  `Debug ${getShortcutTitle(ViewerKeyboardActions.ToggleDebug)}`
 )
 const datasetsShortcut = ref(
   `Datasets ${getShortcutTitle(ViewerKeyboardActions.ToggleDatasets)}`
@@ -583,6 +604,9 @@ const handleKeyboardAction = (action: ViewerKeyboardActions) => {
       break
     case ViewerKeyboardActions.ToggleSchedules:
       toggleActiveControl('schedules')
+      break
+    case ViewerKeyboardActions.ToggleDebug:
+      toggleActiveControl('debug')
       break
     case ViewerKeyboardActions.ToggleDatasets:
       toggleActiveControl('datasets')
