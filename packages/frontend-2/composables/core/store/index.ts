@@ -1,561 +1,343 @@
 import { ref, computed } from 'vue'
 import type {
-  ElementData,
-  ColumnDef,
-  StoreState,
-  StoreMutations,
-  StoreLifecycle,
   Store,
+  StoreState,
+  ElementData,
+  TableRow,
+  Parameter,
+  ColumnDef,
   UserParameter,
   StoreParameterValue,
-  StoreParameterDefinition,
-  TableInfo,
-  TableInfoUpdatePayload,
-  AvailableHeaders,
-  TableRow
+  StoreParameterDefinition
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import {
-  StoreError,
-  StoreInitializationError,
-  StoreUpdateError,
-  StoreProcessingError
-} from '../types/errors/store-errors'
 
-/**
- * Type guard for ElementData
- */
-function isElementData(value: unknown): value is ElementData {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    'visible' in value &&
-    typeof (value as ElementData).id === 'string' &&
-    typeof (value as ElementData).visible === 'boolean'
-  )
-}
-
-/**
- * Type guard for ElementData array
- */
-function isElementDataArray(value: unknown): value is ElementData[] {
-  return Array.isArray(value) && value.every(isElementData)
-}
-
-/**
- * Type guard for TableRow
- */
-function isTableRow(value: unknown): value is TableRow {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    typeof (value as TableRow).id === 'string'
-  )
-}
-
-/**
- * Type guard for TableRow array
- */
-function isTableRowArray(value: unknown): value is TableRow[] {
-  return Array.isArray(value) && value.every(isTableRow)
-}
-
-/**
- * Convert ElementData to TableRow
- */
-function toTableRow(element: ElementData): TableRow {
-  return {
-    ...element,
-    visible: true,
-    selected: false
-  }
-}
-
-/**
- * Core store singleton
- */
-class CoreStore implements Store {
-  private stateRef = ref<StoreState>({
-    // Core data
-    projectId: null,
-    scheduleData: [],
-    evaluatedData: [],
-    tableData: [],
-
-    // Parameters
-    userParameters: [], // Changed from customParameters
-    parameterColumns: [],
-    parentParameterColumns: [],
-    childParameterColumns: [],
-    mergedParentParameters: [],
-    mergedChildParameters: [],
-    processedParameters: {},
-    parameterDefinitions: {},
-
-    // Columns
-    currentTableColumns: [],
-    currentDetailColumns: [],
-    mergedTableColumns: [],
-    mergedDetailColumns: [],
-    parentBaseColumns: [],
-    parentAvailableColumns: [],
-    parentVisibleColumns: [],
-    childBaseColumns: [],
-    childAvailableColumns: [],
-    childVisibleColumns: [],
-
-    // Headers
-    availableHeaders: {
-      parent: [],
-      child: []
-    },
-
-    // Categories
-    selectedCategories: new Set(),
-    selectedParentCategories: [],
-    selectedChildCategories: [],
-
-    // Table info
-    tablesArray: [],
-    tableName: '',
-    selectedTableId: '',
-    currentTableId: '',
-    tableKey: '',
-
-    // Status
-    initialized: false,
-    loading: false,
-    error: null
-  })
-
+const initialState: StoreState = {
+  projectId: null,
+  scheduleData: [],
+  evaluatedData: [],
+  tableData: [],
+  userParameters: [],
+  // Parameters
+  parameterColumns: [],
+  parentParameterColumns: [],
+  childParameterColumns: [],
+  parentParameters: [],
+  childParameters: [],
+  processedParameters: {},
+  parameterDefinitions: {},
+  // Columns
+  currentTableColumns: [],
+  currentDetailColumns: [],
+  mergedTableColumns: [],
+  mergedDetailColumns: [],
+  parentBaseColumns: [],
+  parentAvailableColumns: [],
+  parentVisibleColumns: [],
+  childBaseColumns: [],
+  childAvailableColumns: [],
+  childVisibleColumns: [],
+  // Headers
+  availableHeaders: { parent: [], child: [] },
+  // Categories
+  selectedCategories: new Set(),
+  selectedParentCategories: [],
+  selectedChildCategories: [],
+  // Table info
+  tablesArray: [],
+  tableName: '',
+  selectedTableId: '',
+  currentTableId: '',
+  tableKey: '',
   // State
-  public readonly state = computed<StoreState>(() => this.stateRef.value)
+  initialized: false,
+  loading: false,
+  error: null
+}
 
-  // Computed state with explicit return types
-  public readonly projectId = computed<string | null>(() => this.state.value.projectId)
-  public readonly scheduleData = computed<ElementData[]>(
-    () => this.state.value.scheduleData
+export class CoreStore implements Store {
+  private internalState = ref<StoreState>(initialState)
+  public readonly state = computed<StoreState>(() => this.internalState.value)
+  public readonly projectId = computed(() => this.internalState.value.projectId)
+  public readonly scheduleData = computed(() => this.internalState.value.scheduleData)
+  public readonly evaluatedData = computed(() => this.internalState.value.evaluatedData)
+  public readonly tableData = computed(() => this.internalState.value.tableData)
+  public readonly userParameters = computed(
+    () => this.internalState.value.userParameters
   )
-  public readonly evaluatedData = computed<ElementData[]>(
-    () => this.state.value.evaluatedData
+  // Parameters
+  public readonly parameterColumns = computed(
+    () => this.internalState.value.parameterColumns
   )
-  public readonly tableData = computed<TableRow[]>(() => this.state.value.tableData)
-  public readonly userParameters = computed<UserParameter[]>(
-    () => this.state.value.userParameters
+  public readonly parentParameterColumns = computed(
+    () => this.internalState.value.parentParameterColumns
   )
-  public readonly parameterColumns = computed<ColumnDef[]>(
-    () => this.state.value.parameterColumns
+  public readonly childParameterColumns = computed(
+    () => this.internalState.value.childParameterColumns
   )
-  public readonly parentParameterColumns = computed<ColumnDef[]>(
-    () => this.state.value.parentParameterColumns
+  public readonly parentParameters = computed(
+    () => this.internalState.value.parentParameters
   )
-  public readonly childParameterColumns = computed<ColumnDef[]>(
-    () => this.state.value.childParameterColumns
+  public readonly childParameters = computed(
+    () => this.internalState.value.childParameters
   )
-  public readonly mergedParentParameters = computed<UserParameter[]>(
-    () => this.state.value.mergedParentParameters
+  public readonly processedParameters = computed(
+    () => this.internalState.value.processedParameters
   )
-  public readonly mergedChildParameters = computed<UserParameter[]>(
-    () => this.state.value.mergedChildParameters
+  public readonly parameterDefinitions = computed(
+    () => this.internalState.value.parameterDefinitions
   )
-  public readonly processedParameters = computed<Record<string, StoreParameterValue>>(
-    () => this.state.value.processedParameters
+  // Columns
+  public readonly currentTableColumns = computed(
+    () => this.internalState.value.currentTableColumns
   )
-  public readonly currentTableColumns = computed<ColumnDef[]>(
-    () => this.state.value.currentTableColumns
+  public readonly currentDetailColumns = computed(
+    () => this.internalState.value.currentDetailColumns
   )
-  public readonly currentDetailColumns = computed<ColumnDef[]>(
-    () => this.state.value.currentDetailColumns
+  public readonly mergedTableColumns = computed(
+    () => this.internalState.value.mergedTableColumns
   )
-  public readonly mergedTableColumns = computed<ColumnDef[]>(
-    () => this.state.value.mergedTableColumns
+  public readonly mergedDetailColumns = computed(
+    () => this.internalState.value.mergedDetailColumns
   )
-  public readonly mergedDetailColumns = computed<ColumnDef[]>(
-    () => this.state.value.mergedDetailColumns
+  public readonly parentBaseColumns = computed(
+    () => this.internalState.value.parentBaseColumns
   )
-  public readonly parameterDefinitions = computed<
-    Record<string, StoreParameterDefinition>
-  >(() => this.state.value.parameterDefinitions)
-  public readonly availableHeaders = computed<AvailableHeaders>(
-    () => this.state.value.availableHeaders
+  public readonly parentAvailableColumns = computed(
+    () => this.internalState.value.parentAvailableColumns
   )
-  public readonly selectedCategories = computed<Set<string>>(
-    () => this.state.value.selectedCategories
+  public readonly parentVisibleColumns = computed(
+    () => this.internalState.value.parentVisibleColumns
   )
-  public readonly selectedParentCategories = computed<string[]>(
-    () => this.state.value.selectedParentCategories
+  public readonly childBaseColumns = computed(
+    () => this.internalState.value.childBaseColumns
   )
-  public readonly selectedChildCategories = computed<string[]>(
-    () => this.state.value.selectedChildCategories
+  public readonly childAvailableColumns = computed(
+    () => this.internalState.value.childAvailableColumns
   )
-  public readonly tablesArray = computed<TableInfo[]>(
-    () => this.state.value.tablesArray
+  public readonly childVisibleColumns = computed(
+    () => this.internalState.value.childVisibleColumns
   )
-  public readonly tableName = computed<string>(() => this.state.value.tableName)
-  public readonly selectedTableId = computed<string>(
-    () => this.state.value.selectedTableId
+  // Headers
+  public readonly availableHeaders = computed(
+    () => this.internalState.value.availableHeaders
   )
-  public readonly currentTableId = computed<string>(
-    () => this.state.value.currentTableId
+  // Categories
+  public readonly selectedCategories = computed(
+    () => this.internalState.value.selectedCategories
   )
-  public readonly tableKey = computed<string>(() => this.state.value.tableKey)
-  public readonly initialized = computed<boolean>(() => this.state.value.initialized)
-  public readonly loading = computed<boolean>(() => this.state.value.loading)
-  public readonly error = computed<Error | null>(() => this.state.value.error)
-  public readonly parentBaseColumns = computed<ColumnDef[]>(
-    () => this.state.value.parentBaseColumns
+  public readonly selectedParentCategories = computed(
+    () => this.internalState.value.selectedParentCategories
   )
-  public readonly parentAvailableColumns = computed<ColumnDef[]>(
-    () => this.state.value.parentAvailableColumns
+  public readonly selectedChildCategories = computed(
+    () => this.internalState.value.selectedChildCategories
   )
-  public readonly parentVisibleColumns = computed<ColumnDef[]>(
-    () => this.state.value.parentVisibleColumns
+  // Table info
+  public readonly tablesArray = computed(() => this.internalState.value.tablesArray)
+  public readonly tableName = computed(() => this.internalState.value.tableName)
+  public readonly selectedTableId = computed(
+    () => this.internalState.value.selectedTableId
   )
-  public readonly childBaseColumns = computed<ColumnDef[]>(
-    () => this.state.value.childBaseColumns
+  public readonly currentTableId = computed(
+    () => this.internalState.value.currentTableId
   )
-  public readonly childAvailableColumns = computed<ColumnDef[]>(
-    () => this.state.value.childAvailableColumns
-  )
-  public readonly childVisibleColumns = computed<ColumnDef[]>(
-    () => this.state.value.childVisibleColumns
-  )
+  public readonly tableKey = computed(() => this.internalState.value.tableKey)
+  // State
+  public readonly initialized = computed(() => this.internalState.value.initialized)
+  public readonly loading = computed(() => this.internalState.value.loading)
+  public readonly error = computed(() => this.internalState.value.error)
+
+  // Lifecycle
+  public readonly lifecycle = {
+    init: async () => {
+      debug.log(DebugCategories.INITIALIZATION, 'Initializing core store')
+      try {
+        this.internalState.value.loading = true
+        await Promise.resolve() // Make async
+        this.internalState.value.initialized = true
+      } finally {
+        this.internalState.value.loading = false
+      }
+    },
+    update: async (state: Partial<StoreState>) => {
+      debug.startState(DebugCategories.STATE, 'Updating core store state')
+      try {
+        this.internalState.value.loading = true
+        await Promise.resolve() // Make async
+        this.internalState.value = {
+          ...this.internalState.value,
+          ...state
+        }
+        debug.completeState(DebugCategories.STATE, 'Core store state updated')
+      } finally {
+        this.internalState.value.loading = false
+      }
+    },
+    cleanup: () => {
+      debug.log(DebugCategories.STATE, 'Cleaning up core store')
+      this.internalState.value = { ...initialState }
+    }
+  }
 
   // Mutations
-  public readonly setProjectId = (id: string | null) => {
-    this.stateRef.value.projectId = id
+  public setProjectId = (id: string | null) => this.lifecycle.update({ projectId: id })
+  public setScheduleData = (data: ElementData[]) =>
+    this.lifecycle.update({ scheduleData: data })
+  public setEvaluatedData = (data: ElementData[]) =>
+    this.lifecycle.update({ evaluatedData: data })
+  public setTableData = (data: TableRow[]) => this.lifecycle.update({ tableData: data })
+  public setUserParameters = (params: UserParameter[]) =>
+    this.lifecycle.update({ userParameters: params })
+  public setParameterColumns = (columns: ColumnDef[]) =>
+    this.lifecycle.update({ parameterColumns: columns })
+  public setParentParameterColumns = (columns: ColumnDef[]) =>
+    this.lifecycle.update({ parentParameterColumns: columns })
+  public setChildParameterColumns = (columns: ColumnDef[]) =>
+    this.lifecycle.update({ childParameterColumns: columns })
+  public setParameters = (params: { parent: Parameter[]; child: Parameter[] }) => {
+    debug.log(DebugCategories.PARAMETERS, 'Setting parameters', {
+      parentCount: params.parent.length,
+      childCount: params.child.length,
+      parentSample: params.parent.slice(0, 3),
+      childSample: params.child.slice(0, 3)
+    })
+    return this.lifecycle.update({
+      parentParameters: params.parent,
+      childParameters: params.child
+    })
   }
-
-  public readonly setScheduleData = (data: ElementData[]) => {
-    if (isElementDataArray(data)) {
-      this.stateRef.value.scheduleData = [...data]
-    }
-  }
-
-  public readonly setEvaluatedData = (data: ElementData[]) => {
-    if (isElementDataArray(data)) {
-      this.stateRef.value.evaluatedData = [...data]
-    }
-  }
-
-  public readonly setTableData = (data: TableRow[]) => {
-    if (isTableRowArray(data)) {
-      this.stateRef.value.tableData = [...data]
-    }
-  }
-
-  public readonly setUserParameters = (params: UserParameter[]) => {
-    this.stateRef.value.userParameters = [...params]
-  }
-
-  public readonly setParameterColumns = (columns: ColumnDef[]) => {
-    this.stateRef.value.parameterColumns = [...columns]
-  }
-
-  public readonly setParentParameterColumns = (columns: ColumnDef[]) => {
-    this.stateRef.value.parentParameterColumns = [...columns]
-  }
-
-  public readonly setChildParameterColumns = (columns: ColumnDef[]) => {
-    this.stateRef.value.childParameterColumns = [...columns]
-  }
-
-  public readonly setMergedParameters = (
-    parent: UserParameter[],
-    child: UserParameter[]
-  ) => {
-    this.stateRef.value.mergedParentParameters = [...parent]
-    this.stateRef.value.mergedChildParameters = [...child]
-  }
-
-  public readonly setProcessedParameters = (
-    params: Record<string, StoreParameterValue>
-  ) => {
-    this.stateRef.value.processedParameters = { ...params }
-  }
-
-  public readonly setParameterDefinitions = (
-    defs: Record<string, StoreParameterDefinition>
-  ) => {
-    this.stateRef.value.parameterDefinitions = { ...defs }
-  }
-
-  public readonly setParameterVisibility = (parameterId: string, visible: boolean) => {
-    const params = [...this.stateRef.value.userParameters]
+  public setProcessedParameters = (params: Record<string, StoreParameterValue>) =>
+    this.lifecycle.update({ processedParameters: params })
+  public setParameterDefinitions = (defs: Record<string, StoreParameterDefinition>) =>
+    this.lifecycle.update({ parameterDefinitions: defs })
+  public setParameterVisibility = (parameterId: string, visible: boolean) => {
+    const params = [...this.internalState.value.parameterColumns]
     const param = params.find((p) => p.id === parameterId)
     if (param) {
       param.visible = visible
-      this.stateRef.value.userParameters = params
+      return this.lifecycle.update({ parameterColumns: params })
     }
   }
-
-  public readonly setParameterOrder = (parameterId: string, newIndex: number) => {
-    const params = [...this.stateRef.value.userParameters]
+  public setParameterOrder = (parameterId: string, newIndex: number) => {
+    const params = [...this.internalState.value.parameterColumns]
     const oldIndex = params.findIndex((p) => p.id === parameterId)
     if (oldIndex !== -1) {
       const [param] = params.splice(oldIndex, 1)
       params.splice(newIndex, 0, param)
-      this.stateRef.value.userParameters = params
+      return this.lifecycle.update({ parameterColumns: params })
+    }
+  }
+  public setCurrentColumns = (table: ColumnDef[], detail: ColumnDef[]) =>
+    this.lifecycle.update({
+      currentTableColumns: table,
+      currentDetailColumns: detail
+    })
+  public setMergedColumns = (table: ColumnDef[], detail: ColumnDef[]) =>
+    this.lifecycle.update({
+      mergedTableColumns: table,
+      mergedDetailColumns: detail
+    })
+  public setColumnVisibility = (columnId: string, visible: boolean) => {
+    const columns = [...this.internalState.value.currentTableColumns]
+    const column = columns.find((c) => c.id === columnId)
+    if (column) {
+      column.visible = visible
+      return this.lifecycle.update({ currentTableColumns: columns })
+    }
+  }
+  public setColumnOrder = (columnId: string, newIndex: number) => {
+    const columns = [...this.internalState.value.currentTableColumns]
+    const oldIndex = columns.findIndex((c) => c.id === columnId)
+    if (oldIndex !== -1) {
+      const [column] = columns.splice(oldIndex, 1)
+      columns.splice(newIndex, 0, column)
+      return this.lifecycle.update({ currentTableColumns: columns })
+    }
+  }
+  public setSelectedCategories = (categories: Set<string>) =>
+    this.lifecycle.update({ selectedCategories: categories })
+  public setParentCategories = (categories: string[]) =>
+    this.lifecycle.update({ selectedParentCategories: categories })
+  public setChildCategories = (categories: string[]) =>
+    this.lifecycle.update({ selectedChildCategories: categories })
+  public setTablesArray = (tables: { id: string; name: string }[]) =>
+    this.lifecycle.update({ tablesArray: tables })
+  public setTableInfo = (info: { selectedTableId?: string; tableName?: string }) =>
+    this.lifecycle.update(info)
+  public setColumns = (
+    parentColumns: ColumnDef[],
+    childColumns: ColumnDef[],
+    type: 'base' | 'available' | 'visible'
+  ) => {
+    const updates: Partial<StoreState> = {}
+    if (type === 'base') {
+      updates.parentBaseColumns = parentColumns
+      updates.childBaseColumns = childColumns
+    } else if (type === 'available') {
+      updates.parentAvailableColumns = parentColumns
+      updates.childAvailableColumns = childColumns
+    } else {
+      updates.parentVisibleColumns = parentColumns
+      updates.childVisibleColumns = childColumns
+    }
+
+    debug.log(DebugCategories.PARAMETERS, `Setting ${type} columns`, {
+      parentCount: parentColumns.length,
+      childCount: childColumns.length,
+      parentSample: parentColumns.slice(0, 3),
+      childSample: childColumns.slice(0, 3)
+    })
+
+    return this.lifecycle.update(updates)
+  }
+  public setInitialized = (value: boolean) =>
+    this.lifecycle.update({ initialized: value })
+  public setLoading = (value: boolean) => this.lifecycle.update({ loading: value })
+  public setError = (error: Error | null) => this.lifecycle.update({ error })
+
+  public setElementVisibility = (elementId: string, visible: boolean) => {
+    const data = [...this.internalState.value.scheduleData]
+    const element = data.find((e) => e.id === elementId)
+    if (element) {
+      element.visible = visible
+      return this.lifecycle.update({ scheduleData: data })
     }
   }
 
-  public readonly setCurrentColumns = (table: ColumnDef[], detail: ColumnDef[]) => {
-    this.stateRef.value.currentTableColumns = [...table]
-    this.stateRef.value.currentDetailColumns = [...detail]
+  public setAvailableHeaders = (headers: {
+    parent: Parameter[]
+    child: Parameter[]
+  }) => {
+    debug.log(DebugCategories.PARAMETERS, 'Setting available headers', {
+      parentCount: headers.parent.length,
+      childCount: headers.child.length,
+      parentSample: headers.parent.slice(0, 3),
+      childSample: headers.child.slice(0, 3)
+    })
+    return this.lifecycle.update({ availableHeaders: headers })
   }
 
-  public readonly setMergedColumns = (table: ColumnDef[], detail: ColumnDef[]) => {
-    this.stateRef.value.mergedTableColumns = [...table]
-    this.stateRef.value.mergedDetailColumns = [...detail]
-  }
-
-  public readonly setColumnVisibility = (columnId: string, visible: boolean) => {
-    const updateColumns = (columns: ColumnDef[]) => {
-      const updatedColumns = [...columns]
-      const col = updatedColumns.find((c) => c.id === columnId)
-      if (col) {
-        col.visible = visible
-      }
-      return updatedColumns
-    }
-
-    this.stateRef.value.parentVisibleColumns = updateColumns(
-      this.stateRef.value.parentVisibleColumns
-    )
-    this.stateRef.value.childVisibleColumns = updateColumns(
-      this.stateRef.value.childVisibleColumns
-    )
-  }
-
-  public readonly setColumnOrder = (columnId: string, newIndex: number) => {
-    const reorderColumns = (columns: ColumnDef[]) => {
-      const updatedColumns = [...columns]
-      const oldIndex = updatedColumns.findIndex((c) => c.id === columnId)
-      if (oldIndex !== -1) {
-        const [col] = updatedColumns.splice(oldIndex, 1)
-        updatedColumns.splice(newIndex, 0, col)
-      }
-      return updatedColumns
-    }
-
-    this.stateRef.value.parentVisibleColumns = reorderColumns(
-      this.stateRef.value.parentVisibleColumns
-    )
-    this.stateRef.value.childVisibleColumns = reorderColumns(
-      this.stateRef.value.childVisibleColumns
-    )
-  }
-
-  public readonly setSelectedCategories = (categories: Set<string>) => {
-    this.stateRef.value.selectedCategories = new Set(categories)
-  }
-
-  public readonly setParentCategories = (categories: string[]) => {
-    this.stateRef.value.selectedParentCategories = [...categories]
-  }
-
-  public readonly setChildCategories = (categories: string[]) => {
-    this.stateRef.value.selectedChildCategories = [...categories]
-  }
-
-  public readonly setTableInfo = (info: TableInfoUpdatePayload) => {
-    if (info.selectedTableId !== undefined) {
-      this.stateRef.value.selectedTableId = info.selectedTableId
-    }
-    if (info.tableName !== undefined) {
-      this.stateRef.value.tableName = info.tableName
-    }
-    if (info.currentTableId !== undefined) {
-      this.stateRef.value.currentTableId = info.currentTableId
-    }
-    if (info.tableKey !== undefined) {
-      this.stateRef.value.tableKey = info.tableKey
-    }
-  }
-
-  public readonly setTablesArray = (tables: TableInfo[]) => {
-    this.stateRef.value.tablesArray = [...tables]
-  }
-
-  public readonly setElementVisibility = (elementId: string, visible: boolean) => {
-    const updateElements = (elements: ElementData[]) => {
-      if (isElementDataArray(elements)) {
-        const updatedElements = [...elements]
-        const element = updatedElements.find((e) => e.id === elementId)
-        if (element) {
-          element.visible = visible
-        }
-        return updatedElements
-      }
-      return elements
-    }
-
-    this.stateRef.value.scheduleData = updateElements(this.stateRef.value.scheduleData)
-    this.stateRef.value.evaluatedData = updateElements(
-      this.stateRef.value.evaluatedData
-    )
-  }
-
-  public readonly setAvailableHeaders = (headers: AvailableHeaders) => {
-    this.stateRef.value.availableHeaders = {
-      parent: [...headers.parent],
-      child: [...headers.child]
-    }
-  }
-
-  public readonly setInitialized = (value: boolean) => {
-    this.stateRef.value.initialized = value
-  }
-
-  public readonly setLoading = (value: boolean) => {
-    this.stateRef.value.loading = value
-  }
-
-  public readonly setError = (err: Error | null) => {
-    this.stateRef.value.error =
-      err instanceof StoreError ? err : err ? new StoreError(err.message) : null
-  }
-
-  public readonly reset = () => {
-    this.stateRef.value = {
-      projectId: null,
-      scheduleData: [],
-      evaluatedData: [],
-      tableData: [],
-      userParameters: [], // Changed from customParameters
-      parameterColumns: [],
-      parentParameterColumns: [],
-      childParameterColumns: [],
-      mergedParentParameters: [],
-      mergedChildParameters: [],
-      processedParameters: {},
-      parameterDefinitions: {},
-      currentTableColumns: [],
-      currentDetailColumns: [],
-      mergedTableColumns: [],
-      mergedDetailColumns: [],
-      parentBaseColumns: [],
-      parentAvailableColumns: [],
-      parentVisibleColumns: [],
-      childBaseColumns: [],
-      childAvailableColumns: [],
-      childVisibleColumns: [],
-      availableHeaders: {
-        parent: [],
-        child: []
-      },
-      selectedCategories: new Set(),
-      selectedParentCategories: [],
-      selectedChildCategories: [],
-      tablesArray: [],
-      tableName: '',
-      selectedTableId: '',
-      currentTableId: '',
-      tableKey: '',
-      initialized: false,
-      loading: false,
-      error: null
-    }
-  }
-
-  public readonly processData = async (): Promise<void> => {
-    try {
-      debug.startState(DebugCategories.DATA_TRANSFORM, 'Processing data')
-      this.stateRef.value.loading = true
-
-      // Convert schedule data to table data
-      const scheduleData = this.stateRef.value.scheduleData
-      if (isElementDataArray(scheduleData)) {
-        const tableData = scheduleData.map(toTableRow)
-        await Promise.resolve() // Simulate async operation
-        this.setTableData(tableData)
-      }
-
-      debug.completeState(DebugCategories.DATA_TRANSFORM, 'Data processed')
-    } catch (err) {
-      const error =
-        err instanceof Error
-          ? new StoreProcessingError(err.message)
-          : new StoreProcessingError('Failed to process data')
-      debug.error(DebugCategories.ERROR, 'Failed to process data:', error)
-      throw error
-    } finally {
-      this.stateRef.value.loading = false
-    }
-  }
-
-  // Lifecycle
-  public readonly lifecycle: StoreLifecycle = {
-    init: async () => {
-      try {
-        debug.startState(DebugCategories.STATE, 'Initializing store')
-        this.stateRef.value.loading = true
-        this.stateRef.value.error = null
-
-        // Initialize state
-        await this.reset()
-        await Promise.resolve() // Simulate async operation
-        this.stateRef.value.initialized = true
-
-        debug.completeState(DebugCategories.STATE, 'Store initialized')
-      } catch (err) {
-        const error =
-          err instanceof Error
-            ? new StoreInitializationError(err.message)
-            : new StoreInitializationError('Failed to initialize store')
-        debug.error(DebugCategories.ERROR, 'Failed to initialize store:', error)
-        this.stateRef.value.error = error
-        throw error
-      } finally {
-        this.stateRef.value.loading = false
-      }
-    },
-
-    update: async (updates: Partial<StoreState>) => {
-      try {
-        debug.startState(DebugCategories.STATE, 'Updating store')
-
-        // Apply updates
-        await Promise.all(
-          Object.entries(updates).map(async ([key, value]) => {
-            const mutationKey = `set${key.charAt(0).toUpperCase()}${key.slice(
-              1
-            )}` as keyof StoreMutations
-            const mutation = this[mutationKey] as ((value: unknown) => void) | undefined
-            if (mutation && value !== undefined) {
-              await Promise.resolve() // Simulate async operation
-              mutation(value)
-            }
-          })
-        )
-
-        debug.completeState(DebugCategories.STATE, 'Store updated', updates)
-      } catch (err) {
-        const error =
-          err instanceof Error
-            ? new StoreUpdateError(err.message)
-            : new StoreUpdateError('Failed to update store')
-        debug.error(DebugCategories.ERROR, 'Failed to update store:', error)
-        throw error
-      }
-    },
-
-    cleanup: () => {
-      debug.startState(DebugCategories.STATE, 'Cleaning up store')
-      this.reset()
-      debug.completeState(DebugCategories.STATE, 'Store cleaned up')
-    }
+  public reset = () => {
+    debug.log(DebugCategories.STATE, 'Resetting store')
+    this.internalState.value = { ...initialState }
   }
 }
 
-// Initialize singleton instance
-const storeInstance = new CoreStore()
+// Store instance
+let storeInstance: Store | null = null
 
-/**
- * Access the core store
- */
+// Singleton accessor
 export function useStore(): Store {
+  if (!storeInstance) {
+    storeInstance = new CoreStore()
+  }
   return storeInstance
+}
+
+// Reset store (useful for testing)
+export function resetStore(): void {
+  if (storeInstance) {
+    storeInstance.reset()
+  }
+  storeInstance = null
 }

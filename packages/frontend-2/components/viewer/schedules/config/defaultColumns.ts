@@ -1,144 +1,126 @@
-import type { ColumnDef, NamedTableConfig } from '~/composables/core/types'
+import type { NamedTableConfig, BimColumnDef } from '~/composables/core/types'
+import { createBimColumnDefWithDefaults } from '~/composables/core/types'
 
 // Common columns that should appear in both parent and child tables
-const commonColumns: ColumnDef[] = [
-  {
+const commonColumns: BimColumnDef[] = [
+  createBimColumnDefWithDefaults({
     field: 'mark',
-    header: 'Mark',
+    name: 'Mark',
     type: 'string',
     order: 0,
     visible: true,
     removable: false, // Mark column should not be removable since it's used for identification
     isFixed: true,
     description: 'Element mark identifier',
-    source: 'Parameters',
-    isFetched: true,
-    isCustomParameter: false,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
-  },
-  {
+    sourceValue: null,
+    fetchedGroup: 'Identity Data',
+    currentGroup: 'Identity Data'
+  }),
+  createBimColumnDefWithDefaults({
     field: 'category',
-    header: 'Category',
+    name: 'Category',
     type: 'string',
     order: 1,
     visible: true,
     removable: true,
     isFixed: false,
     description: 'Element category',
-    source: 'Parameters',
-    isFetched: true,
-    isCustomParameter: false,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
-  }
+    sourceValue: null,
+    fetchedGroup: 'Identity Data',
+    currentGroup: 'Identity Data'
+  })
 ]
 
-export const defaultColumns: ColumnDef[] = [
+export const defaultColumns: BimColumnDef[] = [
   ...commonColumns,
-  {
-    field: 'width',
-    header: 'Width',
+  createBimColumnDefWithDefaults({
+    field: 'Dimensions.Width',
+    name: 'Width',
     type: 'number',
-    category: 'dimensions',
-    description: 'Element width',
-    visible: true,
     order: 4,
-    removable: true,
-    source: 'Parameters',
-    isFetched: true,
-    isFixed: false,
-    isCustomParameter: false,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
-  },
-  {
-    field: 'height',
-    header: 'Height',
-    type: 'number',
-    category: 'dimensions',
-    description: 'Element height',
     visible: true,
+    removable: true,
+    isFixed: false,
+    description: 'Element width',
+    sourceValue: null,
+    fetchedGroup: 'Dimensions',
+    currentGroup: 'Dimensions'
+  }),
+  createBimColumnDefWithDefaults({
+    field: 'Dimensions.Height',
+    name: 'Height',
+    type: 'number',
     order: 5,
+    visible: true,
     removable: true,
-    source: 'Parameters',
-    isFetched: true,
     isFixed: false,
-    isCustomParameter: false,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
-  },
-  {
-    field: 'family',
-    header: 'Family',
+    description: 'Element height',
+    sourceValue: null,
+    fetchedGroup: 'Dimensions',
+    currentGroup: 'Dimensions'
+  }),
+  createBimColumnDefWithDefaults({
+    field: 'Identity Data.Family',
+    name: 'Family',
     type: 'string',
-    category: 'other',
-    description: 'Element family',
-    visible: true,
     order: 6,
-    removable: true,
-    source: 'Parameters',
-    isFetched: true,
-    isFixed: false,
-    isCustomParameter: false,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
-  },
-  {
-    field: 'length',
-    header: 'Length',
-    type: 'number',
-    category: 'dimensions',
-    description: 'Element length',
     visible: true,
-    order: 7,
     removable: true,
-    source: 'Parameters',
-    isFetched: true,
     isFixed: false,
-    isCustomParameter: false,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
-  }
+    description: 'Element family',
+    sourceValue: null,
+    fetchedGroup: 'Identity Data',
+    currentGroup: 'Identity Data'
+  }),
+  createBimColumnDefWithDefaults({
+    field: 'Dimensions.Length',
+    name: 'Length',
+    type: 'number',
+    order: 7,
+    visible: true,
+    removable: true,
+    isFixed: false,
+    description: 'Element length',
+    sourceValue: null,
+    fetchedGroup: 'Dimensions',
+    currentGroup: 'Dimensions'
+  })
 ]
 
-export const defaultDetailColumns: ColumnDef[] = [
+export const defaultDetailColumns: BimColumnDef[] = [
   ...commonColumns,
-  {
-    field: 'width',
-    header: 'Width',
-    type: 'string',
+  createBimColumnDefWithDefaults({
+    field: 'Dimensions.Width',
+    name: 'Width',
+    type: 'number',
     order: 3,
     visible: true,
     removable: true,
     isFixed: false,
     description: 'Element width',
-    source: 'Parameters',
-    isFetched: true,
-    isCustomParameter: false,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters'
-  },
-  {
+    sourceValue: null,
+    fetchedGroup: 'Dimensions',
+    currentGroup: 'Dimensions'
+  }),
+  createBimColumnDefWithDefaults({
     field: 'host',
-    header: 'Host',
+    name: 'Host',
     type: 'string',
     order: 2,
     visible: true,
     removable: true,
     isFixed: false,
     description: 'Host element mark',
-    source: 'Parameters',
-    isFetched: true,
-    isCustomParameter: false,
+    sourceValue: null,
     fetchedGroup: 'Parameters',
     currentGroup: 'Parameters'
-  }
+  })
 ]
 
 export const defaultTable: NamedTableConfig = {
   id: 'default-table',
   name: 'Default Table',
+  displayName: 'Default Table',
   parentColumns: defaultColumns,
   childColumns: defaultDetailColumns,
   categoryFilters: {
@@ -146,5 +128,7 @@ export const defaultTable: NamedTableConfig = {
     selectedParentCategories: ['Walls', 'Uncategorized'],
     selectedChildCategories: ['Structural Framing']
   },
-  customParameters: []
+  userParameters: [],
+  selectedParameterIds: [],
+  lastUpdateTimestamp: Date.now()
 }

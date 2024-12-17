@@ -1,251 +1,279 @@
 <template>
-  <div v-if="debug.isPanelVisible.value" class="debug-panel">
-    <div class="debug-header">
-      <h3>Debug Panel</h3>
-      <div class="debug-controls">
-        <button @click="debug.toggleDebug">
-          {{ debug.isEnabled.value ? 'Disable' : 'Enable' }} Debug
-        </button>
-        <button @click="debug.togglePanel">Close</button>
-      </div>
-    </div>
-
-    <div class="debug-content">
-      <!-- Test Mode Toggle -->
-      <div v-if="showTestMode" class="debug-section">
-        <h4>Test Mode</h4>
-        <FormButton text size="sm" color="subtle" @click="toggleTestMode">
-          {{ isTestMode ? 'Show Real Data' : 'Show Test Data' }}
-        </FormButton>
-      </div>
-
-      <!-- Categories -->
-      <div class="debug-section">
-        <h4>Categories</h4>
-        <div class="category-groups">
-          <!-- Core -->
-          <div class="category-group">
-            <h5>Core</h5>
-            <div class="category-toggles">
-              <button
-                v-for="category in coreCategories"
-                :key="category"
-                :class="{ active: debug.enabledCategories.value.has(category) }"
-                @click="debug.toggleCategory(category)"
-              >
-                {{ category }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Data -->
-          <div class="category-group">
-            <h5>Data</h5>
-            <div class="category-toggles">
-              <button
-                v-for="category in dataCategories"
-                :key="category"
-                :class="{ active: debug.enabledCategories.value.has(category) }"
-                @click="debug.toggleCategory(category)"
-              >
-                {{ category }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Table -->
-          <div v-if="showTableCategories" class="category-group">
-            <h5>Table</h5>
-            <div class="category-toggles">
-              <button
-                v-for="category in tableCategories"
-                :key="category"
-                :class="{ active: debug.enabledCategories.value.has(category) }"
-                @click="debug.toggleCategory(category)"
-              >
-                {{ category }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Parameters -->
-          <div v-if="showParameterCategories" class="category-group">
-            <h5>Parameters</h5>
-            <div class="category-toggles">
-              <button
-                v-for="category in parameterCategories"
-                :key="category"
-                :class="{ active: debug.enabledCategories.value.has(category) }"
-                @click="debug.toggleCategory(category)"
-              >
-                {{ category }}
-              </button>
-            </div>
+  <div class="debug-container">
+    <template v-if="debug.isPanelVisible.value">
+      <div class="debug-panel">
+        <div class="debug-header">
+          <h3>Debug Panel</h3>
+          <div class="debug-controls">
+            <button @click="debug.toggleDebug">
+              {{ debug.isEnabled.value ? 'Disable' : 'Enable' }} Debug
+            </button>
+            <button @click="debug.togglePanel">Close</button>
           </div>
         </div>
 
-        <div class="category-controls">
-          <button @click="debug.enableAllCategories">Enable All</button>
-          <button @click="debug.disableAllCategories">Disable All</button>
-          <button @click="debug.clearLogs">Clear Logs</button>
-        </div>
-      </div>
-
-      <!-- BIM Data -->
-      <div v-if="showBimData" class="debug-section">
-        <h4>BIM Data</h4>
-        <div class="bim-stats">
-          <div class="stat-group">
-            <h5>Element Counts</h5>
-            <div class="stat-item">
-              <span>Raw Elements:</span>
-              <span>{{ scheduleData?.length || 0 }}</span>
-            </div>
-            <div class="stat-item">
-              <span>Parent Elements:</span>
-              <span>{{ parentElements?.length || 0 }}</span>
-            </div>
-            <div class="stat-item">
-              <span>Child Elements:</span>
-              <span>{{ childElements?.length || 0 }}</span>
-            </div>
+        <div class="debug-content">
+          <!-- Test Mode Toggle -->
+          <div v-if="showTestMode" class="debug-section">
+            <h4>Test Mode</h4>
+            <FormButton text size="sm" color="subtle" @click="toggleTestMode">
+              {{ isTestMode ? 'Show Real Data' : 'Show Test Data' }}
+            </FormButton>
           </div>
 
-          <div class="stat-group">
-            <h5>Categories</h5>
-            <div class="stat-item">
-              <span>Parent Categories:</span>
-              <span>{{ uniqueParentCategories.join(', ') || 'None' }}</span>
-            </div>
-            <div class="stat-item">
-              <span>Child Categories:</span>
-              <span>{{ uniqueChildCategories.join(', ') || 'None' }}</span>
-            </div>
-          </div>
-
-          <div class="stat-group">
-            <h5>Parameters</h5>
-            <div class="stat-item">
-              <span>Elements with Parameters:</span>
-              <span>{{ elementsWithParameters }}</span>
-            </div>
-            <div class="stat-item">
-              <span>Parent Parameters:</span>
-              <span>{{ parentParameterColumns?.length || 0 }}</span>
-            </div>
-            <div class="stat-item">
-              <span>Child Parameters:</span>
-              <span>{{ childParameterColumns?.length || 0 }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Raw Data Sample -->
-        <div v-if="scheduleData?.length" class="raw-data-sample">
-          <h5>Sample Element</h5>
-          <pre>{{ formatData(scheduleData[0]) }}</pre>
-        </div>
-      </div>
-
-      <!-- Parameter Stats -->
-      <div v-if="showParameterStats" class="debug-section">
-        <h4>Parameter Stats</h4>
-        <div class="parameter-stats">
-          <!-- Parent Parameters -->
-          <div class="parameter-group">
-            <h5>Parent Parameters ({{ getParentParameterCount() }})</h5>
-            <div class="parameter-counts">
-              <div class="count-item">
-                <span>Raw Fetched:</span>
-                <span>{{ parentRawCount }}</span>
+          <!-- Categories -->
+          <div class="debug-section">
+            <h4>Categories</h4>
+            <div class="category-groups">
+              <!-- Core -->
+              <div class="category-group">
+                <h5>Core</h5>
+                <div class="category-toggles">
+                  <button
+                    v-for="category in coreCategories"
+                    :key="category"
+                    :class="{ active: debug.enabledCategories.value.has(category) }"
+                    @click="debug.toggleCategory(category)"
+                  >
+                    {{ category }}
+                  </button>
+                </div>
               </div>
-              <div class="count-item">
-                <span>Unique:</span>
-                <span>{{ availableParentHeaders?.length }}</span>
+
+              <!-- Data -->
+              <div class="category-group">
+                <h5>Data</h5>
+                <div class="category-toggles">
+                  <button
+                    v-for="category in dataCategories"
+                    :key="category"
+                    :class="{ active: debug.enabledCategories.value.has(category) }"
+                    @click="debug.toggleCategory(category)"
+                  >
+                    {{ category }}
+                  </button>
+                </div>
               </div>
-              <div class="count-item">
-                <span>Active:</span>
-                <span>{{ getActiveParentParameterCount() }}</span>
+
+              <!-- Table -->
+              <div v-if="showTableCategories" class="category-group">
+                <h5>Table</h5>
+                <div class="category-toggles">
+                  <button
+                    v-for="category in tableCategories"
+                    :key="category"
+                    :class="{ active: debug.enabledCategories.value.has(category) }"
+                    @click="debug.toggleCategory(category)"
+                  >
+                    {{ category }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Parameters -->
+              <div v-if="showParameterCategories" class="category-group">
+                <h5>Parameters</h5>
+                <div class="category-toggles">
+                  <button
+                    v-for="category in parameterCategories"
+                    :key="category"
+                    :class="{ active: debug.enabledCategories.value.has(category) }"
+                    @click="debug.toggleCategory(category)"
+                  >
+                    {{ category }}
+                  </button>
+                </div>
               </div>
             </div>
-            <div class="parameter-sources">
+
+            <div class="category-controls">
+              <button @click="debug.enableAllCategories">Enable All</button>
+              <button @click="debug.disableAllCategories">Disable All</button>
+              <button @click="debug.clearLogs">Clear Logs</button>
+            </div>
+          </div>
+
+          <!-- BIM Data -->
+          <div v-if="showBimData" class="debug-section">
+            <h4>BIM Data</h4>
+            <div class="bim-stats">
+              <div class="stat-group">
+                <h5>Element Counts</h5>
+                <div class="stat-item">
+                  <span>Raw Elements:</span>
+                  <span>{{ scheduleData?.length || 0 }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>Parent Elements:</span>
+                  <span>{{ parentElements?.length || 0 }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>Child Elements:</span>
+                  <span>{{ childElements?.length || 0 }}</span>
+                </div>
+              </div>
+
+              <div class="stat-group">
+                <h5>Categories</h5>
+                <div class="stat-item">
+                  <span>Parent Categories:</span>
+                  <span>{{ uniqueParentCategories.join(', ') || 'None' }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>Child Categories:</span>
+                  <span>{{ uniqueChildCategories.join(', ') || 'None' }}</span>
+                </div>
+              </div>
+
+              <div class="stat-group">
+                <h5>Parameters</h5>
+                <div class="stat-item">
+                  <span>Elements with Parameters:</span>
+                  <span>{{ elementsWithParameters }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>Parent Parameters:</span>
+                  <span>{{ parentParameterColumns?.length || 0 }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>Child Parameters:</span>
+                  <span>{{ childParameterColumns?.length || 0 }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Raw Data Sample -->
+            <div v-if="scheduleData?.length" class="raw-data-sample">
+              <h5>Sample Element</h5>
+              <pre>{{ formatData(scheduleData[0]) }}</pre>
+            </div>
+          </div>
+
+          <!-- Parameter Stats -->
+          <div v-if="showParameterStats" class="debug-section">
+            <h4>Parameter Stats</h4>
+            <div class="parameter-stats">
+              <!-- Parent Parameters -->
+              <div class="parameter-group">
+                <h5>Parent Parameters ({{ getParentParameterCount() }})</h5>
+                <div class="parameter-counts">
+                  <div class="count-item">
+                    <span>Raw Fetched:</span>
+                    <span>{{ parentRawCount }}</span>
+                  </div>
+                  <div class="count-item">
+                    <span>Unique:</span>
+                    <span>{{ availableParentHeaders?.length }}</span>
+                  </div>
+                  <div class="count-item">
+                    <span>Active:</span>
+                    <span>{{ getActiveParentParameterCount() }}</span>
+                  </div>
+                </div>
+                <div class="parameter-groups">
+                  <div
+                    v-for="group in parentParameterGroups"
+                    :key="group.source"
+                    class="group-item"
+                  >
+                    <div class="group-header">
+                      <span>{{ group.source }}</span>
+                      <span>{{ group.visibleCount }}/{{ group.totalCount }}</span>
+                    </div>
+                    <div class="group-parameters">
+                      <div
+                        v-for="param in group.parameters"
+                        :key="param.field"
+                        class="parameter-item"
+                        :class="{ active: param.visible }"
+                      >
+                        {{ param.name }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Child Parameters -->
+              <div class="parameter-group">
+                <h5>Child Parameters ({{ getChildParameterCount() }})</h5>
+                <div class="parameter-counts">
+                  <div class="count-item">
+                    <span>Raw Fetched:</span>
+                    <span>{{ childRawCount }}</span>
+                  </div>
+                  <div class="count-item">
+                    <span>Unique:</span>
+                    <span>{{ availableChildHeaders?.length }}</span>
+                  </div>
+                  <div class="count-item">
+                    <span>Active:</span>
+                    <span>{{ getActiveChildParameterCount() }}</span>
+                  </div>
+                </div>
+                <div class="parameter-groups">
+                  <div
+                    v-for="group in childParameterGroups"
+                    :key="group.source"
+                    class="group-item"
+                  >
+                    <div class="group-header">
+                      <span>{{ group.source }}</span>
+                      <span>{{ group.visibleCount }}/{{ group.totalCount }}</span>
+                    </div>
+                    <div class="group-parameters">
+                      <div
+                        v-for="param in group.parameters"
+                        :key="param.field"
+                        class="parameter-item"
+                        :class="{ active: param.visible }"
+                      >
+                        {{ param.name }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Data Structure -->
+          <div v-if="showDataStructure" class="debug-section">
+            <h4>Data Structure</h4>
+            <pre class="data-structure">{{ formatData(dataStructure) }}</pre>
+          </div>
+
+          <!-- Logs -->
+          <div class="debug-section">
+            <h4>Logs</h4>
+            <div class="log-entries">
               <div
-                v-for="group in parentParameterGroups"
-                :key="group.source"
-                class="source-item"
+                v-for="log in displayedLogs"
+                :key="log.timestamp"
+                class="log-entry"
+                :class="log.level"
               >
-                <span>{{ group.source }}</span>
-                <span>{{ group.visibleCount }}/{{ group.totalCount }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Child Parameters -->
-          <div class="parameter-group">
-            <h5>Child Parameters ({{ getChildParameterCount() }})</h5>
-            <div class="parameter-counts">
-              <div class="count-item">
-                <span>Raw Fetched:</span>
-                <span>{{ childRawCount }}</span>
-              </div>
-              <div class="count-item">
-                <span>Unique:</span>
-                <span>{{ availableChildHeaders?.length }}</span>
-              </div>
-              <div class="count-item">
-                <span>Active:</span>
-                <span>{{ getActiveChildParameterCount() }}</span>
-              </div>
-            </div>
-            <div class="parameter-sources">
-              <div
-                v-for="group in childParameterGroups"
-                :key="group.source"
-                class="source-item"
-              >
-                <span>{{ group.source }}</span>
-                <span>{{ group.visibleCount }}/{{ group.totalCount }}</span>
+                <div class="log-header">
+                  <span class="timestamp">{{ formatTime(log.timestamp) }}</span>
+                  <span class="category">[{{ log.category }}]</span>
+                  <span v-if="log.state" class="state">[{{ log.state }}]</span>
+                  <span v-if="log.source" class="source">[{{ log.source }}]</span>
+                </div>
+                <div class="log-message">{{ log.message }}</div>
+                <pre v-if="log.data" class="log-data">{{ formatData(log.data) }}</pre>
+                <pre v-if="log.details" class="log-details">{{
+                  formatData(log.details)
+                }}</pre>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- Data Structure -->
-      <div v-if="showDataStructure" class="debug-section">
-        <h4>Data Structure</h4>
-        <pre class="data-structure">{{ formatData(dataStructure) }}</pre>
-      </div>
-
-      <!-- Logs -->
-      <div class="debug-section">
-        <h4>Logs</h4>
-        <div class="log-entries">
-          <div
-            v-for="log in displayedLogs"
-            :key="log.timestamp"
-            class="log-entry"
-            :class="log.level"
-          >
-            <div class="log-header">
-              <span class="timestamp">{{ formatTime(log.timestamp) }}</span>
-              <span class="category">[{{ log.category }}]</span>
-              <span v-if="log.state" class="state">[{{ log.state }}]</span>
-              <span v-if="log.source" class="source">[{{ log.source }}]</span>
-            </div>
-            <div class="log-message">{{ log.message }}</div>
-            <pre v-if="log.data" class="log-data">{{ formatData(log.data) }}</pre>
-            <pre v-if="log.details" class="log-details">{{
-              formatData(log.details)
-            }}</pre>
-          </div>
-        </div>
-      </div>
-    </div>
+    </template>
+    <template v-else>
+      <button class="debug-toggle" @click="debug.togglePanel">Debug</button>
+    </template>
   </div>
-
-  <!-- Toggle Button -->
-  <button v-else class="debug-toggle" @click="debug.togglePanel">Debug</button>
 </template>
 
 <script setup lang="ts">
@@ -358,10 +386,13 @@ const elementsWithParameters = computed(
 // Parameter Stats
 interface ParameterGroup {
   source: string
-  parameters: ColumnDef[]
+  parameters: {
+    field: string
+    name: string
+    visible: boolean
+  }[]
   visibleCount: number
   totalCount: number
-  modifiedCount: number
 }
 
 function getColumnSource(column: ColumnDef): string {
@@ -374,22 +405,17 @@ function getColumnSource(column: ColumnDef): string {
   return 'Unknown'
 }
 
-function countModifiedParameters(elements: ElementData[], paramKey: string): number {
-  return elements.reduce((count, element) => {
-    const paramValue = element.parameters[paramKey]
-    if (paramValue !== null && paramValue !== undefined) {
-      return count + 1
-    }
-    return count
-  }, 0)
-}
-
 const parentParameterGroups = computed<ParameterGroup[]>(() => {
   const groups = new Map<string, ColumnDef[]>()
 
   if (!props.parentParameterColumns) return []
 
-  props.parentParameterColumns.forEach((col) => {
+  // Filter out system parameters
+  const filteredColumns = props.parentParameterColumns.filter(
+    (col) => !col.field.startsWith('__')
+  )
+
+  filteredColumns.forEach((col) => {
     const source = getColumnSource(col)
     if (!groups.has(source)) {
       groups.set(source, [])
@@ -399,14 +425,15 @@ const parentParameterGroups = computed<ParameterGroup[]>(() => {
 
   return Array.from(groups.entries()).map(([source, columns]) => ({
     source,
-    parameters: columns.sort((a, b) => (a.order || 0) - (b.order || 0)),
+    parameters: columns
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map((col) => ({
+        field: col.field,
+        name: col.name,
+        visible: col.visible
+      })),
     visibleCount: columns.filter((c) => c.visible).length,
-    totalCount: columns.length,
-    modifiedCount: columns.reduce(
-      (count, col) =>
-        count + countModifiedParameters(props.parentElements || [], col.field),
-      0
-    )
+    totalCount: columns.length
   }))
 })
 
@@ -415,7 +442,12 @@ const childParameterGroups = computed<ParameterGroup[]>(() => {
 
   if (!props.childParameterColumns) return []
 
-  props.childParameterColumns.forEach((col) => {
+  // Filter out system parameters
+  const filteredColumns = props.childParameterColumns.filter(
+    (col) => !col.field.startsWith('__')
+  )
+
+  filteredColumns.forEach((col) => {
     const source = getColumnSource(col)
     if (!groups.has(source)) {
       groups.set(source, [])
@@ -425,14 +457,15 @@ const childParameterGroups = computed<ParameterGroup[]>(() => {
 
   return Array.from(groups.entries()).map(([source, columns]) => ({
     source,
-    parameters: columns.sort((a, b) => (a.order || 0) - (b.order || 0)),
+    parameters: columns
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map((col) => ({
+        field: col.field,
+        name: col.name,
+        visible: col.visible
+      })),
     visibleCount: columns.filter((c) => c.visible).length,
-    totalCount: columns.length,
-    modifiedCount: columns.reduce(
-      (count, col) =>
-        count + countModifiedParameters(props.childElements || [], col.field),
-      0
-    )
+    totalCount: columns.length
   }))
 })
 
@@ -539,6 +572,11 @@ function toggleTestMode() {
 </script>
 
 <style scoped>
+.debug-container {
+  position: relative;
+  z-index: 9999;
+}
+
 .debug-panel {
   position: fixed;
   right: 0;
@@ -788,5 +826,48 @@ button:hover {
   margin: 0;
   overflow: auto;
   max-height: 200px;
+}
+
+.parameter-groups {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-item {
+  background: #1e1e1e;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 4px;
+  background: #2d2d2d;
+  border-radius: 2px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.group-parameters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.parameter-item {
+  font-size: 10px;
+  padding: 1px 4px;
+  background: #3d3d3d;
+  border-radius: 2px;
+  opacity: 0.5;
+}
+
+.parameter-item.active {
+  opacity: 1;
+  background: #0078d4;
 }
 </style>

@@ -8,6 +8,23 @@ import {
 } from '~/composables/core/types/tables/column-types'
 
 /**
+ * Extract group and name from parameter field
+ */
+function extractGroupAndName(field: string): { group: string; name: string } {
+  const parts = field.split('.')
+  if (parts.length > 1) {
+    return {
+      group: parts[0],
+      name: parts[parts.length - 1]
+    }
+  }
+  return {
+    group: 'Parameters',
+    name: field
+  }
+}
+
+/**
  * Create columns from parameters or field strings
  */
 export function createColumnsFromParameters(
@@ -21,18 +38,33 @@ export function createColumnsFromParameters(
       const defaultColumn = defaultColumns.find((col) => col.field === param)
       if (defaultColumn) return defaultColumn
 
+      // Extract group and name from parameter field
+      const { group, name } = extractGroupAndName(param)
+
       // Create basic column if no default found
       return createBimColumnDefWithDefaults({
         field: param,
-        name: param,
+        name,
         type: 'string',
         sourceValue: null,
-        fetchedGroup: 'Default',
-        currentGroup: 'Default'
+        fetchedGroup: group,
+        currentGroup: group
       })
     }
     // If param is a Parameter object, convert to column
-    return parameterToColumnDef(param)
+    const column = parameterToColumnDef(param)
+
+    // Ensure group is preserved for BIM parameters
+    if (isBimColumnDef(column)) {
+      const { group } = extractGroupAndName(column.field)
+      return {
+        ...column,
+        fetchedGroup: group,
+        currentGroup: column.currentGroup || group
+      }
+    }
+
+    return column
   })
 
   // If no default columns provided, return parameter columns
@@ -58,10 +90,14 @@ export function mergeColumns(
     if (!existingCol) {
       // For new columns, just set order and visible
       if (isBimColumnDef(newCol)) {
+        // Extract group for new BIM columns
+        const { group } = extractGroupAndName(newCol.field)
         return createBimColumnDefWithDefaults({
           ...newCol,
           order: index,
-          visible: true
+          visible: true,
+          fetchedGroup: group,
+          currentGroup: newCol.currentGroup || group
         })
       }
       if (isUserColumnDef(newCol)) {
@@ -85,7 +121,8 @@ export function mergeColumns(
         filterable: existingCol.filterable,
         headerComponent: existingCol.headerComponent,
         color: existingCol.color,
-        expander: existingCol.expander
+        expander: existingCol.expander,
+        currentGroup: existingCol.currentGroup || newCol.currentGroup
       })
     }
 

@@ -8,7 +8,8 @@ import type {
   BimValueType,
   ViewerNode,
   ViewerNodeRaw,
-  WorldTreeRoot
+  WorldTreeRoot,
+  PrimitiveValue
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
@@ -20,6 +21,7 @@ import { ViewerEvent } from '@speckle/viewer'
 import { useViewerEventListener } from '~~/lib/viewer/composables/viewer'
 import { isSpeckleReference } from '~/composables/core/types/viewer/viewer-types'
 import type { ParameterValue } from '~/composables/core/types/parameters'
+import { convertToParameterValue } from '~/composables/core/parameters/utils/parameter-conversion'
 
 interface BIMElementsState {
   worldTree: ViewerTree | null
@@ -35,7 +37,20 @@ interface BIMElementsOptions {
 }
 
 /**
- * Infer parameter type from value
+ * Ensure value is a primitive value
+ */
+function ensurePrimitiveValue(value: unknown): PrimitiveValue {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return value
+  if (typeof value === 'boolean') return value
+  if (Array.isArray(value)) return JSON.stringify(value)
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+/**
+ * Infer parameter type from value with type safety
  */
 function inferParameterType(value: unknown): BimValueType {
   if (value === null || value === undefined) return 'string'
@@ -47,23 +62,28 @@ function inferParameterType(value: unknown): BimValueType {
 }
 
 /**
- * Extract category from BIM node
+ * Recursively process parameters from an object
  */
-function extractCategory(node: ViewerNodeRaw): string {
-  return node.Other?.Category || node.speckle_type || node.type || 'Uncategorized'
-}
+function processParameterObject(
+  obj: Record<string, unknown>,
+  prefix = '',
+  result: Record<string, ParameterValue> = {}
+): Record<string, ParameterValue> {
+  Object.entries(obj).forEach(([key, value]) => {
+    const fullKey = prefix ? `${prefix}.${key}` : key
 
-/**
- * Convert value to ParameterValue type
- */
-function convertToParameterValue(value: unknown): ParameterValue {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'string') return value
-  if (typeof value === 'number') return value
-  if (typeof value === 'boolean') return value
-  if (Array.isArray(value)) return JSON.stringify(value)
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
+    if (value !== null && value !== undefined) {
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        // Recursively process nested objects
+        processParameterObject(value as Record<string, unknown>, fullKey, result)
+      } else {
+        // Convert value and store with full key path
+        result[fullKey] = convertToParameterValue(value)
+      }
+    }
+  })
+
+  return result
 }
 
 /**
@@ -82,43 +102,34 @@ function extractParameters(nodeData: ViewerNodeRaw): Record<string, ParameterVal
   parameters.name = nodeData.Name || ''
   parameters.type = nodeData.type || ''
 
-  // Extract from parameters object
+  // Process parameters object if it exists
   if (nodeData.parameters && typeof nodeData.parameters === 'object') {
-    Object.entries(nodeData.parameters).forEach(([key, value]) => {
-      if (value !== null && value !== undefined) {
-        parameters[key] = convertToParameterValue(value)
-      }
-    })
+    Object.assign(parameters, processParameterObject(nodeData.parameters))
   }
 
-  // Extract from Other object
+  // Process Other object if it exists
   if (nodeData.Other && typeof nodeData.Other === 'object') {
-    Object.entries(nodeData.Other).forEach(([key, value]) => {
-      if (value !== null && value !== undefined && key !== 'Category') {
-        parameters[key] = convertToParameterValue(value)
-      }
-    })
+    const otherParams = processParameterObject(nodeData.Other)
+    // Skip Category as it's already handled
+    delete otherParams.Category
+    Object.assign(parameters, otherParams)
   }
 
-  // Extract from top-level properties
-  Object.entries(nodeData).forEach(([key, value]) => {
-    if (
-      value !== null &&
-      value !== undefined &&
-      ![
-        'id',
-        'type',
-        'Name',
-        'Other',
-        'Identity Data',
-        'parameters',
-        'metadata',
-        'children'
-      ].includes(key)
-    ) {
-      parameters[key] = convertToParameterValue(value)
-    }
-  })
+  // Process top-level properties
+  const topLevelParams = { ...nodeData }
+  // Remove special properties we don't want to process
+  const excludeKeys = [
+    'id',
+    'type',
+    'Name',
+    'Other',
+    'Identity Data',
+    'parameters',
+    'metadata',
+    'children'
+  ]
+  excludeKeys.forEach((key) => delete topLevelParams[key])
+  Object.assign(parameters, processParameterObject(topLevelParams))
 
   return parameters
 }
@@ -153,7 +164,11 @@ function convertViewerNodeToElementData(
     }
   }
 
-  const category = extractCategory(nodeData)
+  const category =
+    nodeData.Other?.Category ||
+    nodeData.speckle_type ||
+    nodeData.type ||
+    'Uncategorized'
   const isChild = childCategories.includes(category)
 
   debug.log(DebugCategories.DATA_TRANSFORM, 'Converting node', {
@@ -164,7 +179,7 @@ function convertViewerNodeToElementData(
   })
 
   // Extract all parameters
-  const parameters = extractParameters(nodeData)
+  const parameters = extractParameters(nodeData as ViewerNodeRaw)
 
   return {
     id: nodeData.id,
@@ -234,26 +249,68 @@ function traverseNode(node: ViewerNode, childCategories: string[] = []): Element
   return elements
 }
 
+interface ParameterStats {
+  raw: number
+  unique: Set<string>
+  groups: Map<string, Set<string>>
+  activeGroups: Map<string, Set<string>>
+}
+
+function initParameterStats(): ParameterStats {
+  return {
+    raw: 0,
+    unique: new Set(),
+    groups: new Map(),
+    activeGroups: new Map()
+  }
+}
+
+function updateParameterStats(
+  stats: ParameterStats,
+  key: string,
+  _value: unknown // Prefix with _ to indicate unused
+): void {
+  stats.raw++
+  stats.unique.add(key)
+
+  // Handle parameter grouping
+  const parts = key.split('.')
+  if (parts.length > 1) {
+    const group = parts[0]
+    const param = parts[parts.length - 1]
+    if (!stats.groups.has(group)) {
+      stats.groups.set(group, new Set())
+      stats.activeGroups.set(group, new Set())
+    }
+    stats.groups.get(group)!.add(param)
+    // Mark as active if not a system parameter (like __closure)
+    if (!key.startsWith('__')) {
+      stats.activeGroups.get(group)!.add(param)
+    }
+  } else {
+    if (!stats.groups.has('Parameters')) {
+      stats.groups.set('Parameters', new Set())
+      stats.activeGroups.set('Parameters', new Set())
+    }
+    stats.groups.get('Parameters')!.add(key)
+    // Mark as active if not a system parameter
+    if (!key.startsWith('__')) {
+      stats.activeGroups.get('Parameters')!.add(key)
+    }
+  }
+}
+
 /**
- * Extract columns from BIM data
+ * Extract columns from BIM data with proper grouping
  */
 function extractColumnsFromElements(elements: ElementData[]): BimColumnDef[] {
   const columnMap = new Map<string, BimColumnDef>()
+  const stats = initParameterStats()
 
   // Add standard columns
   const standardColumns = [
-    {
-      field: 'id',
-      name: 'ID',
-      type: 'string' as BimValueType,
-      group: 'Base'
-    },
-    {
-      field: 'type',
-      name: 'Type',
-      type: 'string' as BimValueType,
-      group: 'Base'
-    },
+    { field: 'id', name: 'ID', type: 'string' as BimValueType, group: 'Base' },
+    { field: 'type', name: 'Type', type: 'string' as BimValueType, group: 'Base' },
     {
       field: 'mark',
       name: 'Mark',
@@ -269,22 +326,21 @@ function extractColumnsFromElements(elements: ElementData[]): BimColumnDef[] {
   ]
 
   standardColumns.forEach(({ field, name, type, group }) => {
-    if (!columnMap.has(field)) {
-      columnMap.set(
+    columnMap.set(
+      field,
+      createBimColumnDefWithDefaults({
         field,
-        createBimColumnDefWithDefaults({
-          field,
-          name,
-          type,
-          sourceValue: null,
-          fetchedGroup: group,
-          currentGroup: group
-        })
-      )
-    }
+        name,
+        type,
+        sourceValue: null,
+        fetchedGroup: group,
+        currentGroup: group
+      })
+    )
+    updateParameterStats(stats, field, null)
   })
 
-  // Process all elements to collect unique parameters
+  // Process all elements to collect unique parameters with proper grouping
   const parameterTypes = new Map<
     string,
     {
@@ -292,17 +348,19 @@ function extractColumnsFromElements(elements: ElementData[]): BimColumnDef[] {
       category: string
       group: string
       name: string
+      value: unknown
     }
   >()
 
   elements.forEach((element) => {
-    // Ensure we have a valid category
     const category =
       typeof element.category === 'string' ? element.category : 'Uncategorized'
 
     Object.entries(element.parameters).forEach(([key, value]) => {
+      updateParameterStats(stats, key, value)
+
       if (!parameterTypes.has(key)) {
-        // Extract group and name from key (e.g., "Dimensions.Length" -> "Dimensions", "Length")
+        // Handle parameter grouping
         const parts = key.split('.')
         const group = parts.length > 1 ? parts[0] : 'Parameters'
         const name = parts.length > 1 ? parts[parts.length - 1] : key
@@ -311,7 +369,8 @@ function extractColumnsFromElements(elements: ElementData[]): BimColumnDef[] {
           type: inferParameterType(value),
           category,
           group,
-          name
+          name,
+          value
         })
       }
     })
@@ -326,13 +385,30 @@ function extractColumnsFromElements(elements: ElementData[]): BimColumnDef[] {
           field: key,
           name: info.name,
           type: info.type,
-          sourceValue: null,
+          sourceValue: ensurePrimitiveValue(info.value),
           fetchedGroup: info.group,
           currentGroup: info.group,
           category: info.category
         })
       )
     }
+  })
+
+  // Log parameter stats with detailed group information
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Parameter stats', {
+    raw: stats.raw,
+    unique: stats.unique.size,
+    groups: Object.fromEntries(
+      Array.from(stats.groups.entries()).map(([group, params]) => [
+        group,
+        {
+          total: params.size,
+          active: stats.activeGroups.get(group)?.size || 0,
+          parameters: Array.from(params),
+          activeParameters: Array.from(stats.activeGroups.get(group) || new Set())
+        }
+      ])
+    )
   })
 
   return Array.from(columnMap.values())
@@ -427,7 +503,9 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
       // Convert nodes to ElementData format recursively
       const convertedElements: ElementData[] = []
       tree._root.children.forEach((node) => {
-        convertedElements.push(...traverseNode(node, options.childCategories))
+        if (node) {
+          convertedElements.push(...traverseNode(node, options.childCategories))
+        }
       })
 
       debug.log(DebugCategories.DATA, 'Converted elements', {

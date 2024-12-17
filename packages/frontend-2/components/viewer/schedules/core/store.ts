@@ -4,35 +4,38 @@ import type {
   StoreState,
   ElementData,
   TableRow,
-  UnifiedParameter,
+  Parameter,
   ColumnDef,
-  CustomParameter
+  UserParameter
 } from '~/composables/core/types'
-import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
-
-// Initialize debug
-const debug = useDebug()
 
 const initialState: StoreState = {
   projectId: null,
   scheduleData: [],
   evaluatedData: [],
   tableData: [],
-  customParameters: [],
-  // Parent table columns
-  parentBaseColumns: [], // Base columns from PostgreSQL
-  parentAvailableColumns: [], // All available columns (including custom)
-  parentVisibleColumns: [], // Currently visible columns
-  // Child table columns
-  childBaseColumns: [], // Base columns from PostgreSQL
-  childAvailableColumns: [], // All available columns (including custom)
-  childVisibleColumns: [], // Currently visible columns
+  userParameters: [],
   // Parameters
-  mergedParentParameters: [],
-  mergedChildParameters: [],
+  parameterColumns: [],
+  parentParameterColumns: [],
+  childParameterColumns: [],
+  parentParameters: [],
+  childParameters: [],
   processedParameters: {},
   parameterDefinitions: {},
+  // Columns
+  currentTableColumns: [],
+  currentDetailColumns: [],
+  mergedTableColumns: [],
+  mergedDetailColumns: [],
+  parentBaseColumns: [],
+  parentAvailableColumns: [],
+  parentVisibleColumns: [],
+  childBaseColumns: [],
+  childAvailableColumns: [],
+  childVisibleColumns: [],
   // Headers
   availableHeaders: { parent: [], child: [] },
   // Categories
@@ -99,22 +102,12 @@ export function createStore(): Store {
       debug.startState(DebugCategories.STATE, 'Updating store state')
 
       // Log parameter-related updates
-      if ('availableHeaders' in state) {
-        debug.log(DebugCategories.PARAMETERS, 'Updating available headers', {
-          parentCount: state.availableHeaders?.parent.length,
-          childCount: state.availableHeaders?.child.length,
-          sampleParent: state.availableHeaders?.parent.slice(0, 3).map((p) => ({
-            field: p.field,
-            type: p.type,
-            source: p.source,
-            category: p.category
-          })),
-          sampleChild: state.availableHeaders?.child.slice(0, 3).map((p) => ({
-            field: p.field,
-            type: p.type,
-            source: p.source,
-            category: p.category
-          }))
+      if ('parentParameters' in state || 'childParameters' in state) {
+        debug.log(DebugCategories.PARAMETERS, 'Updating parameters', {
+          parentCount: state.parentParameters?.length,
+          childCount: state.childParameters?.length,
+          parentSample: state.parentParameters?.slice(0, 3),
+          childSample: state.childParameters?.slice(0, 3)
         })
       }
 
@@ -122,18 +115,8 @@ export function createStore(): Store {
         debug.log(DebugCategories.PARAMETERS, 'Updating available columns', {
           parentCount: state.parentAvailableColumns?.length,
           childCount: state.childAvailableColumns?.length,
-          sampleParent: state.parentAvailableColumns?.slice(0, 3).map((p) => ({
-            field: p.field,
-            type: p.type,
-            source: p.source,
-            category: p.category
-          })),
-          sampleChild: state.childAvailableColumns?.slice(0, 3).map((p) => ({
-            field: p.field,
-            type: p.type,
-            source: p.source,
-            category: p.category
-          }))
+          parentSample: state.parentAvailableColumns?.slice(0, 3),
+          childSample: state.childAvailableColumns?.slice(0, 3)
         })
       }
 
@@ -147,9 +130,9 @@ export function createStore(): Store {
 
         // Log state after update
         debug.log(DebugCategories.STATE, 'Store state updated', {
-          availableHeaders: {
-            parentCount: internalState.value.availableHeaders.parent.length,
-            childCount: internalState.value.availableHeaders.child.length
+          parameters: {
+            parentCount: internalState.value.parentParameters.length,
+            childCount: internalState.value.childParameters.length
           },
           availableColumns: {
             parentCount: internalState.value.parentAvailableColumns.length,
@@ -184,20 +167,26 @@ export function createStore(): Store {
     scheduleData: computed(() => internalState.value.scheduleData),
     evaluatedData: computed(() => internalState.value.evaluatedData),
     tableData: computed(() => internalState.value.tableData),
-    customParameters: computed(() => internalState.value.customParameters),
-    // Parent table columns
+    userParameters: computed(() => internalState.value.userParameters),
+    // Parameters
+    parameterColumns: computed(() => internalState.value.parameterColumns),
+    parentParameterColumns: computed(() => internalState.value.parentParameterColumns),
+    childParameterColumns: computed(() => internalState.value.childParameterColumns),
+    parentParameters: computed(() => internalState.value.parentParameters),
+    childParameters: computed(() => internalState.value.childParameters),
+    processedParameters: computed(() => internalState.value.processedParameters),
+    parameterDefinitions: computed(() => internalState.value.parameterDefinitions),
+    // Columns
+    currentTableColumns: computed(() => internalState.value.currentTableColumns),
+    currentDetailColumns: computed(() => internalState.value.currentDetailColumns),
+    mergedTableColumns: computed(() => internalState.value.mergedTableColumns),
+    mergedDetailColumns: computed(() => internalState.value.mergedDetailColumns),
     parentBaseColumns: computed(() => internalState.value.parentBaseColumns),
     parentAvailableColumns: computed(() => internalState.value.parentAvailableColumns),
     parentVisibleColumns: computed(() => internalState.value.parentVisibleColumns),
-    // Child table columns
     childBaseColumns: computed(() => internalState.value.childBaseColumns),
     childAvailableColumns: computed(() => internalState.value.childAvailableColumns),
     childVisibleColumns: computed(() => internalState.value.childVisibleColumns),
-    // Parameters
-    mergedParentParameters: computed(() => internalState.value.mergedParentParameters),
-    mergedChildParameters: computed(() => internalState.value.mergedChildParameters),
-    processedParameters: computed(() => internalState.value.processedParameters),
-    parameterDefinitions: computed(() => internalState.value.parameterDefinitions),
     // Headers
     availableHeaders: computed(() => internalState.value.availableHeaders),
     // Categories
@@ -225,29 +214,19 @@ export function createStore(): Store {
     setEvaluatedData: (data: ElementData[]) =>
       lifecycle.update({ evaluatedData: data }),
     setTableData: (data: TableRow[]) => lifecycle.update({ tableData: data }),
-    setCustomParameters: (params: CustomParameter[]) =>
-      lifecycle.update({ customParameters: params }),
-    setAvailableHeaders: (headers: {
-      parent: UnifiedParameter[]
-      child: UnifiedParameter[]
-    }) => {
-      debug.log(DebugCategories.PARAMETERS, 'Setting available headers', {
-        parentCount: headers.parent.length,
-        childCount: headers.child.length,
-        sampleParent: headers.parent.slice(0, 3).map((p) => ({
-          field: p.field,
-          type: p.type,
-          source: p.source,
-          category: p.category
-        })),
-        sampleChild: headers.child.slice(0, 3).map((p) => ({
-          field: p.field,
-          type: p.type,
-          source: p.source,
-          category: p.category
-        }))
+    setUserParameters: (params: UserParameter[]) =>
+      lifecycle.update({ userParameters: params }),
+    setParameters: (params: { parent: Parameter[]; child: Parameter[] }) => {
+      debug.log(DebugCategories.PARAMETERS, 'Setting parameters', {
+        parentCount: params.parent.length,
+        childCount: params.child.length,
+        parentSample: params.parent.slice(0, 3),
+        childSample: params.child.slice(0, 3)
       })
-      return lifecycle.update({ availableHeaders: headers })
+      return lifecycle.update({
+        parentParameters: params.parent,
+        childParameters: params.child
+      })
     },
     setSelectedCategories: (categories: Set<string>) =>
       lifecycle.update({ selectedCategories: categories }),
@@ -279,18 +258,8 @@ export function createStore(): Store {
       debug.log(DebugCategories.PARAMETERS, `Setting ${type} columns`, {
         parentCount: parentColumns.length,
         childCount: childColumns.length,
-        sampleParent: parentColumns.slice(0, 3).map((p) => ({
-          field: p.field,
-          type: p.type,
-          source: p.source,
-          category: p.category
-        })),
-        sampleChild: childColumns.slice(0, 3).map((p) => ({
-          field: p.field,
-          type: p.type,
-          source: p.source,
-          category: p.category
-        }))
+        parentSample: parentColumns.slice(0, 3),
+        childSample: childColumns.slice(0, 3)
       })
 
       return lifecycle.update(updates)

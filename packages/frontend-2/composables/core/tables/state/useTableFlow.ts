@@ -53,19 +53,48 @@ function ensureUserParameters(parameters: Parameter[]): UserParameter[] {
 }
 
 /**
+ * Extract group from parameter field
+ */
+function extractParameterGroup(field: string): string {
+  const parts = field.split('.')
+  return parts.length > 1 ? parts[0] : 'Parameters'
+}
+
+/**
  * Merge BIM columns with user columns
  */
 function mergeColumns(bimColumns: ColumnDef[], userColumns: ColumnDef[]): ColumnDef[] {
   const columnMap = new Map<string, ColumnDef>()
 
+  // Track parameter stats for debugging
+  const stats = {
+    bim: {
+      total: 0,
+      groups: new Map<string, Set<string>>()
+    },
+    user: {
+      total: 0,
+      groups: new Map<string, Set<string>>()
+    }
+  }
+
   // Add BIM columns first
   bimColumns.forEach((col) => {
     if (isBimColumnDef(col)) {
+      const group = extractParameterGroup(col.field)
+      if (!stats.bim.groups.has(group)) {
+        stats.bim.groups.set(group, new Set())
+      }
+      stats.bim.groups.get(group)!.add(col.field)
+      stats.bim.total++
+
       columnMap.set(
         col.field,
         createBimColumnDefWithDefaults({
           ...col,
-          kind: 'bim'
+          kind: 'bim',
+          fetchedGroup: group,
+          currentGroup: col.currentGroup || group
         })
       )
     }
@@ -74,11 +103,19 @@ function mergeColumns(bimColumns: ColumnDef[], userColumns: ColumnDef[]): Column
   // Override with user columns
   userColumns.forEach((col) => {
     if (isUserColumnDef(col)) {
+      const group = col.group || 'Custom'
+      if (!stats.user.groups.has(group)) {
+        stats.user.groups.set(group, new Set())
+      }
+      stats.user.groups.get(group)!.add(col.field)
+      stats.user.total++
+
       columnMap.set(
         col.field,
         createUserColumnDefWithDefaults({
           ...col,
-          kind: 'user'
+          kind: 'user',
+          group
         })
       )
     } else if (isBimColumnDef(col)) {
@@ -91,11 +128,52 @@ function mergeColumns(bimColumns: ColumnDef[], userColumns: ColumnDef[]): Column
           kind: 'bim',
           sourceValue: existing.sourceValue,
           fetchedGroup: existing.fetchedGroup,
-          currentGroup: existing.currentGroup
+          currentGroup:
+            col.currentGroup || existing.currentGroup || existing.fetchedGroup
         })
       } else {
-        columnMap.set(col.field, col)
+        const group = extractParameterGroup(col.field)
+        columnMap.set(col.field, {
+          ...col,
+          fetchedGroup: group,
+          currentGroup: col.currentGroup || group
+        })
       }
+    }
+  })
+
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Column merge stats', {
+    bim: {
+      total: stats.bim.total,
+      groups: Object.fromEntries(
+        Array.from(stats.bim.groups.entries()).map(([group, fields]) => [
+          group,
+          Array.from(fields)
+        ])
+      )
+    },
+    user: {
+      total: stats.user.total,
+      groups: Object.fromEntries(
+        Array.from(stats.user.groups.entries()).map(([group, fields]) => [
+          group,
+          Array.from(fields)
+        ])
+      )
+    },
+    merged: {
+      total: columnMap.size,
+      sample: Array.from(columnMap.values())
+        .slice(0, 5)
+        .map((col) => ({
+          field: col.field,
+          kind: col.kind,
+          group: isBimColumnDef(col)
+            ? col.currentGroup
+            : isUserColumnDef(col)
+            ? col.group
+            : 'unknown'
+        }))
     }
   })
 

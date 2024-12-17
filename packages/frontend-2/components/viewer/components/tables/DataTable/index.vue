@@ -1,4 +1,3 @@
-<!-- Template remains unchanged -->
 <template>
   <div class="prime-local">
     <!-- Column Management -->

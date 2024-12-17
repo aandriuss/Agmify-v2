@@ -12,6 +12,7 @@ import {
   createColumnsFromParameters,
   mergeColumns
 } from '~/composables/core/utils/columnUtils'
+import { convertToParameterValue } from '~/composables/core/parameters/utils/parameter-conversion'
 
 const debug = useDebug()
 
@@ -55,12 +56,154 @@ function createParameterState(value: ParameterValue): ParameterValueState {
   }
 }
 
+/**
+ * Type guard for Record<string, unknown>
+ */
+function isRecordStringUnknown(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+interface ParameterStats {
+  raw: number
+  unique: Set<string>
+  groups: Map<string, Set<string>>
+  activeGroups: Map<string, Set<string>>
+}
+
+function initParameterStats(): ParameterStats {
+  return {
+    raw: 0,
+    unique: new Set(),
+    groups: new Map(),
+    activeGroups: new Map()
+  }
+}
+
+function updateParameterStats(
+  stats: ParameterStats,
+  key: string,
+  _value: unknown // Prefix with _ to indicate unused
+): void {
+  stats.raw++
+  stats.unique.add(key)
+
+  // Handle parameter grouping
+  const parts = key.split('.')
+  if (parts.length > 1) {
+    const group = parts[0]
+    const param = parts[parts.length - 1]
+    if (!stats.groups.has(group)) {
+      stats.groups.set(group, new Set())
+      stats.activeGroups.set(group, new Set())
+    }
+    stats.groups.get(group)!.add(param)
+    // Mark as active if not a system parameter (like __closure)
+    if (!key.startsWith('__')) {
+      stats.activeGroups.get(group)!.add(param)
+    }
+  } else {
+    if (!stats.groups.has('Parameters')) {
+      stats.groups.set('Parameters', new Set())
+      stats.activeGroups.set('Parameters', new Set())
+    }
+    stats.groups.get('Parameters')!.add(key)
+    // Mark as active if not a system parameter
+    if (!key.startsWith('__')) {
+      stats.activeGroups.get('Parameters')!.add(key)
+    }
+  }
+}
+
+function processParameterObject(
+  obj: Record<string, unknown>,
+  prefix = '',
+  result: Record<string, ParameterValue> = {},
+  stats?: ParameterStats
+): Record<string, ParameterValue> {
+  Object.entries(obj).forEach(([key, value]) => {
+    // Skip system parameters
+    if (key.startsWith('__')) return
+
+    // Handle special cases like Pset_BuildingCommon
+    if (key.startsWith('Pset_') && typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value) as unknown
+        if (isRecordStringUnknown(parsed)) {
+          // Use the Pset name as the group prefix
+          processParameterObject(parsed, key, result, stats)
+          return
+        }
+      } catch (e) {
+        // If parsing fails, treat as normal value
+        const converted = convertToParameterValue(value)
+        result[key] = converted
+        if (stats) {
+          updateParameterStats(stats, key, converted)
+        }
+      }
+      return
+    }
+
+    // Handle Identity Data and Dimensions groups
+    const isIdentityData = key === 'Identity Data' || prefix === 'Identity Data'
+    const isDimensions = key === 'Dimensions' || prefix === 'Dimensions'
+
+    if ((isIdentityData || isDimensions) && isRecordStringUnknown(value)) {
+      // Process nested parameters with proper group prefix
+      const groupPrefix = isIdentityData ? 'Identity Data' : 'Dimensions'
+      processParameterObject(
+        value as Record<string, unknown>,
+        groupPrefix,
+        result,
+        stats
+      )
+      return
+    }
+
+    const fullKey = prefix ? `${prefix}.${key}` : key
+
+    if (value !== null && value !== undefined) {
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        if (isRecordStringUnknown(value)) {
+          // Recursively process nested objects
+          processParameterObject(value, fullKey, result, stats)
+        } else {
+          // Handle non-record objects
+          const converted = convertToParameterValue(value)
+          result[fullKey] = converted
+          if (stats) {
+            updateParameterStats(stats, fullKey, converted)
+          }
+        }
+      } else {
+        // Convert value and store with full key path
+        const converted = convertToParameterValue(value)
+        result[fullKey] = converted
+        if (stats) {
+          updateParameterStats(stats, fullKey, converted)
+        }
+      }
+    } else {
+      // Handle null/undefined values
+      result[fullKey] = null
+      if (stats) {
+        updateParameterStats(stats, fullKey, null)
+      }
+    }
+  })
+
+  return result
+}
+
 function processParameters(
   rawParameters: Record<string, unknown>
 ): Record<string, ParameterValue> {
-  // First create parameter states
+  // First flatten and group parameters
+  const flattenedParams = processParameterObject(rawParameters)
+
+  // Then create parameter states
   const parameterStates = Object.fromEntries(
-    Object.entries(rawParameters).map(([key, value]) => [
+    Object.entries(flattenedParams).map(([key, value]) => [
       key,
       isParameterValueState(value)
         ? value
@@ -68,7 +211,7 @@ function processParameters(
     ])
   )
 
-  // Then extract current values
+  // Finally extract current values while preserving structure
   return Object.fromEntries(
     Object.entries(parameterStates).map(([key, state]) => [key, state.currentValue])
   )
@@ -82,48 +225,80 @@ export async function processDataPipeline(
   // Step 1: Quick initial processing
   const quickResult = processQuickPass(input)
 
-  // Return quick result through Promise.resolve to maintain async contract
-  // but allow immediate access to initial data
-  Promise.resolve({
+  // Return quick result immediately
+  return Promise.resolve({
     ...quickResult,
     isProcessingComplete: false
-  })
-
-  // Step 2: Schedule full processing
-  const fullResult = await new Promise<DataPipelineResult>((resolve) => {
-    queueMicrotask(() => {
-      const result = processFullPass(quickResult)
-      debug.completeState(
-        DebugCategories.DATA_TRANSFORM,
-        'Full data processing complete',
-        {
-          elementCount: input.allElements.length,
-          filteredCount: result.filteredElements.length,
-          processedCount: result.processedElements.length,
-          tableDataCount: result.tableData.length
-        }
-      )
-      resolve({
-        ...result,
-        isProcessingComplete: true
+  }).then(async () => {
+    // Step 2: Schedule full processing
+    const fullResult = await new Promise<DataPipelineResult>((resolve) => {
+      queueMicrotask(() => {
+        const result = processFullPass(quickResult)
+        debug.completeState(
+          DebugCategories.DATA_TRANSFORM,
+          'Full data processing complete',
+          {
+            elementCount: input.allElements.length,
+            filteredCount: result.filteredElements.length,
+            processedCount: result.processedElements.length,
+            tableDataCount: result.tableData.length
+          }
+        )
+        resolve({
+          ...result,
+          isProcessingComplete: true
+        })
       })
     })
-  })
 
-  return fullResult
+    return fullResult
+  })
 }
 
+/**
+ * Extract all parameters including nested ones
+ */
 function extractAllParameters(elements: ElementData[]): string[] {
   const parameterSet = new Set<string>()
+  const stats = initParameterStats()
 
   elements.forEach((element) => {
     if (element.parameters) {
-      Object.keys(element.parameters).forEach((key) => parameterSet.add(key))
+      // Process all parameters including nested ones
+      const processedParams = processParameterObject(element.parameters, '', {}, stats)
+      Object.keys(processedParams).forEach((key) => parameterSet.add(key))
+    }
+  })
+
+  // Log parameter stats with detailed group information
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Parameter stats', {
+    elementCount: elements.length,
+    raw: stats.raw,
+    unique: stats.unique.size,
+    groups: Object.fromEntries(
+      Array.from(stats.groups.entries()).map(([group, params]) => [
+        group,
+        {
+          total: params.size,
+          active: stats.activeGroups.get(group)?.size || 0,
+          parameters: Array.from(params),
+          activeParameters: Array.from(stats.activeGroups.get(group) || new Set())
+        }
+      ])
+    ),
+    sampleParameters: Array.from(parameterSet).slice(0, 10),
+    categories: {
+      parent: Array.from(new Set(elements.map((el) => el.category))),
+      child: Array.from(
+        new Set(elements.filter((el) => el.isChild).map((el) => el.category))
+      )
     }
   })
 
   return Array.from(parameterSet)
 }
+
+// [Previous processQuickPass implementation]
 
 function processQuickPass(
   input: DataPipelineInput
@@ -136,7 +311,7 @@ function processQuickPass(
     selectedChild
   })
 
-  // Step 1: Split elements by category (basic)
+  // Step 1: Split elements by category
   const { parents, children } = splitElementsByCategory(
     allElements,
     selectedParent,
@@ -148,8 +323,16 @@ function processQuickPass(
   const childParameters = extractAllParameters(children)
 
   debug.log(DebugCategories.DATA_TRANSFORM, 'Parameters extracted', {
+    parentCount: parents.length,
+    childCount: children.length,
     parentParameterCount: parentParameters.length,
-    childParameterCount: childParameters.length
+    childParameterCount: childParameters.length,
+    parentSample: parentParameters.slice(0, 5),
+    childSample: childParameters.slice(0, 5),
+    categories: {
+      parent: Array.from(new Set(parents.map((p) => p.category))),
+      child: Array.from(new Set(children.map((c) => c.category)))
+    }
   })
 
   // Step 3: Create columns from parameters, merging with defaults
@@ -162,7 +345,7 @@ function processQuickPass(
     defaultDetailColumns
   )
 
-  // Step 4: Basic element processing
+  // Step 4: Process elements
   const processedElements = [...parents, ...children].map((el) => {
     return createElementData({
       ...el,
@@ -180,7 +363,7 @@ function processQuickPass(
     })
   })
 
-  // Step 5: Basic relationship establishment
+  // Step 5: Establish relationships
   const tableData = establishBasicRelationships(parents, children)
 
   return {
@@ -247,6 +430,7 @@ function splitElementsByCategory(
           ...element,
           id: element.id,
           type: element.type,
+          parameters: { ...element.parameters },
           details: [],
           isChild: !!element.host
         })
@@ -268,6 +452,7 @@ function splitElementsByCategory(
         ...element,
         id: element.id,
         type: element.type,
+        parameters: { ...element.parameters },
         details: [],
         isChild: selectedChild.includes(element.category || '')
       })
@@ -293,6 +478,7 @@ function establishBasicRelationships(
         ...parent,
         id: parent.id,
         type: parent.type,
+        parameters: { ...parent.parameters },
         details: []
       })
     ])
@@ -322,6 +508,7 @@ function establishFullRelationships(
         ...parent,
         id: parent.id,
         type: parent.type,
+        parameters: { ...parent.parameters },
         details: []
       })
     ])
@@ -337,6 +524,7 @@ function establishFullRelationships(
         ...child,
         id: child.id,
         type: child.type,
+        parameters: { ...child.parameters },
         details: []
       })
     )

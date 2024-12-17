@@ -6,7 +6,7 @@ import type { AvailableHeaders } from '../viewer/viewer-base'
 import type { ColumnDef } from '../tables'
 import type { StoreParameterValue, StoreParameterDefinition } from './parameter-store'
 
-export type { StoreParameterValue, StoreParameterDefinition } from './parameter-store' // TODO: Fix to remove this line
+export type { StoreParameterValue, StoreParameterDefinition } from './parameter-store'
 
 export {
   isStoreBimParameter,
@@ -16,7 +16,7 @@ export {
   convertToStoreParameter,
   convertToStoreDefinition,
   convertToParameter
-} from './parameter-store' // TODO: Fix to remove this line
+} from './parameter-store'
 
 /**
  * Raw parameter types that can be passed to store mutations
@@ -69,12 +69,12 @@ export interface StoreState {
   tableData: TableRow[]
 
   // Parameters
-  userParameters: UserParameter[] // Changed from customParameters
-  parameterColumns: ColumnDef[] // Keep for backward compatibility
-  parentParameterColumns: ColumnDef[] // Parent-specific parameters
-  childParameterColumns: ColumnDef[] // Child-specific parameters
-  mergedParentParameters: UserParameter[]
-  mergedChildParameters: UserParameter[]
+  userParameters: UserParameter[]
+  parameterColumns: ColumnDef[]
+  parentParameterColumns: ColumnDef[]
+  childParameterColumns: ColumnDef[]
+  parentParameters: Parameter[] // Added for BIM parameters
+  childParameters: Parameter[] // Added for BIM parameters
   processedParameters: Record<string, StoreParameterValue>
   parameterDefinitions: Record<string, StoreParameterDefinition>
 
@@ -122,11 +122,11 @@ export interface StoreMutations {
   setTableData: (data: TableRow[]) => void
 
   // Parameter mutations
-  setUserParameters: (params: UserParameter[]) => void // Changed from setCustomParameters
+  setUserParameters: (params: UserParameter[]) => void
   setParameterColumns: (columns: ColumnDef[]) => void
   setParentParameterColumns: (columns: ColumnDef[]) => void
   setChildParameterColumns: (columns: ColumnDef[]) => void
-  setMergedParameters: (parent: UserParameter[], child: UserParameter[]) => void
+  setParameters: (params: { parent: Parameter[]; child: Parameter[] }) => void
   setProcessedParameters: (params: Record<string, StoreParameterValue>) => void
   setParameterDefinitions: (defs: Record<string, StoreParameterDefinition>) => void
   setParameterVisibility: (parameterId: string, visible: boolean) => void
@@ -186,12 +186,12 @@ export interface Store {
   scheduleData: ComputedRef<ElementData[]>
   evaluatedData: ComputedRef<ElementData[]>
   tableData: ComputedRef<TableRow[]>
-  userParameters: ComputedRef<UserParameter[]> // Changed from customParameters
+  userParameters: ComputedRef<UserParameter[]>
   parameterColumns: ComputedRef<ColumnDef[]>
   parentParameterColumns: ComputedRef<ColumnDef[]>
   childParameterColumns: ComputedRef<ColumnDef[]>
-  mergedParentParameters: ComputedRef<UserParameter[]>
-  mergedChildParameters: ComputedRef<UserParameter[]>
+  parentParameters: ComputedRef<Parameter[]> // Added for BIM parameters
+  childParameters: ComputedRef<Parameter[]> // Added for BIM parameters
   processedParameters: ComputedRef<Record<string, StoreParameterValue>>
   currentTableColumns: ComputedRef<ColumnDef[]>
   currentDetailColumns: ComputedRef<ColumnDef[]>
@@ -222,11 +222,11 @@ export interface Store {
   setScheduleData: (data: ElementData[]) => void
   setEvaluatedData: (data: ElementData[]) => void
   setTableData: (data: TableRow[]) => void
-  setUserParameters: (params: UserParameter[]) => void // Changed from setCustomParameters
+  setUserParameters: (params: UserParameter[]) => void
   setParameterColumns: (columns: ColumnDef[]) => void
   setParentParameterColumns: (columns: ColumnDef[]) => void
   setChildParameterColumns: (columns: ColumnDef[]) => void
-  setMergedParameters: (parent: UserParameter[], child: UserParameter[]) => void
+  setParameters: (params: { parent: Parameter[]; child: Parameter[] }) => void
   setProcessedParameters: (params: Record<string, StoreParameterValue>) => void
   setParameterDefinitions: (defs: Record<string, StoreParameterDefinition>) => void
   setParameterVisibility: (parameterId: string, visible: boolean) => void
