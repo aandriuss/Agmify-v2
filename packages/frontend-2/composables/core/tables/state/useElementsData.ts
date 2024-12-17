@@ -40,7 +40,9 @@ export function useElementsData(
   options: UseElementsDataOptions
 ): UseElementsDataReturn {
   const store = useStore()
-  const bimElements = useBIMElements()
+  const bimElements = useBIMElements({
+    childCategories: options.selectedChildCategories.value
+  })
   const elementsMap = ref<Map<string, ElementData>>(new Map())
   const childElementsList = ref<ElementData[]>([])
   const tableData = ref<TableRow[]>([])
@@ -177,6 +179,20 @@ export function useElementsData(
         debug.error(DebugCategories.ERROR, 'Failed to update store:', err)
         throw err
       }
+    },
+    { deep: true }
+  )
+
+  // Watch category changes
+  watch(
+    [
+      () => options.selectedParentCategories.value,
+      () => options.selectedChildCategories.value
+    ],
+    async () => {
+      // Update BIM elements with new child categories
+      bimElements.initializeElements()
+      await processElements()
     },
     { deep: true }
   )

@@ -18,6 +18,8 @@ import {
 } from '~/composables/core/types'
 import { ViewerEvent } from '@speckle/viewer'
 import { useViewerEventListener } from '~~/lib/viewer/composables/viewer'
+import { isSpeckleReference } from '~/composables/core/types/viewer/viewer-types'
+import type { ParameterValue } from '~/composables/core/types/parameters'
 
 interface BIMElementsState {
   worldTree: ViewerTree | null
@@ -29,14 +31,7 @@ interface BIMElementsState {
 }
 
 interface BIMElementsOptions {
-  childCategories: string[]
-}
-
-/**
- * Extract category from BIM node
- */
-function extractCategory(node: ViewerNodeRaw): string {
-  return node.Other?.Category || node.speckleType || node.type || 'Uncategorized'
+  childCategories?: string[]
 }
 
 /**
@@ -52,16 +47,113 @@ function inferParameterType(value: unknown): BimValueType {
 }
 
 /**
+ * Extract category from BIM node
+ */
+function extractCategory(node: ViewerNodeRaw): string {
+  return node.Other?.Category || node.speckle_type || node.type || 'Uncategorized'
+}
+
+/**
+ * Convert value to ParameterValue type
+ */
+function convertToParameterValue(value: unknown): ParameterValue {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return value
+  if (typeof value === 'boolean') return value
+  if (Array.isArray(value)) return JSON.stringify(value)
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+/**
+ * Extract parameters from node data
+ */
+function extractParameters(nodeData: ViewerNodeRaw): Record<string, ParameterValue> {
+  const parameters: Record<string, ParameterValue> = {}
+
+  // Add standard parameters
+  parameters.category =
+    nodeData.Other?.Category ||
+    nodeData.speckle_type ||
+    nodeData.type ||
+    'Uncategorized'
+  parameters.mark = nodeData['Identity Data']?.Mark || ''
+  parameters.name = nodeData.Name || ''
+  parameters.type = nodeData.type || ''
+
+  // Extract from parameters object
+  if (nodeData.parameters && typeof nodeData.parameters === 'object') {
+    Object.entries(nodeData.parameters).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) {
+        parameters[key] = convertToParameterValue(value)
+      }
+    })
+  }
+
+  // Extract from Other object
+  if (nodeData.Other && typeof nodeData.Other === 'object') {
+    Object.entries(nodeData.Other).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && key !== 'Category') {
+        parameters[key] = convertToParameterValue(value)
+      }
+    })
+  }
+
+  // Extract from top-level properties
+  Object.entries(nodeData).forEach(([key, value]) => {
+    if (
+      value !== null &&
+      value !== undefined &&
+      ![
+        'id',
+        'type',
+        'Name',
+        'Other',
+        'Identity Data',
+        'parameters',
+        'metadata',
+        'children'
+      ].includes(key)
+    ) {
+      parameters[key] = convertToParameterValue(value)
+    }
+  })
+
+  return parameters
+}
+
+/**
  * Convert ViewerNode to ElementData format
  */
 function convertViewerNodeToElementData(
   node: ViewerNode,
-  childCategories: string[]
+  childCategories: string[] = []
 ): ElementData {
-  const nodeData = (node.model?.raw || {}) as ViewerNodeRaw
-  const category = extractCategory(nodeData)
+  const nodeData = node.model?.raw
+  if (!nodeData || isSpeckleReference(nodeData)) {
+    debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data', {
+      id: node.id,
+      hasRaw: !!nodeData,
+      isReference: isSpeckleReference(nodeData)
+    })
+    return {
+      id: node.id,
+      type: '',
+      name: '',
+      field: node.id,
+      header: '',
+      visible: true,
+      removable: true,
+      isChild: false,
+      category: 'Uncategorized',
+      parameters: {},
+      metadata: {},
+      details: []
+    }
+  }
 
-  // Check if category is in childCategories list
+  const category = extractCategory(nodeData)
   const isChild = childCategories.includes(category)
 
   debug.log(DebugCategories.DATA_TRANSFORM, 'Converting node', {
@@ -71,47 +163,64 @@ function convertViewerNodeToElementData(
     type: nodeData.type
   })
 
+  // Extract all parameters
+  const parameters = extractParameters(nodeData)
+
   return {
-    id: nodeData.id || '',
+    id: nodeData.id,
     type: nodeData.type || '',
     name: nodeData.Name || '',
-    field: nodeData.id || '',
+    field: nodeData.id,
     header: nodeData.type || '',
     visible: true,
     removable: true,
     isChild,
     category,
-    parameters: {
-      category,
-      mark: nodeData['Identity Data']?.Mark || '',
-      name: nodeData.Name || '',
-      type: nodeData.type || '',
-      ...(nodeData.parameters || {})
-    },
+    parameters,
     metadata: nodeData.metadata || {},
     details: []
   }
 }
 
 /**
+ * Type guard for ViewerNodeRaw-like objects
+ */
+function isViewerNodeRawLike(value: unknown): value is ViewerNodeRaw {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof (value as { id: unknown }).id === 'string' &&
+    !('referencedId' in value)
+  )
+}
+
+/**
  * Recursively traverse node and its children/elements
  */
-function traverseNode(node: ViewerNode, childCategories: string[]): ElementData[] {
+function traverseNode(node: ViewerNode, childCategories: string[] = []): ElementData[] {
   const elements: ElementData[] = []
 
   // Convert current node
   elements.push(convertViewerNodeToElementData(node, childCategories))
 
   // Get raw data
-  const raw = (node.model?.raw || {}) as ViewerNodeRaw & {
-    elements?: ViewerNode[]
-    children?: ViewerNode[]
-  }
+  const raw = node.model?.raw
+  if (!raw || isSpeckleReference(raw)) return elements
 
   // Check for elements array
-  if (raw.elements && Array.isArray(raw.elements)) {
-    raw.elements.forEach((element) => {
-      elements.push(...traverseNode(element, childCategories))
+  if ('elements' in raw && Array.isArray(raw.elements)) {
+    raw.elements.forEach((element: unknown) => {
+      if (isViewerNodeRawLike(element)) {
+        // Convert element to ViewerNode format
+        const elementNode: ViewerNode = {
+          id: element.id,
+          model: {
+            raw: element
+          }
+        }
+        elements.push(...traverseNode(elementNode, childCategories))
+      }
     })
   }
 
@@ -268,7 +377,7 @@ function mergeWithExistingColumns(
  * BIM elements composable
  * Handles BIM element initialization and state management
  */
-export function useBIMElements(options: BIMElementsOptions) {
+export function useBIMElements(options: BIMElementsOptions = {}) {
   const store = useStore()
 
   // State

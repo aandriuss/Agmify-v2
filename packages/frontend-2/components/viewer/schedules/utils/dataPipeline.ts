@@ -113,6 +113,18 @@ export async function processDataPipeline(
   return fullResult
 }
 
+function extractAllParameters(elements: ElementData[]): string[] {
+  const parameterSet = new Set<string>()
+
+  elements.forEach((element) => {
+    if (element.parameters) {
+      Object.keys(element.parameters).forEach((key) => parameterSet.add(key))
+    }
+  })
+
+  return Array.from(parameterSet)
+}
+
 function processQuickPass(
   input: DataPipelineInput
 ): Omit<DataPipelineResult, 'isProcessingComplete'> {
@@ -131,21 +143,26 @@ function processQuickPass(
     selectedChild
   )
 
-  // Step 2: Basic parameter processing
-  const activeParentParameters = defaultColumns.map((col) => col.field)
-  const activeChildParameters = defaultDetailColumns.map((col) => col.field)
+  // Step 2: Extract all parameters
+  const parentParameters = extractAllParameters(parents)
+  const childParameters = extractAllParameters(children)
 
-  // Create columns from field strings, using default columns as templates
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Parameters extracted', {
+    parentParameterCount: parentParameters.length,
+    childParameterCount: childParameters.length
+  })
+
+  // Step 3: Create columns from parameters, merging with defaults
   const parentColumns = createColumnsFromParameters(
-    activeParentParameters,
+    [...parentParameters, ...defaultColumns.map((col) => col.field)],
     defaultColumns
   )
   const childColumns = createColumnsFromParameters(
-    activeChildParameters,
+    [...childParameters, ...defaultDetailColumns.map((col) => col.field)],
     defaultDetailColumns
   )
 
-  // Step 3: Basic element processing
+  // Step 4: Basic element processing
   const processedElements = [...parents, ...children].map((el) => {
     return createElementData({
       ...el,
@@ -163,7 +180,7 @@ function processQuickPass(
     })
   })
 
-  // Step 4: Basic relationship establishment
+  // Step 5: Basic relationship establishment
   const tableData = establishBasicRelationships(parents, children)
 
   return {

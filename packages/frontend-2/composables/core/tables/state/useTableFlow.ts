@@ -140,9 +140,16 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
       childColumnsCount: table.childColumns.length
     })
 
-    // Merge BIM columns with user columns
-    const parentColumns = mergeColumns(allColumns.value, table.parentColumns)
-    const childColumns = mergeColumns(allColumns.value, table.childColumns)
+    // If table has no columns, use defaults
+    const parentColumns =
+      table.parentColumns.length > 0
+        ? mergeColumns(allColumns.value, table.parentColumns)
+        : defaultConfig.parentColumns
+
+    const childColumns =
+      table.childColumns.length > 0
+        ? mergeColumns(allColumns.value, table.childColumns)
+        : defaultConfig.childColumns
 
     // Return table with merged columns
     return {

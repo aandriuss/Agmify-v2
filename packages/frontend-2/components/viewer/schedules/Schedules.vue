@@ -143,7 +143,10 @@ import TableLayout from '~/components/core/tables/TableLayout.vue'
 import { useViewerEventListener } from '~~/lib/viewer/composables/viewer'
 import { ViewerEvent } from '@speckle/viewer'
 
-import type { WorldTreeRoot } from '~/composables/core/types/viewer/viewer-types'
+import type {
+  ViewerNode,
+  WorldTreeRoot
+} from '~/composables/core/types/viewer/viewer-types'
 
 // Available categories
 const parentCategories = ['Walls', 'Floors', 'Roofs']
@@ -209,29 +212,46 @@ useViewerEventListener(ViewerEvent.LoadComplete, () => {
   })
 })
 
+// Type guard to check if children array exists and is non-empty
+function hasValidChildren(
+  node: unknown
+): node is { _root: { children: ViewerNode[] } } {
+  if (!node || typeof node !== 'object') return false
+  const candidate = node as { _root?: { children?: ViewerNode[] } }
+  return !!(
+    candidate._root?.children &&
+    Array.isArray(candidate._root.children) &&
+    candidate._root.children.length > 0
+  )
+}
+
 // Watch world tree changes
 watch(
   worldTree,
   async (newTree) => {
-    // Type-safe access to world tree data
-    const worldTreeData = newTree as WorldTreeRoot | null
-    const children = worldTreeData?._root?.children || []
+    if (!hasValidChildren(newTree)) {
+      debug.log(DebugCategories.DATA, 'World tree updated but no valid children', {
+        exists: !!newTree,
+        hasRoot: !!(newTree && '_root' in newTree),
+        childrenCount: 0
+      })
+      return
+    }
 
+    const children = newTree._root.children
     debug.log(DebugCategories.DATA, 'World tree updated', {
-      exists: !!worldTreeData,
-      hasRoot: !!worldTreeData?._root,
+      exists: true,
+      hasRoot: true,
       childrenCount: children.length
     })
 
-    if (children.length) {
-      // Create world tree root with verified children
-      const treeRoot: WorldTreeRoot = {
-        _root: {
-          children
-        }
+    // Create world tree root with verified children
+    const treeRoot: WorldTreeRoot = {
+      _root: {
+        children
       }
-      await bimElements.initializeElements(treeRoot)
     }
+    await bimElements.initializeElements(treeRoot)
   },
   { immediate: true }
 )
