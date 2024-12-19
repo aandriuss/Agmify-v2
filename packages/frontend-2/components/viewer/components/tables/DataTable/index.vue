@@ -103,6 +103,7 @@ import type {
   DataTableExpandedRows
 } from 'primevue/datatable'
 import { useTableConfigs } from '~/composables/useTableConfigs'
+import { useParameterStore } from '~/composables/core/parameters/store'
 
 interface Props {
   tableId: string
@@ -428,6 +429,39 @@ async function handleApplyColumns(): Promise<void> {
     // Update local state
     localParentColumns.value = safeJSONClone(tempParentColumns.value)
     localChildColumns.value = safeJSONClone(tempChildColumns.value)
+
+    // Convert columns to selected parameters
+    const parameterStore = useParameterStore()
+
+    // Update parent parameters
+    const parentSelectedParameters = localParentColumns.value.map((column) => ({
+      id: column.id,
+      name: column.name,
+      kind: column.isCustomParameter ? ('user' as const) : ('bim' as const),
+      type: column.type,
+      value: column.sourceValue ?? null,
+      group: column.currentGroup || column.fetchedGroup || 'Default',
+      visible: column.visible,
+      order: column.order ?? 0,
+      category: column.category,
+      description: column.description
+    }))
+    parameterStore.updateSelectedParameters(parentSelectedParameters, true)
+
+    // Update child parameters
+    const childSelectedParameters = localChildColumns.value.map((column) => ({
+      id: column.id,
+      name: column.name,
+      kind: column.isCustomParameter ? ('user' as const) : ('bim' as const),
+      type: column.type,
+      value: column.sourceValue ?? null,
+      group: column.currentGroup || column.fetchedGroup || 'Default',
+      visible: column.visible,
+      order: column.order ?? 0,
+      category: column.category,
+      description: column.description
+    }))
+    parameterStore.updateSelectedParameters(childSelectedParameters, false)
 
     // Update table configs
     if (props.tableId) {

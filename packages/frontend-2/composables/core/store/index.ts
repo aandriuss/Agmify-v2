@@ -4,11 +4,10 @@ import type {
   StoreState,
   ElementData,
   TableRow,
-  Parameter,
   ColumnDef,
-  UserParameter,
-  StoreParameterValue,
-  StoreParameterDefinition
+  TableInfo,
+  TableInfoUpdatePayload,
+  AvailableHeaders
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
@@ -17,15 +16,6 @@ const initialState: StoreState = {
   scheduleData: [],
   evaluatedData: [],
   tableData: [],
-  userParameters: [],
-  // Parameters
-  parameterColumns: [],
-  parentParameterColumns: [],
-  childParameterColumns: [],
-  parentParameters: [],
-  childParameters: [],
-  processedParameters: {},
-  parameterDefinitions: {},
   // Columns
   currentTableColumns: [],
   currentDetailColumns: [],
@@ -57,36 +47,13 @@ const initialState: StoreState = {
 
 export class CoreStore implements Store {
   private internalState = ref<StoreState>(initialState)
+
   public readonly state = computed<StoreState>(() => this.internalState.value)
   public readonly projectId = computed(() => this.internalState.value.projectId)
   public readonly scheduleData = computed(() => this.internalState.value.scheduleData)
   public readonly evaluatedData = computed(() => this.internalState.value.evaluatedData)
   public readonly tableData = computed(() => this.internalState.value.tableData)
-  public readonly userParameters = computed(
-    () => this.internalState.value.userParameters
-  )
-  // Parameters
-  public readonly parameterColumns = computed(
-    () => this.internalState.value.parameterColumns
-  )
-  public readonly parentParameterColumns = computed(
-    () => this.internalState.value.parentParameterColumns
-  )
-  public readonly childParameterColumns = computed(
-    () => this.internalState.value.childParameterColumns
-  )
-  public readonly parentParameters = computed(
-    () => this.internalState.value.parentParameters
-  )
-  public readonly childParameters = computed(
-    () => this.internalState.value.childParameters
-  )
-  public readonly processedParameters = computed(
-    () => this.internalState.value.processedParameters
-  )
-  public readonly parameterDefinitions = computed(
-    () => this.internalState.value.parameterDefinitions
-  )
+
   // Columns
   public readonly currentTableColumns = computed(
     () => this.internalState.value.currentTableColumns
@@ -118,10 +85,12 @@ export class CoreStore implements Store {
   public readonly childVisibleColumns = computed(
     () => this.internalState.value.childVisibleColumns
   )
+
   // Headers
   public readonly availableHeaders = computed(
     () => this.internalState.value.availableHeaders
   )
+
   // Categories
   public readonly selectedCategories = computed(
     () => this.internalState.value.selectedCategories
@@ -132,6 +101,7 @@ export class CoreStore implements Store {
   public readonly selectedChildCategories = computed(
     () => this.internalState.value.selectedChildCategories
   )
+
   // Table info
   public readonly tablesArray = computed(() => this.internalState.value.tablesArray)
   public readonly tableName = computed(() => this.internalState.value.tableName)
@@ -142,6 +112,7 @@ export class CoreStore implements Store {
     () => this.internalState.value.currentTableId
   )
   public readonly tableKey = computed(() => this.internalState.value.tableKey)
+
   // State
   public readonly initialized = computed(() => this.internalState.value.initialized)
   public readonly loading = computed(() => this.internalState.value.loading)
@@ -186,47 +157,6 @@ export class CoreStore implements Store {
   public setEvaluatedData = (data: ElementData[]) =>
     this.lifecycle.update({ evaluatedData: data })
   public setTableData = (data: TableRow[]) => this.lifecycle.update({ tableData: data })
-  public setUserParameters = (params: UserParameter[]) =>
-    this.lifecycle.update({ userParameters: params })
-  public setParameterColumns = (columns: ColumnDef[]) =>
-    this.lifecycle.update({ parameterColumns: columns })
-  public setParentParameterColumns = (columns: ColumnDef[]) =>
-    this.lifecycle.update({ parentParameterColumns: columns })
-  public setChildParameterColumns = (columns: ColumnDef[]) =>
-    this.lifecycle.update({ childParameterColumns: columns })
-  public setParameters = (params: { parent: Parameter[]; child: Parameter[] }) => {
-    debug.log(DebugCategories.PARAMETERS, 'Setting parameters', {
-      parentCount: params.parent.length,
-      childCount: params.child.length,
-      parentSample: params.parent.slice(0, 3),
-      childSample: params.child.slice(0, 3)
-    })
-    return this.lifecycle.update({
-      parentParameters: params.parent,
-      childParameters: params.child
-    })
-  }
-  public setProcessedParameters = (params: Record<string, StoreParameterValue>) =>
-    this.lifecycle.update({ processedParameters: params })
-  public setParameterDefinitions = (defs: Record<string, StoreParameterDefinition>) =>
-    this.lifecycle.update({ parameterDefinitions: defs })
-  public setParameterVisibility = (parameterId: string, visible: boolean) => {
-    const params = [...this.internalState.value.parameterColumns]
-    const param = params.find((p) => p.id === parameterId)
-    if (param) {
-      param.visible = visible
-      return this.lifecycle.update({ parameterColumns: params })
-    }
-  }
-  public setParameterOrder = (parameterId: string, newIndex: number) => {
-    const params = [...this.internalState.value.parameterColumns]
-    const oldIndex = params.findIndex((p) => p.id === parameterId)
-    if (oldIndex !== -1) {
-      const [param] = params.splice(oldIndex, 1)
-      params.splice(newIndex, 0, param)
-      return this.lifecycle.update({ parameterColumns: params })
-    }
-  }
   public setCurrentColumns = (table: ColumnDef[], detail: ColumnDef[]) =>
     this.lifecycle.update({
       currentTableColumns: table,
@@ -260,41 +190,16 @@ export class CoreStore implements Store {
     this.lifecycle.update({ selectedParentCategories: categories })
   public setChildCategories = (categories: string[]) =>
     this.lifecycle.update({ selectedChildCategories: categories })
-  public setTablesArray = (tables: { id: string; name: string }[]) =>
+  public setTablesArray = (tables: TableInfo[]) =>
     this.lifecycle.update({ tablesArray: tables })
-  public setTableInfo = (info: { selectedTableId?: string; tableName?: string }) =>
-    this.lifecycle.update(info)
-  public setColumns = (
-    parentColumns: ColumnDef[],
-    childColumns: ColumnDef[],
-    type: 'base' | 'available' | 'visible'
-  ) => {
-    const updates: Partial<StoreState> = {}
-    if (type === 'base') {
-      updates.parentBaseColumns = parentColumns
-      updates.childBaseColumns = childColumns
-    } else if (type === 'available') {
-      updates.parentAvailableColumns = parentColumns
-      updates.childAvailableColumns = childColumns
-    } else {
-      updates.parentVisibleColumns = parentColumns
-      updates.childVisibleColumns = childColumns
-    }
-
-    debug.log(DebugCategories.PARAMETERS, `Setting ${type} columns`, {
-      parentCount: parentColumns.length,
-      childCount: childColumns.length,
-      parentSample: parentColumns.slice(0, 3),
-      childSample: childColumns.slice(0, 3)
-    })
-
-    return this.lifecycle.update(updates)
+  public setTableInfo = (info: TableInfoUpdatePayload) => {
+    const update: Partial<StoreState> = {}
+    if (info.selectedTableId) update.selectedTableId = info.selectedTableId
+    if (info.tableName) update.tableName = info.tableName
+    if (info.currentTableId) update.currentTableId = info.currentTableId
+    if (info.tableKey) update.tableKey = info.tableKey
+    return this.lifecycle.update(update)
   }
-  public setInitialized = (value: boolean) =>
-    this.lifecycle.update({ initialized: value })
-  public setLoading = (value: boolean) => this.lifecycle.update({ loading: value })
-  public setError = (error: Error | null) => this.lifecycle.update({ error })
-
   public setElementVisibility = (elementId: string, visible: boolean) => {
     const data = [...this.internalState.value.scheduleData]
     const element = data.find((e) => e.id === elementId)
@@ -303,19 +208,12 @@ export class CoreStore implements Store {
       return this.lifecycle.update({ scheduleData: data })
     }
   }
-
-  public setAvailableHeaders = (headers: {
-    parent: Parameter[]
-    child: Parameter[]
-  }) => {
-    debug.log(DebugCategories.PARAMETERS, 'Setting available headers', {
-      parentCount: headers.parent.length,
-      childCount: headers.child.length,
-      parentSample: headers.parent.slice(0, 3),
-      childSample: headers.child.slice(0, 3)
-    })
-    return this.lifecycle.update({ availableHeaders: headers })
-  }
+  public setAvailableHeaders = (headers: AvailableHeaders) =>
+    this.lifecycle.update({ availableHeaders: headers })
+  public setInitialized = (value: boolean) =>
+    this.lifecycle.update({ initialized: value })
+  public setLoading = (value: boolean) => this.lifecycle.update({ loading: value })
+  public setError = (error: Error | null) => this.lifecycle.update({ error })
 
   public reset = () => {
     debug.log(DebugCategories.STATE, 'Resetting store')
@@ -324,7 +222,7 @@ export class CoreStore implements Store {
 }
 
 // Store instance
-let storeInstance: Store | null = null
+let storeInstance: Store | undefined
 
 // Singleton accessor
 export function useStore(): Store {
@@ -339,5 +237,5 @@ export function resetStore(): void {
   if (storeInstance) {
     storeInstance.reset()
   }
-  storeInstance = null
+  storeInstance = undefined
 }

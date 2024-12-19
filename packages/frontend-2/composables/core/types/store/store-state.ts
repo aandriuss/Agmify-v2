@@ -1,28 +1,8 @@
 import type { ComputedRef, Ref } from 'vue'
 import type { Viewer } from '@speckle/viewer'
 import type { ElementData, TableRow } from '~/composables/core/types'
-import type { UserParameter, Parameter } from '../parameters'
 import type { AvailableHeaders } from '../viewer/viewer-base'
 import type { ColumnDef } from '../tables'
-import type { StoreParameterValue, StoreParameterDefinition } from './parameter-store'
-
-export type { StoreParameterValue, StoreParameterDefinition } from './parameter-store'
-
-export {
-  isStoreBimParameter,
-  isStoreUserParameter,
-  isStoreBimDefinition,
-  isStoreUserDefinition,
-  convertToStoreParameter,
-  convertToStoreDefinition,
-  convertToParameter
-} from './parameter-store'
-
-/**
- * Raw parameter types that can be passed to store mutations
- */
-export type RawParameterValue = Parameter
-export type RawParameterDefinition = Parameter
 
 /**
  * Table info interface
@@ -68,16 +48,6 @@ export interface StoreState {
   evaluatedData: ElementData[]
   tableData: TableRow[]
 
-  // Parameters
-  userParameters: UserParameter[]
-  parameterColumns: ColumnDef[]
-  parentParameterColumns: ColumnDef[]
-  childParameterColumns: ColumnDef[]
-  parentParameters: Parameter[] // Added for BIM parameters
-  childParameters: Parameter[] // Added for BIM parameters
-  processedParameters: Record<string, StoreParameterValue>
-  parameterDefinitions: Record<string, StoreParameterDefinition>
-
   // Columns
   currentTableColumns: ColumnDef[]
   currentDetailColumns: ColumnDef[]
@@ -120,17 +90,6 @@ export interface StoreMutations {
   setScheduleData: (data: ElementData[]) => void
   setEvaluatedData: (data: ElementData[]) => void
   setTableData: (data: TableRow[]) => void
-
-  // Parameter mutations
-  setUserParameters: (params: UserParameter[]) => void
-  setParameterColumns: (columns: ColumnDef[]) => void
-  setParentParameterColumns: (columns: ColumnDef[]) => void
-  setChildParameterColumns: (columns: ColumnDef[]) => void
-  setParameters: (params: { parent: Parameter[]; child: Parameter[] }) => void
-  setProcessedParameters: (params: Record<string, StoreParameterValue>) => void
-  setParameterDefinitions: (defs: Record<string, StoreParameterDefinition>) => void
-  setParameterVisibility: (parameterId: string, visible: boolean) => void
-  setParameterOrder: (parameterId: string, newIndex: number) => void
 
   // Column mutations
   setCurrentColumns: (table: ColumnDef[], detail: ColumnDef[]) => void
@@ -186,18 +145,10 @@ export interface Store {
   scheduleData: ComputedRef<ElementData[]>
   evaluatedData: ComputedRef<ElementData[]>
   tableData: ComputedRef<TableRow[]>
-  userParameters: ComputedRef<UserParameter[]>
-  parameterColumns: ComputedRef<ColumnDef[]>
-  parentParameterColumns: ComputedRef<ColumnDef[]>
-  childParameterColumns: ComputedRef<ColumnDef[]>
-  parentParameters: ComputedRef<Parameter[]> // Added for BIM parameters
-  childParameters: ComputedRef<Parameter[]> // Added for BIM parameters
-  processedParameters: ComputedRef<Record<string, StoreParameterValue>>
   currentTableColumns: ComputedRef<ColumnDef[]>
   currentDetailColumns: ComputedRef<ColumnDef[]>
   mergedTableColumns: ComputedRef<ColumnDef[]>
   mergedDetailColumns: ComputedRef<ColumnDef[]>
-  parameterDefinitions: ComputedRef<Record<string, StoreParameterDefinition>>
   availableHeaders: ComputedRef<AvailableHeaders>
   selectedCategories: ComputedRef<Set<string>>
   selectedParentCategories: ComputedRef<string[]>
@@ -222,15 +173,6 @@ export interface Store {
   setScheduleData: (data: ElementData[]) => void
   setEvaluatedData: (data: ElementData[]) => void
   setTableData: (data: TableRow[]) => void
-  setUserParameters: (params: UserParameter[]) => void
-  setParameterColumns: (columns: ColumnDef[]) => void
-  setParentParameterColumns: (columns: ColumnDef[]) => void
-  setChildParameterColumns: (columns: ColumnDef[]) => void
-  setParameters: (params: { parent: Parameter[]; child: Parameter[] }) => void
-  setProcessedParameters: (params: Record<string, StoreParameterValue>) => void
-  setParameterDefinitions: (defs: Record<string, StoreParameterDefinition>) => void
-  setParameterVisibility: (parameterId: string, visible: boolean) => void
-  setParameterOrder: (parameterId: string, newIndex: number) => void
   setCurrentColumns: (table: ColumnDef[], detail: ColumnDef[]) => void
   setMergedColumns: (table: ColumnDef[], detail: ColumnDef[]) => void
   setColumnVisibility: (columnId: string, visible: boolean) => void
@@ -251,13 +193,3 @@ export interface Store {
   // Lifecycle
   lifecycle: StoreLifecycle
 }
-
-// Re-export parameter store utilities
-export {
-  convertToStoreParameter as convertToStoreParameterValue,
-  convertToStoreDefinition as convertToStoreParameterDefinition,
-  convertToParameter as convertParameterMap,
-  convertToParameter as convertDefinitionMap,
-  isStoreBimParameter as isStoreParameterValue,
-  isStoreBimDefinition as isStoreParameterDefinition
-} from './parameter-store'

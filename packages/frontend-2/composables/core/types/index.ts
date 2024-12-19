@@ -111,6 +111,13 @@ export type {
   EvaluatedBimParameter,
   EvaluatedUserParameter,
   EvaluatedParameter,
+  RawParameter,
+  AvailableBimParameter,
+  AvailableUserParameter,
+  AvailableParameter,
+  SelectedParameter,
+  ColumnDefinition,
+  ParameterCollections,
 
   // Value Types
   PrimitiveValue,
@@ -121,7 +128,8 @@ export type {
   ValidationRules,
   ValidationResult,
   ParameterDefinition, // backward compatibility
-  ParameterValueType // backward compatibility
+  ParameterValueType, // backward compatibility
+  RawBimParameter // backward compatibility
 } from './parameters'
 
 // Parameter System Functions
@@ -134,11 +142,20 @@ export {
   isUserParameter,
   isEquationValue,
   isPrimitiveValue,
+  isRawParameter,
+  isAvailableBimParameter,
+  isAvailableUserParameter,
+  isSelectedParameter,
+  isColumnDefinition,
 
   // Parameter Creation
   createBimParameter,
   createUserParameter,
   createParameterValueState,
+  createAvailableBimParameter,
+  createAvailableUserParameter,
+  createSelectedParameter,
+  createColumnDefinition,
 
   // Parameter Operations
   getParameterGroup,
@@ -179,9 +196,13 @@ export type {
   StoreUserParameterDefinition,
   StoreParameterDefinition,
 
+  // Parameter Store State Types
+  ParameterStoreState,
+  ParameterStoreMutations,
+  ParameterStoreGetters,
+  ParameterStore,
+
   // Store State Types
-  RawParameterValue,
-  RawParameterDefinition,
   TableInfo,
   TableInfoUpdatePayload,
   ViewerState,
@@ -191,14 +212,21 @@ export type {
   Store
 } from './store'
 
-// Store utilities
+// Store utilities and functions
 export {
-  convertToStoreParameterValue,
-  convertToStoreParameterDefinition,
-  convertParameterMap,
-  convertDefinitionMap,
-  isStoreParameterValue,
-  isStoreParameterDefinition
+  // Type Guards
+  isStoreBimParameter,
+  isStoreUserParameter,
+  isStoreBimDefinition,
+  isStoreUserDefinition,
+
+  // Conversion Utilities
+  convertToStoreParameter,
+  convertToStoreDefinition,
+  convertToParameter,
+
+  // State Factory
+  createDefaultParameterStoreState
 } from './store'
 
 // Table types

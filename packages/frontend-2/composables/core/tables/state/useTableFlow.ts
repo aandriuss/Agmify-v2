@@ -1,21 +1,25 @@
 import { ref, computed, type ComputedRef } from 'vue'
-import type {
-  NamedTableConfig,
-  Parameter,
-  UserParameter,
-  ColumnDef
-} from '~/composables/core/types'
-import {
-  createUserParameterWithDefaults,
-  isUserParameter,
-  isBimColumnDef,
-  isUserColumnDef,
-  createBimColumnDefWithDefaults,
-  createUserColumnDefWithDefaults
-} from '~/composables/core/types'
+import type { NamedTableConfig } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
-import { useBIMElements } from './useBIMElements'
+import { useParameterStore } from '~/composables/core/parameters/store'
+import type {
+  AvailableBimParameter,
+  AvailableUserParameter,
+  SelectedParameter
+} from '@/composables/core/parameters/store/types'
+import {
+  createColumnDefinition,
+  createSelectedParameter
+} from '@/composables/core/parameters/store/types'
+import {
+  createBimColumnDefWithDefaults,
+  createUserColumnDefWithDefaults,
+  type ColumnDef,
+  type BimColumnDef,
+  type UserColumnDef,
+  type PrimitiveValue
+} from '~/composables/core/types/'
 
 export interface UseTableFlowOptions {
   currentTable: ComputedRef<NamedTableConfig | null>
@@ -27,7 +31,6 @@ export interface UseTableFlowOptions {
     childColumns: NamedTableConfig['childColumns']
     categoryFilters: NamedTableConfig['categoryFilters']
     selectedParameterIds: string[]
-    userParameters?: Parameter[]
     lastUpdateTimestamp: number
   }
 }
@@ -39,145 +42,92 @@ interface InitializationState {
 }
 
 /**
- * Convert parameters to user parameters
+ * Convert parameter value to primitive value
  */
-function ensureUserParameters(parameters: Parameter[]): UserParameter[] {
-  return parameters
-    .filter((param): param is UserParameter => isUserParameter(param))
-    .map((param) =>
-      createUserParameterWithDefaults({
-        ...param,
-        group: param.group || 'Custom'
-      })
-    )
+function toPrimitiveValue(value: unknown): PrimitiveValue | null {
+  if (value === null || value === undefined) return null
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value
+  }
+  return String(value)
 }
 
 /**
- * Extract group from parameter field
+ * Convert available parameters to column definitions
  */
-function extractParameterGroup(field: string): string {
-  const parts = field.split('.')
-  return parts.length > 1 ? parts[0] : 'Parameters'
-}
+function convertToColumnDefs(
+  bimParameters: AvailableBimParameter[],
+  userParameters: AvailableUserParameter[],
+  selectedParameters: SelectedParameter[]
+): ColumnDef[] {
+  // Create a map of selected parameters for quick lookup
+  const selectedMap = new Map(selectedParameters.map((p) => [p.id, p]))
 
-/**
- * Merge BIM columns with user columns
- */
-function mergeColumns(bimColumns: ColumnDef[], userColumns: ColumnDef[]): ColumnDef[] {
-  const columnMap = new Map<string, ColumnDef>()
+  // Convert BIM parameters
+  const bimColumns: BimColumnDef[] = bimParameters.map((param) => {
+    const selected = selectedMap.get(param.id)
+    const column = createColumnDefinition(selected || createSelectedParameter(param, 0))
+    return createBimColumnDefWithDefaults({
+      id: column.id,
+      name: column.name,
+      field: column.field,
+      header: column.header,
+      visible: column.visible,
+      removable: false,
+      order: column.order,
+      description: column.description,
+      category: column.category,
+      type: param.type,
+      sourceValue: toPrimitiveValue(param.value),
+      fetchedGroup: param.sourceGroup,
+      currentGroup: param.currentGroup
+    })
+  })
+
+  // Convert user parameters
+  const userColumns: UserColumnDef[] = userParameters.map((param) => {
+    const selected = selectedMap.get(param.id)
+    const column = createColumnDefinition(selected || createSelectedParameter(param, 0))
+    return createUserColumnDefWithDefaults({
+      id: column.id,
+      name: column.name,
+      field: column.field,
+      header: column.header,
+      visible: column.visible,
+      removable: true,
+      order: column.order,
+      description: column.description,
+      category: column.category,
+      type: param.type,
+      group: param.group
+    })
+  })
 
   // Track parameter stats for debugging
   const stats = {
-    bim: {
-      total: 0,
-      groups: new Map<string, Set<string>>()
-    },
-    user: {
-      total: 0,
-      groups: new Map<string, Set<string>>()
-    }
+    bim: bimColumns.length,
+    user: userColumns.length,
+    groups: new Map<string, number>()
   }
 
-  // Add BIM columns first
-  bimColumns.forEach((col) => {
-    if (isBimColumnDef(col)) {
-      const group = extractParameterGroup(col.field)
-      if (!stats.bim.groups.has(group)) {
-        stats.bim.groups.set(group, new Set())
-      }
-      stats.bim.groups.get(group)!.add(col.field)
-      stats.bim.total++
-
-      columnMap.set(
-        col.field,
-        createBimColumnDefWithDefaults({
-          ...col,
-          kind: 'bim',
-          fetchedGroup: group,
-          currentGroup: col.currentGroup || group
-        })
-      )
-    }
+  // Track groups for all parameters
+  const allColumns = [...bimColumns, ...userColumns]
+  allColumns.forEach((col) => {
+    const group = col.kind === 'bim' ? col.currentGroup : col.group
+    stats.groups.set(group, (stats.groups.get(group) || 0) + 1)
   })
 
-  // Override with user columns
-  userColumns.forEach((col) => {
-    if (isUserColumnDef(col)) {
-      const group = col.group || 'Custom'
-      if (!stats.user.groups.has(group)) {
-        stats.user.groups.set(group, new Set())
-      }
-      stats.user.groups.get(group)!.add(col.field)
-      stats.user.total++
-
-      columnMap.set(
-        col.field,
-        createUserColumnDefWithDefaults({
-          ...col,
-          kind: 'user',
-          group
-        })
-      )
-    } else if (isBimColumnDef(col)) {
-      // If it's a BIM column in user columns, preserve user settings
-      const existing = columnMap.get(col.field)
-      if (existing && isBimColumnDef(existing)) {
-        columnMap.set(col.field, {
-          ...existing,
-          ...col,
-          kind: 'bim',
-          sourceValue: existing.sourceValue,
-          fetchedGroup: existing.fetchedGroup,
-          currentGroup:
-            col.currentGroup || existing.currentGroup || existing.fetchedGroup
-        })
-      } else {
-        const group = extractParameterGroup(col.field)
-        columnMap.set(col.field, {
-          ...col,
-          fetchedGroup: group,
-          currentGroup: col.currentGroup || group
-        })
-      }
-    }
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Column conversion stats', {
+    bim: stats.bim,
+    user: stats.user,
+    groups: Object.fromEntries(stats.groups)
   })
 
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Column merge stats', {
-    bim: {
-      total: stats.bim.total,
-      groups: Object.fromEntries(
-        Array.from(stats.bim.groups.entries()).map(([group, fields]) => [
-          group,
-          Array.from(fields)
-        ])
-      )
-    },
-    user: {
-      total: stats.user.total,
-      groups: Object.fromEntries(
-        Array.from(stats.user.groups.entries()).map(([group, fields]) => [
-          group,
-          Array.from(fields)
-        ])
-      )
-    },
-    merged: {
-      total: columnMap.size,
-      sample: Array.from(columnMap.values())
-        .slice(0, 5)
-        .map((col) => ({
-          field: col.field,
-          kind: col.kind,
-          group: isBimColumnDef(col)
-            ? col.currentGroup
-            : isUserColumnDef(col)
-            ? col.group
-            : 'unknown'
-        }))
-    }
-  })
-
-  return Array.from(columnMap.values())
+  return allColumns
 }
 
 /**
@@ -186,7 +136,7 @@ function mergeColumns(bimColumns: ColumnDef[], userColumns: ColumnDef[]): Column
  */
 export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOptions) {
   const store = useStore()
-  const { allColumns } = useBIMElements()
+  const parameterStore = useParameterStore()
 
   const state = ref<InitializationState>({
     initialized: false,
@@ -218,26 +168,25 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
       childColumnsCount: table.childColumns.length
     })
 
-    // If table has no columns, use defaults
-    const parentColumns =
-      table.parentColumns.length > 0
-        ? mergeColumns(allColumns.value, table.parentColumns)
-        : defaultConfig.parentColumns
+    // Convert columns using parameter store
+    const parentColumns = convertToColumnDefs(
+      parameterStore.parentAvailableBimParameters.value,
+      parameterStore.parentAvailableUserParameters.value,
+      parameterStore.parentSelectedParameters.value
+    )
 
-    const childColumns =
-      table.childColumns.length > 0
-        ? mergeColumns(allColumns.value, table.childColumns)
-        : defaultConfig.childColumns
+    const childColumns = convertToColumnDefs(
+      parameterStore.childAvailableBimParameters.value,
+      parameterStore.childAvailableUserParameters.value,
+      parameterStore.childSelectedParameters.value
+    )
 
-    // Return table with merged columns
+    // Return table with converted columns
     return {
       ...table,
       parentColumns,
       childColumns,
       categoryFilters: table.categoryFilters || defaultConfig.categoryFilters,
-      userParameters: ensureUserParameters(
-        table.userParameters || defaultConfig.userParameters || []
-      ),
       selectedParameterIds:
         table.selectedParameterIds || defaultConfig.selectedParameterIds,
       lastUpdateTimestamp: table.lastUpdateTimestamp || Date.now()
@@ -266,9 +215,7 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
       childVisibleColumns: tableConfig.value.childColumns,
       selectedParentCategories:
         tableConfig.value.categoryFilters.selectedParentCategories,
-      selectedChildCategories:
-        tableConfig.value.categoryFilters.selectedChildCategories,
-      userParameters: ensureUserParameters(tableConfig.value.userParameters || [])
+      selectedChildCategories: tableConfig.value.categoryFilters.selectedChildCategories
     })
 
     debug.completeState(DebugCategories.INITIALIZATION, 'Store initialized')

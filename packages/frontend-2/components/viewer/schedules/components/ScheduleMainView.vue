@@ -21,40 +21,33 @@
         <TestDataTable v-if="isTestMode" />
 
         <template v-else>
+          <!-- Parameter Manager -->
+          <ParameterManager
+            v-if="showParameterManager"
+            :selected-parent-categories="store.selectedParentCategories.value"
+            :selected-child-categories="store.selectedChildCategories.value"
+            :can-create-parameters="true"
+            @parameter-visibility-change="handleParameterVisibilityChange"
+            @parameter-edit="handleParameterEdit"
+            @parameter-create="handleParameterCreate"
+            @error="handleError"
+          />
+
+          <!-- Data Table -->
           <BaseDataTable
             :table-id="selectedTableId"
             :table-name="tableName"
             :data="tableData"
-            :columns="parentVisibleColumns"
-            :detail-columns="childVisibleColumns"
+            :columns="parameterStore.parentColumnDefinitions.value"
+            :detail-columns="parameterStore.childColumnDefinitions.value"
             :loading="isLoading"
             :error="error"
             @row-expand="events.handleRowExpand"
             @row-collapse="events.handleRowCollapse"
-            @column-visibility-change="events.handleColumnVisibilityChange"
-            @column-reorder="events.handleColumnReorder"
-            @column-resize="events.handleColumnResize"
+            @column-visibility-change="handleColumnVisibilityChange"
+            @column-reorder="handleColumnReorder"
+            @column-resize="handleColumnResize"
             @error="events.handleError"
-            @retry="() => events.handleRetry({ timestamp: Date.now() })"
-          />
-
-          <ParameterManager
-            v-if="showParameterManager"
-            :parameter-groups="parameterGroups"
-            :available-categories="availableCategoriesArray"
-            :selected-categories="selectedCategories"
-            :can-create-parameters="true"
-            :selected-parameters="selectedParameters"
-            :is-loading="isLoadingAdditionalData"
-            @update:selected-categories="handleCategoryUpdate"
-            @parameter-click="(parameter: TableParameter) => events.handleParameterClick({ parameter })"
-            @create-parameter="
-              () => events.handleCreateParameter({ timestamp: Date.now() })
-            "
-            @edit-parameters="
-              () => events.handleEditParameters({ timestamp: Date.now() })
-            "
-            @error="(error: Error) => events.handleError({ error })"
             @retry="() => events.handleRetry({ timestamp: Date.now() })"
           />
 
@@ -65,8 +58,8 @@
             :table-data="tableData"
             :parent-elements="parentElements"
             :child-elements="childElements"
-            :parent-columns="parentVisibleColumns"
-            :child-columns="childVisibleColumns"
+            :parent-columns="parameterStore.parentColumnDefinitions.value"
+            :child-columns="parameterStore.childColumnDefinitions.value"
             :is-test-mode="isTestMode"
             @update:is-test-mode="(value: boolean) => events.handleTestModeUpdate({ value })"
           />
@@ -81,14 +74,16 @@ import { computed, watch, onMounted, unref } from 'vue'
 import type { PropType } from 'vue'
 import type {
   NamedTableConfig,
-  TableParameter,
   TableEmits,
   ScheduleEmits,
-  ElementData
+  ElementData,
+  ColumnDef
 } from '~/composables/core/types'
-
+import { useParameters } from '~/composables/core/parameters/next/useParameters'
+import { useParameterStore } from '~/composables/core/parameters/store'
+import type { SelectedParameter } from '@/composables/core/parameters/store/types'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
-import ParameterManager from '~/components/core/parameters/ParameterManager.vue'
+import ParameterManager from '~/components/core/parameters/next/ParameterManager.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
@@ -98,15 +93,14 @@ import { useElementsData } from '~/composables/core/tables/state/useElementsData
 import { useScheduleEvents } from '~/composables/core/tables/events/useScheduleEvents'
 import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
 import { useStore } from '~/composables/core/store'
-import { useParametersState } from '~/composables/parameters/useParametersState'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 
 const debug = useDebug()
 const store = useStore()
-const parametersState = useParametersState()
+const parameterStore = useParameterStore()
 const bimElements = useBIMElements()
 
-// Define props first
+// Define props
 const props = defineProps({
   selectedTableId: {
     type: String,
@@ -128,42 +122,25 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
-  parameterGroups: {
-    type: Object as PropType<Map<string, TableParameter[]>>,
-    default: () => new Map()
-  },
-  selectedParameters: {
-    type: Array as PropType<TableParameter[]>,
-    default: () => []
-  },
-  selectedCategories: {
-    type: Array as PropType<string[]>,
-    default: () => []
-  },
   isLoadingAdditionalData: {
     type: Boolean,
     default: false
   }
 })
 
-// Define emits with proper type
-const emit = defineEmits<TableEmits<TableParameter> & ScheduleEmits<TableParameter>>()
+// Define emits
+const emit = defineEmits<TableEmits & ScheduleEmits>()
 
-// Initialize core functionality with refs for categories
-const selectedParentCategoriesRef = computed(() => store.selectedParentCategories.value)
-const selectedChildCategoriesRef = computed(() => store.selectedChildCategories.value)
+// Initialize core functionality first
+const { scheduleData, tableData, initializeData, isLoading, state } = useElementsData({
+  selectedParentCategories: computed(() => store.selectedParentCategories.value),
+  selectedChildCategories: computed(() => store.selectedChildCategories.value)
+})
 
-const {
-  scheduleData,
-  tableData,
-  availableCategories,
-  updateCategories,
-  initializeData,
-  isLoading,
-  state
-} = useElementsData({
-  selectedParentCategories: selectedParentCategoriesRef,
-  selectedChildCategories: selectedChildCategoriesRef
+// Initialize parameter system for UI interactions only
+const parameters = useParameters({
+  selectedParentCategories: computed(() => store.selectedParentCategories.value),
+  selectedChildCategories: computed(() => store.selectedChildCategories.value)
 })
 
 // Initialize table flow
@@ -188,32 +165,28 @@ const {
   }
 })
 
-// Computed loading state
-const isComponentLoading = computed(() => {
-  return (
-    isLoading.value ||
-    parametersState.loading ||
-    !isInitialized.value ||
-    bimElements.isLoading.value
-  )
-})
-
 // Initialize events
-const events = useScheduleEvents<TableParameter>({
+const events = useScheduleEvents({
   onError: (error) => emit('error', { error }),
   onRetry: () => emit('retry', { timestamp: Date.now() })
 })
 
-// Convert Set to Array for template
-const availableCategoriesArray = computed(() => {
-  return [...availableCategories.parent, ...availableCategories.child]
+// Computed loading state
+const isComponentLoading = computed(() => {
+  return (
+    isLoading.value ||
+    parameters.isProcessing.value ||
+    !isInitialized.value ||
+    bimElements.isLoading.value ||
+    parameterStore.state.value.isProcessing
+  )
 })
 
+// Error handling
 interface ErrorWithDetails extends Error {
   details?: string
 }
 
-// Convert regular Error to ErrorWithDetails
 function toErrorWithDetails(error: Error | null): ErrorWithDetails | null {
   if (!error) return null
   return {
@@ -224,11 +197,97 @@ function toErrorWithDetails(error: Error | null): ErrorWithDetails | null {
   }
 }
 
-function handleCategoryUpdate(categories: string[]): void {
-  emit('update:selected-categories', { categories })
+// Base error state
+const error = computed(() => {
+  return (
+    tableError.value ||
+    state.value?.error ||
+    bimElements.hasError.value ||
+    parameterStore.state.value.error ||
+    null
+  )
+})
+
+// Converted error state for LoadingState component
+const errorState = computed(() => {
+  if (error.value === true) {
+    return {
+      name: 'Error',
+      message: 'An unknown error occurred',
+      details: undefined
+    } as ErrorWithDetails
+  }
+  return toErrorWithDetails(error.value instanceof Error ? error.value : null)
+})
+
+// Event handlers
+function handleParameterVisibilityChange(param: SelectedParameter) {
+  parameterStore.updateParameterVisibility(
+    param.id,
+    param.visible,
+    param.kind === 'bim'
+  )
+  emit('parameter-visibility-change', { parameter: param })
 }
 
-// Initialize on mount with correct sequence
+function handleColumnVisibilityChange(event: { column: ColumnDef; visible: boolean }) {
+  parameterStore.updateParameterVisibility(
+    event.column.field,
+    event.visible,
+    event.column.kind === 'bim'
+  )
+  emit('column-visibility-change', event)
+}
+
+function handleColumnReorder(event: { dragIndex: number; dropIndex: number }) {
+  // Determine if we're reordering parent or child columns based on current context
+  const isParent = true // Parent columns are the default
+  parameterStore.reorderParameters(event.dragIndex, event.dropIndex, isParent)
+  emit('column-reorder', event)
+}
+
+function handleColumnResize(event: { element: HTMLElement; delta: number }) {
+  emit('column-resize', event)
+}
+
+function handleParameterCreate() {
+  emit('create-parameter', { timestamp: Date.now() })
+}
+
+function handleParameterEdit(param: SelectedParameter) {
+  // Convert SelectedParameter to BaseItem
+  const baseParam = {
+    id: param.id,
+    name: param.name,
+    field: param.id,
+    header: param.name,
+    visible: param.visible,
+    removable: param.kind === 'user',
+    order: param.order,
+    category: param.category,
+    description: param.description
+  }
+  emit('parameter-click', { parameter: baseParam })
+}
+
+function handleError(err: Error) {
+  emit('error', { error: err })
+}
+
+// Safe computed properties from state
+const parentElements = computed<ElementData[]>(() => {
+  if (!state.value) return []
+  return state.value.parentElements || []
+})
+
+const childElements = computed<ElementData[]>(() => {
+  if (!state.value) return []
+  return state.value.childElements || []
+})
+
+const evaluatedData = computed(() => store.evaluatedData.value || [])
+
+// Initialize on mount
 onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedule view')
@@ -250,21 +309,17 @@ onMounted(async () => {
       })
     }
 
-    // Then initialize table to get configuration (categories & parameters)
+    // Initialize table to get configuration
     await initializeTable()
     debug.log(DebugCategories.INITIALIZATION, 'Table initialized')
 
-    // Then initialize BIM elements to extract parameters
+    // Initialize BIM elements
     await bimElements.initializeElements()
     debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
 
-    // Then initialize data to get BIM elements for categories
+    // Initialize data (this will also process parameters)
     await initializeData()
     debug.log(DebugCategories.INITIALIZATION, 'Initial data loaded')
-
-    // Finally load parameters to show in parameter manager
-    await parametersState.loadParameters()
-    debug.log(DebugCategories.INITIALIZATION, 'Parameters loaded')
 
     debug.completeState(DebugCategories.INITIALIZATION, 'Schedule view initialized')
   } catch (err) {
@@ -274,67 +329,10 @@ onMounted(async () => {
   }
 })
 
-// Watch for category changes with proper error handling
-watch(
-  [selectedParentCategoriesRef, selectedChildCategoriesRef],
-  async ([newParentCats, newChildCats]) => {
-    if (!isInitialized.value) {
-      debug.warn(DebugCategories.STATE, 'Waiting for initialization')
-      return
-    }
-
-    try {
-      // First update BIM elements with new categories
-      await bimElements.initializeElements()
-      debug.log(DebugCategories.INITIALIZATION, 'BIM elements updated')
-
-      // Then update data with filtered elements and parameters
-      await updateCategories(newParentCats, newChildCats)
-      debug.log(DebugCategories.INITIALIZATION, 'Categories updated')
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      events.handleError({ error })
-    }
-  },
-  { immediate: false } // Don't run immediately since we handle initialization in onMounted
-)
-
-// Computed properties from state
-const parentVisibleColumns = computed(() => store.parentVisibleColumns.value || [])
-const childVisibleColumns = computed(() => store.childVisibleColumns.value || [])
-
-// Safe computed properties from state
-const parentElements = computed<ElementData[]>(() => {
-  if (!state.value) return []
-  return state.value.parentElements || []
-})
-
-const childElements = computed<ElementData[]>(() => {
-  if (!state.value) return []
-  return state.value.childElements || []
-})
-
-const evaluatedData = computed(() => store.evaluatedData.value || [])
-
-// Base error state
-const error = computed(() => {
-  return tableError.value || state.value?.error || bimElements.hasError.value || null
-})
-
-// Converted error state for LoadingState component
-const errorState = computed(() => {
-  if (error.value === true) {
-    return {
-      name: 'Error',
-      message: 'An unknown error occurred',
-      details: undefined
-    } as ErrorWithDetails
-  }
-  return toErrorWithDetails(error.value instanceof Error ? error.value : null)
-})
-
 defineExpose({
-  handleCategoryUpdate
+  handleError,
+  handleParameterVisibilityChange,
+  handleColumnVisibilityChange
 })
 </script>
 

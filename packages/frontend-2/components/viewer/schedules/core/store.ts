@@ -1,30 +1,15 @@
 import { ref, computed } from 'vue'
-import type {
-  Store,
-  StoreState,
-  ElementData,
-  TableRow,
-  Parameter,
-  ColumnDef,
-  UserParameter
-} from '~/composables/core/types'
+import type { Store, StoreState, ElementData, TableRow } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
+import { useParameterStore } from '~/composables/core/parameters/store'
+import { useColumns } from '~/composables/core/tables/useColumns'
 
 const initialState: StoreState = {
   projectId: null,
   scheduleData: [],
   evaluatedData: [],
   tableData: [],
-  userParameters: [],
-  // Parameters
-  parameterColumns: [],
-  parentParameterColumns: [],
-  childParameterColumns: [],
-  parentParameters: [],
-  childParameters: [],
-  processedParameters: {},
-  parameterDefinitions: {},
   // Columns
   currentTableColumns: [],
   currentDetailColumns: [],
@@ -56,6 +41,8 @@ const initialState: StoreState = {
 
 export function createStore(): Store {
   const internalState = ref<StoreState>(initialState)
+  const parameterStore = useParameterStore()
+  const columnManager = useColumns()
 
   // Lifecycle methods
   const lifecycle = {
@@ -100,26 +87,6 @@ export function createStore(): Store {
 
     update: async (state: Partial<StoreState>) => {
       debug.startState(DebugCategories.STATE, 'Updating store state')
-
-      // Log parameter-related updates
-      if ('parentParameters' in state || 'childParameters' in state) {
-        debug.log(DebugCategories.PARAMETERS, 'Updating parameters', {
-          parentCount: state.parentParameters?.length,
-          childCount: state.childParameters?.length,
-          parentSample: state.parentParameters?.slice(0, 3),
-          childSample: state.childParameters?.slice(0, 3)
-        })
-      }
-
-      if ('parentAvailableColumns' in state || 'childAvailableColumns' in state) {
-        debug.log(DebugCategories.PARAMETERS, 'Updating available columns', {
-          parentCount: state.parentAvailableColumns?.length,
-          childCount: state.childAvailableColumns?.length,
-          parentSample: state.parentAvailableColumns?.slice(0, 3),
-          childSample: state.childAvailableColumns?.slice(0, 3)
-        })
-      }
-
       try {
         await Promise.resolve() // Make async to satisfy eslint
         const oldState = { ...internalState.value }
@@ -127,24 +94,7 @@ export function createStore(): Store {
           ...oldState,
           ...state
         }
-
-        // Log state after update
-        debug.log(DebugCategories.STATE, 'Store state updated', {
-          parameters: {
-            parentCount: internalState.value.parentParameters.length,
-            childCount: internalState.value.childParameters.length
-          },
-          availableColumns: {
-            parentCount: internalState.value.parentAvailableColumns.length,
-            childCount: internalState.value.childAvailableColumns.length
-          },
-          visibleColumns: {
-            parentCount: internalState.value.parentVisibleColumns.length,
-            childCount: internalState.value.childVisibleColumns.length
-          }
-        })
-
-        debug.completeState(DebugCategories.STATE, 'Store update complete')
+        debug.completeState(DebugCategories.STATE, 'Store state updated')
       } catch (error) {
         debug.error(DebugCategories.ERROR, 'Error updating store state:', error)
         throw error
@@ -154,12 +104,22 @@ export function createStore(): Store {
     cleanup: () => {
       debug.log(DebugCategories.STATE, 'Cleaning up store')
       internalState.value = { ...initialState }
+      parameterStore.reset()
+      columnManager.reset()
     }
   }
 
   // Create computed properties for all state fields
   const store: Store = {
-    state: computed(() => internalState.value),
+    state: computed(() => ({
+      ...internalState.value,
+      parentBaseColumns: columnManager.parentBaseColumns.value,
+      parentAvailableColumns: columnManager.parentAvailableColumns.value,
+      parentVisibleColumns: columnManager.parentVisibleColumns.value,
+      childBaseColumns: columnManager.childBaseColumns.value,
+      childAvailableColumns: columnManager.childAvailableColumns.value,
+      childVisibleColumns: columnManager.childVisibleColumns.value
+    })),
     lifecycle,
 
     // Computed properties
@@ -167,26 +127,17 @@ export function createStore(): Store {
     scheduleData: computed(() => internalState.value.scheduleData),
     evaluatedData: computed(() => internalState.value.evaluatedData),
     tableData: computed(() => internalState.value.tableData),
-    userParameters: computed(() => internalState.value.userParameters),
-    // Parameters
-    parameterColumns: computed(() => internalState.value.parameterColumns),
-    parentParameterColumns: computed(() => internalState.value.parentParameterColumns),
-    childParameterColumns: computed(() => internalState.value.childParameterColumns),
-    parentParameters: computed(() => internalState.value.parentParameters),
-    childParameters: computed(() => internalState.value.childParameters),
-    processedParameters: computed(() => internalState.value.processedParameters),
-    parameterDefinitions: computed(() => internalState.value.parameterDefinitions),
     // Columns
     currentTableColumns: computed(() => internalState.value.currentTableColumns),
     currentDetailColumns: computed(() => internalState.value.currentDetailColumns),
     mergedTableColumns: computed(() => internalState.value.mergedTableColumns),
     mergedDetailColumns: computed(() => internalState.value.mergedDetailColumns),
-    parentBaseColumns: computed(() => internalState.value.parentBaseColumns),
-    parentAvailableColumns: computed(() => internalState.value.parentAvailableColumns),
-    parentVisibleColumns: computed(() => internalState.value.parentVisibleColumns),
-    childBaseColumns: computed(() => internalState.value.childBaseColumns),
-    childAvailableColumns: computed(() => internalState.value.childAvailableColumns),
-    childVisibleColumns: computed(() => internalState.value.childVisibleColumns),
+    parentBaseColumns: columnManager.parentBaseColumns,
+    parentAvailableColumns: columnManager.parentAvailableColumns,
+    parentVisibleColumns: columnManager.parentVisibleColumns,
+    childBaseColumns: columnManager.childBaseColumns,
+    childAvailableColumns: columnManager.childAvailableColumns,
+    childVisibleColumns: columnManager.childVisibleColumns,
     // Headers
     availableHeaders: computed(() => internalState.value.availableHeaders),
     // Categories
@@ -214,20 +165,6 @@ export function createStore(): Store {
     setEvaluatedData: (data: ElementData[]) =>
       lifecycle.update({ evaluatedData: data }),
     setTableData: (data: TableRow[]) => lifecycle.update({ tableData: data }),
-    setUserParameters: (params: UserParameter[]) =>
-      lifecycle.update({ userParameters: params }),
-    setParameters: (params: { parent: Parameter[]; child: Parameter[] }) => {
-      debug.log(DebugCategories.PARAMETERS, 'Setting parameters', {
-        parentCount: params.parent.length,
-        childCount: params.child.length,
-        parentSample: params.parent.slice(0, 3),
-        childSample: params.child.slice(0, 3)
-      })
-      return lifecycle.update({
-        parentParameters: params.parent,
-        childParameters: params.child
-      })
-    },
     setSelectedCategories: (categories: Set<string>) =>
       lifecycle.update({ selectedCategories: categories }),
     setParentCategories: (categories: string[]) =>
@@ -238,42 +175,59 @@ export function createStore(): Store {
       lifecycle.update({ tablesArray: tables }),
     setTableInfo: (info: { selectedTableId?: string; tableName?: string }) =>
       lifecycle.update(info),
-    setColumns: (
-      parentColumns: ColumnDef[],
-      childColumns: ColumnDef[],
-      type: 'base' | 'available' | 'visible'
-    ) => {
-      const updates: Partial<StoreState> = {}
-      if (type === 'base') {
-        updates.parentBaseColumns = parentColumns
-        updates.childBaseColumns = childColumns
-      } else if (type === 'available') {
-        updates.parentAvailableColumns = parentColumns
-        updates.childAvailableColumns = childColumns
-      } else {
-        updates.parentVisibleColumns = parentColumns
-        updates.childVisibleColumns = childColumns
-      }
-
-      debug.log(DebugCategories.PARAMETERS, `Setting ${type} columns`, {
-        parentCount: parentColumns.length,
-        childCount: childColumns.length,
-        parentSample: parentColumns.slice(0, 3),
-        childSample: childColumns.slice(0, 3)
-      })
-
-      return lifecycle.update(updates)
-    },
     setInitialized: (value: boolean) => lifecycle.update({ initialized: value }),
     setLoading: (value: boolean) => lifecycle.update({ loading: value }),
-    setError: (error: Error | null) => lifecycle.update({ error })
+    setError: (error: Error | null) => lifecycle.update({ error }),
+    setAvailableHeaders: (headers) => lifecycle.update({ availableHeaders: headers }),
+    // Column mutations
+    setCurrentColumns: (table, detail) =>
+      lifecycle.update({
+        currentTableColumns: table,
+        currentDetailColumns: detail
+      }),
+    setMergedColumns: (table, detail) =>
+      lifecycle.update({
+        mergedTableColumns: table,
+        mergedDetailColumns: detail
+      }),
+    setColumnVisibility: (columnId, visible) => {
+      const columns = [...internalState.value.currentTableColumns]
+      const column = columns.find((c) => c.id === columnId)
+      if (column) {
+        column.visible = visible
+        return lifecycle.update({ currentTableColumns: columns })
+      }
+    },
+    setColumnOrder: (columnId, newIndex) => {
+      const columns = [...internalState.value.currentTableColumns]
+      const oldIndex = columns.findIndex((c) => c.id === columnId)
+      if (oldIndex !== -1) {
+        const [column] = columns.splice(oldIndex, 1)
+        columns.splice(newIndex, 0, column)
+        return lifecycle.update({ currentTableColumns: columns })
+      }
+    },
+    setElementVisibility: (elementId, visible) => {
+      const data = [...internalState.value.scheduleData]
+      const element = data.find((e) => e.id === elementId)
+      if (element) {
+        element.visible = visible
+        return lifecycle.update({ scheduleData: data })
+      }
+    },
+    reset: () => {
+      debug.log(DebugCategories.STATE, 'Resetting store')
+      internalState.value = { ...initialState }
+      parameterStore.reset()
+      columnManager.reset()
+    }
   }
 
   return store
 }
 
 // Store instance
-let storeInstance: Store | null = null
+let storeInstance: Store | undefined
 
 // Singleton accessor
 export function useStore(): Store {
@@ -285,5 +239,8 @@ export function useStore(): Store {
 
 // Reset store (useful for testing)
 export function resetStore(): void {
-  storeInstance = null
+  if (storeInstance) {
+    storeInstance.reset()
+  }
+  storeInstance = undefined
 }

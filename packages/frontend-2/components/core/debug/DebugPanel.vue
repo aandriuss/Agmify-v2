@@ -155,35 +155,45 @@
             <div class="parameter-stats">
               <!-- Parent Parameters -->
               <div class="parameter-group">
-                <h5>Parent Parameters ({{ getParentParameterCount() }})</h5>
+                <h5>Parent Parameters</h5>
                 <div class="parameter-counts">
                   <div class="count-item">
-                    <span>Raw Fetched:</span>
-                    <span>{{ parentRawCount }}</span>
+                    <span>Raw:</span>
+                    <span>{{ parameterStoreStats.parent.raw }}</span>
                   </div>
                   <div class="count-item">
-                    <span>Unique:</span>
-                    <span>{{ availableParentHeaders?.length }}</span>
+                    <span>Available BIM:</span>
+                    <span>{{ parameterStoreStats.parent.available.bim }}</span>
                   </div>
                   <div class="count-item">
-                    <span>Active:</span>
-                    <span>{{ getActiveParentParameterCount() }}</span>
+                    <span>Available User:</span>
+                    <span>{{ parameterStoreStats.parent.available.user }}</span>
+                  </div>
+                  <div class="count-item">
+                    <span>Selected:</span>
+                    <span>{{ parameterStoreStats.parent.selected }}</span>
+                  </div>
+                  <div class="count-item">
+                    <span>Columns:</span>
+                    <span>{{ parameterStoreStats.parent.columns }}</span>
                   </div>
                 </div>
                 <div class="parameter-groups">
                   <div
-                    v-for="group in parentParameterGroups"
-                    :key="group.source"
+                    v-for="[group, data] in Object.entries(
+                      parameterStoreStats.parent.groups
+                    )"
+                    :key="group"
                     class="group-item"
                   >
                     <div class="group-header">
-                      <span>{{ group.source }}</span>
-                      <span>{{ group.visibleCount }}/{{ group.totalCount }}</span>
+                      <span>{{ group }}</span>
+                      <span>{{ data.visible }}/{{ data.total }}</span>
                     </div>
                     <div class="group-parameters">
                       <div
-                        v-for="param in group.parameters"
-                        :key="param.field"
+                        v-for="param in data.parameters"
+                        :key="param.id"
                         class="parameter-item"
                         :class="{ active: param.visible }"
                       >
@@ -196,35 +206,45 @@
 
               <!-- Child Parameters -->
               <div class="parameter-group">
-                <h5>Child Parameters ({{ getChildParameterCount() }})</h5>
+                <h5>Child Parameters</h5>
                 <div class="parameter-counts">
                   <div class="count-item">
-                    <span>Raw Fetched:</span>
-                    <span>{{ childRawCount }}</span>
+                    <span>Raw:</span>
+                    <span>{{ parameterStoreStats.child.raw }}</span>
                   </div>
                   <div class="count-item">
-                    <span>Unique:</span>
-                    <span>{{ availableChildHeaders?.length }}</span>
+                    <span>Available BIM:</span>
+                    <span>{{ parameterStoreStats.child.available.bim }}</span>
                   </div>
                   <div class="count-item">
-                    <span>Active:</span>
-                    <span>{{ getActiveChildParameterCount() }}</span>
+                    <span>Available User:</span>
+                    <span>{{ parameterStoreStats.child.available.user }}</span>
+                  </div>
+                  <div class="count-item">
+                    <span>Selected:</span>
+                    <span>{{ parameterStoreStats.child.selected }}</span>
+                  </div>
+                  <div class="count-item">
+                    <span>Columns:</span>
+                    <span>{{ parameterStoreStats.child.columns }}</span>
                   </div>
                 </div>
                 <div class="parameter-groups">
                   <div
-                    v-for="group in childParameterGroups"
-                    :key="group.source"
+                    v-for="[group, data] in Object.entries(
+                      parameterStoreStats.child.groups
+                    )"
+                    :key="group"
                     class="group-item"
                   >
                     <div class="group-header">
-                      <span>{{ group.source }}</span>
-                      <span>{{ group.visibleCount }}/{{ group.totalCount }}</span>
+                      <span>{{ group }}</span>
+                      <span>{{ data.visible }}/{{ data.total }}</span>
                     </div>
                     <div class="group-parameters">
                       <div
-                        v-for="param in group.parameters"
-                        :key="param.field"
+                        v-for="param in data.parameters"
+                        :key="param.id"
                         class="parameter-item"
                         :class="{ active: param.visible }"
                       >
@@ -234,9 +254,32 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Parameter Store Metadata -->
+              <div class="parameter-group">
+                <h5>Parameter Store State</h5>
+                <div class="parameter-counts">
+                  <div class="count-item">
+                    <span>Last Updated:</span>
+                    <span>
+                      {{ formatTime(parameterStoreStats.metadata.lastUpdated) }}
+                    </span>
+                  </div>
+                  <div class="count-item">
+                    <span>Processing:</span>
+                    <span>{{ parameterStoreStats.metadata.isProcessing }}</span>
+                  </div>
+                  <div
+                    v-if="parameterStoreStats.metadata.error"
+                    class="count-item error"
+                  >
+                    <span>Error:</span>
+                    <span>{{ parameterStoreStats.metadata.error.message }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-
           <!-- Data Structure -->
           <div v-if="showDataStructure" class="debug-section">
             <h4>Data Structure</h4>
@@ -280,10 +323,11 @@
 import { computed } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { TableRow, ElementData, ColumnDef } from '~/composables/core/types'
-import {
-  isBimColumnDef,
-  isUserColumnDef
-} from '~/composables/core/types/tables/column-types'
+import { useParameterStore } from '~/composables/core/parameters/store'
+import type {
+  AvailableBimParameter,
+  AvailableUserParameter
+} from '@/composables/core/parameters/store/types'
 
 interface Props {
   // Core props
@@ -383,133 +427,109 @@ const elementsWithParameters = computed(
       .length || 0
 )
 
-// Parameter Stats
-interface ParameterGroup {
-  source: string
-  parameters: {
-    field: string
+const parameterStore = useParameterStore()
+
+// Parameter Store Stats
+const parameterStoreStats = computed(() => ({
+  parent: {
+    raw: parameterStore.parentRawParameters.value.length,
+    available: {
+      bim: parameterStore.parentAvailableBimParameters.value.length,
+      user: parameterStore.parentAvailableUserParameters.value.length
+    },
+    selected: parameterStore.parentSelectedParameters.value.length,
+    columns: parameterStore.parentColumnDefinitions.value.length,
+    groups: getParameterGroups(
+      parameterStore.parentAvailableBimParameters.value,
+      parameterStore.parentAvailableUserParameters.value
+    )
+  },
+  child: {
+    raw: parameterStore.childRawParameters.value.length,
+    available: {
+      bim: parameterStore.childAvailableBimParameters.value.length,
+      user: parameterStore.childAvailableUserParameters.value.length
+    },
+    selected: parameterStore.childSelectedParameters.value.length,
+    columns: parameterStore.childColumnDefinitions.value.length,
+    groups: getParameterGroups(
+      parameterStore.childAvailableBimParameters.value,
+      parameterStore.childAvailableUserParameters.value
+    )
+  },
+  metadata: {
+    lastUpdated: parameterStore.state.value.lastUpdated,
+    isProcessing: parameterStore.state.value.isProcessing,
+    error: parameterStore.state.value.error
+  }
+}))
+
+interface ParameterGroupData {
+  total: number
+  visible: number
+  parameters: Array<{
+    id: string
     name: string
     visible: boolean
-  }[]
-  visibleCount: number
-  totalCount: number
+  }>
 }
 
-function getColumnSource(column: ColumnDef): string {
-  if (isBimColumnDef(column)) {
-    return column.source || column.fetchedGroup
-  }
-  if (isUserColumnDef(column)) {
-    return column.group
-  }
-  return 'Unknown'
-}
+type ParameterGroups = Record<string, ParameterGroupData>
 
-const parentParameterGroups = computed<ParameterGroup[]>(() => {
-  const groups = new Map<string, ColumnDef[]>()
+function getParameterGroups(
+  bimParams: AvailableBimParameter[],
+  userParams: AvailableUserParameter[]
+): ParameterGroups {
+  const groups = new Map<string, ParameterGroupData>()
 
-  if (!props.parentParameterColumns) return []
-
-  // Filter out system parameters
-  const filteredColumns = props.parentParameterColumns.filter(
-    (col) => !col.field.startsWith('__')
-  )
-
-  filteredColumns.forEach((col) => {
-    const source = getColumnSource(col)
-    if (!groups.has(source)) {
-      groups.set(source, [])
+  // Process BIM parameters
+  for (const param of bimParams) {
+    const group = param.currentGroup
+    if (!groups.has(group)) {
+      groups.set(group, {
+        total: 0,
+        visible: 0,
+        parameters: []
+      })
     }
-    groups.get(source)!.push(col)
-  })
 
-  return Array.from(groups.entries()).map(([source, columns]) => ({
-    source,
-    parameters: columns
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
-      .map((col) => ({
-        field: col.field,
-        name: col.name,
-        visible: col.visible
-      })),
-    visibleCount: columns.filter((c) => c.visible).length,
-    totalCount: columns.length
-  }))
-})
-
-const childParameterGroups = computed<ParameterGroup[]>(() => {
-  const groups = new Map<string, ColumnDef[]>()
-
-  if (!props.childParameterColumns) return []
-
-  // Filter out system parameters
-  const filteredColumns = props.childParameterColumns.filter(
-    (col) => !col.field.startsWith('__')
-  )
-
-  filteredColumns.forEach((col) => {
-    const source = getColumnSource(col)
-    if (!groups.has(source)) {
-      groups.set(source, [])
+    const groupData = groups.get(group)
+    if (groupData) {
+      groupData.total++
+      groupData.parameters.push({
+        id: param.id,
+        name: param.name,
+        visible: true // BIM parameters are always visible in available state
+      })
     }
-    groups.get(source)!.push(col)
-  })
+  }
 
-  return Array.from(groups.entries()).map(([source, columns]) => ({
-    source,
-    parameters: columns
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
-      .map((col) => ({
-        field: col.field,
-        name: col.name,
-        visible: col.visible
-      })),
-    visibleCount: columns.filter((c) => c.visible).length,
-    totalCount: columns.length
-  }))
-})
+  // Process user parameters
+  for (const param of userParams) {
+    const group = param.group
+    if (!groups.has(group)) {
+      groups.set(group, {
+        total: 0,
+        visible: 0,
+        parameters: []
+      })
+    }
 
-function getParentParameterCount(): number {
-  return parentParameterGroups.value.reduce(
-    (total, group) => total + group.totalCount,
-    0
-  )
+    const groupData = groups.get(group)
+    if (groupData) {
+      groupData.total++
+      groupData.parameters.push({
+        id: param.id,
+        name: param.name,
+        visible: true // User parameters are always visible in available state
+      })
+    }
+  }
+
+  return Object.fromEntries(groups.entries())
 }
 
-function getChildParameterCount(): number {
-  return childParameterGroups.value.reduce(
-    (total, group) => total + group.totalCount,
-    0
-  )
-}
-
-function getActiveParentParameterCount(): number {
-  return parentParameterGroups.value.reduce(
-    (total, group) => total + group.visibleCount,
-    0
-  )
-}
-
-function getActiveChildParameterCount(): number {
-  return childParameterGroups.value.reduce(
-    (total, group) => total + group.visibleCount,
-    0
-  )
-}
-
-const parentRawCount = computed(() => {
-  return (props.parentElements || []).reduce((count, element) => {
-    return count + Object.keys(element.parameters || {}).length
-  }, 0)
-})
-
-const childRawCount = computed(() => {
-  return (props.childElements || []).reduce((count, element) => {
-    return count + Object.keys(element.parameters || {}).length
-  }, 0)
-})
-
-// Data Structure
+// Update data structure to include parameter store stats
 const dataStructure = computed(() => ({
   tableState: {
     rowCount: props.tableData?.length || 0,
@@ -521,27 +541,20 @@ const dataStructure = computed(() => ({
   },
   parameters: {
     parent: {
-      raw: parentRawCount.value,
-      unique: props.availableParentHeaders?.length || 0,
-      active: getActiveParentParameterCount(),
-      groups: Object.fromEntries(
-        parentParameterGroups.value.map((g) => [
-          g.source,
-          { visible: g.visibleCount, total: g.totalCount }
-        ])
-      )
+      raw: parameterStoreStats.value.parent.raw,
+      available: parameterStoreStats.value.parent.available,
+      selected: parameterStoreStats.value.parent.selected,
+      columns: parameterStoreStats.value.parent.columns,
+      groups: parameterStoreStats.value.parent.groups
     },
     child: {
-      raw: childRawCount.value,
-      unique: props.availableChildHeaders?.length || 0,
-      active: getActiveChildParameterCount(),
-      groups: Object.fromEntries(
-        childParameterGroups.value.map((g) => [
-          g.source,
-          { visible: g.visibleCount, total: g.totalCount }
-        ])
-      )
-    }
+      raw: parameterStoreStats.value.child.raw,
+      available: parameterStoreStats.value.child.available,
+      selected: parameterStoreStats.value.child.selected,
+      columns: parameterStoreStats.value.child.columns,
+      groups: parameterStoreStats.value.child.groups
+    },
+    metadata: parameterStoreStats.value.metadata
   },
   sample: props.tableData?.[0]
     ? {
@@ -554,8 +567,10 @@ const dataStructure = computed(() => ({
     : null
 }))
 
-function formatTime(timestamp: string): string {
-  return new Date(timestamp).toLocaleTimeString()
+function formatTime(timestamp: string | number): string {
+  const date =
+    typeof timestamp === 'string' ? new Date(timestamp) : new Date(Number(timestamp))
+  return date.toLocaleTimeString()
 }
 
 function formatData(data: unknown): string {

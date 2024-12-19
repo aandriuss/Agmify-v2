@@ -4,15 +4,16 @@ import type {
   ElementData,
   ProcessingState,
   TableRow,
-  DataState,
-  BimParameter,
-  BimValueType
+  DataState
 } from '~/composables/core/types'
+import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
 import { useBIMElements } from './useBIMElements'
-import { createBimParameterWithDefaults } from '~/composables/core/types'
+import { useParameterStore } from '~/composables/core/parameters/store'
+import type { RawParameter } from '~/composables/core/parameters/store/types'
+import { extractRawParameters } from '~/composables/core/parameters/next/utils/parameter-processing'
 
 interface UseElementsDataOptions {
   selectedParentCategories: Ref<string[]>
@@ -43,18 +44,13 @@ export function useElementsData(
   options: UseElementsDataOptions
 ): UseElementsDataReturn {
   const store = useStore()
+  const parameterStore = useParameterStore()
   const bimElements = useBIMElements({
     childCategories: options.selectedChildCategories.value
   })
   const elementsMap = ref<Map<string, ElementData>>(new Map())
   const childElementsList = ref<ElementData[]>([])
   const tableData = ref<TableRow[]>([])
-
-  // Track available parameters
-  const availableParameters = ref({
-    parent: new Map<string, BimParameter>(),
-    child: new Map<string, BimParameter>()
-  })
 
   const processingState = ref<ProcessingState>({
     isProcessingElements: false,
@@ -70,7 +66,198 @@ export function useElementsData(
     child: [] as string[]
   })
 
-  async function processElements() {
+  async function processParametersInChunks(
+    elements: ElementData[],
+    chunkSize = 100
+  ): Promise<RawParameter[]> {
+    const chunks = []
+    for (let i = 0; i < elements.length; i += chunkSize) {
+      chunks.push(elements.slice(i, i + chunkSize))
+    }
+
+    debug.log(DebugCategories.PARAMETERS, 'Processing parameters in chunks', {
+      totalElements: elements.length,
+      chunkSize,
+      chunkCount: chunks.length
+    })
+
+    const rawParams: RawParameter[] = []
+
+    for (const chunk of chunks) {
+      // Process chunk using centralized parameter extraction
+      const chunkParams = extractRawParameters(chunk)
+      rawParams.push(...chunkParams)
+
+      // Allow other tasks to run between chunks
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    debug.log(DebugCategories.PARAMETERS, 'Parameter extraction complete', {
+      extractedCount: rawParams.length
+    })
+
+    return rawParams
+  }
+
+  async function processParameters(elements: ElementData[], isParent: boolean) {
+    debug.startState(
+      DebugCategories.PARAMETERS,
+      `Processing ${isParent ? 'parent' : 'child'} parameters`
+    )
+
+    // Extract and validate raw parameters using chunked processing
+    const extractedParams = await processParametersInChunks(elements)
+    if (!Array.isArray(extractedParams)) {
+      throw new Error('Failed to extract parameters: Invalid response format')
+    }
+
+    debug.log(DebugCategories.PARAMETERS, 'Raw parameters extracted', {
+      count: extractedParams.length,
+      isParent,
+      sample: extractedParams[0]
+    })
+
+    // Update total count for progress tracking
+    if (processingState.value.totalCount === 0) {
+      processingState.value.totalCount = extractedParams.length
+    } else {
+      // Add to total count for subsequent runs
+      processingState.value.totalCount += extractedParams.length
+    }
+
+    // Process parameters using parameter store
+    await parameterStore.processRawParameters(extractedParams, isParent)
+
+    // Get store state after processing
+    const storeState = isParent
+      ? {
+          raw: parameterStore.parentRawParameters.value,
+          available: {
+            bim: parameterStore.parentAvailableBimParameters.value,
+            user: parameterStore.parentAvailableUserParameters.value
+          },
+          selected: parameterStore.parentSelectedParameters.value,
+          columns: parameterStore.parentColumnDefinitions.value
+        }
+      : {
+          raw: parameterStore.childRawParameters.value,
+          available: {
+            bim: parameterStore.childAvailableBimParameters.value,
+            user: parameterStore.childAvailableUserParameters.value
+          },
+          selected: parameterStore.childSelectedParameters.value,
+          columns: parameterStore.childColumnDefinitions.value
+        }
+
+    // Log detailed parameter store state after processing
+    debug.log(DebugCategories.PARAMETERS, 'Parameter store state after processing', {
+      type: isParent ? 'parent' : 'child',
+      extracted: {
+        count: extractedParams.length,
+        sample: extractedParams[0]
+      },
+      store: {
+        raw: {
+          count: storeState.raw.length,
+          sample: storeState.raw[0]
+        },
+        available: {
+          bim: {
+            count: storeState.available.bim.length,
+            sample: storeState.available.bim[0]
+          },
+          user: {
+            count: storeState.available.user.length,
+            sample: storeState.available.user[0]
+          }
+        },
+        selected: {
+          count: storeState.selected.length,
+          sample: storeState.selected[0]
+        },
+        columns: {
+          count: storeState.columns.length,
+          sample: storeState.columns[0]
+        }
+      }
+    })
+
+    debug.completeState(
+      DebugCategories.PARAMETERS,
+      `Completed ${isParent ? 'parent' : 'child'} parameter processing`
+    )
+  }
+
+  async function processElementsInChunks(
+    elements: ElementData[],
+    selectedParentCats: string[],
+    selectedChildCats: string[],
+    chunkSize = 100
+  ) {
+    const chunks = []
+    for (let i = 0; i < elements.length; i += chunkSize) {
+      chunks.push(elements.slice(i, i + chunkSize))
+    }
+
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Processing elements in chunks', {
+      totalElements: elements.length,
+      chunkSize,
+      chunkCount: chunks.length
+    })
+
+    let processedCount = 0
+    const totalCount = elements.length
+
+    for (const [index, chunk] of chunks.entries()) {
+      // Process chunk
+      chunk.forEach((element) => {
+        const category = element.category || 'Uncategorized'
+        const mark = element.mark || `Element-${element.id}`
+
+        // Process parent elements
+        const isParentCategory =
+          selectedParentCats.length === 0 || selectedParentCats.includes(category)
+
+        if (isParentCategory && !element.isChild) {
+          elementsMap.value.set(mark, element)
+        }
+
+        // Process child elements
+        const isChildCategory =
+          selectedChildCats.length === 0 || selectedChildCats.includes(category)
+
+        if (isChildCategory && element.isChild) {
+          childElementsList.value.push(element)
+        }
+      })
+
+      // Update progress
+      processedCount += chunk.length
+      const progress = Math.round((processedCount / totalCount) * 100)
+
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Chunk processed', {
+        chunkIndex: index + 1,
+        totalChunks: chunks.length,
+        processedCount,
+        totalCount,
+        progress: `${progress}%`,
+        currentParentCount: elementsMap.value.size,
+        currentChildCount: childElementsList.value.length
+      })
+
+      // Allow other tasks to run between chunks
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Chunks processed', {
+      parentElements: elementsMap.value.size,
+      childElements: childElementsList.value.length,
+      totalProcessed: processedCount,
+      processingTime: `${Date.now() - performance.now()}ms`
+    })
+  }
+
+  async function processElements(forceProcess = false) {
     if (!bimElements.allElements.value?.length) {
       debug.warn(DebugCategories.DATA, 'No BIM elements available')
       return
@@ -94,7 +281,8 @@ export function useElementsData(
       JSON.stringify(currentChildCats) !==
       JSON.stringify(lastProcessedCategories.value.child)
 
-    if (!parentCatsChanged && !childCatsChanged) {
+    // Skip if no changes and not forcing process
+    if (!forceProcess && !parentCatsChanged && !childCatsChanged) {
       debug.log(
         DebugCategories.DATA_TRANSFORM,
         'Skipping process - categories unchanged'
@@ -110,13 +298,14 @@ export function useElementsData(
 
     debug.startState(DebugCategories.INITIALIZATION, 'Processing elements')
     processingState.value.isProcessingElements = true
+    processingState.value.processedCount = 0
+    processingState.value.totalCount = 0
+    processingState.value.error = undefined
 
     try {
       // Clear existing data
       elementsMap.value.clear()
       childElementsList.value = []
-      availableParameters.value.parent.clear()
-      availableParameters.value.child.clear()
 
       // Get current categories or use defaults
       const selectedParentCats =
@@ -132,237 +321,156 @@ export function useElementsData(
       debug.log(DebugCategories.DATA_TRANSFORM, 'Processing with categories', {
         selectedParentCats,
         selectedChildCats,
-        elementCount: bimElements.allElements.value.length
+        elementCount: bimElements.allElements.value.length,
+        forceProcess
       })
 
-      // Track parameter stats
-      const parameterStats = {
-        parent: {
-          total: 0,
-          unique: new Set<string>(),
-          groups: new Map<string, Set<string>>()
-        },
-        child: {
-          total: 0,
-          unique: new Set<string>(),
-          groups: new Map<string, Set<string>>()
-        }
-      }
+      // Process elements in chunks
+      await processElementsInChunks(
+        bimElements.allElements.value,
+        selectedParentCats,
+        selectedChildCats
+      )
 
-      // Process all elements
-      bimElements.allElements.value.forEach((element) => {
-        const category = element.category || 'Uncategorized'
-        const mark = element.mark || `Element-${element.id}`
-
-        // Process parent elements
-        const isParentCategory =
-          selectedParentCats.length === 0 || selectedParentCats.includes(category)
-
-        if (isParentCategory && !element.isChild) {
-          elementsMap.value.set(mark, element)
-          // Process parent parameters
-          if (element.parameters) {
-            // Log raw parameters for debugging
-            debug.log(DebugCategories.PARAMETERS, 'Raw parent parameters', {
-              category,
-              mark,
-              parameters: element.parameters
-            })
-
-            // First pass: collect all parameters and their groups
-            const paramGroups = new Map<string, Set<string>>()
-            Object.entries(element.parameters).forEach(([key, _value]) => {
-              // Skip system parameters
-              if (key.startsWith('__')) return
-
-              // Extract group from parameter key
-              const parts = key.split('.')
-              const group = parts.length > 1 ? parts[0] : 'Parameters'
-              const paramName = parts[parts.length - 1]
-
-              if (!paramGroups.has(group)) {
-                paramGroups.set(group, new Set())
-              }
-              paramGroups.get(group)!.add(paramName)
-            })
-
-            // Second pass: create parameters with proper grouping
-            paramGroups.forEach((params, group) => {
-              params.forEach((paramName) => {
-                const key = group === 'Parameters' ? paramName : `${group}.${paramName}`
-                const value = element.parameters![key] ?? element.parameters![paramName]
-
-                if (value !== undefined) {
-                  parameterStats.parent.total++
-                  parameterStats.parent.unique.add(key)
-
-                  // Track parameter group
-                  if (!parameterStats.parent.groups.has(group)) {
-                    parameterStats.parent.groups.set(group, new Set())
-                  }
-                  parameterStats.parent.groups.get(group)!.add(paramName)
-
-                  // Add to available parameters
-                  if (!availableParameters.value.parent.has(key)) {
-                    const valueType = typeof value === 'number' ? 'number' : 'string'
-                    availableParameters.value.parent.set(
-                      key,
-                      createBimParameterWithDefaults({
-                        field: key,
-                        name: paramName,
-                        header: key,
-                        category,
-                        type: valueType as BimValueType,
-                        sourceValue: value as string | number | boolean | null,
-                        fetchedGroup: group,
-                        currentGroup: group
-                      })
-                    )
-                  }
-                }
-              })
-            })
-          }
-        }
-
-        // Process child elements
-        const isChildCategory =
-          selectedChildCats.length === 0 || selectedChildCats.includes(category)
-
-        if (isChildCategory && element.isChild) {
-          childElementsList.value.push(element)
-          // Process child parameters
-          if (element.parameters) {
-            // Log raw parameters for debugging
-            debug.log(DebugCategories.PARAMETERS, 'Raw child parameters', {
-              category,
-              mark,
-              parameters: element.parameters
-            })
-
-            // First pass: collect all parameters and their groups
-            const paramGroups = new Map<string, Set<string>>()
-            Object.entries(element.parameters).forEach(([key, _value]) => {
-              // Skip system parameters
-              if (key.startsWith('__')) return
-
-              // Extract group from parameter key
-              const parts = key.split('.')
-              const group = parts.length > 1 ? parts[0] : 'Parameters'
-              const paramName = parts[parts.length - 1]
-
-              if (!paramGroups.has(group)) {
-                paramGroups.set(group, new Set())
-              }
-              paramGroups.get(group)!.add(paramName)
-            })
-
-            // Second pass: create parameters with proper grouping
-            paramGroups.forEach((params, group) => {
-              params.forEach((paramName) => {
-                const key = group === 'Parameters' ? paramName : `${group}.${paramName}`
-                const value = element.parameters![key] ?? element.parameters![paramName]
-
-                if (value !== undefined) {
-                  parameterStats.child.total++
-                  parameterStats.child.unique.add(key)
-
-                  // Track parameter group
-                  if (!parameterStats.child.groups.has(group)) {
-                    parameterStats.child.groups.set(group, new Set())
-                  }
-                  parameterStats.child.groups.get(group)!.add(paramName)
-
-                  // Add to available parameters
-                  if (!availableParameters.value.child.has(key)) {
-                    const valueType = typeof value === 'number' ? 'number' : 'string'
-                    availableParameters.value.child.set(
-                      key,
-                      createBimParameterWithDefaults({
-                        field: key,
-                        name: paramName,
-                        header: key,
-                        category,
-                        type: valueType as BimValueType,
-                        sourceValue: value as string | number | boolean | null,
-                        fetchedGroup: group,
-                        currentGroup: group
-                      })
-                    )
-                  }
-                }
-              })
-            })
-          }
-        }
-      })
-
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Element processing stats', {
-        parentElements: elementsMap.value.size,
-        childElements: childElementsList.value.length,
-        parameters: {
-          parent: {
-            total: parameterStats.parent.total,
-            unique: parameterStats.parent.unique.size,
-            groups: Object.fromEntries(
-              Array.from(parameterStats.parent.groups.entries()).map(
-                ([group, params]) => [group, Array.from(params)]
-              )
-            ),
-            available: availableParameters.value.parent.size
-          },
-          child: {
-            total: parameterStats.child.total,
-            unique: parameterStats.child.unique.size,
-            groups: Object.fromEntries(
-              Array.from(parameterStats.child.groups.entries()).map(
-                ([group, params]) => [group, Array.from(params)]
-              )
-            ),
-            available: availableParameters.value.child.size
-          }
-        }
-      })
-
-      // Update store with processed data
       try {
-        const processedData = Array.from(elementsMap.value.values()).map((element) => ({
-          ...element,
-          visible: true,
-          details: childElementsList.value
-            .filter((child) => child.host === element.mark)
-            .map((child) => ({
-              ...child,
-              host: element.mark,
-              visible: true
-            }))
-        }))
+        const parentElements = Array.from(elementsMap.value.values())
+        const childElements = childElementsList.value
 
+        // Process parameters in parallel
+        const results = await Promise.allSettled([
+          processParameters(parentElements, true),
+          processParameters(childElements, false)
+        ])
+
+        // Handle any errors from parallel processing
+        const errors: Error[] = []
+        const paramTypes = ['parent', 'child'] as const
+
+        results.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            const paramType = paramTypes[index]
+            const error = result.reason as Error | unknown
+            const formattedError =
+              error instanceof Error
+                ? error
+                : new Error(
+                    `Failed to process ${paramType} parameters: ${String(error)}`
+                  )
+
+            debug.error(
+              DebugCategories.ERROR,
+              `Error processing ${paramType} parameters:`,
+              formattedError
+            )
+            errors.push(formattedError)
+          }
+        })
+
+        if (errors.length > 0) {
+          const errorMessage = errors.map((err) => err.message).join('\n')
+          throw new Error(`Parameter processing failed:\n${errorMessage}`)
+        }
+
+        // Create table data with processed parameters
+        debug.log(DebugCategories.DATA_TRANSFORM, 'Creating table data', {
+          parentCount: elementsMap.value.size,
+          childCount: childElementsList.value.length,
+          parameters: {
+            parent: {
+              raw: parameterStore.parentRawParameters.value.length,
+              available: {
+                bim: parameterStore.parentAvailableBimParameters.value.length,
+                user: parameterStore.parentAvailableUserParameters.value.length
+              },
+              selected: parameterStore.parentSelectedParameters.value.length,
+              columns: parameterStore.parentColumnDefinitions.value.length
+            },
+            child: {
+              raw: parameterStore.childRawParameters.value.length,
+              available: {
+                bim: parameterStore.childAvailableBimParameters.value.length,
+                user: parameterStore.childAvailableUserParameters.value.length
+              },
+              selected: parameterStore.childSelectedParameters.value.length,
+              columns: parameterStore.childColumnDefinitions.value.length
+            }
+          }
+        })
+
+        // Map elements to table rows with processed parameters
+        const processedData = Array.from(elementsMap.value.values()).map((element) => {
+          // Get only visible selected parent parameters from parameter store
+          const parentParams = parameterStore.parentSelectedParameters.value
+            .filter((param) => param.visible)
+            .reduce((acc, param) => {
+              if (param.value !== undefined) {
+                acc[param.id] = param.value as ParameterValue
+              }
+              return acc
+            }, {} as Record<string, ParameterValue>)
+
+          // Create parent row
+          const parentRow: ElementData = {
+            ...element,
+            visible: true,
+            parameters: parentParams,
+            details: childElementsList.value
+              .filter((child) => child.host === element.mark)
+              .map((child) => {
+                // Get only visible selected child parameters from parameter store
+                const childParams = parameterStore.childSelectedParameters.value
+                  .filter((param) => param.visible)
+                  .reduce((acc, param) => {
+                    if (param.value !== undefined) {
+                      acc[param.id] = param.value as ParameterValue
+                    }
+                    return acc
+                  }, {} as Record<string, ParameterValue>)
+
+                // Create child row
+                return {
+                  ...child,
+                  host: element.mark,
+                  visible: true,
+                  parameters: childParams
+                } as ElementData
+              })
+          }
+
+          return parentRow
+        })
+
+        // Update store with processed data
         await store.lifecycle.update({
           scheduleData: processedData,
           tableData: processedData
         })
 
-        // Update parameters using setParameters
-        await store.setParameters({
-          parent: Array.from(availableParameters.value.parent.values()),
-          child: Array.from(availableParameters.value.child.values())
-        })
-
         debug.log(DebugCategories.DATA_TRANSFORM, 'Store updated', {
           processedCount: processedData.length,
-          withDetails: processedData.filter((d) => d.details?.length > 0).length,
-          parameters: {
-            parent: availableParameters.value.parent.size,
-            child: availableParameters.value.child.size
-          }
+          withDetails: processedData.filter((d) => d.details?.length ?? 0 > 0).length,
+          visibleParameters: {
+            parent: parameterStore.parentSelectedParameters.value.filter(
+              (p) => p.visible
+            ).length,
+            child: parameterStore.childSelectedParameters.value.filter((p) => p.visible)
+              .length
+          },
+          processingTime: `${Date.now() - performance.now()}ms`
         })
+
+        debug.completeState(DebugCategories.INITIALIZATION, 'Elements processed')
       } catch (err) {
-        debug.error(DebugCategories.ERROR, 'Failed to update store:', err)
+        debug.error(DebugCategories.ERROR, 'Error processing parameters:', err)
+        processingState.value.error =
+          err instanceof Error ? err : new Error('Failed to process parameters')
         throw err
       }
-
-      debug.completeState(DebugCategories.INITIALIZATION, 'Elements processed')
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Error processing elements:', err)
+      processingState.value.error =
+        err instanceof Error ? err : new Error('Failed to process elements')
+      throw err
     } finally {
       processingState.value.isProcessingElements = false
     }
@@ -432,8 +540,40 @@ export function useElementsData(
           oldChild,
           newChild
         })
-        // Update BIM elements with new child categories
-        await bimElements.initializeElements()
+
+        // Skip if already processing
+        if (processingState.value.isProcessingElements) {
+          debug.warn(DebugCategories.CATEGORY_UPDATES, 'Already processing elements')
+          return
+        }
+
+        try {
+          debug.startState(
+            DebugCategories.CATEGORY_UPDATES,
+            'Processing category change'
+          )
+          processingState.value.isProcessingElements = true
+
+          // Update BIM elements with new child categories
+          await bimElements.initializeElements()
+          debug.log(DebugCategories.CATEGORY_UPDATES, 'BIM elements initialized')
+
+          // Force process with new categories
+          await processElements(true)
+          debug.log(DebugCategories.CATEGORY_UPDATES, 'Elements processed')
+
+          debug.completeState(
+            DebugCategories.CATEGORY_UPDATES,
+            'Category change processed'
+          )
+        } catch (err) {
+          debug.error(DebugCategories.ERROR, 'Error processing category change:', err)
+          processingState.value.error =
+            err instanceof Error ? err : new Error('Failed to process category change')
+          throw err
+        } finally {
+          processingState.value.isProcessingElements = false
+        }
       }
     },
     { deep: true }
@@ -454,12 +594,10 @@ export function useElementsData(
       })
 
       // Only process if elements actually changed and we're not already processing
-      if (
-        !processingState.value.isProcessingElements &&
-        newElements?.length &&
-        JSON.stringify(newElements) !== JSON.stringify(oldElements)
-      ) {
-        await processElements()
+      if (!processingState.value.isProcessingElements && newElements?.length) {
+        // Force process on initial watch trigger (when oldElements is undefined)
+        const isInitialTrigger = oldElements === undefined
+        await processElements(isInitialTrigger)
       }
     },
     { immediate: true }
@@ -494,6 +632,12 @@ export function useElementsData(
 
       // Update BIM elements with new child categories
       await bimElements.initializeElements()
+      debug.log(DebugCategories.CATEGORY_UPDATES, 'BIM elements initialized')
+
+      // Force process elements and parameters with new categories
+      await processElements(true)
+      debug.log(DebugCategories.CATEGORY_UPDATES, 'Elements and parameters processed')
+
       // Wait for Vue to update the DOM
       await new Promise((resolve) => requestAnimationFrame(resolve))
 
@@ -521,6 +665,12 @@ export function useElementsData(
 
       // Initialize BIM elements first
       await bimElements.initializeElements()
+      debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
+
+      // Force process elements and parameters
+      await processElements(true)
+      debug.log(DebugCategories.INITIALIZATION, 'Elements and parameters processed')
+
       // Wait for Vue to update the DOM
       await new Promise((resolve) => requestAnimationFrame(resolve))
 
