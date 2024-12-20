@@ -1,137 +1,110 @@
-import type { Parameter } from '~/composables/core/types'
-import { createBimParameterWithDefaults } from '~/composables/core/types/parameters/parameter-types'
+import type { AvailableBimParameter as Parameter } from '~/composables/core/types/parameters/parameter-states'
+import { createAvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
 
 /**
  * Fixed parameters for parent nodes
  * These are the default parameters that are always available for parent nodes
  */
 export const FIXED_PARENT_PARAMETERS: Parameter[] = [
-  createBimParameterWithDefaults({
-    id: 'fp1',
-    name: 'Category',
-    field: 'category',
-    visible: true,
-    header: 'Category',
-    category: 'Classification',
-    type: 'string',
-    removable: false,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fp2',
-    name: 'ID',
-    field: 'id',
-    visible: true,
-    header: 'ID',
-    category: 'Classification',
-    type: 'string',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fp3',
-    name: 'Mark',
-    field: 'mark',
-    visible: true,
-    header: 'Mark',
-    category: 'Classification',
-    type: 'string',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fp4',
-    name: 'Host',
-    field: 'host',
-    visible: true,
-    header: 'Host',
-    category: 'Classification',
-    type: 'string',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fp5',
-    name: 'Comment',
-    field: 'comment',
-    visible: true,
-    header: 'Comment',
-    category: 'Classification',
-    type: 'string',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fp6',
-    name: 'Width',
-    field: 'width',
-    visible: true,
-    header: 'Width',
-    category: 'Dimensions',
-    type: 'number',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fp7',
-    name: 'Height',
-    field: 'height',
-    visible: true,
-    header: 'Height',
-    category: 'Dimensions',
-    type: 'number',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fp8',
-    name: 'Thickness',
-    field: 'thickness',
-    visible: true,
-    header: 'Thickness',
-    category: 'Dimensions',
-    type: 'number',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fp9',
-    name: 'Area',
-    field: 'area',
-    visible: true,
-    header: 'Area',
-    category: 'Dimensions',
-    type: 'number',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  })
+  createAvailableBimParameter(
+    {
+      id: 'fp1',
+      name: 'Category',
+      sourceGroup: 'Classification',
+      value: null
+    },
+    'string',
+    null,
+    false
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fp2',
+      name: 'ID',
+      sourceGroup: 'Classification',
+      value: null
+    },
+    'string',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fp3',
+      name: 'Mark',
+      sourceGroup: 'Classification',
+      value: null
+    },
+    'string',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fp4',
+      name: 'Host',
+      sourceGroup: 'Classification',
+      value: null
+    },
+    'string',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fp5',
+      name: 'Comment',
+      sourceGroup: 'Classification',
+      value: null
+    },
+    'string',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fp6',
+      name: 'Width',
+      sourceGroup: 'Dimensions',
+      value: null
+    },
+    'number',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fp7',
+      name: 'Height',
+      sourceGroup: 'Dimensions',
+      value: null
+    },
+    'number',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fp8',
+      name: 'Thickness',
+      sourceGroup: 'Dimensions',
+      value: null
+    },
+    'number',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fp9',
+      name: 'Area',
+      sourceGroup: 'Dimensions',
+      value: null
+    },
+    'number',
+    null,
+    true
+  )
 ]
 
 /**
@@ -139,90 +112,72 @@ export const FIXED_PARENT_PARAMETERS: Parameter[] = [
  * These are the default parameters that are always available for child nodes
  */
 export const FIXED_CHILD_PARAMETERS: Parameter[] = [
-  createBimParameterWithDefaults({
-    id: 'fc1',
-    name: 'Category',
-    field: 'category',
-    visible: true,
-    header: 'Category',
-    category: 'Classification',
-    type: 'string',
-    removable: false,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fc2',
-    name: 'ID',
-    field: 'id',
-    visible: true,
-    header: 'ID',
-    category: 'Classification',
-    type: 'string',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fc3',
-    name: 'Mark',
-    field: 'mark',
-    visible: true,
-    header: 'Mark',
-    category: 'Classification',
-    type: 'string',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fc4',
-    name: 'Width',
-    field: 'width',
-    visible: true,
-    header: 'Width',
-    category: 'Dimensions',
-    type: 'number',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fc5',
-    name: 'Height',
-    field: 'height',
-    visible: true,
-    header: 'Height',
-    category: 'Dimensions',
-    type: 'number',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  }),
-  createBimParameterWithDefaults({
-    id: 'fc6',
-    name: 'Length',
-    field: 'length',
-    visible: true,
-    header: 'Length',
-    category: 'Dimensions',
-    type: 'number',
-    removable: true,
-    sourceValue: null,
-    fetchedGroup: '',
-    currentGroup: '',
-    value: null
-  })
+  createAvailableBimParameter(
+    {
+      id: 'fc1',
+      name: 'Category',
+      sourceGroup: 'Classification',
+      value: null
+    },
+    'string',
+    null,
+    false
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fc2',
+      name: 'ID',
+      sourceGroup: 'Classification',
+      value: null
+    },
+    'string',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fc3',
+      name: 'Mark',
+      sourceGroup: 'Classification',
+      value: null
+    },
+    'string',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fc4',
+      name: 'Width',
+      sourceGroup: 'Dimensions',
+      value: null
+    },
+    'number',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fc5',
+      name: 'Height',
+      sourceGroup: 'Dimensions',
+      value: null
+    },
+    'number',
+    null,
+    true
+  ),
+  createAvailableBimParameter(
+    {
+      id: 'fc6',
+      name: 'Length',
+      sourceGroup: 'Dimensions',
+      value: null
+    },
+    'number',
+    null,
+    true
+  )
 ]
 
 /**

@@ -1,8 +1,7 @@
 import type { ComputedRef, Ref } from 'vue'
 import type { Viewer } from '@speckle/viewer'
 import type { ElementData, TableRow } from '~/composables/core/types'
-import type { AvailableHeaders } from '../viewer/viewer-base'
-import type { ColumnDef } from '../tables'
+import type { ColumnDef } from '~/composables/core/types/tables'
 
 /**
  * Table info interface
@@ -20,6 +19,14 @@ export interface TableInfoUpdatePayload {
   tableName?: string
   currentTableId?: string
   tableKey?: string
+}
+
+/**
+ * Headers interface
+ */
+export interface TableHeaders {
+  parent: ColumnDef[]
+  child: ColumnDef[]
 }
 
 /**
@@ -61,7 +68,7 @@ export interface StoreState {
   childVisibleColumns: ColumnDef[]
 
   // Headers
-  availableHeaders: AvailableHeaders
+  availableHeaders: TableHeaders
 
   // Categories
   selectedCategories: Set<string>
@@ -97,6 +104,9 @@ export interface StoreMutations {
   setColumnVisibility: (columnId: string, visible: boolean) => void
   setColumnOrder: (columnId: string, newIndex: number) => void
 
+  // Header mutations
+  setAvailableHeaders: (headers: TableHeaders) => void
+
   // Category mutations
   setSelectedCategories: (categories: Set<string>) => void
   setParentCategories: (categories: string[]) => void
@@ -108,9 +118,6 @@ export interface StoreMutations {
 
   // Element mutations
   setElementVisibility: (elementId: string, visible: boolean) => void
-
-  // Header mutations
-  setAvailableHeaders: (headers: AvailableHeaders) => void
 
   // Status mutations
   setInitialized: (value: boolean) => void
@@ -136,7 +143,7 @@ export interface StoreLifecycle {
 /**
  * Store interface
  */
-export interface Store {
+export interface Store extends StoreMutations {
   // State
   state: ComputedRef<StoreState>
 
@@ -145,45 +152,45 @@ export interface Store {
   scheduleData: ComputedRef<ElementData[]>
   evaluatedData: ComputedRef<ElementData[]>
   tableData: ComputedRef<TableRow[]>
+  // Columns
   currentTableColumns: ComputedRef<ColumnDef[]>
   currentDetailColumns: ComputedRef<ColumnDef[]>
   mergedTableColumns: ComputedRef<ColumnDef[]>
   mergedDetailColumns: ComputedRef<ColumnDef[]>
-  availableHeaders: ComputedRef<AvailableHeaders>
-  selectedCategories: ComputedRef<Set<string>>
-  selectedParentCategories: ComputedRef<string[]>
-  selectedChildCategories: ComputedRef<string[]>
-  tablesArray: ComputedRef<TableInfo[]>
-  tableName: ComputedRef<string>
-  selectedTableId: ComputedRef<string>
-  currentTableId: ComputedRef<string>
-  tableKey: ComputedRef<string>
-  initialized: ComputedRef<boolean>
-  loading: ComputedRef<boolean>
-  error: ComputedRef<Error | null>
   parentBaseColumns: ComputedRef<ColumnDef[]>
   parentAvailableColumns: ComputedRef<ColumnDef[]>
   parentVisibleColumns: ComputedRef<ColumnDef[]>
   childBaseColumns: ComputedRef<ColumnDef[]>
   childAvailableColumns: ComputedRef<ColumnDef[]>
   childVisibleColumns: ComputedRef<ColumnDef[]>
+  // Headers
+  availableHeaders: ComputedRef<TableHeaders>
+  // Categories
+  selectedCategories: ComputedRef<Set<string>>
+  selectedParentCategories: ComputedRef<string[]>
+  selectedChildCategories: ComputedRef<string[]>
+  // Table info
+  tablesArray: ComputedRef<TableInfo[]>
+  tableName: ComputedRef<string>
+  selectedTableId: ComputedRef<string>
+  currentTableId: ComputedRef<string>
+  tableKey: ComputedRef<string>
+  // Status
+  initialized: ComputedRef<boolean>
+  loading: ComputedRef<boolean>
+  error: ComputedRef<Error | null>
 
   // Mutations
   setProjectId: (id: string | null) => void
   setScheduleData: (data: ElementData[]) => void
   setEvaluatedData: (data: ElementData[]) => void
   setTableData: (data: TableRow[]) => void
-  setCurrentColumns: (table: ColumnDef[], detail: ColumnDef[]) => void
-  setMergedColumns: (table: ColumnDef[], detail: ColumnDef[]) => void
-  setColumnVisibility: (columnId: string, visible: boolean) => void
-  setColumnOrder: (columnId: string, newIndex: number) => void
   setSelectedCategories: (categories: Set<string>) => void
   setParentCategories: (categories: string[]) => void
   setChildCategories: (categories: string[]) => void
   setTableInfo: (info: TableInfoUpdatePayload) => void
   setTablesArray: (tables: TableInfo[]) => void
   setElementVisibility: (elementId: string, visible: boolean) => void
-  setAvailableHeaders: (headers: AvailableHeaders) => void
   setInitialized: (value: boolean) => void
   setLoading: (value: boolean) => void
   setError: (err: Error | null) => void

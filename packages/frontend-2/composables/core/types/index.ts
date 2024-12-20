@@ -90,27 +90,7 @@ export type { ParameterMappings, ParameterTableMapping } from './mappings'
 
 // Parameter System Types
 export type {
-  // Discovery Types
-  BaseParameterDiscoveryOptions,
-  DiscoveryProgressEvent,
-  BaseParameterDiscoveryState,
-  ParameterDiscoveryEvents,
-  ParameterExtractionUtils,
-  ParameterDiscoveryImplementation,
-
-  // Parameters, Collections and State
-  ParameterValueState,
-  Parameters,
-  BaseParameter,
-  BimParameter,
-  UserParameter,
-  Parameter,
-  ParameterCollection,
-  ParameterState,
-  CreateParameterInput,
-  EvaluatedBimParameter,
-  EvaluatedUserParameter,
-  EvaluatedParameter,
+  // Parameters and Collections
   RawParameter,
   AvailableBimParameter,
   AvailableUserParameter,
@@ -127,9 +107,13 @@ export type {
   ParameterValue,
   ValidationRules,
   ValidationResult,
-  ParameterDefinition, // backward compatibility
-  ParameterValueType, // backward compatibility
-  RawBimParameter // backward compatibility
+
+  // Backward compatibility
+  ParameterDefinition,
+  ParameterValueType,
+  RawBimParameter,
+  ParameterValueState,
+  Parameters
 } from './parameters'
 
 // Parameter System Functions
@@ -140,8 +124,6 @@ export {
   // Type Guards
   isBimParameter,
   isUserParameter,
-  isEquationValue,
-  isPrimitiveValue,
   isRawParameter,
   isAvailableBimParameter,
   isAvailableUserParameter,
@@ -151,20 +133,14 @@ export {
   // Parameter Creation
   createBimParameter,
   createUserParameter,
-  createParameterValueState,
-  createAvailableBimParameter,
-  createAvailableUserParameter,
   createSelectedParameter,
   createColumnDefinition,
 
   // Parameter Operations
-  getParameterGroup,
-  convertBimToUserType
-} from './parameters'
-
-export {
-  createUserParameterWithDefaults,
-  createBimParameterWithDefaults
+  convertBimToUserType,
+  createAvailableUserParameter,
+  isEquationValue,
+  isPrimitiveValue
 } from './parameters'
 
 // Settings types
@@ -204,6 +180,7 @@ export type {
 
   // Store State Types
   TableInfo,
+  TableHeaders,
   TableInfoUpdatePayload,
   ViewerState,
   StoreState,

@@ -5,6 +5,14 @@ import { useInjectedViewer } from '~~/lib/viewer/composables/setup'
 import { useParameterStore } from '~/composables/core/parameters/store'
 import { useColumns } from '~/composables/core/tables/useColumns'
 
+// This store coordinates between different subsystems (parameters, columns, viewer)
+// and delegates specific functionality to specialized stores:
+// - Parameter state management: useParameterStore (new parameter system)
+// - Column management: useColumns
+// - Schedule-specific state: internal state management
+//
+// See composables/core/parameters/next/MIGRATION.md for details on the parameter system architecture
+
 const initialState: StoreState = {
   projectId: null,
   scheduleData: [],

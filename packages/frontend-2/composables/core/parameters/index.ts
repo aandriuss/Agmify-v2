@@ -1,5 +1,5 @@
 // Parameter operations
-export { useParameters } from './useParameters'
+export { useParameters } from './next/useParameters'
 export {
   useParameterOperations,
   ParameterOperationError
@@ -35,17 +35,7 @@ export class ParameterConversionError extends Error {
 export * from './constants'
 
 // Re-export parameter types
-export type {
-  Parameter,
-  BimParameter,
-  UserParameter,
-  ParameterValue,
-  PrimitiveValue,
-  EquationValue,
-  ParameterState,
-  EvaluatedParameter,
-  CreateParameterInput
-} from '../types'
+export type { ParameterValue, PrimitiveValue, EquationValue } from '../types'
 
 // Re-export type guards
 export {

@@ -10,18 +10,23 @@ import {
 } from './errors'
 
 import type {
-  Parameter,
-  BimParameter,
-  UserParameter,
-  GQLParameter,
-  GetParametersQueryResponse
-} from '~/composables/core/types'
+  AvailableBimParameter as BimParameter,
+  AvailableUserParameter as UserParameter,
+  AvailableParameter as Parameter
+} from '~/composables/core/types/parameters/parameter-states'
+
+import type { GQLParameter, GetParametersQueryResponse } from '~/composables/core/types'
 
 import {
   convertToParameter,
   convertToGQLParameter
 } from '~/composables/core/utils/graphql'
-import { isBimParameter } from '~/composables/core/utils/parameters'
+import { isBimParameter } from '~/composables/core/types/parameters'
+
+// Update types that properly handle discriminated unions
+type BimParameterUpdates = Partial<Omit<BimParameter, 'id' | 'kind'>>
+type UserParameterUpdates = Partial<Omit<UserParameter, 'id' | 'kind'>>
+type ParameterUpdates = BimParameterUpdates | UserParameterUpdates
 
 // GraphQL Operations
 const GET_USER_PARAMETERS = gql`
@@ -119,13 +124,14 @@ export function useParametersGraphQL() {
         return {}
       }
 
-      // Convert GQL parameters to core parameters
-      const parameters = Object.entries(gqlParameters).reduce<
-        Record<string, Parameter>
-      >((acc, [key, gqlParam]) => {
-        acc[key] = convertToParameter(gqlParam)
-        return acc
-      }, {})
+      // Convert GQL parameters to core parameters with type safety
+      const parameters: Record<string, Parameter> = {}
+      Object.entries(gqlParameters).forEach(([key, gqlParam]) => {
+        const converted = convertToParameter(gqlParam)
+        if (converted && (isBimParameter(converted) || 'group' in converted)) {
+          parameters[key] = converted
+        }
+      })
 
       debug.log(DebugCategories.INITIALIZATION, 'Parameters fetched', {
         count: Object.keys(parameters).length
@@ -164,13 +170,14 @@ export function useParametersGraphQL() {
     try {
       debug.startState(DebugCategories.STATE, 'Updating parameters')
 
-      // Convert parameters to GQL format
-      const gqlParameters = Object.entries(parameters).reduce<
-        Record<string, GQLParameter>
-      >((acc, [key, param]) => {
-        acc[key] = convertToGQLParameter(param)
-        return acc
-      }, {})
+      // Convert parameters to GQL format with type safety
+      const gqlParameters: Record<string, GQLParameter> = {}
+      Object.entries(parameters).forEach(([key, param]) => {
+        const converted = convertToGQLParameter(param)
+        if (converted) {
+          gqlParameters[key] = converted
+        }
+      })
 
       // Send update
       const result = await nuxtApp.runWithContext(() =>
@@ -194,7 +201,7 @@ export function useParametersGraphQL() {
 
   async function updateParameter(
     id: string,
-    updates: Partial<Omit<Parameter, 'id' | 'kind'>>
+    updates: ParameterUpdates
   ): Promise<Parameter> {
     try {
       debug.startState(DebugCategories.STATE, 'Updating parameter')
@@ -207,20 +214,25 @@ export function useParametersGraphQL() {
         throw new ParameterNotFoundError(id)
       }
 
+      // Type guard to ensure parameter type safety
+      if (!isBimParameter(existingParameter) && !('group' in existingParameter)) {
+        throw new ParameterError('Invalid parameter type')
+      }
+
       // Check for name/group conflicts
       const groupToCheck = isBimParameter(existingParameter)
-        ? updates.currentGroup || existingParameter.currentGroup
-        : updates.group || existingParameter.group
+        ? (updates as BimParameterUpdates).currentGroup ||
+          existingParameter.currentGroup
+        : (updates as UserParameterUpdates).group || existingParameter.group
 
-      if (updates.name || groupToCheck) {
-        const newKey = `${groupToCheck}-${updates.name || existingParameter.name}`
+      const paramName = updates.name || existingParameter.name
+
+      if (paramName || groupToCheck) {
+        const newKey = `${groupToCheck}-${paramName}`
           .toLowerCase()
           .replace(/[^a-z0-9]/g, '_')
         if (newKey !== id && currentParameters[newKey]) {
-          throw new ParameterDuplicateError(
-            updates.name || existingParameter.name,
-            groupToCheck
-          )
+          throw new ParameterDuplicateError(paramName, groupToCheck)
         }
       }
 
@@ -235,7 +247,7 @@ export function useParametersGraphQL() {
             ),
             kind: 'bim' as const,
             type: existingParameter.type
-          } as BimParameter)
+          } satisfies BimParameter)
         : ({
             ...existingParameter,
             ...Object.fromEntries(
@@ -246,7 +258,7 @@ export function useParametersGraphQL() {
             ),
             kind: 'user' as const,
             type: existingParameter.type
-          } as UserParameter)
+          } satisfies UserParameter)
 
       // Update parameters
       await updateParameters({ [id]: updatedParameter })

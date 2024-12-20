@@ -13,25 +13,25 @@ export interface ViewerNodeRaw {
   applicationId?: string
   units?: string
 
-  // Our custom properties
+  // Core properties
   type?: string
-  Other?: {
-    Category?: string
-  }
-  'Identity Data'?: {
-    Mark?: string
-  }
   Name?: string
   speckleType?: string
+
+  // Parameter groups - can be any string key with object value
+  [group: string]:
+    | {
+        [key: string]: unknown
+      }
+    | unknown
+
+  // Base parameters
   parameters?: Record<string, unknown>
   metadata?: Record<string, unknown>
 
   // Allow references in children/elements
   children?: Array<ViewerNodeRaw | SpeckleReference>
   elements?: SpeckleReference[]
-
-  // Allow any other properties
-  [key: string]: unknown
 }
 
 export interface ViewerNode {

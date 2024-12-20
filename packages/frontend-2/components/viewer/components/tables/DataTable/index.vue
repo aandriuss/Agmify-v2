@@ -83,7 +83,7 @@ import {
 } from './composables/useTableUtils'
 import type {
   ColumnDef,
-  Parameter,
+  AvailableParameter,
   ElementData,
   TableRow,
   UserValueType,
@@ -112,8 +112,8 @@ interface Props {
   scheduleData: (TableRow | ElementData)[]
   columns: ColumnDef[]
   detailColumns: ColumnDef[]
-  availableParentParameters: Parameter[]
-  availableChildParameters: Parameter[]
+  availableParentParameters: AvailableParameter[]
+  availableChildParameters: AvailableParameter[]
   loading?: boolean
   initialState?: TableState
 }

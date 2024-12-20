@@ -1,7 +1,6 @@
 import type { ElementData } from '~/composables/core/types'
 import type { ParameterValue, BimValueType } from '~/composables/core/types/parameters'
-import { isEquationValue } from '~/composables/core/types/parameters'
-import { convertToParameterValue } from '~/composables/core/parameters/utils/parameter-conversion'
+import { isEquationValue, isPrimitiveValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   RawParameter,
@@ -46,50 +45,172 @@ export function safeParse(value: string): Record<string, unknown> {
 }
 
 /**
+ * Convert value to parameter value with proper type handling
+ */
+export function convertToParameterValue(value: unknown): ParameterValue {
+  if (value === null || value === undefined) return null
+  if (isPrimitiveValue(value)) return value
+  if (isEquationValue(value)) return value
+
+  // For objects and arrays, stringify them
+  return JSON.stringify(value)
+}
+
+/**
  * Extract raw parameters from elements
  */
 export function extractRawParameters(elements: ElementData[]): RawParameter[] {
   const rawParams: RawParameter[] = []
   const stats = initParameterStats()
+  const parameterGroups = new Map<string, Set<string>>()
 
+  if (!elements?.length) {
+    debug.warn(
+      DebugCategories.PARAMETERS,
+      'No elements provided for parameter extraction'
+    )
+    return []
+  }
+
+  // First pass: collect all unique parameters and their groups
   elements.forEach((element) => {
-    if (!element.parameters) return
+    if (!element?.parameters) {
+      debug.warn(DebugCategories.PARAMETERS, 'Element has no parameters', {
+        elementId: element?.id,
+        category: element?.category
+      })
+      return
+    }
 
-    Object.entries(element.parameters).forEach(([key, value]) => {
-      // Skip system parameters
-      if (key.startsWith('__')) return
+    try {
+      // Process each parameter
+      Object.entries(element.parameters as Record<string, unknown>).forEach(
+        ([key, value]) => {
+          // Skip system parameters
+          if (key.startsWith('__')) return
 
-      // Handle special cases like Pset_BuildingCommon
-      if (key.startsWith('Pset_') && typeof value === 'string') {
-        const parsed = safeParse(value)
-        if (Object.keys(parsed).length > 0) {
-          Object.entries(parsed).forEach(([psetKey, psetValue]) => {
-            const fullKey = `${key}.${psetKey}`
-            addRawParameter(rawParams, fullKey, psetValue, element.category, stats)
-          })
-          return
+          // Handle dot notation parameters
+          const parts = key.split('.')
+          let group: string
+          let paramName: string
+
+          if (key.startsWith('Parameters.')) {
+            // Handle Parameters.* format
+            group = 'Parameters'
+            paramName = parts.slice(1).join('.')
+          } else if (parts.length > 1) {
+            // Handle other dot notation
+            group = parts[0]
+            paramName = parts[1]
+          } else {
+            // Default case
+            group = 'Parameters'
+            paramName = key
+          }
+
+          // Add to parameter groups
+          if (!parameterGroups.has(group)) {
+            parameterGroups.set(group, new Set())
+          }
+          parameterGroups.get(group)!.add(paramName)
+
+          // Check if value is a JSON string
+          let parsedValue: unknown = value
+          let isJsonString = false
+          if (
+            typeof value === 'string' &&
+            value.startsWith('{') &&
+            value.endsWith('}')
+          ) {
+            try {
+              const parsed = JSON.parse(value) as Record<string, unknown>
+              if (isRecord(parsed)) {
+                parsedValue = parsed
+                isJsonString = true
+              }
+            } catch (err) {
+              debug.warn(
+                DebugCategories.PARAMETERS,
+                `Failed to parse JSON parameter ${key}:`,
+                err
+              )
+            }
+          }
+
+          // Create raw parameter
+          const rawParam = {
+            id: key,
+            name: paramName,
+            value: parsedValue,
+            sourceGroup: group,
+            metadata: {
+              category: element.category,
+              fullKey: key,
+              isSystem: false,
+              group,
+              elementId: element.id,
+              isJsonString
+            }
+          }
+
+          // Add parameter for this element
+          rawParams.push(rawParam)
+          updateParameterStats(stats, key, parsedValue)
+
+          // If this is a JSON object, also add its properties as nested parameters
+          if (isJsonString && isRecord(parsedValue)) {
+            Object.entries(parsedValue as Record<string, unknown>).forEach(
+              ([nestedKey, nestedValue]) => {
+                const nestedId = `${key}.${nestedKey}`
+                const nestedParam = {
+                  id: nestedId,
+                  name: nestedKey,
+                  value: nestedValue,
+                  sourceGroup: group,
+                  metadata: {
+                    category: element.category,
+                    fullKey: nestedId,
+                    isSystem: false,
+                    group,
+                    elementId: element.id,
+                    isNested: true,
+                    parentKey: key
+                  }
+                }
+                rawParams.push(nestedParam)
+                updateParameterStats(stats, nestedId, nestedValue)
+                debug.log(DebugCategories.PARAMETERS, 'Added nested parameter', {
+                  id: nestedId,
+                  name: nestedKey,
+                  value: nestedValue,
+                  group
+                })
+              }
+            )
+          }
         }
-      }
-
-      // Handle Identity Data and Dimensions groups
-      if ((key === 'Identity Data' || key === 'Dimensions') && isRecord(value)) {
-        const group = key
-        Object.entries(value).forEach(([groupKey, groupValue]) => {
-          const fullKey = `${group}.${groupKey}`
-          addRawParameter(rawParams, fullKey, groupValue, element.category, stats)
-        })
-        return
-      }
-
-      // Handle regular parameters
-      addRawParameter(rawParams, key, value, element.category, stats)
-    })
+      )
+    } catch (err) {
+      debug.error(
+        DebugCategories.PARAMETERS,
+        `Failed to process parameters for element ${element.id}:`,
+        err
+      )
+    }
   })
 
-  debug.log(DebugCategories.PARAMETERS, 'Parameter extraction stats', {
+  // Log extraction stats
+  const uniqueGroups = Array.from(stats.groups.keys())
+  const totalParams = rawParams.length
+  const uniqueParams = stats.unique.size
+
+  debug.log(DebugCategories.PARAMETERS, 'Parameter extraction complete', {
     elementCount: elements.length,
-    raw: stats.raw,
-    unique: stats.unique.size,
+    parameterCount: {
+      total: totalParams,
+      unique: uniqueParams,
+      groups: uniqueGroups.length
+    },
     groups: Object.fromEntries(
       Array.from(stats.groups.entries()).map(([group, params]) => [
         group,
@@ -100,7 +221,8 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
           activeParameters: Array.from(stats.activeGroups.get(group) || new Set())
         }
       ])
-    )
+    ),
+    sample: rawParams[0]
   })
 
   return rawParams
@@ -109,66 +231,169 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
 /**
  * Process raw parameters into available parameters
  */
-export async function processRawParameters(
+export function processRawParameters(
   rawParams: RawParameter[]
-): Promise<(AvailableBimParameter | AvailableUserParameter)[]> {
-  debug.log(DebugCategories.PARAMETERS, 'Processing raw parameters', {
-    count: rawParams.length
+): (AvailableBimParameter | AvailableUserParameter)[] {
+  if (!rawParams?.length) {
+    debug.warn(DebugCategories.PARAMETERS, 'No raw parameters provided for processing')
+    return []
+  }
+
+  debug.log(DebugCategories.PARAMETERS, 'Starting parameter processing', {
+    count: rawParams.length,
+    sample: rawParams[0]
   })
 
-  const processed = await Promise.all(
-    rawParams.map(async (raw) => {
-      try {
-        // Convert raw value to parameter value with proper type inference
-        const processedValue = await convertToParameterValue(raw.value)
+  // First group parameters by their ID to handle duplicates
+  const parameterGroups = new Map<string, RawParameter[]>()
+  rawParams.forEach((param) => {
+    if (!param.id || !param.name) {
+      debug.warn(
+        DebugCategories.PARAMETERS,
+        'Invalid parameter: missing id or name',
+        param
+      )
+      return
+    }
 
-        // Infer parameter type based on value and context
-        const type = inferParameterType(processedValue, raw)
+    const existing = parameterGroups.get(param.id) || []
+    parameterGroups.set(param.id, [...existing, param])
+  })
 
-        // Determine if this is a BIM or user parameter
-        const isBimParameter = isParameterBim(raw)
+  debug.log(DebugCategories.PARAMETERS, 'Grouped raw parameters', {
+    totalParams: rawParams.length,
+    uniqueIds: parameterGroups.size,
+    sample: Array.from(parameterGroups.entries())[0]
+  })
 
-        // Create appropriate parameter type
-        if (isBimParameter) {
-          return createAvailableBimParameter(raw, type, processedValue)
-        } else {
-          return createAvailableUserParameter(
+  // Process each unique parameter
+  const processed = Array.from(parameterGroups.entries()).flatMap(([_id, params]) => {
+    // Skip if no parameters
+    if (!params.length) return []
+
+    try {
+      // Use the first parameter as the base
+      const raw = params[0]
+
+      // Special handling for JSON string values
+      let processedValue: unknown = raw.value
+      const nestedParams: RawParameter[] = []
+
+      if (
+        typeof raw.value === 'string' &&
+        raw.value.startsWith('{') &&
+        raw.value.endsWith('}')
+      ) {
+        try {
+          const parsed = JSON.parse(raw.value) as Record<string, unknown>
+          if (isRecord(parsed)) {
+            processedValue = parsed
+            // Extract nested parameters
+            Object.entries(parsed).forEach(([key, value]) => {
+              const nestedId = `${raw.id}.${key}`
+              nestedParams.push({
+                id: nestedId,
+                name: key,
+                value,
+                sourceGroup: raw.sourceGroup,
+                metadata: {
+                  category: raw.metadata?.category || 'Uncategorized',
+                  fullKey: nestedId,
+                  isSystem: raw.metadata?.isSystem || false,
+                  group: raw.metadata?.group || raw.sourceGroup,
+                  elementId: raw.metadata?.elementId || raw.id,
+                  isNested: true,
+                  parentKey: raw.id,
+                  isJsonString: false
+                }
+              })
+            })
+          }
+        } catch (err) {
+          // If JSON parsing fails, treat as regular string
+          processedValue = raw.value
+        }
+      }
+
+      // Convert value to parameter value with proper type inference
+      const finalValue = convertToParameterValue(processedValue)
+
+      // Infer parameter type based on value and context
+      const type = inferParameterType(finalValue, raw)
+
+      // Determine if this is a BIM or user parameter
+      const isBimParameter = isParameterBim(raw)
+
+      // Process nested parameters first
+      const processedNested = nestedParams.map((nested) => {
+        const nestedValue = convertToParameterValue(nested.value)
+        const nestedType = inferParameterType(nestedValue, nested)
+        return isBimParameter
+          ? createAvailableBimParameter(nested, nestedType, nestedValue)
+          : createAvailableUserParameter(
+              nested.id,
+              nested.name,
+              'fixed',
+              nestedValue,
+              nested.sourceGroup
+            )
+      })
+
+      // Create main parameter
+      const mainParam = isBimParameter
+        ? createAvailableBimParameter(raw, type, finalValue)
+        : createAvailableUserParameter(
             raw.id,
             raw.name,
             'fixed',
-            processedValue,
+            finalValue,
             raw.sourceGroup
           )
-        }
-      } catch (err) {
-        debug.warn(
-          DebugCategories.PARAMETERS,
-          `Failed to process parameter ${raw.id}:`,
-          err
-        )
 
-        // Create BIM parameter with default values instead of dropping it
-        return createAvailableBimParameter(raw, 'string', String(raw.value ?? ''))
-      }
-    })
-  )
+      // Return all parameters
+      return [mainParam, ...processedNested]
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      const param = params[0]
+      debug.warn(
+        DebugCategories.PARAMETERS,
+        `Failed to process parameter ${param.id}:`,
+        error
+      )
 
-  // Log stats
+      // Create BIM parameter with default values instead of dropping it
+      return [createAvailableBimParameter(param, 'string', String(param.value ?? ''))]
+    }
+  })
+
+  // Flatten array and filter out any undefined/null values
+  const validProcessed = processed.flat().filter(Boolean)
+
+  // Log processing stats
   const stats = {
-    total: processed.length,
-    bim: processed.filter((p): p is AvailableBimParameter => p.kind === 'bim').length,
-    user: processed.filter((p): p is AvailableUserParameter => p.kind === 'user')
+    input: rawParams.length,
+    processed: validProcessed.length,
+    bim: validProcessed.filter((p): p is AvailableBimParameter => p.kind === 'bim')
       .length,
-    byType: processed.reduce((acc, param) => {
+    user: validProcessed.filter((p): p is AvailableUserParameter => p.kind === 'user')
+      .length,
+    byType: validProcessed.reduce((acc, param) => {
       acc[param.type] = (acc[param.type] || 0) + 1
+      return acc
+    }, {} as Record<string, number>),
+    byGroup: validProcessed.reduce((acc, param) => {
+      const group = 'sourceGroup' in param ? param.sourceGroup : param.group
+      acc[group] = (acc[group] || 0) + 1
       return acc
     }, {} as Record<string, number>)
   }
 
-  debug.log(DebugCategories.PARAMETERS, 'Parameters processed', { stats })
+  debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
+    stats,
+    sample: validProcessed[0]
+  })
 
-  // Return both BIM and user parameters
-  return processed
+  return validProcessed
 }
 
 // Helper to determine if a parameter is BIM or user
@@ -177,23 +402,63 @@ function isParameterBim(raw: RawParameter): boolean {
   // 1. Are part of standard IFC property sets
   if (raw.sourceGroup.startsWith('Pset_')) return true
 
-  // 2. Are part of standard Revit categories
+  // 2. Are part of standard Revit categories and custom BIM groups
   const revitGroups = new Set([
+    'Base',
     'Constraints',
     'Dimensions',
     'Identity Data',
     'Phasing',
     'Structural',
     'Other',
-    'Graphics'
+    'Graphics',
+    'Materials',
+    'Construction',
+    'Analytical Properties',
+    'Forces',
+    'Parameters', // Standard parameters group
+    'Framing', // Custom framing parameters
+    'FM' // Facility management parameters
   ])
   if (revitGroups.has(raw.sourceGroup)) return true
 
   // 3. Have specific metadata indicating BIM origin
-  if (raw.metadata?.isBim) return true
+  if (raw.metadata?.isSystem) return true
 
   // 4. Are part of standard parameter groups
-  if (raw.sourceGroup === 'Parameters') return true
+  if (raw.sourceGroup === 'Parameters' || raw.id.startsWith('Parameters.')) return true
+
+  // 5. Check for common BIM parameter patterns
+  const bimPatterns = [
+    /^IFCBUILDING/i,
+    /^IFCWALL/i,
+    /^IFCSLAB/i,
+    /^IFCWINDOW/i,
+    /^IFCDOOR/i,
+    /^IFC/i,
+    /\.Type$/,
+    /\.Category$/,
+    /\.Family$/,
+    /\.Material$/,
+    /^FM_/i, // Facility management prefix
+    /^CNC_/i, // CNC parameters
+    /^Framing/i, // Framing parameters
+    /Mark$/, // Mark parameters
+    /Number$/, // Number parameters
+    /Position$/, // Position parameters
+    /Configuration$/ // Configuration parameters
+  ]
+  if (bimPatterns.some((pattern) => pattern.test(raw.id))) return true
+
+  // 6. Check for nested parameters
+  if (raw.metadata?.isNested && raw.metadata.parentKey) {
+    // If parent parameter is BIM, consider this BIM too
+    const parentId = raw.metadata.parentKey
+    const parentGroup = parentId.split('.')[0]
+    if (revitGroups.has(parentGroup) || parentGroup.startsWith('Pset_')) {
+      return true
+    }
+  }
 
   // Otherwise consider it a user parameter
   return false
@@ -201,12 +466,22 @@ function isParameterBim(raw: RawParameter): boolean {
 
 /**
  * Create selected parameters from available parameters
+ * Assigns order based on parameter group and name
  */
 export function createSelectedParameters(
   availableParams: (AvailableBimParameter | AvailableUserParameter)[],
   existingSelected: SelectedParameter[] = []
 ): SelectedParameter[] {
-  return availableParams.map((param, index) => {
+  // Sort parameters by group and name for consistent ordering
+  const sortedParams = [...availableParams].sort((a, b) => {
+    const groupA = 'sourceGroup' in a ? a.sourceGroup : a.group
+    const groupB = 'sourceGroup' in b ? b.sourceGroup : b.group
+    if (groupA !== groupB) return groupA.localeCompare(groupB)
+    return a.name.localeCompare(b.name)
+  })
+
+  // Create selected parameters with order
+  return sortedParams.map((param, index) => {
     const existing = existingSelected.find((p) => p.id === param.id)
     if (existing) {
       return {
@@ -222,6 +497,7 @@ export function createSelectedParameters(
 
 /**
  * Create column definitions from selected parameters
+ * Preserves existing column properties if available
  */
 export function createColumnDefinitions(
   selectedParams: SelectedParameter[],
@@ -243,6 +519,47 @@ export function createColumnDefinitions(
   })
 }
 
+/**
+ * Create BIM column definition from parameter
+ */
+export function createBimColumnDefinition(
+  param: AvailableBimParameter
+): ColumnDefinition {
+  // First create selected parameter
+  const selected = createSelectedParameter(param, 0, true)
+
+  // Then create column definition
+  return createColumnDefinition(selected)
+}
+
+/**
+ * Create User column definition from parameter
+ */
+export function createUserColumnDefinition(
+  param: AvailableUserParameter
+): ColumnDefinition {
+  // First create selected parameter
+  const selected = createSelectedParameter(param, 0, true)
+
+  // Then create column definition
+  return createColumnDefinition(selected)
+}
+
+/**
+ * Create column definitions from parameters with proper type handling
+ */
+export function createTypedColumnDefinitions(
+  params: (AvailableBimParameter | AvailableUserParameter)[]
+): ColumnDefinition[] {
+  return params.map((param, index) => {
+    // Create selected parameter first
+    const selected = createSelectedParameter(param, index, true)
+
+    // Then create column definition
+    return createColumnDefinition(selected)
+  })
+}
+
 // Utilities
 
 function initParameterStats(): ParameterStats {
@@ -254,20 +571,32 @@ function initParameterStats(): ParameterStats {
   }
 }
 
-function addRawParameter(
-  params: RawParameter[],
+function updateParameterStats(
+  stats: ParameterStats,
   key: string,
-  value: unknown,
-  category: string | undefined,
-  stats: ParameterStats
+  _value: unknown
 ): void {
   stats.raw++
   stats.unique.add(key)
 
   // Handle parameter grouping
   const parts = key.split('.')
-  const group = parts.length > 1 ? parts[0] : 'Parameters'
-  const paramName = parts[parts.length - 1]
+  let group: string
+  let paramName: string
+
+  if (key.startsWith('Parameters.')) {
+    // Handle Parameters.* format
+    group = 'Parameters'
+    paramName = parts.slice(1).join('.')
+  } else if (parts.length > 1) {
+    // Handle other dot notation
+    group = parts[0]
+    paramName = parts[1]
+  } else {
+    // Default case
+    group = 'Parameters'
+    paramName = key
+  }
 
   if (!stats.groups.has(group)) {
     stats.groups.set(group, new Set())
@@ -277,20 +606,6 @@ function addRawParameter(
   if (!key.startsWith('__')) {
     stats.activeGroups.get(group)!.add(paramName)
   }
-
-  // Add raw parameter with full context
-  params.push({
-    id: key,
-    name: paramName,
-    value,
-    sourceGroup: group,
-    metadata: {
-      category,
-      fullKey: key,
-      isSystem: key.startsWith('__'),
-      group
-    }
-  })
 }
 
 function inferParameterType(value: ParameterValue, raw: RawParameter): BimValueType {

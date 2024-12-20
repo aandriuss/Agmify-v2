@@ -332,6 +332,7 @@ import { TailwindBreakpoints } from '~~/lib/common/helpers/tailwind'
 
 import { useMutation, useQuery } from '@vue/apollo-composable'
 import gql from 'graphql-tag'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 // GraphQL Mutation and Query for user settings
 const UPDATE_USER_SETTINGS = gql`
@@ -349,9 +350,9 @@ const GET_USER_SETTINGS = gql`
 `
 
 onMounted(() => {
-  const settings = result.value?.activeUser?.userSettings
+  const settings = result.value?.activeUser?.userSettings ?? { controlsWidth: 400 }
   if (settings?.controlsWidth) {
-    width.value = settings.controlsWidth // Load saved width
+    width.value = settings.controlsWidth
   }
 })
 
@@ -365,12 +366,16 @@ let startX = 0
 
 // Add mutation and query for GraphQL settings
 const { mutate: updateSettings } = useMutation(UPDATE_USER_SETTINGS)
-const { result } = useQuery(GET_USER_SETTINGS)
+const { result } = useQuery<{
+  activeUser: { userSettings: { controlsWidth: number } }
+}>(GET_USER_SETTINGS)
 
 watch(
   result,
   (newResult) => {
-    width.value = newResult.activeUser.userSettings.controlsWidth || width.value
+    if (newResult?.activeUser?.userSettings?.controlsWidth) {
+      width.value = newResult.activeUser.userSettings.controlsWidth
+    }
   },
   { immediate: true }
 )
@@ -411,7 +416,7 @@ if (import.meta.client) {
           }
         })
       } catch (error) {
-        console.error('Failed to save width:', error)
+        debug.log(DebugCategories.VALIDATION, 'Failed to save width:', error)
       }
     }
   })

@@ -1,6 +1,20 @@
 import type { ParameterValue, BimValueType, UserValueType } from '../parameters'
 
 /**
+ * Parameter metadata interface
+ */
+export interface ParameterMetadata {
+  category?: string
+  fullKey?: string
+  isSystem?: boolean
+  group?: string
+  elementId?: string
+  isNested?: boolean
+  parentKey?: string
+  isJsonString?: boolean
+}
+
+/**
  * Raw parameter from BIM before any processing
  */
 export interface RawParameter {
@@ -8,7 +22,7 @@ export interface RawParameter {
   name: string
   value: unknown
   sourceGroup: string
-  metadata?: Record<string, unknown>
+  metadata: ParameterMetadata
 }
 
 /**
@@ -25,6 +39,7 @@ export interface AvailableBimParameter {
   isSystem: boolean
   category?: string
   description?: string
+  metadata?: ParameterMetadata
 }
 
 /**
@@ -40,6 +55,7 @@ export interface AvailableUserParameter {
   equation?: string
   category?: string
   description?: string
+  metadata?: ParameterMetadata
 }
 
 /**
@@ -61,6 +77,7 @@ export interface SelectedParameter {
   order: number
   category?: string
   description?: string
+  metadata?: ParameterMetadata
 }
 
 /**
@@ -106,7 +123,8 @@ export const isRawParameter = (param: unknown): param is RawParameter => {
     typeof p.id === 'string' &&
     typeof p.name === 'string' &&
     typeof p.sourceGroup === 'string' &&
-    'value' in p
+    'value' in p &&
+    typeof p.metadata === 'object'
   )
 }
 
@@ -169,16 +187,25 @@ export const createAvailableBimParameter = (
   type: BimValueType,
   processedValue: ParameterValue,
   isSystem = false
-): AvailableBimParameter => ({
-  kind: 'bim',
-  id: raw.id,
-  name: raw.name,
-  type,
-  value: processedValue,
-  sourceGroup: raw.sourceGroup,
-  currentGroup: raw.sourceGroup,
-  isSystem: isSystem || raw.name.startsWith('__') || raw.sourceGroup.startsWith('__')
-})
+): AvailableBimParameter => {
+  // Handle Parameters.* format
+  const sourceGroup = raw.id.startsWith('Parameters.') ? 'Parameters' : raw.sourceGroup
+  const name = raw.id.startsWith('Parameters.')
+    ? raw.id.split('.').slice(1).join('.')
+    : raw.name
+
+  return {
+    kind: 'bim',
+    id: raw.id,
+    name,
+    type,
+    value: processedValue,
+    sourceGroup,
+    currentGroup: sourceGroup,
+    isSystem: isSystem || raw.name.startsWith('__') || sourceGroup.startsWith('__'),
+    metadata: raw.metadata
+  }
+}
 
 export const createAvailableUserParameter = (
   id: string,
@@ -186,7 +213,8 @@ export const createAvailableUserParameter = (
   type: UserValueType,
   value: ParameterValue,
   group: string,
-  equation?: string
+  equation?: string,
+  metadata?: ParameterMetadata
 ): AvailableUserParameter => ({
   kind: 'user',
   id,
@@ -194,7 +222,8 @@ export const createAvailableUserParameter = (
   type,
   value,
   group,
-  equation
+  equation,
+  metadata
 })
 
 export const createSelectedParameter = (
@@ -214,7 +243,8 @@ export const createSelectedParameter = (
   visible,
   order,
   category: available.category,
-  description: available.description
+  description: available.description,
+  metadata: available.metadata
 })
 
 export const createColumnDefinition = (

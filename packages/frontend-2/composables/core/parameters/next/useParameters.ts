@@ -7,10 +7,10 @@ import type {
   AvailableUserParameter,
   SelectedParameter,
   ColumnDefinition
-} from '@/composables/core/parameters/store/types'
+} from '../store/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { UserValueType } from '~/composables/core/types/parameters'
-import { convertToParameterValue } from '~/composables/core/parameters/utils/parameter-conversion'
+import { convertToParameterValue } from './utils/parameter-processing'
 
 interface UseParametersOptions {
   selectedParentCategories: ComputedRef<string[]>
@@ -59,20 +59,65 @@ interface UseParametersReturn {
 export function useParameters(options: UseParametersOptions): UseParametersReturn {
   const store = useParameterStore()
 
+  // Track last processed categories to prevent unnecessary reprocessing
+  let lastProcessedParentCategories: string[] = []
+  let lastProcessedChildCategories: string[] = []
+
   // Watch for category changes
   watch(
     [options.selectedParentCategories, options.selectedChildCategories],
     ([newParent, newChild], [oldParent, oldChild]) => {
-      if (
-        JSON.stringify(newParent) !== JSON.stringify(oldParent) ||
-        JSON.stringify(newChild) !== JSON.stringify(oldChild)
-      ) {
+      const parentCatsChanged =
+        JSON.stringify(newParent) !== JSON.stringify(lastProcessedParentCategories)
+      const childCatsChanged =
+        JSON.stringify(newChild) !== JSON.stringify(lastProcessedChildCategories)
+
+      if (parentCatsChanged || childCatsChanged) {
+        debug.startState(DebugCategories.PARAMETERS, 'Processing category change')
         debug.log(DebugCategories.PARAMETERS, 'Categories changed', {
           oldParent,
           newParent,
           oldChild,
-          newChild
+          newChild,
+          currentState: {
+            parent: {
+              raw: store.parentRawParameters.value?.length || 0,
+              available: {
+                bim: store.parentAvailableBimParameters.value?.length || 0,
+                user: store.parentAvailableUserParameters.value?.length || 0
+              },
+              selected: store.parentSelectedParameters.value?.length || 0
+            },
+            child: {
+              raw: store.childRawParameters.value?.length || 0,
+              available: {
+                bim: store.childAvailableBimParameters.value?.length || 0,
+                user: store.childAvailableUserParameters.value?.length || 0
+              },
+              selected: store.childSelectedParameters.value?.length || 0
+            }
+          }
         })
+
+        try {
+          // Update last processed categories
+          lastProcessedParentCategories = [...newParent]
+          lastProcessedChildCategories = [...newChild]
+
+          debug.log(DebugCategories.PARAMETERS, 'Categories updated', {
+            parent: newParent,
+            child: newChild
+          })
+
+          debug.completeState(DebugCategories.PARAMETERS, 'Category change processed')
+        } catch (err) {
+          debug.error(
+            DebugCategories.PARAMETERS,
+            'Error processing category change:',
+            err
+          )
+          store.setError(err instanceof Error ? err : new Error(String(err)))
+        }
       }
     },
     { immediate: true }
@@ -81,6 +126,10 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
   // Initialize on mount
   onMounted(() => {
     debug.log(DebugCategories.PARAMETERS, 'Parameters composable mounted')
+
+    // Set initial categories
+    lastProcessedParentCategories = [...options.selectedParentCategories.value]
+    lastProcessedChildCategories = [...options.selectedChildCategories.value]
   })
 
   return {
@@ -106,12 +155,58 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
 
     // Parameter management
     addUserParameter: ({ isParent, name, type, group, initialValue }) => {
+      debug.log(DebugCategories.PARAMETERS, 'Adding user parameter', {
+        isParent,
+        name,
+        type,
+        group,
+        initialValue
+      })
+
       const parameterValue =
         initialValue !== undefined ? convertToParameterValue(initialValue) : null
       store.addUserParameter(isParent, name, type, group, parameterValue)
+
+      debug.log(DebugCategories.PARAMETERS, 'User parameter added', {
+        state: {
+          available: {
+            user: isParent
+              ? store.parentAvailableUserParameters.value?.length || 0
+              : store.childAvailableUserParameters.value?.length || 0
+          }
+        }
+      })
     },
     removeParameter: (id, isParent) => {
+      debug.log(DebugCategories.PARAMETERS, 'Removing parameter', {
+        id,
+        isParent,
+        state: {
+          available: {
+            bim: isParent
+              ? store.parentAvailableBimParameters.value?.length || 0
+              : store.childAvailableBimParameters.value?.length || 0,
+            user: isParent
+              ? store.parentAvailableUserParameters.value?.length || 0
+              : store.childAvailableUserParameters.value?.length || 0
+          }
+        }
+      })
+
       store.removeParameter(isParent, id)
+
+      debug.log(DebugCategories.PARAMETERS, 'Parameter removed', {
+        state: {
+          available: {
+            bim: isParent
+              ? store.parentAvailableBimParameters.value?.length || 0
+              : store.childAvailableBimParameters.value?.length || 0,
+            user: isParent
+              ? store.parentAvailableUserParameters.value?.length || 0
+              : store.childAvailableUserParameters.value?.length || 0
+          }
+        }
+      })
     },
     updateParameterVisibility: (id, visible, isParent) => {
       store.updateParameterVisibility(id, visible, isParent)

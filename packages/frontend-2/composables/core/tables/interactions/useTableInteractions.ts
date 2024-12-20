@@ -1,7 +1,6 @@
 import { ref, watch } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
-  ColumnDef,
   NamedTableConfig,
   TableInitializationInstance,
   Store
@@ -13,15 +12,12 @@ export interface TableInteractionsState {
   currentTable: NamedTableConfig | null
   selectedParentCategories: string[]
   selectedChildCategories: string[]
-  currentTableColumns: ColumnDef[]
-  currentDetailColumns: ColumnDef[]
 }
 
 export interface TableInteractionsOptions {
   store: Store
   state: TableInteractionsState
   initComponent: TableInitializationInstance
-  updateCurrentColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
   handleError: (error: unknown) => void
   onClose?: () => void
 }
@@ -31,7 +27,7 @@ export interface TableInteractionsOptions {
  * Handles table management, saving, and UI state
  */
 export function useTableInteractions(options: TableInteractionsOptions) {
-  const { store, updateCurrentColumns, handleError, onClose } = options
+  const { store, handleError, onClose } = options
 
   // Create a reactive state
   const state = ref<TableInteractionsState>({
@@ -81,16 +77,10 @@ export function useTableInteractions(options: TableInteractionsOptions) {
       // Validate table name
       const trimmedName = validateTableName(state.value.tableName)
 
-      // Initialize empty arrays for new tables
-      const currentTableColumns = state.value.currentTableColumns || []
-      const currentDetailColumns = state.value.currentDetailColumns || []
-
       // Create table config
       const tableConfig: Partial<NamedTableConfig> = {
         name: trimmedName,
         displayName: trimmedName,
-        parentColumns: currentTableColumns,
-        childColumns: currentDetailColumns,
         categoryFilters: {
           selectedParentCategories: state.value.selectedParentCategories || [],
           selectedChildCategories: state.value.selectedChildCategories || []
@@ -102,41 +92,18 @@ export function useTableInteractions(options: TableInteractionsOptions) {
       await store.lifecycle.update({
         selectedTableId: state.value.selectedTableId,
         currentTableId: state.value.selectedTableId,
-        tableName: trimmedName,
-        currentTableColumns,
-        currentDetailColumns,
-        mergedTableColumns: currentTableColumns,
-        mergedDetailColumns: currentDetailColumns
+        tableName: trimmedName
       })
-
-      // Update columns
-      await updateCurrentColumns(currentTableColumns, currentDetailColumns)
 
       debug.completeState(DebugCategories.TABLE_UPDATES, 'Table save complete', {
         id: state.value.selectedTableId,
-        name: trimmedName,
-        parentColumnsCount: currentTableColumns.length,
-        childColumnsCount: currentDetailColumns.length
+        name: trimmedName
       })
 
       return tableConfig
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to save table')
       debug.error(DebugCategories.ERROR, 'Error saving table:', error)
-      handleError(error)
-      throw error
-    }
-  }
-
-  async function handleBothColumnsUpdate(updates: {
-    parentColumns: ColumnDef[]
-    childColumns: ColumnDef[]
-  }) {
-    try {
-      debug.log(DebugCategories.COLUMNS, 'Both columns update requested', updates)
-      await updateCurrentColumns(updates.parentColumns, updates.childColumns)
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to update columns')
       handleError(error)
       throw error
     }
@@ -179,7 +146,6 @@ export function useTableInteractions(options: TableInteractionsOptions) {
     // Event Handlers
     handleClose,
     handleSaveTable,
-    handleBothColumnsUpdate,
     updateTablesArray
   }
 }

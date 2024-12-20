@@ -6,14 +6,15 @@ import type {
   TableRow,
   DataState
 } from '~/composables/core/types'
+import { createBimColumnDefWithDefaults } from '~/composables/core/types'
 import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
-import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
 import { useBIMElements } from './useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import type { RawParameter } from '~/composables/core/parameters/store/types'
-import { extractRawParameters } from '~/composables/core/parameters/next/utils/parameter-processing'
+import { convertToParameterValue } from '~/composables/core/parameters/next/utils/parameter-processing'
+import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
+import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
 
 interface UseElementsDataOptions {
   selectedParentCategories: Ref<string[]>
@@ -66,127 +67,27 @@ export function useElementsData(
     child: [] as string[]
   })
 
-  async function processParametersInChunks(
-    elements: ElementData[],
-    chunkSize = 100
-  ): Promise<RawParameter[]> {
-    const chunks = []
-    for (let i = 0; i < elements.length; i += chunkSize) {
-      chunks.push(elements.slice(i, i + chunkSize))
-    }
-
-    debug.log(DebugCategories.PARAMETERS, 'Processing parameters in chunks', {
-      totalElements: elements.length,
-      chunkSize,
-      chunkCount: chunks.length
-    })
-
-    const rawParams: RawParameter[] = []
-
-    for (const chunk of chunks) {
-      // Process chunk using centralized parameter extraction
-      const chunkParams = extractRawParameters(chunk)
-      rawParams.push(...chunkParams)
-
-      // Allow other tasks to run between chunks
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    }
-
-    debug.log(DebugCategories.PARAMETERS, 'Parameter extraction complete', {
-      extractedCount: rawParams.length
-    })
-
-    return rawParams
-  }
-
-  async function processParameters(elements: ElementData[], isParent: boolean) {
-    debug.startState(
-      DebugCategories.PARAMETERS,
-      `Processing ${isParent ? 'parent' : 'child'} parameters`
-    )
-
-    // Extract and validate raw parameters using chunked processing
-    const extractedParams = await processParametersInChunks(elements)
-    if (!Array.isArray(extractedParams)) {
-      throw new Error('Failed to extract parameters: Invalid response format')
-    }
-
-    debug.log(DebugCategories.PARAMETERS, 'Raw parameters extracted', {
-      count: extractedParams.length,
-      isParent,
-      sample: extractedParams[0]
-    })
-
-    // Update total count for progress tracking
-    if (processingState.value.totalCount === 0) {
-      processingState.value.totalCount = extractedParams.length
-    } else {
-      // Add to total count for subsequent runs
-      processingState.value.totalCount += extractedParams.length
-    }
-
-    // Process parameters using parameter store
-    await parameterStore.processRawParameters(extractedParams, isParent)
-
-    // Get store state after processing
-    const storeState = isParent
-      ? {
-          raw: parameterStore.parentRawParameters.value,
-          available: {
-            bim: parameterStore.parentAvailableBimParameters.value,
-            user: parameterStore.parentAvailableUserParameters.value
-          },
-          selected: parameterStore.parentSelectedParameters.value,
-          columns: parameterStore.parentColumnDefinitions.value
-        }
-      : {
-          raw: parameterStore.childRawParameters.value,
-          available: {
-            bim: parameterStore.childAvailableBimParameters.value,
-            user: parameterStore.childAvailableUserParameters.value
-          },
-          selected: parameterStore.childSelectedParameters.value,
-          columns: parameterStore.childColumnDefinitions.value
-        }
-
-    // Log detailed parameter store state after processing
-    debug.log(DebugCategories.PARAMETERS, 'Parameter store state after processing', {
-      type: isParent ? 'parent' : 'child',
-      extracted: {
-        count: extractedParams.length,
-        sample: extractedParams[0]
+  // Initialize table flow
+  const {
+    initialize: initializeTable,
+    isInitialized: _isInitialized,
+    error: _tableError
+  } = useTableFlow({
+    currentTable: computed(() => null), // No current table, use defaults
+    defaultConfig: {
+      id: 'default-table',
+      name: 'Default Table',
+      displayName: 'Default Table',
+      parentColumns: [],
+      childColumns: [],
+      categoryFilters: {
+        selectedParentCategories: [],
+        selectedChildCategories: []
       },
-      store: {
-        raw: {
-          count: storeState.raw.length,
-          sample: storeState.raw[0]
-        },
-        available: {
-          bim: {
-            count: storeState.available.bim.length,
-            sample: storeState.available.bim[0]
-          },
-          user: {
-            count: storeState.available.user.length,
-            sample: storeState.available.user[0]
-          }
-        },
-        selected: {
-          count: storeState.selected.length,
-          sample: storeState.selected[0]
-        },
-        columns: {
-          count: storeState.columns.length,
-          sample: storeState.columns[0]
-        }
-      }
-    })
-
-    debug.completeState(
-      DebugCategories.PARAMETERS,
-      `Completed ${isParent ? 'parent' : 'child'} parameter processing`
-    )
-  }
+      selectedParameterIds: [],
+      lastUpdateTimestamp: Date.now()
+    }
+  })
 
   async function processElementsInChunks(
     elements: ElementData[],
@@ -296,34 +197,19 @@ export function useElementsData(
       child: [...currentChildCats]
     }
 
-    debug.startState(DebugCategories.INITIALIZATION, 'Processing elements')
-    processingState.value.isProcessingElements = true
-    processingState.value.processedCount = 0
-    processingState.value.totalCount = 0
-    processingState.value.error = undefined
-
     try {
+      debug.startState(DebugCategories.INITIALIZATION, 'Processing elements')
+      processingState.value.isProcessingElements = true
+      processingState.value.processedCount = 0
+      processingState.value.totalCount = 0
+      processingState.value.error = undefined
+
       // Clear existing data
       elementsMap.value.clear()
       childElementsList.value = []
 
-      // Get current categories or use defaults
-      const selectedParentCats =
-        currentParentCats.length > 0
-          ? currentParentCats
-          : defaultTable.categoryFilters.selectedParentCategories
-
-      const selectedChildCats =
-        currentChildCats.length > 0
-          ? currentChildCats
-          : defaultTable.categoryFilters.selectedChildCategories
-
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Processing with categories', {
-        selectedParentCats,
-        selectedChildCats,
-        elementCount: bimElements.allElements.value.length,
-        forceProcess
-      })
+      const selectedParentCats = options.selectedParentCategories.value
+      const selectedChildCats = options.selectedChildCategories.value
 
       // Process elements in chunks
       await processElementsInChunks(
@@ -336,78 +222,146 @@ export function useElementsData(
         const parentElements = Array.from(elementsMap.value.values())
         const childElements = childElementsList.value
 
-        // Process parameters in parallel
-        const results = await Promise.allSettled([
-          processParameters(parentElements, true),
-          processParameters(childElements, false)
-        ])
-
-        // Handle any errors from parallel processing
-        const errors: Error[] = []
-        const paramTypes = ['parent', 'child'] as const
-
-        results.forEach((result, index) => {
-          if (result.status === 'rejected') {
-            const paramType = paramTypes[index]
-            const error = result.reason as Error | unknown
-            const formattedError =
-              error instanceof Error
-                ? error
-                : new Error(
-                    `Failed to process ${paramType} parameters: ${String(error)}`
-                  )
-
-            debug.error(
-              DebugCategories.ERROR,
-              `Error processing ${paramType} parameters:`,
-              formattedError
-            )
-            errors.push(formattedError)
-          }
+        debug.log(DebugCategories.DATA_TRANSFORM, 'Processing parameters', {
+          parentCount: parentElements.length,
+          childCount: childElements.length
         })
 
-        if (errors.length > 0) {
-          const errorMessage = errors.map((err) => err.message).join('\n')
-          throw new Error(`Parameter processing failed:\n${errorMessage}`)
+        // Extract and process parameters
+        debug.log(DebugCategories.PARAMETERS, 'Processing parameters', {
+          parentCount: parentElements.length,
+          childCount: childElements.length
+        })
+
+        // Get current parameter state
+        const parentState = {
+          raw: parameterStore.parentRawParameters.value || [],
+          available: {
+            bim: parameterStore.parentAvailableBimParameters.value || [],
+            user: parameterStore.parentAvailableUserParameters.value || []
+          },
+          selected: parameterStore.parentSelectedParameters.value || [],
+          columns: parameterStore.parentColumnDefinitions.value || []
         }
 
-        // Create table data with processed parameters
-        debug.log(DebugCategories.DATA_TRANSFORM, 'Creating table data', {
-          parentCount: elementsMap.value.size,
-          childCount: childElementsList.value.length,
-          parameters: {
-            parent: {
-              raw: parameterStore.parentRawParameters.value.length,
-              available: {
-                bim: parameterStore.parentAvailableBimParameters.value.length,
-                user: parameterStore.parentAvailableUserParameters.value.length
-              },
-              selected: parameterStore.parentSelectedParameters.value.length,
-              columns: parameterStore.parentColumnDefinitions.value.length
+        const childState = {
+          raw: parameterStore.childRawParameters.value || [],
+          available: {
+            bim: parameterStore.childAvailableBimParameters.value || [],
+            user: parameterStore.childAvailableUserParameters.value || []
+          },
+          selected: parameterStore.childSelectedParameters.value || [],
+          columns: parameterStore.childColumnDefinitions.value || []
+        }
+
+        // Verify parameters exist
+        if (!parentState.raw.length && !childState.raw.length) {
+          debug.error(DebugCategories.PARAMETERS, 'No parameters found in store', {
+            parentElements: parentElements.length,
+            childElements: childElements.length
+          })
+          throw new Error('No parameters found in store')
+        }
+
+        debug.log(DebugCategories.PARAMETERS, 'Using parameters from store', {
+          parent: {
+            raw: parentState.raw.length,
+            available: {
+              bim: parentState.available.bim.length,
+              user: parentState.available.user.length
             },
-            child: {
-              raw: parameterStore.childRawParameters.value.length,
-              available: {
-                bim: parameterStore.childAvailableBimParameters.value.length,
-                user: parameterStore.childAvailableUserParameters.value.length
-              },
-              selected: parameterStore.childSelectedParameters.value.length,
-              columns: parameterStore.childColumnDefinitions.value.length
-            }
+            selected: parentState.selected.length,
+            columns: parentState.columns.length
+          },
+          child: {
+            raw: childState.raw.length,
+            available: {
+              bim: childState.available.bim.length,
+              user: childState.available.user.length
+            },
+            selected: childState.selected.length,
+            columns: childState.columns.length
           }
         })
 
-        // Map elements to table rows with processed parameters
-        const processedData = Array.from(elementsMap.value.values()).map((element) => {
-          // Get only visible selected parent parameters from parameter store
-          const parentParams = parameterStore.parentSelectedParameters.value
-            .filter((param) => param.visible)
-            .reduce((acc, param) => {
-              if (param.value !== undefined) {
-                acc[param.id] = param.value as ParameterValue
+        // Log parameter groups for debugging
+        const parameterGroups = {
+          parent: Array.from(
+            new Set(
+              parentElements.flatMap((el) =>
+                Object.keys(el.parameters || {}).map((key) => key.split('.')[0])
+              )
+            )
+          ),
+          child: Array.from(
+            new Set(
+              childElements.flatMap((el) =>
+                Object.keys(el.parameters || {}).map((key) => key.split('.')[0])
+              )
+            )
+          )
+        }
+
+        debug.log(DebugCategories.PARAMETERS, 'Parameter groups found', parameterGroups)
+
+        debug.log(DebugCategories.PARAMETERS, 'Parameters processed', {
+          parent: parentState
+            ? {
+                raw: parentState.raw?.length || 0,
+                available: {
+                  bim: parentState.available.bim?.length || 0,
+                  user: parentState.available.user?.length || 0
+                }
               }
-              return acc
-            }, {} as Record<string, ParameterValue>)
+            : { raw: 0, available: { bim: 0, user: 0 } },
+          child: childState
+            ? {
+                raw: childState.raw?.length || 0,
+                available: {
+                  bim: childState.available.bim?.length || 0,
+                  user: childState.available.user?.length || 0
+                }
+              }
+            : { raw: 0, available: { bim: 0, user: 0 } }
+        })
+
+        // Create table data with processed parameters
+        const processedData = Array.from(elementsMap.value.values()).map((element) => {
+          // Get selected parent parameters from parameter store
+          const parentParams = (
+            parameterStore.parentSelectedParameters.value || []
+          ).reduce<Record<string, ParameterValue>>((acc, param) => {
+            // Only include visible parameters
+            if (param.visible) {
+              // Handle nested parameters
+              if (param.metadata?.isNested && param.metadata.parentKey) {
+                // Get parent value and parse nested value
+                const parentValue = element.parameters[param.metadata.parentKey]
+                if (typeof parentValue === 'string' && parentValue.startsWith('{')) {
+                  try {
+                    const parsed = JSON.parse(parentValue) as Record<string, unknown>
+                    const nestedValue = parsed[param.name]
+                    if (nestedValue !== undefined) {
+                      acc[param.id] = convertToParameterValue(nestedValue)
+                    }
+                  } catch (err) {
+                    debug.warn(
+                      DebugCategories.PARAMETERS,
+                      `Failed to parse nested parameter ${param.id}:`,
+                      err
+                    )
+                  }
+                }
+              } else {
+                // Get regular parameter value and convert it properly
+                const value = element.parameters[param.id]
+                if (value !== undefined) {
+                  acc[param.id] = convertToParameterValue(value)
+                }
+              }
+            }
+            return acc
+          }, {} as Record<string, ParameterValue>)
 
           // Create parent row
           const parentRow: ElementData = {
@@ -417,15 +371,47 @@ export function useElementsData(
             details: childElementsList.value
               .filter((child) => child.host === element.mark)
               .map((child) => {
-                // Get only visible selected child parameters from parameter store
-                const childParams = parameterStore.childSelectedParameters.value
-                  .filter((param) => param.visible)
-                  .reduce((acc, param) => {
-                    if (param.value !== undefined) {
-                      acc[param.id] = param.value as ParameterValue
+                // Get selected child parameters from parameter store
+                const childParams = (
+                  parameterStore.childSelectedParameters.value || []
+                ).reduce<Record<string, ParameterValue>>((acc, param) => {
+                  // Only include visible parameters
+                  if (param.visible) {
+                    // Handle nested parameters
+                    if (param.metadata?.isNested && param.metadata.parentKey) {
+                      // Get parent value and parse nested value
+                      const parentValue = child.parameters[param.metadata.parentKey]
+                      if (
+                        typeof parentValue === 'string' &&
+                        parentValue.startsWith('{')
+                      ) {
+                        try {
+                          const parsed = JSON.parse(parentValue) as Record<
+                            string,
+                            unknown
+                          >
+                          const nestedValue = parsed[param.name]
+                          if (nestedValue !== undefined) {
+                            acc[param.id] = convertToParameterValue(nestedValue)
+                          }
+                        } catch (err) {
+                          debug.warn(
+                            DebugCategories.PARAMETERS,
+                            `Failed to parse nested parameter ${param.id}:`,
+                            err
+                          )
+                        }
+                      }
+                    } else {
+                      // Get regular parameter value and convert it properly
+                      const value = child.parameters[param.id]
+                      if (value !== undefined) {
+                        acc[param.id] = convertToParameterValue(value)
+                      }
                     }
-                    return acc
-                  }, {} as Record<string, ParameterValue>)
+                  }
+                  return acc
+                }, {} as Record<string, ParameterValue>)
 
                 // Create child row
                 return {
@@ -449,14 +435,30 @@ export function useElementsData(
         debug.log(DebugCategories.DATA_TRANSFORM, 'Store updated', {
           processedCount: processedData.length,
           withDetails: processedData.filter((d) => d.details?.length ?? 0 > 0).length,
-          visibleParameters: {
-            parent: parameterStore.parentSelectedParameters.value.filter(
-              (p) => p.visible
-            ).length,
-            child: parameterStore.childSelectedParameters.value.filter((p) => p.visible)
-              .length
-          },
-          processingTime: `${Date.now() - performance.now()}ms`
+          parameters: {
+            parent: parentState
+              ? {
+                  raw: parentState.raw?.length || 0,
+                  available: {
+                    bim: parentState.available.bim?.length || 0,
+                    user: parentState.available.user?.length || 0
+                  },
+                  selected: parentState.selected?.length || 0,
+                  columns: parentState.columns?.length || 0
+                }
+              : { raw: 0, available: { bim: 0, user: 0 }, selected: 0, columns: 0 },
+            child: childState
+              ? {
+                  raw: childState.raw?.length || 0,
+                  available: {
+                    bim: childState.available.bim?.length || 0,
+                    user: childState.available.user?.length || 0
+                  },
+                  selected: childState.selected?.length || 0,
+                  columns: childState.columns?.length || 0
+                }
+              : { raw: 0, available: { bim: 0, user: 0 }, selected: 0, columns: 0 }
+          }
         })
 
         debug.completeState(DebugCategories.INITIALIZATION, 'Elements processed')
@@ -580,28 +582,28 @@ export function useElementsData(
   )
 
   // Watch for BIM elements changes
-  watch(
-    bimElements.allElements,
-    async (newElements, oldElements) => {
-      debug.log(DebugCategories.DATA_TRANSFORM, 'BIM elements changed', {
-        newCount: newElements?.length,
-        oldCount: oldElements?.length,
-        processing: processingState.value.isProcessingElements,
-        categories: {
-          parent: options.selectedParentCategories.value,
-          child: options.selectedChildCategories.value
-        }
-      })
-
-      // Only process if elements actually changed and we're not already processing
-      if (!processingState.value.isProcessingElements && newElements?.length) {
-        // Force process on initial watch trigger (when oldElements is undefined)
-        const isInitialTrigger = oldElements === undefined
-        await processElements(isInitialTrigger)
+  watch(bimElements.allElements, async (newElements, oldElements) => {
+    debug.log(DebugCategories.DATA_TRANSFORM, 'BIM elements changed', {
+      newCount: newElements?.length,
+      oldCount: oldElements?.length,
+      processing: processingState.value.isProcessingElements,
+      categories: {
+        parent: options.selectedParentCategories.value,
+        child: options.selectedChildCategories.value
       }
-    },
-    { immediate: true }
-  )
+    })
+
+    // Skip initial watch trigger to avoid race conditions
+    if (oldElements === undefined) {
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Skipping initial watch trigger')
+      return
+    }
+
+    // Only process if elements actually changed and we're not already processing
+    if (!processingState.value.isProcessingElements && newElements?.length) {
+      await processElements(true)
+    }
+  })
 
   const updateCategories = async (
     parentCategories: string[],
@@ -663,13 +665,68 @@ export function useElementsData(
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
       processingState.value.isProcessingElements = true
 
-      // Initialize BIM elements first
+      // Initialize BIM elements first to get parameters
       await bimElements.initializeElements()
       debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
 
-      // Force process elements and parameters
+      // Process elements and parameters
       await processElements(true)
       debug.log(DebugCategories.INITIALIZATION, 'Elements and parameters processed')
+
+      // Create default columns from available parameters
+      const parentColumns = parameterStore.parentAvailableBimParameters.value.map(
+        (param, index) => {
+          const selected = createSelectedParameter(param, index)
+          return createBimColumnDefWithDefaults({
+            id: selected.id,
+            name: selected.name,
+            field: selected.id,
+            header: selected.name,
+            visible: selected.visible,
+            removable: false,
+            order: selected.order,
+            description: selected.description,
+            category: selected.category,
+            type: param.type,
+            sourceValue: typeof param.value === 'object' ? null : param.value,
+            fetchedGroup: param.sourceGroup,
+            currentGroup: param.sourceGroup
+          })
+        }
+      )
+
+      const childColumns = parameterStore.childAvailableBimParameters.value.map(
+        (param, index) => {
+          const selected = createSelectedParameter(param, index)
+          return createBimColumnDefWithDefaults({
+            id: selected.id,
+            name: selected.name,
+            field: selected.id,
+            header: selected.name,
+            visible: selected.visible,
+            removable: false,
+            order: selected.order,
+            description: selected.description,
+            category: selected.category,
+            type: param.type,
+            sourceValue: typeof param.value === 'object' ? null : param.value,
+            fetchedGroup: param.sourceGroup,
+            currentGroup: param.sourceGroup
+          })
+        }
+      )
+
+      // Initialize table with default columns
+      await initializeTable()
+      debug.log(DebugCategories.INITIALIZATION, 'Table initialized')
+
+      // Update store with default columns
+      await store.lifecycle.update({
+        parentBaseColumns: parentColumns,
+        parentVisibleColumns: parentColumns,
+        childBaseColumns: childColumns,
+        childVisibleColumns: childColumns
+      })
 
       // Wait for Vue to update the DOM
       await new Promise((resolve) => requestAnimationFrame(resolve))

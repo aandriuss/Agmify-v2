@@ -23,26 +23,73 @@
               class="parameter-item"
               :class="{
                 'is-selected': isParameterSelected(parameter),
-                'is-visible': getParameterVisibility(parameter)
+                'is-visible': getParameterVisibility(parameter),
+                'has-nested': parameter.nested?.length
               }"
             >
-              <FormButton
-                text
-                size="sm"
-                :icon-left="
-                  getParameterVisibility(parameter)
-                    ? CheckCircleIcon
-                    : CheckCircleIconOutlined
-                "
-                @click="toggleParameterVisibility(parameter)"
-              >
-                {{ parameter.name }}
-              </FormButton>
+              <!-- Main Parameter -->
+              <div class="parameter-row">
+                <FormButton
+                  text
+                  size="sm"
+                  :icon-left="
+                    getParameterVisibility(parameter)
+                      ? CheckCircleIcon
+                      : CheckCircleIconOutlined
+                  "
+                  @click="toggleParameterVisibility(parameter)"
+                >
+                  {{ parameter.name }}
+                </FormButton>
 
-              <!-- Parameter Type Badge -->
-              <span class="parameter-type" :class="parameter.type">
-                {{ parameter.type }}
-              </span>
+                <!-- Parameter Type Badge -->
+                <span class="parameter-type" :class="parameter.type">
+                  {{ parameter.type }}
+                </span>
+
+                <!-- Nested Parameters Indicator -->
+                <FormButton
+                  v-if="parameter.nested?.length"
+                  text
+                  size="sm"
+                  :icon-left="parameter.showNested ? ChevronUpIcon : ChevronDownIcon"
+                  @click="toggleNestedVisibility(parameter)"
+                />
+              </div>
+
+              <!-- Nested Parameters -->
+              <div
+                v-if="parameter.nested?.length && parameter.showNested"
+                class="nested-parameters"
+              >
+                <div
+                  v-for="nestedParam in parameter.nested"
+                  :key="nestedParam.id"
+                  class="parameter-item nested"
+                  :class="{
+                    'is-selected': isParameterSelected(nestedParam),
+                    'is-visible': getParameterVisibility(nestedParam)
+                  }"
+                >
+                  <FormButton
+                    text
+                    size="sm"
+                    :icon-left="
+                      getParameterVisibility(nestedParam)
+                        ? CheckCircleIcon
+                        : CheckCircleIconOutlined
+                    "
+                    @click="toggleParameterVisibility(nestedParam)"
+                  >
+                    {{ nestedParam.name }}
+                  </FormButton>
+
+                  <!-- Parameter Type Badge -->
+                  <span class="parameter-type" :class="nestedParam.type">
+                    {{ nestedParam.type }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -111,15 +158,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { PropType } from 'vue'
-import { CheckCircleIcon, PlusIcon, PencilIcon } from '@heroicons/vue/24/solid'
+import {
+  CheckCircleIcon,
+  PlusIcon,
+  PencilIcon,
+  ChevronUpIcon,
+  ChevronDownIcon
+} from '@heroicons/vue/24/solid'
 import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/outline'
 import type {
   AvailableBimParameter,
   AvailableUserParameter,
   SelectedParameter
-} from '@/composables/core/parameters/store/types'
+} from '~/composables/core/types/parameters/parameter-states'
 import { useParameters } from '~/composables/core/parameters/next/useParameters'
 import LoadingState from '~/components/core/LoadingState.vue'
 
@@ -153,31 +206,68 @@ const parameters = useParameters({
   selectedChildCategories: computed(() => props.selectedChildCategories)
 })
 
+// Track nested parameter visibility
+const nestedVisibility = ref(new Set<string>())
+
 // Computed properties
 const isLoading = computed(() => parameters.isProcessing.value)
 const error = computed(() =>
   parameters.hasError.value ? new Error('Failed to load parameters') : null
 )
 
-// Group BIM parameters by source group
+// Group BIM parameters by source group with nested structure
 const parameterGroups = computed(() => {
   const groups = new Map<
     string,
-    { name: string; parameters: AvailableBimParameter[] }
+    {
+      name: string
+      parameters: (AvailableBimParameter & {
+        nested?: AvailableBimParameter[]
+        showNested?: boolean
+      })[]
+    }
   >()
 
-  // Group parent BIM parameters
+  // First pass: Group parent BIM parameters
   parameters.parentParameters.available.bim.value.forEach((param) => {
     const group = param.sourceGroup
     if (!groups.has(group)) {
       groups.set(group, { name: group, parameters: [] })
     }
-    groups.get(group)!.parameters.push(param)
+
+    // Skip nested parameters in first pass
+    if (!param.metadata?.isNested) {
+      groups.get(group)!.parameters.push({
+        ...param,
+        showNested: nestedVisibility.value.has(param.id)
+      })
+    }
+  })
+
+  // Second pass: Add nested parameters to their parents
+  parameters.parentParameters.available.bim.value.forEach((param) => {
+    if (param.metadata?.isNested && param.metadata.parentKey) {
+      const group = param.sourceGroup
+      const parentParam = groups
+        .get(group)
+        ?.parameters.find((p) => p.id === param.metadata?.parentKey)
+      if (parentParam) {
+        if (!parentParam.nested) parentParam.nested = []
+        parentParam.nested.push(param)
+      }
+    }
   })
 
   // Sort parameters within each group
   groups.forEach((group) => {
+    // Sort main parameters
     group.parameters.sort((a, b) => a.name.localeCompare(b.name))
+    // Sort nested parameters
+    group.parameters.forEach((param) => {
+      if (param.nested) {
+        param.nested.sort((a, b) => a.name.localeCompare(b.name))
+      }
+    })
   })
 
   return Array.from(groups.values())
@@ -222,6 +312,16 @@ function toggleParameterVisibility(
     } else {
       emit('error', new Error('Failed to update parameter visibility'))
     }
+  }
+}
+
+function toggleNestedVisibility(
+  parameter: AvailableBimParameter & { showNested?: boolean }
+) {
+  if (nestedVisibility.value.has(parameter.id)) {
+    nestedVisibility.value.delete(parameter.id)
+  } else {
+    nestedVisibility.value.add(parameter.id)
   }
 }
 
@@ -285,10 +385,16 @@ function createParameter() {
 
 .parameter-item {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.25rem;
   padding: 0.25rem;
   border-radius: 0.25rem;
+}
+
+.parameter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .parameter-item:hover {
@@ -297,6 +403,16 @@ function createParameter() {
 
 .parameter-item.is-selected {
   background: var(--color-background-selected);
+}
+
+.nested-parameters {
+  margin-left: 1.5rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--color-border);
+}
+
+.parameter-item.nested {
+  padding-left: 0.5rem;
 }
 
 .parameter-type {

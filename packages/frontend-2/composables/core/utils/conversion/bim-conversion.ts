@@ -1,16 +1,11 @@
 import type {
   TreeItemComponentModel,
   ElementData,
-  BIMNode,
-  BIMNodeData
+  BIMNode
 } from '~/composables/core/types'
-import type {
-  ParameterValue,
-  ParameterValueState
-} from '~/composables/core/types/parameters'
+import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '../debug'
 import { isValidBIMNodeData } from '~/composables/core/types/viewer/viewer-base'
-import { createParameterValueState } from '~/composables/core/types/parameters'
 
 /**
  * Convert any value to a string representation
@@ -26,6 +21,20 @@ export function convertToString(value: unknown): string {
     if ('Tag' in obj && obj.Tag) return String(obj.Tag)
   }
   return ''
+}
+
+/**
+ * Convert raw value to parameter value
+ * Note: This is a simplified conversion. Full parameter processing happens in useElementsData
+ */
+function convertToParameterValue(value: unknown): ParameterValue {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return value
+  if (typeof value === 'boolean') return value
+  if (Array.isArray(value)) return JSON.stringify(value)
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
 }
 
 /**
@@ -52,54 +61,9 @@ export function isValidTreeItem(item: unknown): item is TreeItemComponentModel {
 }
 
 /**
- * Extract parameters from BIM node data
- */
-export function extractParameters(data: BIMNodeData): Record<string, ParameterValue> {
-  const parameterStates: Record<string, ParameterValueState> = {}
-
-  // Helper to safely convert values
-  const convertValue = (value: unknown): string | number | boolean | null => {
-    if (value === null) return null
-    if (typeof value === 'string') return value
-    if (typeof value === 'number') return value
-    if (typeof value === 'boolean') return value
-    if (typeof value === 'object') return JSON.stringify(value)
-    return String(value)
-  }
-
-  // Process parameters from BIMNodeData
-  if (data.parameters && typeof data.parameters === 'object') {
-    Object.entries(data.parameters).forEach(([key, value]) => {
-      if (key === '_raw' || key === '__proto__') return
-
-      // If value is already a ParameterValueState, use it directly
-      if (
-        value &&
-        typeof value === 'object' &&
-        'fetchedValue' in value &&
-        'currentValue' in value &&
-        'previousValue' in value &&
-        'userValue' in value
-      ) {
-        parameterStates[key] = value as ParameterValueState
-      } else {
-        // Otherwise create a new ParameterValueState
-        parameterStates[key] = createParameterValueState(convertValue(value))
-      }
-    })
-  }
-
-  // Convert ParameterValueState to ParameterValue using currentValue
-  const parameters: Record<string, ParameterValue> = {}
-  Object.entries(parameterStates).forEach(([key, state]) => {
-    parameters[key] = state.currentValue
-  })
-
-  return parameters
-}
-
-/**
  * Extract element data from BIM node
+ * Note: Full parameter processing happens in useElementsData
+ * This only provides initial conversion for type safety
  */
 export function extractElementData(node: BIMNode): ElementData {
   if (!isValidBIMNodeData(node.data)) {
@@ -109,8 +73,13 @@ export function extractElementData(node: BIMNode): ElementData {
   const data = node.data
   const metadata = data.metadata || {}
 
-  // Extract parameters
-  const parameters = extractParameters(data)
+  // Convert raw parameters to ParameterValue type
+  const parameters: Record<string, ParameterValue> = {}
+  if (data.parameters && typeof data.parameters === 'object') {
+    Object.entries(data.parameters).forEach(([key, value]) => {
+      parameters[key] = convertToParameterValue(value)
+    })
+  }
 
   // Extract essential fields
   return {

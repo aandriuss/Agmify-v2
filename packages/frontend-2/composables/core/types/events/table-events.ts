@@ -2,7 +2,10 @@ import type { BaseItem } from '../common/base-types'
 import type { ColumnDef } from '../tables/column-types'
 import type { EventEmits, EventHandler } from './base-events'
 import type { DataTableFilterMeta } from 'primevue/datatable'
-import type { SelectedParameter } from '@/composables/core/parameters/store/types'
+import type {
+  SelectedParameter,
+  AvailableParameter
+} from '../parameters/parameter-states'
 
 /**
  * Event payload types
@@ -49,6 +52,8 @@ export interface ParameterEventPayloads<TRow extends BaseItem = BaseItem>
   'edit-parameters': TimestampPayload
   'parameter-click': ParameterPayload<TRow>
   'parameter-visibility-change': ParameterVisibilityPayload
+  'parameter-select': { parameter: SelectedParameter }
+  'parameter-deselect': { parameter: AvailableParameter }
   'update:selected-categories': CategoriesPayload
 }
 

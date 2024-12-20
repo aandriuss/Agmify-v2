@@ -6,9 +6,13 @@ import type {
   SelectedParameter,
   ParameterCollections
 } from './types'
-import { createAvailableUserParameter, createColumnDefinition } from './types'
+import { createAvailableUserParameter } from './types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { processRawParameters as processParams } from '../next/utils/parameter-processing'
+import {
+  processRawParameters as processParams,
+  createSelectedParameters,
+  createColumnDefinitions
+} from '../next/utils/parameter-processing'
 import type { UserValueType, ParameterValue } from '~/composables/core/types/parameters'
 
 /**
@@ -95,25 +99,32 @@ function createParameterStore() {
   const lastUpdated = computed(() => state.value.lastUpdated)
 
   /**
-   * Process raw parameters into available parameters only
-   * Does not automatically create selected parameters
+   * Process raw parameters into available parameters
+   * Creates default selected parameters if none exist
    */
   async function processRawParameters(parameters: RawParameter[], isParent: boolean) {
     try {
       state.value.isProcessing = true
+      state.value.loading = true
       const target = isParent ? 'parent' : 'child'
 
       debug.log(DebugCategories.PARAMETERS, 'Starting parameter processing', {
         count: parameters.length,
         isParent,
-        target
+        target,
+        sample: parameters[0]
       })
 
-      // Set raw parameters first
-      state.value.collections[target].raw = parameters
-
-      // Process into available parameters
+      // Process parameters first before modifying state
       const processed = await processParams(parameters)
+      if (!processed?.length) {
+        debug.error(DebugCategories.PARAMETERS, 'No parameters processed', {
+          input: parameters.length,
+          raw: parameters.length,
+          sample: parameters[0]
+        })
+        throw new Error('No parameters processed')
+      }
 
       // Separate BIM and user parameters using kind discriminator
       const bimParams = processed.filter(
@@ -126,17 +137,57 @@ function createParameterStore() {
       debug.log(DebugCategories.PARAMETERS, 'Raw parameters processed', {
         count: processed.length,
         bim: bimParams.length,
-        user: userParams.length
+        user: userParams.length,
+        sample: processed[0]
       })
 
-      // Update available parameters - don't automatically create selected
-      state.value.collections[target].available.bim = bimParams
-      state.value.collections[target].available.user = userParams
+      // Create new collections with processed parameters
+      const newCollections = {
+        ...state.value.collections,
+        [target]: {
+          raw: parameters,
+          available: {
+            bim: bimParams,
+            user: userParams
+          },
+          selected: [],
+          columns: []
+        }
+      }
 
-      debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
+      // Update state with new collections
+      state.value.collections = newCollections
+
+      // Log state after update
+      debug.log(DebugCategories.PARAMETERS, 'Parameter state after update', {
+        target,
         raw: parameters.length,
-        available: processed.length,
-        collections: {
+        state: {
+          raw: state.value.collections[target].raw.length,
+          available: {
+            bim: state.value.collections[target].available.bim.length,
+            user: state.value.collections[target].available.user.length
+          },
+          selected: state.value.collections[target].selected.length,
+          columns: state.value.collections[target].columns.length
+        }
+      })
+
+      // Log parameter groups and nested parameters
+      const groups = new Set<string>()
+      const nestedParams = new Set<string>()
+      parameters.forEach((param) => {
+        if (param.sourceGroup) groups.add(param.sourceGroup)
+        if (param.metadata?.isNested) {
+          nestedParams.add(`${param.metadata.parentKey}.${param.name}`)
+        }
+      })
+
+      debug.log(DebugCategories.PARAMETERS, 'Parameter groups and nesting', {
+        target,
+        groups: Array.from(groups),
+        nestedParameters: Array.from(nestedParams),
+        state: {
           raw: state.value.collections[target].raw.length,
           available: {
             bim: state.value.collections[target].available.bim.length,
@@ -145,29 +196,88 @@ function createParameterStore() {
         }
       })
 
+      // Create default selected parameters if none exist
+      if (state.value.collections[target].selected.length === 0) {
+        debug.log(DebugCategories.PARAMETERS, 'Creating default parameter selections')
+
+        // Combine BIM and user parameters
+        const availableParams = [
+          ...state.value.collections[target].available.bim,
+          ...state.value.collections[target].available.user
+        ]
+
+        debug.log(DebugCategories.PARAMETERS, 'Available parameters for selection', {
+          total: availableParams.length,
+          bim: state.value.collections[target].available.bim.length,
+          user: state.value.collections[target].available.user.length,
+          sample: availableParams[0]
+        })
+
+        // Create selected parameters with defaults
+        const selectedParams = createSelectedParameters(availableParams)
+
+        // Create column definitions
+        const columnDefs = createColumnDefinitions(selectedParams)
+
+        // Update store
+        state.value.collections[target].selected = selectedParams
+        state.value.collections[target].columns = columnDefs
+
+        debug.log(DebugCategories.PARAMETERS, 'Default selections created', {
+          selectedCount: selectedParams.length,
+          columnsCount: columnDefs.length,
+          sample: selectedParams[0],
+          groups: Array.from(new Set(selectedParams.map((p) => p.group)))
+        })
+      }
+
+      // Verify state after processing
+      const currentState = state.value.collections[target]
+      if (!currentState.raw.length || !currentState.available.bim.length) {
+        throw new Error('Parameter state verification failed')
+      }
+
+      debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
+        raw: parameters.length,
+        available: processed.length,
+        collections: {
+          raw: currentState.raw.length,
+          available: {
+            bim: currentState.available.bim.length,
+            user: currentState.available.user.length
+          },
+          selected: currentState.selected.length,
+          columns: currentState.columns.length
+        }
+      })
+
       state.value.lastUpdated = Date.now()
+      state.value.error = null
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       debug.error(DebugCategories.PARAMETERS, 'Parameter processing failed:', error)
-      setError(error)
+      state.value.error = error
       throw error
     } finally {
       state.value.isProcessing = false
+      state.value.loading = false
     }
   }
 
   /**
-   * Update selected parameters based on column manager selections
+   * Update selected parameters and create corresponding column definitions
    */
   function updateSelectedParameters(
     selectedParameters: SelectedParameter[],
     isParent: boolean
   ) {
     const target = isParent ? 'parent' : 'child'
+
+    // Update selected parameters
     state.value.collections[target].selected = selectedParameters
 
-    // Update column definitions to match selected parameters
-    const columns = selectedParameters.map((param) => createColumnDefinition(param))
+    // Create column definitions for selected parameters
+    const columns = createColumnDefinitions(selectedParameters)
     state.value.collections[target].columns = columns
 
     state.value.lastUpdated = Date.now()
@@ -177,14 +287,14 @@ function createParameterStore() {
       visible: selectedParameters.filter((p) => p.visible).length,
       collections: {
         selected: state.value.collections[target].selected.length,
-        columns: state.value.collections[target].columns.length
+        columns: state.value.collections[target].columns.length,
+        visibleColumns: columns.filter((c) => c.visible).length
       }
     })
   }
 
   /**
-   * Update parameter visibility
-   * Only affects parameters that are already selected
+   * Update parameter visibility and corresponding column definition
    */
   function updateParameterVisibility(
     parameterId: string,
@@ -200,7 +310,7 @@ function createParameterStore() {
       selectedParam.visible = visible
 
       // Update column definitions to match
-      const columns = collections.selected.map((param) => createColumnDefinition(param))
+      const columns = createColumnDefinitions(collections.selected)
       collections.columns = columns
 
       state.value.lastUpdated = Date.now()
@@ -211,15 +321,14 @@ function createParameterStore() {
         collections: {
           selected: collections.selected.length,
           columns: collections.columns.length,
-          visibleColumns: collections.columns.filter((c) => c.visible).length
+          visibleColumns: columns.filter((c) => c.visible).length
         }
       })
     }
   }
 
   /**
-   * Update parameter order
-   * Only affects parameters that are already selected
+   * Update parameter order and sort columns accordingly
    */
   function updateParameterOrder(parameterId: string, order: number, isParent: boolean) {
     const target = isParent ? 'parent' : 'child'
@@ -234,7 +343,7 @@ function createParameterStore() {
       collections.selected.sort((a, b) => a.order - b.order)
 
       // Update column definitions to match
-      const columns = collections.selected.map((param) => createColumnDefinition(param))
+      const columns = createColumnDefinitions(collections.selected)
       collections.columns = columns.sort((a, b) => a.order - b.order)
 
       state.value.lastUpdated = Date.now()
@@ -251,8 +360,7 @@ function createParameterStore() {
   }
 
   /**
-   * Reorder parameters by moving from one index to another
-   * Only affects parameters that are already selected
+   * Reorder parameters and update column order
    */
   function reorderParameters(dragIndex: number, dropIndex: number, isParent: boolean) {
     const target = isParent ? 'parent' : 'child'
@@ -268,7 +376,7 @@ function createParameterStore() {
     })
 
     // Update column definitions to match
-    const columns = collections.selected.map((param) => createColumnDefinition(param))
+    const columns = createColumnDefinitions(collections.selected)
     collections.columns = columns
 
     state.value.lastUpdated = Date.now()
@@ -406,9 +514,58 @@ function createParameterStore() {
     }
   }
 
+  /**
+   * Initialize store
+   * Must be called before any parameter processing
+   */
+  async function init() {
+    try {
+      debug.startState(DebugCategories.INITIALIZATION, 'Initializing parameter store')
+      state.value.loading = true
+      state.value.isProcessing = true
+
+      // Reset to initial state
+      state.value.collections = createInitialCollections()
+
+      // Wait for Vue reactivity to ensure clean state
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      // Verify store state
+      if (!state.value.collections.parent || !state.value.collections.child) {
+        throw new Error('Failed to initialize parameter collections')
+      }
+
+      debug.log(DebugCategories.INITIALIZATION, 'Parameter store initialized', {
+        collections: state.value.collections,
+        timestamp: state.value.lastUpdated
+      })
+
+      state.value.error = null
+      state.value.lastUpdated = Date.now()
+
+      // Wait for final state update
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      debug.error(
+        DebugCategories.INITIALIZATION,
+        'Parameter store initialization failed:',
+        error
+      )
+      state.value.error = error
+      throw error
+    } finally {
+      state.value.loading = false
+      state.value.isProcessing = false
+    }
+  }
+
   return {
     // State
     state: computed(() => state.value),
+
+    // Initialization
+    init,
 
     // Collections
     parentCollections,

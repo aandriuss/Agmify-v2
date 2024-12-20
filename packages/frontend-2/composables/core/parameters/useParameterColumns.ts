@@ -7,7 +7,7 @@ import type {
   UserColumnDef
 } from '../types/tables/column-types'
 import type { BimValueType } from '../types/parameters/value-types'
-import { useParameters } from './useParameters'
+import { useParameters } from './next/useParameters'
 import { useColumnState } from '../tables/state/useColumnState'
 import { toBimValueType, toUserValueType } from '../utils/conversion'
 import { createBimParameter, createUserParameter } from '../types/parameters'

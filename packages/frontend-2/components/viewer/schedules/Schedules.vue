@@ -90,12 +90,18 @@
             :current-table-id="store.currentTableId.value || ''"
             :table-key="store.tableKey.value || '0'"
             :error="error"
-            :parent-base-columns="store.parentBaseColumns.value || []"
-            :parent-available-columns="store.parentAvailableColumns.value || []"
-            :parent-visible-columns="store.parentVisibleColumns.value || []"
-            :child-base-columns="store.childBaseColumns.value || []"
-            :child-available-columns="store.childAvailableColumns.value || []"
-            :child-visible-columns="store.childVisibleColumns.value || []"
+            :parent-base-columns="parameterStore.parentColumnDefinitions.value"
+            :parent-available-columns="
+              parameterStore.parentAvailableBimParameters.value
+            "
+            :parent-visible-columns="
+              parameterStore.parentSelectedParameters.value.filter((p) => p.visible)
+            "
+            :child-base-columns="parameterStore.childColumnDefinitions.value"
+            :child-available-columns="parameterStore.childAvailableBimParameters.value"
+            :child-visible-columns="
+              parameterStore.childSelectedParameters.value.filter((p) => p.visible)
+            "
             :schedule-data="store.scheduleData.value || []"
             :evaluated-data="store.evaluatedData.value || []"
             :table-data="store.tableData.value || []"
@@ -110,7 +116,6 @@
             :is-test-mode="false"
             @error="handleError"
             @table-updated="handleTableDataUpdate"
-            @update:both-columns="_interactions.handleBothColumnsUpdate"
             @column-visibility-change="handleColumnVisibilityChange"
           />
         </div>
@@ -120,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
@@ -128,6 +133,7 @@ import { useTableInteractions } from '~/composables/core/tables/interactions/use
 import { useTableInitialization } from '~/composables/core/tables/initialization/useTableInitialization'
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
+import { useParameterStore } from '~/composables/core/parameters/store'
 import type { NamedTableConfig, ColumnDef, ElementData } from '~/composables/core/types'
 import { useTablesState } from '~/composables/settings/tables/useTablesState'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
@@ -189,6 +195,7 @@ function safeObjectEntries<T extends Record<string, unknown>>(
 // Initialize systems
 const debug = useDebug()
 const store = useStore()
+const parameterStore = useParameterStore()
 const tablesState = useTablesState()
 const bimElements = useBIMElements({
   childCategories
@@ -205,10 +212,15 @@ const {
 // Watch for viewer events
 useViewerEventListener(ViewerEvent.LoadComplete, () => {
   debug.log(DebugCategories.INITIALIZATION, 'Viewer load complete')
+
+  // Type-safe world tree access
+  const treeChildren = (worldTree.value?._root?.children ?? []) as ViewerNode[]
+  const childrenCount = Array.isArray(treeChildren) ? treeChildren.length : 0
+
   debug.log(DebugCategories.DATA, 'World tree state', {
     exists: !!worldTree.value,
     hasRoot: !!worldTree.value?._root,
-    childrenCount: worldTree.value?._root?.children?.length || 0
+    childrenCount
   })
 })
 
@@ -238,7 +250,8 @@ watch(
       return
     }
 
-    const children = newTree._root.children
+    // Type-safe children access using type guard
+    const children = hasValidChildren(newTree) ? newTree._root.children : []
     debug.log(DebugCategories.DATA, 'World tree updated', {
       exists: true,
       hasRoot: true,
@@ -311,8 +324,6 @@ const { initComponent } = useTableInitialization({
   initialState: {
     selectedTableId: '',
     tableName: '',
-    currentTableColumns: [],
-    currentDetailColumns: [],
     selectedParentCategories: parentCategories,
     selectedChildCategories: childCategories
   },
@@ -326,28 +337,20 @@ const _interactions = useTableInteractions({
     tableName: '',
     currentTable: null,
     selectedParentCategories: parentCategories,
-    selectedChildCategories: childCategories,
-    currentTableColumns: [],
-    currentDetailColumns: []
+    selectedChildCategories: childCategories
   },
   initComponent,
-  updateCurrentColumns: async (parentColumns, childColumns) => {
-    await store.lifecycle.update({
-      currentTableColumns: parentColumns,
-      currentDetailColumns: childColumns,
-      mergedTableColumns: parentColumns,
-      mergedDetailColumns: childColumns
-    })
-  },
   handleError: (err) => handleError(createSafeError(err))
 })
 
 // Loading state - only show loading when we have no data
 const isLoading = computed(() => {
-  const scheduleLength = store.scheduleData.value?.length ?? 0
-  const tableLength = store.tableData.value?.length ?? 0
-  if (scheduleLength > 0 || tableLength > 0) return false
-  return elementsData.state.value.loading
+  const hasData =
+    (store.scheduleData.value?.length ?? 0) > 0 ||
+    (store.tableData.value?.length ?? 0) > 0
+  return (
+    !hasData || elementsData.state.value.loading || parameterStore.isProcessing.value
+  )
 })
 
 const isInitialized = computed(() => store.initialized.value ?? false)
@@ -401,25 +404,14 @@ async function handleColumnVisibilityChange(column: ColumnDef): Promise<void> {
       visible: column.visible
     })
 
-    // Update parent columns with type safety
-    const parentColumns = safeArrayFrom(store.parentVisibleColumns.value)
-    const updatedParentColumns = parentColumns.map((col) =>
-      col.field === column.field ? { ...col, visible: column.visible } : col
+    // Update parameter visibility in parameter store
+    await parameterStore.updateParameterVisibility(
+      column.field,
+      column.visible,
+      column.kind === 'bim'
     )
 
-    // Update child columns with type safety
-    const childColumns = safeArrayFrom(store.childVisibleColumns.value)
-    const updatedChildColumns = childColumns.map((col) =>
-      col.field === column.field ? { ...col, visible: column.visible } : col
-    )
-
-    // Update store
-    await store.lifecycle.update({
-      parentVisibleColumns: updatedParentColumns,
-      childVisibleColumns: updatedChildColumns
-    })
-
-    debug.log(DebugCategories.COLUMNS, 'Column visibility updated in store')
+    debug.log(DebugCategories.COLUMNS, 'Column visibility updated in parameter store')
   } catch (err) {
     updateErrorState(createSafeError(err))
   }
@@ -452,18 +444,236 @@ onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
 
-    // First initialize store
-    await store.lifecycle.init()
-    debug.log(DebugCategories.STATE, 'Store initialized')
+    // Initialize stores
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing stores')
+    await Promise.all([store.lifecycle.init(), parameterStore.init()])
+    debug.log(DebugCategories.STATE, 'Stores initialized')
 
     // Wait for viewer initialization
     debug.log(DebugCategories.INITIALIZATION, 'Waiting for viewer initialization')
     await init.promise
     debug.log(DebugCategories.INITIALIZATION, 'Viewer initialized')
 
-    // Initialize data
+    // Verify parameter store initialization
+    if (parameterStore.error.value) {
+      throw new Error('Parameter store failed to initialize')
+    }
+
+    // Initialize BIM elements
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
+    await bimElements.initializeElements()
+
+    if (!bimElements.allElements.value?.length) {
+      debug.warn(DebugCategories.INITIALIZATION, 'No BIM elements found')
+    } else {
+      debug.log(DebugCategories.INITIALIZATION, 'BIM elements loaded', {
+        count: bimElements.allElements.value.length,
+        sample: bimElements.allElements.value[0],
+        sampleParameters: bimElements.allElements.value[0]?.parameters || {}
+      })
+
+      // Log parameter groups for debugging
+      const parameterGroups = Array.from(
+        new Set(
+          bimElements.allElements.value.flatMap((el) =>
+            Object.keys(el.parameters || {}).map((key) => key.split('.')[0])
+          )
+        )
+      )
+      debug.log(DebugCategories.PARAMETERS, 'Available parameter groups', {
+        groups: parameterGroups,
+        sample: Object.entries(
+          bimElements.allElements.value[0]?.parameters || {}
+        ).reduce((acc, [key, value]) => {
+          const group = key.split('.')[0]
+          if (!acc[group]) acc[group] = {}
+          acc[group][key] = value
+          return acc
+        }, {} as Record<string, Record<string, unknown>>)
+      })
+    }
+
+    debug.completeState(DebugCategories.INITIALIZATION, 'BIM elements initialized')
+
+    // Initialize data and wait for parameter processing
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing element data')
+
+    // Pre-process check
+    debug.log(DebugCategories.PARAMETERS, 'Pre-processing parameter state', {
+      elements: bimElements.allElements.value?.length || 0,
+      sampleElement: bimElements.allElements.value?.[0],
+      sampleParameters: bimElements.allElements.value?.[0]?.parameters || {}
+    })
+
+    // Initialize data - this will handle parameter processing
     await elementsData.initializeData()
+
+    // Wait for any pending store operations to complete
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+
+    // Verify parameter processing with detailed logging
+    const parameterState = {
+      raw: {
+        parent: parameterStore.parentRawParameters.value?.length || 0,
+        child: parameterStore.childRawParameters.value?.length || 0,
+        parentSample: parameterStore.parentRawParameters.value?.[0],
+        childSample: parameterStore.childRawParameters.value?.[0]
+      },
+      available: {
+        parent: {
+          bim: {
+            count: parameterStore.parentAvailableBimParameters.value?.length || 0,
+            sample: parameterStore.parentAvailableBimParameters.value?.[0]
+          },
+          user: {
+            count: parameterStore.parentAvailableUserParameters.value?.length || 0,
+            sample: parameterStore.parentAvailableUserParameters.value?.[0]
+          }
+        },
+        child: {
+          bim: {
+            count: parameterStore.childAvailableBimParameters.value?.length || 0,
+            sample: parameterStore.childAvailableBimParameters.value?.[0]
+          },
+          user: {
+            count: parameterStore.childAvailableUserParameters.value?.length || 0,
+            sample: parameterStore.childAvailableUserParameters.value?.[0]
+          }
+        }
+      },
+      selected: {
+        parent: {
+          count: parameterStore.parentSelectedParameters.value?.length || 0,
+          sample: parameterStore.parentSelectedParameters.value?.[0]
+        },
+        child: {
+          count: parameterStore.childSelectedParameters.value?.length || 0,
+          sample: parameterStore.childSelectedParameters.value?.[0]
+        }
+      }
+    }
+
+    debug.log(
+      DebugCategories.PARAMETERS,
+      'Parameter state after initialization',
+      parameterState
+    )
+
+    // Log parameter groups and their values
+    const parameterGroups = {
+      parent: Array.from(
+        new Set(
+          parameterStore.parentRawParameters.value?.map((p) => p.sourceGroup) || []
+        )
+      ).reduce((acc, group) => {
+        acc[group] = parameterStore.parentRawParameters.value
+          ?.filter((p) => p.sourceGroup === group)
+          .map((p) => ({ id: p.id, name: p.name, value: p.value }))
+        return acc
+      }, {} as Record<string, unknown[]>),
+      child: Array.from(
+        new Set(
+          parameterStore.childRawParameters.value?.map((p) => p.sourceGroup) || []
+        )
+      ).reduce((acc, group) => {
+        acc[group] = parameterStore.childRawParameters.value
+          ?.filter((p) => p.sourceGroup === group)
+          .map((p) => ({ id: p.id, name: p.name, value: p.value }))
+        return acc
+      }, {} as Record<string, unknown[]>)
+    }
+
+    debug.log(
+      DebugCategories.PARAMETERS,
+      'Parameter groups and values',
+      parameterGroups
+    )
+
+    // Log raw parameter sample for debugging
+    if (parameterStore.parentRawParameters.value?.length) {
+      debug.log(DebugCategories.PARAMETERS, 'Parent raw parameter sample', {
+        sample: parameterStore.parentRawParameters.value[0]
+      })
+    }
+
+    // Verify parameter extraction and processing
+    if (parameterState.raw.parent === 0 && parameterState.raw.child === 0) {
+      debug.error(DebugCategories.PARAMETERS, 'No parameters extracted', {
+        elements: bimElements.allElements.value?.length || 0,
+        sample: bimElements.allElements.value?.[0]?.parameters || {},
+        elementCategories: Array.from(
+          new Set(bimElements.allElements.value?.map((el) => el.category) || [])
+        )
+      })
+      throw new Error('No parameters extracted from elements')
+    }
+
+    // Log parameter extraction details
+    debug.log(DebugCategories.PARAMETERS, 'Parameter extraction details', {
+      elementCount: bimElements.allElements.value?.length || 0,
+      elementCategories: Array.from(
+        new Set(bimElements.allElements.value?.map((el) => el.category) || [])
+      ),
+      parameterGroups: Array.from(
+        new Set(
+          bimElements.allElements.value?.flatMap((el) =>
+            Object.keys(el.parameters || {}).map((key) => key.split('.')[0])
+          ) || []
+        )
+      ),
+      sampleParameters: bimElements.allElements.value?.[0]?.parameters || {}
+    })
+
+    // Log parameter processing results
+    debug.log(DebugCategories.PARAMETERS, 'Parameter processing results', {
+      raw: parameterState.raw,
+      available: parameterState.available,
+      selected: parameterState.selected,
+      groups: {
+        parent: Array.from(
+          new Set(
+            parameterStore.parentRawParameters.value?.map((p) => p.sourceGroup) || []
+          )
+        ),
+        child: Array.from(
+          new Set(
+            parameterStore.childRawParameters.value?.map((p) => p.sourceGroup) || []
+          )
+        )
+      }
+    })
+
+    // Log parameter groups for debugging
+    const parentGroups = new Set<string>()
+    parameterStore.parentRawParameters.value?.forEach((param) => {
+      if (param.sourceGroup) parentGroups.add(param.sourceGroup)
+    })
+
+    debug.log(DebugCategories.PARAMETERS, 'Parameter groups', {
+      parent: Array.from(parentGroups),
+      parameterState
+    })
+
+    // Log parameter processing state
+    debug.log(DebugCategories.PARAMETERS, 'Parameter processing state', {
+      parent: {
+        raw: parameterStore.parentRawParameters.value?.length || 0,
+        available: {
+          bim: parameterStore.parentAvailableBimParameters.value?.length || 0,
+          user: parameterStore.parentAvailableUserParameters.value?.length || 0
+        },
+        selected: parameterStore.parentSelectedParameters.value?.length || 0
+      },
+      child: {
+        raw: parameterStore.childRawParameters.value?.length || 0,
+        available: {
+          bim: parameterStore.childAvailableBimParameters.value?.length || 0,
+          user: parameterStore.childAvailableUserParameters.value?.length || 0
+        },
+        selected: parameterStore.childSelectedParameters.value?.length || 0
+      }
+    })
+
     debug.completeState(DebugCategories.INITIALIZATION, 'Element data initialized')
 
     // Load tables
@@ -512,8 +722,10 @@ onMounted(async () => {
         ? tablesList[0].id
         : 'default'
 
-    // Initialize table component (which triggers column merging)
-    await initComponent.update({ selectedTableId: tableIdToSelect })
+    // Initialize table component
+    await initComponent.update({
+      selectedTableId: tableIdToSelect
+    })
 
     debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
   } catch (err) {

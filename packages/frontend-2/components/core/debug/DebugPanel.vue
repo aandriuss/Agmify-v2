@@ -133,11 +133,11 @@
                 </div>
                 <div class="stat-item">
                   <span>Parent Parameters:</span>
-                  <span>{{ parentParameterColumns?.length || 0 }}</span>
+                  <span>{{ parameters.parentRawParameters.value?.length || 0 }}</span>
                 </div>
                 <div class="stat-item">
                   <span>Child Parameters:</span>
-                  <span>{{ childParameterColumns?.length || 0 }}</span>
+                  <span>{{ parameters.childRawParameters.value?.length || 0 }}</span>
                 </div>
               </div>
             </div>
@@ -145,7 +145,7 @@
             <!-- Raw Data Sample -->
             <div v-if="scheduleData?.length" class="raw-data-sample">
               <h5>Sample Element</h5>
-              <pre>{{ formatData(scheduleData[0]) }}</pre>
+              <pre>{{ formatData(scheduleData[5]) }}</pre>
             </div>
           </div>
 
@@ -159,30 +159,36 @@
                 <div class="parameter-counts">
                   <div class="count-item">
                     <span>Raw:</span>
-                    <span>{{ parameterStoreStats.parent.raw }}</span>
+                    <span>{{ parameters.parentRawParameters.value?.length || 0 }}</span>
                   </div>
                   <div class="count-item">
                     <span>Available BIM:</span>
-                    <span>{{ parameterStoreStats.parent.available.bim }}</span>
+                    <span>
+                      {{ parameters.parentAvailableBimParameters.value?.length || 0 }}
+                    </span>
                   </div>
                   <div class="count-item">
                     <span>Available User:</span>
-                    <span>{{ parameterStoreStats.parent.available.user }}</span>
+                    <span>
+                      {{ parameters.parentAvailableUserParameters.value?.length || 0 }}
+                    </span>
                   </div>
                   <div class="count-item">
                     <span>Selected:</span>
-                    <span>{{ parameterStoreStats.parent.selected }}</span>
+                    <span>
+                      {{ parameters.parentSelectedParameters.value?.length || 0 }}
+                    </span>
                   </div>
                   <div class="count-item">
                     <span>Columns:</span>
-                    <span>{{ parameterStoreStats.parent.columns }}</span>
+                    <span>
+                      {{ parameters.parentColumnDefinitions.value?.length || 0 }}
+                    </span>
                   </div>
                 </div>
                 <div class="parameter-groups">
                   <div
-                    v-for="[group, data] in Object.entries(
-                      parameterStoreStats.parent.groups
-                    )"
+                    v-for="[group, data] in Object.entries(parameterGroups.parent)"
                     :key="group"
                     class="group-item"
                   >
@@ -210,30 +216,36 @@
                 <div class="parameter-counts">
                   <div class="count-item">
                     <span>Raw:</span>
-                    <span>{{ parameterStoreStats.child.raw }}</span>
+                    <span>{{ parameters.childRawParameters.value?.length || 0 }}</span>
                   </div>
                   <div class="count-item">
                     <span>Available BIM:</span>
-                    <span>{{ parameterStoreStats.child.available.bim }}</span>
+                    <span>
+                      {{ parameters.childAvailableBimParameters.value?.length || 0 }}
+                    </span>
                   </div>
                   <div class="count-item">
                     <span>Available User:</span>
-                    <span>{{ parameterStoreStats.child.available.user }}</span>
+                    <span>
+                      {{ parameters.childAvailableUserParameters.value?.length || 0 }}
+                    </span>
                   </div>
                   <div class="count-item">
                     <span>Selected:</span>
-                    <span>{{ parameterStoreStats.child.selected }}</span>
+                    <span>
+                      {{ parameters.childSelectedParameters.value?.length || 0 }}
+                    </span>
                   </div>
                   <div class="count-item">
                     <span>Columns:</span>
-                    <span>{{ parameterStoreStats.child.columns }}</span>
+                    <span>
+                      {{ parameters.childColumnDefinitions.value?.length || 0 }}
+                    </span>
                   </div>
                 </div>
                 <div class="parameter-groups">
                   <div
-                    v-for="[group, data] in Object.entries(
-                      parameterStoreStats.child.groups
-                    )"
+                    v-for="[group, data] in Object.entries(parameterGroups.child)"
                     :key="group"
                     class="group-item"
                   >
@@ -262,24 +274,22 @@
                   <div class="count-item">
                     <span>Last Updated:</span>
                     <span>
-                      {{ formatTime(parameterStoreStats.metadata.lastUpdated) }}
+                      {{ formatTime(parameters.lastUpdated.value || Date.now()) }}
                     </span>
                   </div>
                   <div class="count-item">
                     <span>Processing:</span>
-                    <span>{{ parameterStoreStats.metadata.isProcessing }}</span>
+                    <span>{{ parameters.isProcessing.value || false }}</span>
                   </div>
-                  <div
-                    v-if="parameterStoreStats.metadata.error"
-                    class="count-item error"
-                  >
+                  <div v-if="parameters.hasError.value" class="count-item error">
                     <span>Error:</span>
-                    <span>{{ parameterStoreStats.metadata.error.message }}</span>
+                    <span>Error state detected</span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
           <!-- Data Structure -->
           <div v-if="showDataStructure" class="debug-section">
             <h4>Data Structure</h4>
@@ -323,11 +333,12 @@
 import { computed } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { TableRow, ElementData, ColumnDef } from '~/composables/core/types'
-import { useParameterStore } from '~/composables/core/parameters/store'
+import { useParameterStore } from '~/composables/core/parameters/store/store'
 import type {
   AvailableBimParameter,
-  AvailableUserParameter
-} from '@/composables/core/parameters/store/types'
+  AvailableUserParameter,
+  SelectedParameter
+} from '~/composables/core/types/parameters/parameter-states'
 
 interface Props {
   // Core props
@@ -374,6 +385,48 @@ const props = withDefaults(defineProps<Props>(), {
   availableChildHeaders: () => []
 })
 
+// Initialize parameter system with proper categories
+const uniqueParentCategories = computed(() =>
+  Array.from(
+    new Set(
+      props.parentElements?.map((el) => el.category).filter((c): c is string => !!c)
+    )
+  )
+)
+
+const uniqueChildCategories = computed(() =>
+  Array.from(
+    new Set(
+      props.childElements?.map((el) => el.category).filter((c): c is string => !!c)
+    )
+  )
+)
+
+// Use parameter store with safe access
+const parameters = useParameterStore()
+
+// Safe parameter access helpers
+const safeLength = (value: unknown[] | undefined | null) => value?.length || 0
+const safeValue = <T>(value: { value?: T | null } | undefined | null) => value?.value
+
+// Safe parameter counts
+const parameterCounts = computed(() => ({
+  parent: {
+    raw: safeLength(safeValue(parameters.parentRawParameters)),
+    availableBim: safeLength(safeValue(parameters.parentAvailableBimParameters)),
+    availableUser: safeLength(safeValue(parameters.parentAvailableUserParameters)),
+    selected: safeLength(safeValue(parameters.parentSelectedParameters)),
+    columns: safeLength(safeValue(parameters.parentColumnDefinitions))
+  },
+  child: {
+    raw: safeLength(safeValue(parameters.childRawParameters)),
+    availableBim: safeLength(safeValue(parameters.childAvailableBimParameters)),
+    availableUser: safeLength(safeValue(parameters.childAvailableUserParameters)),
+    selected: safeLength(safeValue(parameters.childSelectedParameters)),
+    columns: safeLength(safeValue(parameters.childColumnDefinitions))
+  }
+}))
+
 // Limit displayed logs for performance
 const MAX_DISPLAYED_LOGS = 100
 const displayedLogs = computed(() =>
@@ -412,56 +465,31 @@ const parameterCategories = computed(() => [
   DebugCategories.RELATIONSHIPS
 ])
 
-// BIM Data Stats
-const uniqueParentCategories = computed(() => [
-  ...new Set(props.parentElements?.map((el) => el.category) || [])
-])
-
-const uniqueChildCategories = computed(() => [
-  ...new Set(props.childElements?.map((el) => el.category) || [])
-])
-
 const elementsWithParameters = computed(
   () =>
     props.scheduleData?.filter((el) => Object.keys(el.parameters || {}).length > 0)
       .length || 0
 )
 
-const parameterStore = useParameterStore()
+// Safe parameter groups
+const parameterGroups = computed(() => ({
+  parent: getParameterGroups(
+    safeValue(parameters.parentAvailableBimParameters) || [],
+    safeValue(parameters.parentAvailableUserParameters) || [],
+    safeValue(parameters.parentSelectedParameters) || []
+  ),
+  child: getParameterGroups(
+    safeValue(parameters.childAvailableBimParameters) || [],
+    safeValue(parameters.childAvailableUserParameters) || [],
+    safeValue(parameters.childSelectedParameters) || []
+  )
+}))
 
-// Parameter Store Stats
-const parameterStoreStats = computed(() => ({
-  parent: {
-    raw: parameterStore.parentRawParameters.value.length,
-    available: {
-      bim: parameterStore.parentAvailableBimParameters.value.length,
-      user: parameterStore.parentAvailableUserParameters.value.length
-    },
-    selected: parameterStore.parentSelectedParameters.value.length,
-    columns: parameterStore.parentColumnDefinitions.value.length,
-    groups: getParameterGroups(
-      parameterStore.parentAvailableBimParameters.value,
-      parameterStore.parentAvailableUserParameters.value
-    )
-  },
-  child: {
-    raw: parameterStore.childRawParameters.value.length,
-    available: {
-      bim: parameterStore.childAvailableBimParameters.value.length,
-      user: parameterStore.childAvailableUserParameters.value.length
-    },
-    selected: parameterStore.childSelectedParameters.value.length,
-    columns: parameterStore.childColumnDefinitions.value.length,
-    groups: getParameterGroups(
-      parameterStore.childAvailableBimParameters.value,
-      parameterStore.childAvailableUserParameters.value
-    )
-  },
-  metadata: {
-    lastUpdated: parameterStore.state.value.lastUpdated,
-    isProcessing: parameterStore.state.value.isProcessing,
-    error: parameterStore.state.value.error
-  }
+// Safe metadata access
+const metadata = computed(() => ({
+  lastUpdated: safeValue(parameters.lastUpdated) || Date.now(),
+  isProcessing: safeValue(parameters.isProcessing) || false,
+  hasError: safeValue(parameters.hasError) || false
 }))
 
 interface ParameterGroupData {
@@ -478,9 +506,11 @@ type ParameterGroups = Record<string, ParameterGroupData>
 
 function getParameterGroups(
   bimParams: AvailableBimParameter[],
-  userParams: AvailableUserParameter[]
+  userParams: AvailableUserParameter[],
+  selectedParams: SelectedParameter[]
 ): ParameterGroups {
   const groups = new Map<string, ParameterGroupData>()
+  const selectedMap = new Map(selectedParams.map((p) => [p.id, p]))
 
   // Process BIM parameters
   for (const param of bimParams) {
@@ -495,11 +525,14 @@ function getParameterGroups(
 
     const groupData = groups.get(group)
     if (groupData) {
+      const selected = selectedMap.get(param.id)
+      const visible = selected?.visible ?? false
       groupData.total++
+      if (visible) groupData.visible++
       groupData.parameters.push({
         id: param.id,
         name: param.name,
-        visible: true // BIM parameters are always visible in available state
+        visible
       })
     }
   }
@@ -517,11 +550,14 @@ function getParameterGroups(
 
     const groupData = groups.get(group)
     if (groupData) {
+      const selected = selectedMap.get(param.id)
+      const visible = selected?.visible ?? false
       groupData.total++
+      if (visible) groupData.visible++
       groupData.parameters.push({
         id: param.id,
         name: param.name,
-        visible: true // User parameters are always visible in available state
+        visible
       })
     }
   }
@@ -529,7 +565,7 @@ function getParameterGroups(
   return Object.fromEntries(groups.entries())
 }
 
-// Update data structure to include parameter store stats
+// Data structure
 const dataStructure = computed(() => ({
   tableState: {
     rowCount: props.tableData?.length || 0,
@@ -541,30 +577,32 @@ const dataStructure = computed(() => ({
   },
   parameters: {
     parent: {
-      raw: parameterStoreStats.value.parent.raw,
-      available: parameterStoreStats.value.parent.available,
-      selected: parameterStoreStats.value.parent.selected,
-      columns: parameterStoreStats.value.parent.columns,
-      groups: parameterStoreStats.value.parent.groups
+      raw: parameterCounts.value.parent.raw,
+      available: {
+        bim: parameterCounts.value.parent.availableBim,
+        user: parameterCounts.value.parent.availableUser
+      },
+      selected: parameterCounts.value.parent.selected,
+      columns: parameterCounts.value.parent.columns,
+      groups: parameterGroups.value.parent
     },
     child: {
-      raw: parameterStoreStats.value.child.raw,
-      available: parameterStoreStats.value.child.available,
-      selected: parameterStoreStats.value.child.selected,
-      columns: parameterStoreStats.value.child.columns,
-      groups: parameterStoreStats.value.child.groups
+      raw: parameterCounts.value.child.raw,
+      available: {
+        bim: parameterCounts.value.child.availableBim,
+        user: parameterCounts.value.child.availableUser
+      },
+      selected: parameterCounts.value.child.selected,
+      columns: parameterCounts.value.child.columns,
+      groups: parameterGroups.value.child
     },
-    metadata: parameterStoreStats.value.metadata
+    metadata: {
+      lastUpdated: metadata.value.lastUpdated,
+      isProcessing: metadata.value.isProcessing,
+      error: metadata.value.hasError
+    }
   },
-  sample: props.tableData?.[0]
-    ? {
-        id: props.tableData[0].id,
-        mark: props.tableData[0].mark,
-        category: props.tableData[0].category,
-        parameterCount: Object.keys(props.tableData[0].parameters || {}).length,
-        parameters: props.tableData[0].parameters
-      }
-    : null
+  sample: props.tableData?.[5] || null
 }))
 
 function formatTime(timestamp: string | number): string {

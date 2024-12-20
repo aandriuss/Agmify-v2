@@ -4,11 +4,11 @@ import type {
   StoreState,
   ElementData,
   TableRow,
-  ColumnDef,
   TableInfo,
   TableInfoUpdatePayload,
-  AvailableHeaders
+  TableHeaders
 } from '~/composables/core/types'
+import type { ColumnDef } from '~/composables/core/types/tables'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 const initialState: StoreState = {
@@ -150,13 +150,15 @@ export class CoreStore implements Store {
     }
   }
 
-  // Mutations
+  // Core mutations
   public setProjectId = (id: string | null) => this.lifecycle.update({ projectId: id })
   public setScheduleData = (data: ElementData[]) =>
     this.lifecycle.update({ scheduleData: data })
   public setEvaluatedData = (data: ElementData[]) =>
     this.lifecycle.update({ evaluatedData: data })
   public setTableData = (data: TableRow[]) => this.lifecycle.update({ tableData: data })
+
+  // Column mutations
   public setCurrentColumns = (table: ColumnDef[], detail: ColumnDef[]) =>
     this.lifecycle.update({
       currentTableColumns: table,
@@ -184,12 +186,20 @@ export class CoreStore implements Store {
       return this.lifecycle.update({ currentTableColumns: columns })
     }
   }
+
+  // Header mutations
+  public setAvailableHeaders = (headers: TableHeaders) =>
+    this.lifecycle.update({ availableHeaders: headers })
+
+  // Category mutations
   public setSelectedCategories = (categories: Set<string>) =>
     this.lifecycle.update({ selectedCategories: categories })
   public setParentCategories = (categories: string[]) =>
     this.lifecycle.update({ selectedParentCategories: categories })
   public setChildCategories = (categories: string[]) =>
     this.lifecycle.update({ selectedChildCategories: categories })
+
+  // Table mutations
   public setTablesArray = (tables: TableInfo[]) =>
     this.lifecycle.update({ tablesArray: tables })
   public setTableInfo = (info: TableInfoUpdatePayload) => {
@@ -200,6 +210,8 @@ export class CoreStore implements Store {
     if (info.tableKey) update.tableKey = info.tableKey
     return this.lifecycle.update(update)
   }
+
+  // Element mutations
   public setElementVisibility = (elementId: string, visible: boolean) => {
     const data = [...this.internalState.value.scheduleData]
     const element = data.find((e) => e.id === elementId)
@@ -208,8 +220,8 @@ export class CoreStore implements Store {
       return this.lifecycle.update({ scheduleData: data })
     }
   }
-  public setAvailableHeaders = (headers: AvailableHeaders) =>
-    this.lifecycle.update({ availableHeaders: headers })
+
+  // Status mutations
   public setInitialized = (value: boolean) =>
     this.lifecycle.update({ initialized: value })
   public setLoading = (value: boolean) => this.lifecycle.update({ loading: value })

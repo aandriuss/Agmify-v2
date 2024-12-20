@@ -18,18 +18,24 @@
       loading-message="Loading schedule data..."
     >
       <div class="schedule-table-container">
-        <TestDataTable v-if="isTestMode" />
-
-        <template v-else>
+        <template>
           <!-- Parameter Manager -->
           <ParameterManager
             v-if="showParameterManager"
             :selected-parent-categories="store.selectedParentCategories.value"
             :selected-child-categories="store.selectedChildCategories.value"
+            :available-parent-parameters="
+              parameters.parentParameters.available.bim.value
+            "
+            :available-child-parameters="parameters.childParameters.available.bim.value"
+            :selected-parent-parameters="parameters.parentParameters.selected.value"
+            :selected-child-parameters="parameters.childParameters.selected.value"
             :can-create-parameters="true"
             @parameter-visibility-change="handleParameterVisibilityChange"
             @parameter-edit="handleParameterEdit"
             @parameter-create="handleParameterCreate"
+            @parameter-select="handleParameterSelect"
+            @parameter-deselect="handleParameterDeselect"
             @error="handleError"
           />
 
@@ -38,8 +44,8 @@
             :table-id="selectedTableId"
             :table-name="tableName"
             :data="tableData"
-            :columns="parameterStore.parentColumnDefinitions.value"
-            :detail-columns="parameterStore.childColumnDefinitions.value"
+            :columns="parameters.parentParameters.columns.value"
+            :detail-columns="parameters.childParameters.columns.value"
             :loading="isLoading"
             :error="error"
             @row-expand="events.handleRowExpand"
@@ -58,8 +64,8 @@
             :table-data="tableData"
             :parent-elements="parentElements"
             :child-elements="childElements"
-            :parent-columns="parameterStore.parentColumnDefinitions.value"
-            :child-columns="parameterStore.childColumnDefinitions.value"
+            :parent-columns="parameters.parentParameters.columns.value"
+            :child-columns="parameters.childParameters.columns.value"
             :is-test-mode="isTestMode"
             @update:is-test-mode="(value: boolean) => events.handleTestModeUpdate({ value })"
           />
@@ -80,24 +86,26 @@ import type {
   ColumnDef
 } from '~/composables/core/types'
 import { useParameters } from '~/composables/core/parameters/next/useParameters'
-import { useParameterStore } from '~/composables/core/parameters/store'
-import type { SelectedParameter } from '@/composables/core/parameters/store/types'
+import type {
+  SelectedParameter,
+  AvailableParameter
+} from '~/composables/core/types/parameters/parameter-states'
+import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import ParameterManager from '~/components/core/parameters/next/ParameterManager.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
-import TestDataTable from './test/TestDataTable.vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useScheduleEvents } from '~/composables/core/tables/events/useScheduleEvents'
 import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
 import { useStore } from '~/composables/core/store'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
+import { useParameterStore } from '~/composables/core/parameters/store'
 
 const debug = useDebug()
 const store = useStore()
-const parameterStore = useParameterStore()
 const bimElements = useBIMElements()
 
 // Define props
@@ -128,8 +136,10 @@ const props = defineProps({
   }
 })
 
-// Define emits
-const emit = defineEmits<TableEmits & ScheduleEmits>()
+// Define emit types using the built-in event payloads
+type ExtendedEmits = TableEmits & ScheduleEmits
+
+const emit = defineEmits<ExtendedEmits>()
 
 // Initialize core functionality first
 const { scheduleData, tableData, initializeData, isLoading, state } = useElementsData({
@@ -137,7 +147,7 @@ const { scheduleData, tableData, initializeData, isLoading, state } = useElement
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
 })
 
-// Initialize parameter system for UI interactions only
+// Initialize parameter system for UI interactions
 const parameters = useParameters({
   selectedParentCategories: computed(() => store.selectedParentCategories.value),
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
@@ -177,8 +187,7 @@ const isComponentLoading = computed(() => {
     isLoading.value ||
     parameters.isProcessing.value ||
     !isInitialized.value ||
-    bimElements.isLoading.value ||
-    parameterStore.state.value.isProcessing
+    bimElements.isLoading.value
   )
 })
 
@@ -203,7 +212,7 @@ const error = computed(() => {
     tableError.value ||
     state.value?.error ||
     bimElements.hasError.value ||
-    parameterStore.state.value.error ||
+    parameters.hasError.value ||
     null
   )
 })
@@ -222,16 +231,12 @@ const errorState = computed(() => {
 
 // Event handlers
 function handleParameterVisibilityChange(param: SelectedParameter) {
-  parameterStore.updateParameterVisibility(
-    param.id,
-    param.visible,
-    param.kind === 'bim'
-  )
+  parameters.updateParameterVisibility(param.id, param.visible, param.kind === 'bim')
   emit('parameter-visibility-change', { parameter: param })
 }
 
 function handleColumnVisibilityChange(event: { column: ColumnDef; visible: boolean }) {
-  parameterStore.updateParameterVisibility(
+  parameters.updateParameterVisibility(
     event.column.field,
     event.visible,
     event.column.kind === 'bim'
@@ -239,10 +244,66 @@ function handleColumnVisibilityChange(event: { column: ColumnDef; visible: boole
   emit('column-visibility-change', event)
 }
 
+function handleParameterSelect(param: AvailableParameter, isParent: boolean) {
+  // Get parameter store instance
+  const parameterStore = useParameterStore()
+
+  // Create selected parameter using utility function
+  const selectedParam = createSelectedParameter(
+    param,
+    isParent
+      ? parameterStore.parentSelectedParameters.value.length
+      : parameterStore.childSelectedParameters.value.length
+  )
+
+  // Get current selected parameters
+  const currentParams = isParent
+    ? parameterStore.parentSelectedParameters.value
+    : parameterStore.childSelectedParameters.value
+
+  // Update parameter store with new selection
+  parameterStore.updateSelectedParameters([...currentParams, selectedParam], isParent)
+  emit('parameter-select', { parameter: selectedParam })
+}
+
+function handleParameterDeselect(param: AvailableParameter, isParent: boolean) {
+  // Get parameter store instance
+  const parameterStore = useParameterStore()
+
+  // Get current selected parameters
+  const currentParams = isParent
+    ? parameterStore.parentSelectedParameters.value
+    : parameterStore.childSelectedParameters.value
+
+  // Remove parameter from selected parameters
+  const selectedParams = currentParams.filter((p) => p.id !== param.id)
+  parameterStore.updateSelectedParameters(selectedParams, isParent)
+  emit('parameter-deselect', { parameter: param })
+}
+
 function handleColumnReorder(event: { dragIndex: number; dropIndex: number }) {
-  // Determine if we're reordering parent or child columns based on current context
+  // Get the columns array based on context (parent/child)
   const isParent = true // Parent columns are the default
-  parameterStore.reorderParameters(event.dragIndex, event.dropIndex, isParent)
+  const columns = isParent
+    ? parameters.parentParameters.columns.value
+    : parameters.childParameters.columns.value
+
+  // Get parameter ID from dragIndex
+  const draggedColumn = columns[event.dragIndex]
+  if (!draggedColumn) {
+    debug.warn(
+      DebugCategories.PARAMETERS,
+      'Failed to reorder columns - invalid drag index',
+      {
+        dragIndex: event.dragIndex,
+        columnsLength: columns.length
+      }
+    )
+    return
+  }
+
+  // Update parameter order using ID and new index
+  parameters.updateParameterOrder(draggedColumn.id, event.dropIndex, isParent)
   emit('column-reorder', event)
 }
 
@@ -309,17 +370,51 @@ onMounted(async () => {
       })
     }
 
-    // Initialize table to get configuration
+    // Initialize data - this will handle BIM elements and parameter processing
+    debug.startState(DebugCategories.PARAMETERS, 'Processing parameters')
+    await initializeData()
+
+    // Log parameter processing state
+    const parameterStore = useParameterStore()
+    const parameterState = {
+      raw: {
+        parent: parameterStore.parentRawParameters.value?.length || 0,
+        child: parameterStore.childRawParameters.value?.length || 0,
+        parentGroups: Array.from(
+          new Set(
+            parameterStore.parentRawParameters.value?.map((p) => p.sourceGroup) || []
+          )
+        ),
+        childGroups: Array.from(
+          new Set(
+            parameterStore.childRawParameters.value?.map((p) => p.sourceGroup) || []
+          )
+        )
+      },
+      available: {
+        parent: {
+          bim: parameterStore.parentAvailableBimParameters.value?.length || 0,
+          user: parameterStore.parentAvailableUserParameters.value?.length || 0
+        },
+        child: {
+          bim: parameterStore.childAvailableBimParameters.value?.length || 0,
+          user: parameterStore.childAvailableUserParameters.value?.length || 0
+        }
+      },
+      selected: {
+        parent: parameterStore.parentSelectedParameters.value?.length || 0,
+        child: parameterStore.childSelectedParameters.value?.length || 0
+      }
+    }
+
+    debug.log(DebugCategories.PARAMETERS, 'Parameters processed', parameterState)
+
+    // Initialize table with processed parameters
     await initializeTable()
     debug.log(DebugCategories.INITIALIZATION, 'Table initialized')
 
-    // Initialize BIM elements
-    await bimElements.initializeElements()
-    debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
-
-    // Initialize data (this will also process parameters)
-    await initializeData()
-    debug.log(DebugCategories.INITIALIZATION, 'Initial data loaded')
+    // Wait for Vue to update the DOM
+    await new Promise((resolve) => requestAnimationFrame(resolve))
 
     debug.completeState(DebugCategories.INITIALIZATION, 'Schedule view initialized')
   } catch (err) {
