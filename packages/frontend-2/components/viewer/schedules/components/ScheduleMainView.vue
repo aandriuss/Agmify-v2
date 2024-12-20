@@ -40,22 +40,31 @@
           />
 
           <!-- Data Table -->
-          <BaseDataTable
-            :table-id="selectedTableId"
-            :table-name="tableName"
-            :data="tableData"
-            :columns="parameters.parentParameters.columns.value"
-            :detail-columns="parameters.childParameters.columns.value"
-            :loading="isLoading"
-            :error="error"
-            @row-expand="events.handleRowExpand"
-            @row-collapse="events.handleRowCollapse"
-            @column-visibility-change="handleColumnVisibilityChange"
-            @column-reorder="handleColumnReorder"
-            @column-resize="handleColumnResize"
-            @error="events.handleError"
-            @retry="() => events.handleRetry({ timestamp: Date.now() })"
-          />
+          <template v-if="hasParameters">
+            <BaseDataTable
+              :table-id="selectedTableId"
+              :table-name="tableName"
+              :data="tableData"
+              :columns="parameters.parentParameters.columns.value"
+              :detail-columns="parameters.childParameters.columns.value"
+              :loading="isLoading"
+              :error="error"
+              @row-expand="events.handleRowExpand"
+              @row-collapse="events.handleRowCollapse"
+              @column-visibility-change="handleColumnVisibilityChange"
+              @column-reorder="handleColumnReorder"
+              @column-resize="handleColumnResize"
+              @error="events.handleError"
+              @retry="() => events.handleRetry({ timestamp: Date.now() })"
+            />
+          </template>
+          <template v-else>
+            <div class="p-4 text-center text-gray-500">
+              <div class="flex flex-col items-center gap-2">
+                <span>Loading parameters...</span>
+              </div>
+            </div>
+          </template>
 
           <DebugPanel
             v-if="isTestMode"
@@ -181,13 +190,20 @@ const events = useScheduleEvents({
   onRetry: () => emit('retry', { timestamp: Date.now() })
 })
 
-// Computed loading state
+// Computed states
+const hasParameters = computed(() => {
+  const parentParams = parameters.parentParameters.columns.value?.length ?? 0
+  const childParams = parameters.childParameters.columns.value?.length ?? 0
+  return parentParams > 0 || childParams > 0
+})
+
 const isComponentLoading = computed(() => {
   return (
     isLoading.value ||
     parameters.isProcessing.value ||
     !isInitialized.value ||
-    bimElements.isLoading.value
+    bimElements.isLoading.value ||
+    !hasParameters.value
   )
 })
 

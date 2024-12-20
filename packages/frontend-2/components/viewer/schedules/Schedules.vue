@@ -459,57 +459,30 @@ onMounted(async () => {
       throw new Error('Parameter store failed to initialize')
     }
 
-    // Initialize BIM elements
+    // Initialize BIM elements and wait for parameter processing
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
     await bimElements.initializeElements()
 
-    if (!bimElements.allElements.value?.length) {
-      debug.warn(DebugCategories.INITIALIZATION, 'No BIM elements found')
-    } else {
-      debug.log(DebugCategories.INITIALIZATION, 'BIM elements loaded', {
-        count: bimElements.allElements.value.length,
-        sample: bimElements.allElements.value[0],
-        sampleParameters: bimElements.allElements.value[0]?.parameters || {}
-      })
+    // Wait for BIM elements to be fully processed
+    await new Promise((resolve) => setTimeout(resolve, 100))
 
-      // Log parameter groups for debugging
-      const parameterGroups = Array.from(
-        new Set(
-          bimElements.allElements.value.flatMap((el) =>
-            Object.keys(el.parameters || {}).map((key) => key.split('.')[0])
-          )
-        )
-      )
-      debug.log(DebugCategories.PARAMETERS, 'Available parameter groups', {
-        groups: parameterGroups,
-        sample: Object.entries(
-          bimElements.allElements.value[0]?.parameters || {}
-        ).reduce((acc, [key, value]) => {
-          const group = key.split('.')[0]
-          if (!acc[group]) acc[group] = {}
-          acc[group][key] = value
-          return acc
-        }, {} as Record<string, Record<string, unknown>>)
-      })
-    }
-
-    debug.completeState(DebugCategories.INITIALIZATION, 'BIM elements initialized')
-
-    // Initialize data and wait for parameter processing
+    // Initialize data and wait for parameter store
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing element data')
-
-    // Pre-process check
-    debug.log(DebugCategories.PARAMETERS, 'Pre-processing parameter state', {
-      elements: bimElements.allElements.value?.length || 0,
-      sampleElement: bimElements.allElements.value?.[0],
-      sampleParameters: bimElements.allElements.value?.[0]?.parameters || {}
-    })
-
-    // Initialize data - this will handle parameter processing
     await elementsData.initializeData()
 
-    // Wait for any pending store operations to complete
-    await new Promise((resolve) => requestAnimationFrame(resolve))
+    // Wait for parameter store to be fully updated
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // Verify BIM elements are ready
+    if (!bimElements.allElements.value?.length) {
+      debug.error(DebugCategories.INITIALIZATION, 'No BIM elements found')
+      throw new Error('No BIM elements found')
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'BIM elements ready', {
+      count: bimElements.allElements.value.length,
+      sample: bimElements.allElements.value[0]
+    })
 
     // Verify parameter processing with detailed logging
     const parameterState = {
@@ -596,16 +569,29 @@ onMounted(async () => {
       })
     }
 
-    // Verify parameter extraction and processing
-    if (parameterState.raw.parent === 0 && parameterState.raw.child === 0) {
-      debug.error(DebugCategories.PARAMETERS, 'No parameters extracted', {
-        elements: bimElements.allElements.value?.length || 0,
-        sample: bimElements.allElements.value?.[0]?.parameters || {},
-        elementCategories: Array.from(
-          new Set(bimElements.allElements.value?.map((el) => el.category) || [])
-        )
+    // Verify parameters exist in store
+    const hasParentParams = parameterStore.parentRawParameters.value?.length ?? 0
+    const hasChildParams = parameterStore.childRawParameters.value?.length ?? 0
+
+    debug.log(DebugCategories.PARAMETERS, 'Parameter store state', {
+      parent: {
+        raw: hasParentParams,
+        available: parameterStore.parentAvailableBimParameters.value?.length ?? 0,
+        selected: parameterStore.parentSelectedParameters.value?.length ?? 0
+      },
+      child: {
+        raw: hasChildParams,
+        available: parameterStore.childAvailableBimParameters.value?.length ?? 0,
+        selected: parameterStore.childSelectedParameters.value?.length ?? 0
+      }
+    })
+
+    if (hasParentParams === 0 && hasChildParams === 0) {
+      debug.error(DebugCategories.PARAMETERS, 'No parameters found in store', {
+        elements: bimElements.allElements.value?.length ?? 0,
+        sample: bimElements.allElements.value?.[0]?.parameters ?? {}
       })
-      throw new Error('No parameters extracted from elements')
+      throw new Error('No parameters found in store')
     }
 
     // Log parameter extraction details

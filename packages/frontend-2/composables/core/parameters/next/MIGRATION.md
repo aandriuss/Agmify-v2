@@ -1,3 +1,5 @@
+!!! IMPORTANT!!! MIGRATION IS FINISHED. Use just for reference
+
 # Parameter System Migration Guide
 
 This guide helps you migrate from the old parameter system to the new state-based parameter system.

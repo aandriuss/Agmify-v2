@@ -2,18 +2,17 @@ import { ref, computed, watch } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
 import type {
   ElementData,
+  NamedTableConfig,
   ProcessingState,
   TableRow,
   DataState
 } from '~/composables/core/types'
-import { createBimColumnDefWithDefaults } from '~/composables/core/types'
 import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useBIMElements } from './useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
 import { convertToParameterValue } from '~/composables/core/parameters/next/utils/parameter-processing'
-import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
 
 interface UseElementsDataOptions {
@@ -673,60 +672,69 @@ export function useElementsData(
       await processElements(true)
       debug.log(DebugCategories.INITIALIZATION, 'Elements and parameters processed')
 
-      // Create default columns from available parameters
-      const parentColumns = parameterStore.parentAvailableBimParameters.value.map(
-        (param, index) => {
-          const selected = createSelectedParameter(param, index)
-          return createBimColumnDefWithDefaults({
-            id: selected.id,
-            name: selected.name,
-            field: selected.id,
-            header: selected.name,
-            visible: selected.visible,
-            removable: false,
-            order: selected.order,
-            description: selected.description,
-            category: selected.category,
-            type: param.type,
-            sourceValue: typeof param.value === 'object' ? null : param.value,
-            fetchedGroup: param.sourceGroup,
-            currentGroup: param.sourceGroup
-          })
-        }
+      // Get current table configuration
+      const storeState = store.state.value
+      const currentTableId = storeState.currentTableId
+      const currentTable = storeState.tablesArray.find(
+        (table): table is NamedTableConfig => table.id === currentTableId
       )
 
-      const childColumns = parameterStore.childAvailableBimParameters.value.map(
-        (param, index) => {
-          const selected = createSelectedParameter(param, index)
-          return createBimColumnDefWithDefaults({
-            id: selected.id,
-            name: selected.name,
-            field: selected.id,
-            header: selected.name,
-            visible: selected.visible,
-            removable: false,
-            order: selected.order,
-            description: selected.description,
-            category: selected.category,
-            type: param.type,
-            sourceValue: typeof param.value === 'object' ? null : param.value,
-            fetchedGroup: param.sourceGroup,
-            currentGroup: param.sourceGroup
-          })
-        }
-      )
+      if (currentTable) {
+        debug.log(
+          DebugCategories.INITIALIZATION,
+          'Using existing table configuration',
+          {
+            id: currentTable.id,
+            parentColumns: currentTable.parentColumns.length,
+            childColumns: currentTable.childColumns.length
+          }
+        )
 
-      // Initialize table with default columns
+        // If table has parent columns, use them as selected parameters
+        const parentColumns = storeState.parentVisibleColumns
+        if (parentColumns.length > 0) {
+          const parentSelected = parentColumns.map((col, index) => ({
+            id: col.field,
+            name: col.name,
+            kind: 'bim' as const,
+            type: col.type || ('string' as const),
+            value: null,
+            group: 'Parameters',
+            visible: true,
+            order: index
+          }))
+          parameterStore.setSelectedParameters(parentSelected, true)
+        } else {
+          // Create defaults if no columns
+          parameterStore.createDefaultSelectedParameters(true)
+        }
+
+        const childColumns = storeState.childVisibleColumns
+        if (childColumns.length > 0) {
+          const childSelected = childColumns.map((col, index) => ({
+            id: col.field,
+            name: col.name,
+            kind: 'bim' as const,
+            type: col.type || ('string' as const),
+            value: null,
+            group: 'Parameters',
+            visible: true,
+            order: index
+          }))
+          parameterStore.setSelectedParameters(childSelected, false)
+        } else {
+          // Create defaults if no columns
+          parameterStore.createDefaultSelectedParameters(false)
+        }
+      } else {
+        // No table configuration, create defaults
+        parameterStore.createDefaultSelectedParameters(true)
+        parameterStore.createDefaultSelectedParameters(false)
+      }
+
+      // Initialize table flow
       await initializeTable()
       debug.log(DebugCategories.INITIALIZATION, 'Table initialized')
-
-      // Update store with default columns
-      await store.lifecycle.update({
-        parentBaseColumns: parentColumns,
-        parentVisibleColumns: parentColumns,
-        childBaseColumns: childColumns,
-        childVisibleColumns: childColumns
-      })
 
       // Wait for Vue to update the DOM
       await new Promise((resolve) => requestAnimationFrame(resolve))

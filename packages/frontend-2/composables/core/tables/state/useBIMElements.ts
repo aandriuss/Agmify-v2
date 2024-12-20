@@ -474,11 +474,11 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
       // Get nodes from world tree
       const tree = worldTree
       if (!tree?._root?.children?.length) {
-        debug.warn(DebugCategories.DATA, 'No world tree data available')
-        return
+        debug.error(DebugCategories.DATA, 'No world tree data available')
+        throw new Error('No world tree data available')
       }
 
-      debug.log(DebugCategories.DATA, 'World tree root', {
+      debug.log(DebugCategories.DATA, 'World tree data', {
         hasRoot: !!tree._root,
         childrenCount: tree._root.children.length,
         firstChild: tree._root.children[0]

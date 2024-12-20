@@ -124,12 +124,70 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
   )
 
   // Initialize on mount
-  onMounted(() => {
-    debug.log(DebugCategories.PARAMETERS, 'Parameters composable mounted')
+  onMounted(async () => {
+    try {
+      debug.startState(DebugCategories.PARAMETERS, 'Initializing parameters composable')
 
-    // Set initial categories
-    lastProcessedParentCategories = [...options.selectedParentCategories.value]
-    lastProcessedChildCategories = [...options.selectedChildCategories.value]
+      // Set initial categories
+      lastProcessedParentCategories = [...options.selectedParentCategories.value]
+      lastProcessedChildCategories = [...options.selectedChildCategories.value]
+
+      // Wait for store to be ready
+      if (store.isProcessing.value) {
+        debug.log(DebugCategories.PARAMETERS, 'Waiting for parameter store')
+        await new Promise<void>((resolve) => {
+          const unwatch = watch(
+            () => store.isProcessing.value,
+            (isProcessing) => {
+              if (!isProcessing) {
+                unwatch()
+                resolve()
+              }
+            },
+            { immediate: true }
+          )
+        })
+      }
+
+      // Verify parameters exist
+      const hasParameters =
+        (store.parentRawParameters.value?.length ?? 0) > 0 ||
+        (store.childRawParameters.value?.length ?? 0) > 0
+
+      if (!hasParameters) {
+        debug.warn(DebugCategories.PARAMETERS, 'No parameters found in store')
+        return
+      }
+
+      debug.log(DebugCategories.PARAMETERS, 'Parameters initialized', {
+        parent: {
+          raw: store.parentRawParameters.value?.length || 0,
+          available: {
+            bim: store.parentAvailableBimParameters.value?.length || 0,
+            user: store.parentAvailableUserParameters.value?.length || 0
+          },
+          selected: store.parentSelectedParameters.value?.length || 0,
+          columns: store.parentColumnDefinitions.value?.length || 0
+        },
+        child: {
+          raw: store.childRawParameters.value?.length || 0,
+          available: {
+            bim: store.childAvailableBimParameters.value?.length || 0,
+            user: store.childAvailableUserParameters.value?.length || 0
+          },
+          selected: store.childSelectedParameters.value?.length || 0,
+          columns: store.childColumnDefinitions.value?.length || 0
+        }
+      })
+
+      debug.completeState(
+        DebugCategories.PARAMETERS,
+        'Parameters composable initialized'
+      )
+    } catch (err) {
+      debug.error(DebugCategories.PARAMETERS, 'Failed to initialize parameters:', err)
+      store.setError(err instanceof Error ? err : new Error(String(err)))
+    }
   })
 
   return {

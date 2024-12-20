@@ -100,7 +100,6 @@ function createParameterStore() {
 
   /**
    * Process raw parameters into available parameters
-   * Creates default selected parameters if none exist
    */
   async function processRawParameters(parameters: RawParameter[], isParent: boolean) {
     try {
@@ -196,40 +195,7 @@ function createParameterStore() {
         }
       })
 
-      // Create default selected parameters if none exist
-      if (state.value.collections[target].selected.length === 0) {
-        debug.log(DebugCategories.PARAMETERS, 'Creating default parameter selections')
-
-        // Combine BIM and user parameters
-        const availableParams = [
-          ...state.value.collections[target].available.bim,
-          ...state.value.collections[target].available.user
-        ]
-
-        debug.log(DebugCategories.PARAMETERS, 'Available parameters for selection', {
-          total: availableParams.length,
-          bim: state.value.collections[target].available.bim.length,
-          user: state.value.collections[target].available.user.length,
-          sample: availableParams[0]
-        })
-
-        // Create selected parameters with defaults
-        const selectedParams = createSelectedParameters(availableParams)
-
-        // Create column definitions
-        const columnDefs = createColumnDefinitions(selectedParams)
-
-        // Update store
-        state.value.collections[target].selected = selectedParams
-        state.value.collections[target].columns = columnDefs
-
-        debug.log(DebugCategories.PARAMETERS, 'Default selections created', {
-          selectedCount: selectedParams.length,
-          columnsCount: columnDefs.length,
-          sample: selectedParams[0],
-          groups: Array.from(new Set(selectedParams.map((p) => p.group)))
-        })
-      }
+      // Note: Selected parameters are now managed separately through setSelectedParameters
 
       // Verify state after processing
       const currentState = state.value.collections[target]
@@ -560,6 +526,72 @@ function createParameterStore() {
     }
   }
 
+  /**
+   * Set selected parameters and create corresponding column definitions
+   * Used when loading selected parameters from PostgreSQL or setting defaults
+   */
+  function setSelectedParameters(
+    selectedParams: SelectedParameter[],
+    isParent: boolean,
+    isDefault = false
+  ) {
+    const target = isParent ? 'parent' : 'child'
+
+    debug.log(
+      DebugCategories.PARAMETERS,
+      isDefault ? 'Setting default selected parameters' : 'Setting selected parameters',
+      {
+        count: selectedParams.length,
+        isParent,
+        isDefault,
+        sample: selectedParams[0]
+      }
+    )
+
+    // Create column definitions
+    const columnDefs = createColumnDefinitions(selectedParams)
+
+    // Update store
+    state.value.collections[target].selected = selectedParams
+    state.value.collections[target].columns = columnDefs
+
+    state.value.lastUpdated = Date.now()
+
+    debug.log(DebugCategories.PARAMETERS, 'Selected parameters updated', {
+      selectedCount: selectedParams.length,
+      columnsCount: columnDefs.length,
+      sample: selectedParams[0],
+      groups: Array.from(new Set(selectedParams.map((p) => p.group)))
+    })
+  }
+
+  /**
+   * Create default selected parameters from available parameters
+   * Only used when no selected parameters are loaded from PostgreSQL
+   */
+  function createDefaultSelectedParameters(isParent: boolean) {
+    const target = isParent ? 'parent' : 'child'
+
+    debug.log(DebugCategories.PARAMETERS, 'Creating default selected parameters')
+
+    // Use a subset of available parameters as defaults
+    const defaultParams = state.value.collections[target].available.bim
+      .filter((param) => {
+        // Include parameters that are typically important
+        return (
+          param.name.toLowerCase().includes('name') ||
+          param.name.toLowerCase().includes('id') ||
+          param.name.toLowerCase().includes('type') ||
+          param.name.toLowerCase().includes('category') ||
+          param.sourceGroup === 'Identity Data'
+        )
+      })
+      .slice(0, 10) // Limit to first 10 parameters
+
+    const selectedParams = createSelectedParameters(defaultParams)
+    setSelectedParameters(selectedParams, isParent, true)
+  }
+
   return {
     // State
     state: computed(() => state.value),
@@ -602,6 +634,8 @@ function createParameterStore() {
     updateParameterVisibility,
     updateParameterOrder,
     reorderParameters,
+    setSelectedParameters,
+    createDefaultSelectedParameters,
 
     // Basic operations
     setRawParameters,
