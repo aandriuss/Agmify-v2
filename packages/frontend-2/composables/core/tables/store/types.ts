@@ -58,6 +58,7 @@ export interface TableSettings {
   parentColumns: ColumnDef[]
   categoryFilters: TableCategoryFilters
   selectedParameters: TableSelectedParameters
+  lastUpdateTimestamp: number
 }
 
 /**

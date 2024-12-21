@@ -1,5 +1,5 @@
 // Parameter operations
-export { useParameters } from './next/useParameters'
+export { useParameters } from './useParameters'
 export {
   useParameterOperations,
   ParameterOperationError

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { computed } from 'vue'
-import { useParameters } from '../useParameters'
+import { useParameters } from '../../useParameters'
 import { useParameterStore } from '../store/parameter-store'
 import type { UserValueType } from '~/composables/core/types/parameters'
 

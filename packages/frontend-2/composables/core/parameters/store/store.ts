@@ -7,11 +7,12 @@ import type {
   ParameterCollections
 } from './types'
 import { createAvailableUserParameter } from './types'
+import { defaultSelectedParameters } from '~/composables/core/tables/config/defaults'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import {
   processRawParameters as processParams,
   createColumnDefinitions
-} from '../next/utils/parameter-processing'
+} from '../parameter-processing'
 import type { UserValueType, ParameterValue } from '~/composables/core/types/parameters'
 
 /**
@@ -494,13 +495,35 @@ function createParameterStore() {
    * Reset store state
    */
   function reset() {
+    // Create collections with default parameters
+    const collections = createInitialCollections()
+    collections.parent.selected = defaultSelectedParameters.parent
+    collections.child.selected = defaultSelectedParameters.child
+
+    // Create column definitions for default parameters
+    collections.parent.columns = createColumnDefinitions(
+      defaultSelectedParameters.parent
+    )
+    collections.child.columns = createColumnDefinitions(defaultSelectedParameters.child)
+
     state.value = {
-      collections: createInitialCollections(),
+      collections,
       loading: false,
       error: null,
       isProcessing: false,
       lastUpdated: Date.now()
     }
+
+    debug.log(DebugCategories.PARAMETERS, 'Parameter store reset with defaults', {
+      parent: {
+        selected: collections.parent.selected.length,
+        columns: collections.parent.columns.length
+      },
+      child: {
+        selected: collections.child.selected.length,
+        columns: collections.child.columns.length
+      }
+    })
   }
 
   /**
@@ -513,8 +536,21 @@ function createParameterStore() {
       state.value.loading = true
       state.value.isProcessing = true
 
-      // Reset to initial state
-      state.value.collections = createInitialCollections()
+      // Create initial collections with default selected parameters
+      const collections = createInitialCollections()
+      collections.parent.selected = defaultSelectedParameters.parent
+      collections.child.selected = defaultSelectedParameters.child
+
+      // Create column definitions for default parameters
+      collections.parent.columns = createColumnDefinitions(
+        defaultSelectedParameters.parent
+      )
+      collections.child.columns = createColumnDefinitions(
+        defaultSelectedParameters.child
+      )
+
+      // Set state
+      state.value.collections = collections
 
       // Wait for Vue reactivity to ensure clean state
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -523,6 +559,17 @@ function createParameterStore() {
       if (!state.value.collections.parent || !state.value.collections.child) {
         throw new Error('Failed to initialize parameter collections')
       }
+
+      debug.log(DebugCategories.PARAMETERS, 'Default parameters initialized', {
+        parent: {
+          selected: collections.parent.selected.length,
+          columns: collections.parent.columns.length
+        },
+        child: {
+          selected: collections.child.selected.length,
+          columns: collections.child.columns.length
+        }
+      })
 
       debug.log(DebugCategories.INITIALIZATION, 'Parameter store initialized', {
         collections: state.value.collections,

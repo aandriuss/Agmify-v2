@@ -132,7 +132,7 @@ export class CoreStore implements Store {
           ...this.internalState.value,
           ...state
         }
-        debug.completeState(category, 'Core store state updated', {
+        debug.completeState(DebugCategories.STATE, 'Core store state updated', {
           updatedFields: Object.keys(state),
           updates: state,
           type: category

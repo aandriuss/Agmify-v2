@@ -109,7 +109,8 @@ function toTableSettings(config: NamedTableConfig): TableSettings {
     childColumns: config.config.childColumns.map(toColumnDef),
     parentColumns: config.config.parentColumns.map(toColumnDef),
     categoryFilters: config.categoryFilters,
-    selectedParameters: config.config.selectedParameters
+    selectedParameters: config.config.selectedParameters,
+    lastUpdateTimestamp: Date.now()
   }
 }
 

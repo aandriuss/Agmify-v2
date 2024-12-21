@@ -94,7 +94,7 @@ import type {
   ElementData,
   ColumnDef
 } from '~/composables/core/types'
-import { useParameters } from '~/composables/core/parameters/next/useParameters'
+import { useParameters } from '~/composables/core/parameters/useParameters'
 import type {
   SelectedParameter,
   AvailableParameter
@@ -114,6 +114,7 @@ import { useStore } from '~/composables/core/store'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
 import { useTableParameters } from '~/composables/core/tables/useTableParameters'
+import { defaultSelectedParameters } from '~/composables/core/tables/config/defaults'
 
 const debug = useDebug()
 const store = useStore()
@@ -185,10 +186,7 @@ const {
       selectedParentCategories: [],
       selectedChildCategories: []
     },
-    selectedParameters: {
-      parent: [],
-      child: []
-    },
+    selectedParameters: defaultSelectedParameters,
     lastUpdateTimestamp: Date.now()
   }
 })
@@ -455,16 +453,9 @@ onMounted(async () => {
         }
       )
 
-      // Create default parameters
-      debug.log(DebugCategories.PARAMETERS, 'Creating default parameters')
-      parameterStore.createDefaultSelectedParameters(true) // Parent
-      parameterStore.createDefaultSelectedParameters(false) // Child
-
-      // Update table with new selected parameters
-      tableStore.updateSelectedParameters({
-        parent: parameterStore.parentSelectedParameters.value,
-        child: parameterStore.childSelectedParameters.value
-      })
+      // Use default parameters
+      debug.log(DebugCategories.PARAMETERS, 'Using default parameters')
+      tableStore.updateSelectedParameters(defaultSelectedParameters)
     }
 
     // Log final parameter state

@@ -173,7 +173,7 @@ import type {
   AvailableUserParameter,
   SelectedParameter
 } from '~/composables/core/types/parameters/parameter-states'
-import { useParameters } from '~/composables/core/parameters/next/useParameters'
+import { useParameters } from '~/composables/core/parameters/useParameters'
 import LoadingState from '~/components/core/LoadingState.vue'
 
 // Props

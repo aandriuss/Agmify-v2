@@ -205,7 +205,7 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
       categoryFilters: inputTable.categoryFilters || defaultConfig.categoryFilters,
       selectedParameters:
         storedTable?.selectedParameters || defaultConfig.selectedParameters,
-      lastUpdateTimestamp: inputTable.lastUpdateTimestamp || Date.now()
+      lastUpdateTimestamp: Date.now()
     }
   })
 
@@ -230,12 +230,28 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
       // Update stores
       debug.log(DebugCategories.PARAMETERS, 'Updating stores with table configuration')
 
-      // Update table store with columns and parameters
+      // Create table with initial config
+      debug.log(DebugCategories.PARAMETERS, 'Creating table with initial config')
+      const selectedParams =
+        config.selectedParameters.parent.length ||
+        config.selectedParameters.child.length
+          ? config.selectedParameters // Use provided parameters if they exist
+          : defaultConfig.selectedParameters // Otherwise use defaults
+
+      debug.log(DebugCategories.PARAMETERS, 'Using parameters', {
+        source: selectedParams === config.selectedParameters ? 'provided' : 'defaults',
+        parent: selectedParams.parent.length,
+        child: selectedParams.child.length
+      })
+
+      // Update table with full config
+      debug.log(DebugCategories.PARAMETERS, 'Updating table with full config')
       await tableStore.updateTable({
         ...config,
+        id: config.id,
         parentColumns: config.parentColumns,
         childColumns: config.childColumns,
-        selectedParameters: config.selectedParameters
+        selectedParameters: selectedParams
       })
 
       // Update core store with UI state
@@ -250,10 +266,36 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
       // Update current view columns in core store
       await store.setCurrentColumns(config.parentColumns, config.childColumns)
 
+      // Wait for table store to be ready
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
       debug.completeState(DebugCategories.INITIALIZATION, 'Store initialized', {
-        selectedParameters: {
-          parent: tableStore.currentTable.value?.selectedParameters.parent.length || 0,
-          child: tableStore.currentTable.value?.selectedParameters.child.length || 0
+        defaultConfig: {
+          parent: defaultConfig.selectedParameters.parent.length,
+          child: defaultConfig.selectedParameters.child.length
+        },
+        tableStore: {
+          selectedParameters: {
+            parent:
+              tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
+            child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
+          }
+        },
+        parameterStore: {
+          selected: {
+            parent: parameterStore.parentSelectedParameters.value?.length || 0,
+            child: parameterStore.childSelectedParameters.value?.length || 0
+          }
+        }
+      })
+
+      // Log final state after everything is ready
+      debug.log(DebugCategories.PARAMETERS, 'Final parameter state', {
+        defaultParameters: defaultConfig.selectedParameters,
+        tableStoreParameters: tableStore.currentTable.value?.selectedParameters,
+        parameterStoreParameters: {
+          parent: parameterStore.parentSelectedParameters.value,
+          child: parameterStore.childSelectedParameters.value
         }
       })
     } catch (err) {

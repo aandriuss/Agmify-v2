@@ -10,6 +10,7 @@ import type {
 import type { ColumnDef } from '~/composables/core/types'
 import { useTableService } from '../services/tableService'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
+import { defaultSelectedParameters } from '../config/defaults'
 
 /**
  * Table Store
@@ -53,6 +54,25 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   // Initialize state
   const state = ref<TableStoreState>(createInitialState())
   const tableService = useTableService()
+
+  // Create default table
+  const defaultTable: TableSettings = {
+    id: 'default',
+    name: 'Default Table',
+    displayName: 'Default Table',
+    parentColumns: [],
+    childColumns: [],
+    categoryFilters: {
+      selectedParentCategories: [],
+      selectedChildCategories: []
+    },
+    selectedParameters: defaultSelectedParameters,
+    lastUpdateTimestamp: Date.now()
+  }
+
+  // Set default table and make it current
+  state.value.tables.set(defaultTable.id, defaultTable)
+  state.value.currentTableId = defaultTable.id
 
   // Add initial tables if provided
   if (options.initialTables) {
@@ -138,6 +158,19 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
    * Update current table
    */
   function updateTable(updates: Partial<TableSettings>) {
+    // If this is a new table, create it
+    if (updates.id && !state.value.tables.has(updates.id)) {
+      debug.log(DebugCategories.STATE, 'Creating new table', {
+        tableId: updates.id,
+        updates
+      })
+      state.value.currentTableId = updates.id
+      state.value.tables.set(updates.id, updates as TableSettings)
+      state.value.lastUpdated = Date.now()
+      return
+    }
+
+    // Otherwise update existing table
     if (!state.value.currentTableId) {
       debug.error(
         DebugCategories.ERROR,
@@ -328,8 +361,38 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
    * Reset store state
    */
   function reset() {
-    state.value = createInitialState()
-    debug.log(DebugCategories.STATE, 'Table store reset')
+    // Create initial state
+    const initialState = createInitialState()
+
+    // Create default table with default parameters
+    const defaultTable: TableSettings = {
+      id: 'default',
+      name: 'Default Table',
+      displayName: 'Default Table',
+      parentColumns: [],
+      childColumns: [],
+      categoryFilters: {
+        selectedParentCategories: [],
+        selectedChildCategories: []
+      },
+      selectedParameters: defaultSelectedParameters,
+      lastUpdateTimestamp: Date.now()
+    }
+
+    // Set default table
+    initialState.tables.set(defaultTable.id, defaultTable)
+    initialState.currentTableId = defaultTable.id
+
+    // Update state
+    state.value = initialState
+
+    debug.log(DebugCategories.STATE, 'Table store reset with defaults', {
+      tableId: defaultTable.id,
+      selectedParameters: {
+        parent: defaultSelectedParameters.parent.length,
+        child: defaultSelectedParameters.child.length
+      }
+    })
   }
 
   return {

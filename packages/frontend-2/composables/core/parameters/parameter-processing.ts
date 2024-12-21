@@ -239,10 +239,10 @@ export function processRawParameters(
     return []
   }
 
-  debug.log(DebugCategories.PARAMETERS, 'Starting parameter processing', {
-    count: rawParams.length,
-    sample: rawParams[0]
-  })
+  // debug.log(DebugCategories.PARAMETERS, 'Starting parameter processing', {
+  //   count: rawParams.length,
+  //   sample: rawParams[0]
+  // })
 
   // First group parameters by their ID to handle duplicates
   const parameterGroups = new Map<string, RawParameter[]>()
@@ -260,11 +260,11 @@ export function processRawParameters(
     parameterGroups.set(param.id, [...existing, param])
   })
 
-  debug.log(DebugCategories.PARAMETERS, 'Grouped raw parameters', {
-    totalParams: rawParams.length,
-    uniqueIds: parameterGroups.size,
-    sample: Array.from(parameterGroups.entries())[0]
-  })
+  // debug.log(DebugCategories.PARAMETERS, 'Grouped raw parameters', {
+  //   totalParams: rawParams.length,
+  //   uniqueIds: parameterGroups.size,
+  //   sample: Array.from(parameterGroups.entries())[0]
+  // })
 
   // Process each unique parameter
   const processed = Array.from(parameterGroups.entries()).flatMap(([_id, params]) => {
@@ -370,7 +370,7 @@ export function processRawParameters(
   const validProcessed = processed.flat().filter(Boolean)
 
   // Log processing stats and verify state
-  const processedStats = {
+  const _processedStats = {
     input: rawParams.length,
     processed: validProcessed.length,
     bim: validProcessed.filter((p): p is AvailableBimParameter => p.kind === 'bim')
@@ -416,10 +416,10 @@ export function processRawParameters(
     throw new Error('Invalid processed parameters')
   }
 
-  debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
-    stats: processedStats,
-    sample: validProcessed[0]
-  })
+  // debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
+  //   stats: processedStats,
+  //   sample: validProcessed[0]
+  // })
 
   return validProcessed
 }

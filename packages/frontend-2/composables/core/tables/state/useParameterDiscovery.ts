@@ -3,7 +3,7 @@ import type { Ref, ComputedRef } from 'vue'
 import type {
   ProcessedHeader,
   TreeItemComponentModel,
-  Parameter
+  AvailableParameter
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { processedHeaderToParameter } from '~/composables/core/utils/conversion/header-conversion'
@@ -27,15 +27,15 @@ interface UseParameterDiscoveryOptions extends BaseParameterDiscoveryOptions {
 
 interface ParameterDiscoveryState extends BaseParameterDiscoveryState {
   discoveredParameters: {
-    parent: Parameter[]
-    child: Parameter[]
+    parent: AvailableParameter[]
+    child: AvailableParameter[]
   }
 }
 
 interface ParameterDiscoveryReturn {
   // Available parameters
-  availableParentHeaders: ComputedRef<Parameter[]>
-  availableChildHeaders: ComputedRef<Parameter[]>
+  availableParentHeaders: ComputedRef<AvailableParameter[]>
+  availableChildHeaders: ComputedRef<AvailableParameter[]>
 
   // Discovery state
   isDiscovering: ComputedRef<boolean>

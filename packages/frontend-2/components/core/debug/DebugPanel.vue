@@ -232,11 +232,11 @@
                   </div>
                   <div class="count-item">
                     <span>Selected:</span>
-                    <span>{{ parameterCounts.parent.selected }}</span>
+                    <span>{{ tableStoreCounts.parent.selected }}</span>
                   </div>
                   <div class="count-item">
                     <span>Columns:</span>
-                    <span>{{ parameterCounts.parent.columns }}</span>
+                    <span>{{ tableStoreCounts.parent.columns }}</span>
                   </div>
                 </div>
                 <div class="parameter-groups">
@@ -285,11 +285,11 @@
                   </div>
                   <div class="count-item">
                     <span>Selected:</span>
-                    <span>{{ parameterCounts.child.selected }}</span>
+                    <span>{{ tableStoreCounts.child.selected }}</span>
                   </div>
                   <div class="count-item">
                     <span>Columns:</span>
-                    <span>{{ parameterCounts.child.columns }}</span>
+                    <span>{{ tableStoreCounts.child.columns }}</span>
                   </div>
                 </div>
                 <div class="parameter-groups">
@@ -316,22 +316,39 @@
                 </div>
               </div>
 
-              <!-- Parameter Store Metadata -->
+              <!-- Store States -->
               <div class="parameter-group">
-                <h5>Parameter Store State</h5>
+                <h5>Store States</h5>
                 <div class="parameter-counts">
+                  <!-- Parameter Store -->
                   <div class="count-item">
-                    <span>Last Updated:</span>
+                    <span>Parameter Store Last Updated:</span>
                     <span>
                       {{ formatTime(parameters.lastUpdated.value || Date.now()) }}
                     </span>
                   </div>
                   <div class="count-item">
-                    <span>Processing:</span>
+                    <span>Parameter Store Processing:</span>
                     <span>{{ parameters.isProcessing.value || false }}</span>
                   </div>
                   <div v-if="parameters.hasError.value" class="count-item error">
-                    <span>Error:</span>
+                    <span>Parameter Store Error:</span>
+                    <span>Error state detected</span>
+                  </div>
+
+                  <!-- Table Store -->
+                  <div class="count-item">
+                    <span>Table Store Last Updated:</span>
+                    <span>
+                      {{ formatTime(tableStore.lastUpdated.value || Date.now()) }}
+                    </span>
+                  </div>
+                  <div class="count-item">
+                    <span>Current Table ID:</span>
+                    <span>{{ tableStore.currentTable.value?.id || 'None' }}</span>
+                  </div>
+                  <div v-if="tableStore.hasError.value" class="count-item error">
+                    <span>Table Store Error:</span>
                     <span>Error state detected</span>
                   </div>
                 </div>
@@ -435,6 +452,38 @@ const props = withDefaults(defineProps<Props>(), {
   availableChildHeaders: () => []
 })
 
+// Parameter counts from parameter store
+const parameterStoreCounts = computed(() => ({
+  parent: {
+    raw: safeLength(safeValue(parameters.parentRawParameters)),
+    availableBim: safeLength(safeValue(parameters.parentAvailableBimParameters)),
+    availableUser: safeLength(safeValue(parameters.parentAvailableUserParameters))
+  },
+  child: {
+    raw: safeLength(safeValue(parameters.childRawParameters)),
+    availableBim: safeLength(safeValue(parameters.childAvailableBimParameters)),
+    availableUser: safeLength(safeValue(parameters.childAvailableUserParameters))
+  }
+}))
+
+// Selected parameters and columns from table store
+const tableStoreCounts = computed(() => {
+  const currentTable = tableStore.currentTable.value
+  const selectedParams = currentTable?.selectedParameters
+  const hasSelectedParams = isSelectedParameters(selectedParams)
+
+  return {
+    parent: {
+      selected: hasSelectedParams ? selectedParams.parent.length : 0,
+      columns: currentTable?.parentColumns?.length ?? 0
+    },
+    child: {
+      selected: hasSelectedParams ? selectedParams.child.length : 0,
+      columns: currentTable?.childColumns?.length ?? 0
+    }
+  }
+})
+
 // Initialize parameter system with proper categories
 const uniqueParentCategories = computed(() =>
   Array.from(
@@ -469,29 +518,17 @@ const isSelectedParameters = (
 const safeLength = (value: unknown[] | undefined | null) => value?.length || 0
 const safeValue = <T>(value: { value?: T | null } | undefined | null) => value?.value
 
-// Parameter counts with type safety
-const parameterCounts = computed(() => {
-  const currentTable = tableStore.currentTable.value
-  const selectedParams = currentTable?.selectedParameters
-  const hasSelectedParams = isSelectedParameters(selectedParams)
-
-  return {
-    parent: {
-      raw: safeLength(safeValue(parameters.parentRawParameters)),
-      availableBim: safeLength(safeValue(parameters.parentAvailableBimParameters)),
-      availableUser: safeLength(safeValue(parameters.parentAvailableUserParameters)),
-      selected: hasSelectedParams ? selectedParams.parent.length : 0,
-      columns: currentTable?.parentColumns?.length ?? 0
-    },
-    child: {
-      raw: safeLength(safeValue(parameters.childRawParameters)),
-      availableBim: safeLength(safeValue(parameters.childAvailableBimParameters)),
-      availableUser: safeLength(safeValue(parameters.childAvailableUserParameters)),
-      selected: hasSelectedParams ? selectedParams.child.length : 0,
-      columns: currentTable?.childColumns?.length ?? 0
-    }
+// Combined counts for backward compatibility
+const parameterCounts = computed(() => ({
+  parent: {
+    ...parameterStoreCounts.value.parent,
+    ...tableStoreCounts.value.parent
+  },
+  child: {
+    ...parameterStoreCounts.value.child,
+    ...tableStoreCounts.value.child
   }
-})
+}))
 
 // Limit displayed logs for performance
 const MAX_DISPLAYED_LOGS = 200

@@ -20,7 +20,7 @@ import {
 import {
   processRawParameters,
   convertToParameterValue
-} from '~/composables/core/parameters/next/utils/parameter-processing'
+} from '~/composables/core/parameters/parameter-processing'
 
 interface BIMElementsState {
   worldTree: ViewerTree | null
@@ -185,13 +185,13 @@ async function extractParameters(
     return parameters
   }
 
-  debug.log(DebugCategories.PARAMETERS, 'Raw node data', {
-    id: nodeData.id,
-    type: nodeData.type,
-    hasIdentityData: !!nodeData['Identity Data'],
-    hasOther: !!nodeData.Other,
-    hasParameters: !!nodeData.parameters
-  })
+  // debug.log(DebugCategories.PARAMETERS, 'Raw node data', {
+  //   id: nodeData.id,
+  //   type: nodeData.type,
+  //   hasIdentityData: !!nodeData['Identity Data'],
+  //   hasOther: !!nodeData.Other,
+  //   hasParameters: !!nodeData.parameters
+  // })
 
   // Get core properties from ViewerNodeRaw type
   const coreProperties = new Set([
@@ -277,22 +277,22 @@ async function extractParameters(
 
   await Promise.all(parameterPromises)
 
-  debug.log(DebugCategories.PARAMETERS, 'Parameter extraction stats', {
-    raw: stats.raw,
-    unique: stats.unique.size,
-    groups: Object.fromEntries(
-      Array.from(stats.groups.entries()).map(([group, params]) => [
-        group,
-        {
-          total: params.size,
-          active: stats.activeGroups.get(group)?.size || 0,
-          parameters: Array.from(params),
-          activeParameters: Array.from(stats.activeGroups.get(group) || new Set())
-        }
-      ])
-    ),
-    extractedParameters: parameters
-  })
+  // debug.log(DebugCategories.PARAMETERS, 'Parameter extraction stats', {
+  //   raw: stats.raw,
+  //   unique: stats.unique.size,
+  //   groups: Object.fromEntries(
+  //     Array.from(stats.groups.entries()).map(([group, params]) => [
+  //       group,
+  //       {
+  //         total: params.size,
+  //         active: stats.activeGroups.get(group)?.size || 0,
+  //         parameters: Array.from(params),
+  //         activeParameters: Array.from(stats.activeGroups.get(group) || new Set())
+  //       }
+  //     ])
+  //   ),
+  //   extractedParameters: parameters
+  // })
 
   return parameters
 }
@@ -354,21 +354,21 @@ async function convertViewerNodeToElementData(
     'Uncategorized'
   const isChild = childCategories.includes(category)
 
-  debug.log(DebugCategories.DATA_TRANSFORM, 'Converting node', {
-    id: nodeData.id,
-    category,
-    isChild,
-    type: nodeData.type
-  })
+  // debug.log(DebugCategories.DATA_TRANSFORM, 'Converting node', {
+  //   id: nodeData.id,
+  //   category,
+  //   isChild,
+  //   type: nodeData.type
+  // })
 
   // Extract all parameters with proper grouping
   const parameters = await extractParameters(nodeData)
 
-  debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
-    nodeId: nodeData.id,
-    parameterCount: Object.keys(parameters).length,
-    groups: Array.from(new Set(Object.keys(parameters).map((key) => key.split('.')[0])))
-  })
+  // debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
+  //   nodeId: nodeData.id,
+  //   parameterCount: Object.keys(parameters).length,
+  //   groups: Array.from(new Set(Object.keys(parameters).map((key) => key.split('.')[0])))
+  // })
 
   return {
     id: nodeData.id,

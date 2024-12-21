@@ -4,7 +4,7 @@ import {
   processRawParameters,
   createSelectedParameters,
   createColumnDefinitions
-} from '../parameter-processing'
+} from '../../../parameter-processing'
 import type { ElementData } from '~/composables/core/types'
 import type { ParameterValue } from '~/composables/core/types/parameters'
 

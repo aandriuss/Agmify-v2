@@ -1,4 +1,4 @@
-import type { Parameter, TableConfig } from '~/composables/core/types'
+import type { AvailableParameter, TableConfig } from '~/composables/core/types'
 
 /**
  * Table settings interface
@@ -6,7 +6,7 @@ import type { Parameter, TableConfig } from '~/composables/core/types'
 export interface TableSettings {
   controlWidth: number
   namedTables: Record<string, NamedTableConfig>
-  customParameters: Parameter[]
+  customParameters: AvailableParameter[]
 }
 
 /**
@@ -15,5 +15,5 @@ export interface TableSettings {
 export interface NamedTableConfig extends TableConfig {
   displayName: string
   description?: string
-  userParameters?: Parameter[]
+  userParameters?: AvailableParameter[]
 }

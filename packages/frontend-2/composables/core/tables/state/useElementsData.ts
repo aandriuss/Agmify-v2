@@ -6,14 +6,16 @@ import type {
   TableRow,
   DataState
 } from '~/composables/core/types'
-import { useTableParameters } from '../useTableParameters'
+import type { NamedTableConfig } from '~/composables/core/types/tables/settings-types'
 import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
+import { useTableStore } from '~/composables/core/tables/store/store'
 import { useBIMElements } from './useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import { convertToParameterValue } from '~/composables/core/parameters/next/utils/parameter-processing'
+import { convertToParameterValue } from '~/composables/core/parameters/parameter-processing'
 import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
+import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
 
 interface UseElementsDataOptions {
   selectedParentCategories: Ref<string[]>
@@ -45,6 +47,7 @@ export function useElementsData(
 ): UseElementsDataReturn {
   const store = useStore()
   const parameterStore = useParameterStore()
+  const tableStore = useTableStore()
   const bimElements = useBIMElements({
     childCategories: options.selectedChildCategories.value
   })
@@ -66,28 +69,28 @@ export function useElementsData(
     child: [] as string[]
   })
 
-  // Initialize table flow
+  // Initialize table flow using default config
   const {
     initialize: initializeTable,
     isInitialized: _isInitialized,
     error: _tableError
   } = useTableFlow({
-    currentTable: computed(() => null), // No current table, use defaults
+    currentTable: computed(() => {
+      const current = tableStore.currentTable.value
+      if (!current) return null
+
+      // Convert TableSettings to NamedTableConfig
+      const namedConfig: NamedTableConfig = {
+        ...current,
+        displayName: current.displayName || current.name,
+        description: current.name,
+        lastUpdateTimestamp: tableStore.lastUpdated.value
+      }
+      return namedConfig
+    }),
     defaultConfig: {
-      id: 'default-table',
-      name: 'Default Table',
-      displayName: 'Default Table',
-      parentColumns: [],
-      childColumns: [],
-      categoryFilters: {
-        selectedParentCategories: [],
-        selectedChildCategories: []
-      },
-      selectedParameters: {
-        parent: [],
-        child: []
-      },
-      lastUpdateTimestamp: Date.now()
+      ...defaultTableConfig,
+      id: `default-table-${Date.now()}` // Ensure unique id for new table
     }
   })
 
@@ -675,10 +678,6 @@ export function useElementsData(
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
       processingState.value.isProcessingElements = true
 
-      // Initialize parameters using table parameters composable
-      const tableParams = useTableParameters()
-      await tableParams.initializeTableParameters(true) // Force initialization
-
       // Initialize BIM elements to get parameters
       await bimElements.initializeElements()
       debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
@@ -687,9 +686,26 @@ export function useElementsData(
       await processElements(true)
       debug.log(DebugCategories.INITIALIZATION, 'Elements and parameters processed')
 
-      // Initialize table flow
+      // Initialize table flow with default config
+      debug.log(
+        DebugCategories.INITIALIZATION,
+        'Initializing table with default parameters',
+        {
+          defaultParameters: {
+            parent: defaultTableConfig.selectedParameters.parent.length,
+            child: defaultTableConfig.selectedParameters.child.length
+          }
+        }
+      )
       await initializeTable()
-      debug.log(DebugCategories.INITIALIZATION, 'Table initialized')
+
+      debug.log(DebugCategories.INITIALIZATION, 'Table initialized with parameters', {
+        selectedParameters: {
+          parent:
+            tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
+          child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
+        }
+      })
 
       // Wait for Vue to update the DOM
       await new Promise((resolve) => requestAnimationFrame(resolve))

@@ -1,16 +1,16 @@
 import { onMounted, watch } from 'vue'
 import type { ComputedRef } from 'vue'
-import { useParameterStore } from '../store/'
+import { useParameterStore } from './store'
 import type {
   RawParameter,
   AvailableBimParameter,
   AvailableUserParameter,
   SelectedParameter,
   ColumnDefinition
-} from '../store/types'
+} from './store/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { UserValueType } from '~/composables/core/types/parameters'
-import { convertToParameterValue } from './utils/parameter-processing'
+import { convertToParameterValue } from './parameter-processing'
 
 interface UseParametersOptions {
   selectedParentCategories: ComputedRef<string[]>
