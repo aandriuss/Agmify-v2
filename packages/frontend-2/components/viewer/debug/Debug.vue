@@ -20,10 +20,10 @@
         :table-data="store.tableData.value"
         :parent-elements="parentElements"
         :child-elements="childElements"
-        :parent-parameter-columns="store.parentVisibleColumns.value"
-        :child-parameter-columns="store.childVisibleColumns.value"
-        :available-parent-headers="store.parentBaseColumns.value"
-        :available-child-headers="store.childBaseColumns.value"
+        :parent-parameter-columns="tableStore.currentTable?.value?.parentColumns || []"
+        :child-parameter-columns="tableStore.currentTable?.value?.childColumns || []"
+        :available-parent-headers="store.availableHeaders.value.parent"
+        :available-child-headers="store.availableHeaders.value.child"
         :is-test-mode="isTestMode"
         @update:is-test-mode="updateTestMode"
       />
@@ -34,12 +34,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useStore } from '~/composables/core/store'
+import { useTableStore } from '~/composables/core/tables/store/store'
 import type { ElementData } from '~/composables/core/types'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 
 defineEmits(['close'])
 
 const store = useStore()
+const tableStore = useTableStore()
 const isTestMode = ref(false)
 
 // Computed properties for relationship data

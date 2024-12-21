@@ -3621,16 +3621,32 @@ export type TableColumnInput = {
   width?: InputMaybe<Scalars['Int']['input']>;
 };
 
-/** Table configuration for storing parent and child columns */
+/** Table configuration for storing parent and child columns and parameters */
 export type TableConfig = {
   __typename?: 'TableConfig';
   childColumns: Array<TableColumn>;
   parentColumns: Array<TableColumn>;
+  selectedParameters: TableSelectedParameters;
 };
 
+/** Input for table configuration */
 export type TableConfigInput = {
   childColumns: Array<TableColumnInput>;
   parentColumns: Array<TableColumnInput>;
+  selectedParameters: TableSelectedParametersInput;
+};
+
+/** Selected parameters for table with parent/child separation */
+export type TableSelectedParameters = {
+  __typename?: 'TableSelectedParameters';
+  child: Array<Parameter>;
+  parent: Array<Parameter>;
+};
+
+/** Input for selected parameters */
+export type TableSelectedParametersInput = {
+  child: Array<Scalars['ID']['input']>;
+  parent: Array<Scalars['ID']['input']>;
 };
 
 export type TestAutomationRun = {
@@ -4788,7 +4804,7 @@ export type ResolversTypes = {
   ModelsTreeItemCollection: ResolverTypeWrapper<Omit<ModelsTreeItemCollection, 'items'> & { items: Array<ResolversTypes['ModelsTreeItem']> }>;
   MoveVersionsInput: MoveVersionsInput;
   Mutation: ResolverTypeWrapper<{}>;
-  NamedTableConfig: ResolverTypeWrapper<NamedTableConfig>;
+  NamedTableConfig: ResolverTypeWrapper<Omit<NamedTableConfig, 'config'> & { config: ResolversTypes['TableConfig'] }>;
   Object: ResolverTypeWrapper<ObjectGraphQLReturn>;
   ObjectCollection: ResolverTypeWrapper<Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversTypes['Object']> }>;
   ObjectCreateInput: ObjectCreateInput;
@@ -4879,8 +4895,10 @@ export type ResolversTypes = {
   Subscription: ResolverTypeWrapper<{}>;
   TableColumn: ResolverTypeWrapper<TableColumn>;
   TableColumnInput: TableColumnInput;
-  TableConfig: ResolverTypeWrapper<TableConfig>;
+  TableConfig: ResolverTypeWrapper<Omit<TableConfig, 'childColumns' | 'parentColumns' | 'selectedParameters'> & { childColumns: Array<ResolversTypes['TableColumn']>, parentColumns: Array<ResolversTypes['TableColumn']>, selectedParameters: ResolversTypes['TableSelectedParameters'] }>;
   TableConfigInput: TableConfigInput;
+  TableSelectedParameters: ResolverTypeWrapper<Omit<TableSelectedParameters, 'child' | 'parent'> & { child: Array<ResolversTypes['Parameter']>, parent: Array<ResolversTypes['Parameter']> }>;
+  TableSelectedParametersInput: TableSelectedParametersInput;
   TestAutomationRun: ResolverTypeWrapper<TestAutomationRun>;
   TestAutomationRunTrigger: ResolverTypeWrapper<TestAutomationRunTrigger>;
   TestAutomationRunTriggerPayload: ResolverTypeWrapper<TestAutomationRunTriggerPayload>;
@@ -5065,7 +5083,7 @@ export type ResolversParentTypes = {
   ModelsTreeItemCollection: Omit<ModelsTreeItemCollection, 'items'> & { items: Array<ResolversParentTypes['ModelsTreeItem']> };
   MoveVersionsInput: MoveVersionsInput;
   Mutation: {};
-  NamedTableConfig: NamedTableConfig;
+  NamedTableConfig: Omit<NamedTableConfig, 'config'> & { config: ResolversParentTypes['TableConfig'] };
   Object: ObjectGraphQLReturn;
   ObjectCollection: Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversParentTypes['Object']> };
   ObjectCreateInput: ObjectCreateInput;
@@ -5142,8 +5160,10 @@ export type ResolversParentTypes = {
   Subscription: {};
   TableColumn: TableColumn;
   TableColumnInput: TableColumnInput;
-  TableConfig: TableConfig;
+  TableConfig: Omit<TableConfig, 'childColumns' | 'parentColumns' | 'selectedParameters'> & { childColumns: Array<ResolversParentTypes['TableColumn']>, parentColumns: Array<ResolversParentTypes['TableColumn']>, selectedParameters: ResolversParentTypes['TableSelectedParameters'] };
   TableConfigInput: TableConfigInput;
+  TableSelectedParameters: Omit<TableSelectedParameters, 'child' | 'parent'> & { child: Array<ResolversParentTypes['Parameter']>, parent: Array<ResolversParentTypes['Parameter']> };
+  TableSelectedParametersInput: TableSelectedParametersInput;
   TestAutomationRun: TestAutomationRun;
   TestAutomationRunTrigger: TestAutomationRunTrigger;
   TestAutomationRunTriggerPayload: TestAutomationRunTriggerPayload;
@@ -6440,6 +6460,13 @@ export type TableColumnResolvers<ContextType = GraphQLContext, ParentType extend
 export type TableConfigResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableConfig'] = ResolversParentTypes['TableConfig']> = {
   childColumns?: Resolver<Array<ResolversTypes['TableColumn']>, ParentType, ContextType>;
   parentColumns?: Resolver<Array<ResolversTypes['TableColumn']>, ParentType, ContextType>;
+  selectedParameters?: Resolver<ResolversTypes['TableSelectedParameters'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type TableSelectedParametersResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableSelectedParameters'] = ResolversParentTypes['TableSelectedParameters']> = {
+  child?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType>;
+  parent?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -6907,6 +6934,7 @@ export type Resolvers<ContextType = GraphQLContext> = {
   Subscription?: SubscriptionResolvers<ContextType>;
   TableColumn?: TableColumnResolvers<ContextType>;
   TableConfig?: TableConfigResolvers<ContextType>;
+  TableSelectedParameters?: TableSelectedParametersResolvers<ContextType>;
   TestAutomationRun?: TestAutomationRunResolvers<ContextType>;
   TestAutomationRunTrigger?: TestAutomationRunTriggerResolvers<ContextType>;
   TestAutomationRunTriggerPayload?: TestAutomationRunTriggerPayloadResolvers<ContextType>;

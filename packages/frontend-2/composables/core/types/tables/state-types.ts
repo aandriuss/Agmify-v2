@@ -1,6 +1,11 @@
 import type { Ref } from 'vue'
 import type { NamedTableConfig } from './index'
-import type { BaseTableRow, CategoryFilters, ColumnDef } from '~/composables/core/types'
+import type {
+  BaseTableRow,
+  CategoryFilters,
+  ColumnDef,
+  SelectedParameter
+} from '~/composables/core/types'
 
 /**
  * Filter definition type
@@ -111,7 +116,10 @@ export interface TableConfig {
   parentColumns: ColumnDef[]
   childColumns: ColumnDef[]
   categoryFilters: CategoryFilters
-  selectedParameterIds: string[]
+  selectedParameters: {
+    parent: SelectedParameter[]
+    child: SelectedParameter[]
+  }
   metadata?: Record<string, unknown>
   lastUpdateTimestamp: number
 }

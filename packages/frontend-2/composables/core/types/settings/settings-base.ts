@@ -1,4 +1,16 @@
-import type { UserParameter } from '../parameters'
+/**
+ * Settings Types and Utilities
+ *
+ * This module defines the core settings types and utilities for managing application state.
+ * Settings include:
+ * - UI preferences (control width, etc.)
+ * - Named table configurations
+ * - Selected parameters (both BIM and user parameters)
+ *
+ * Note: customParameters has been replaced with selectedParameters in table configs
+ * to better align with the parameter system architecture.
+ */
+
 import type { NamedTableConfig } from '../tables'
 
 /**
@@ -7,7 +19,7 @@ import type { NamedTableConfig } from '../tables'
 interface BaseSettings {
   controlWidth: number
   namedTables: Record<string, NamedTableConfig>
-  customParameters: UserParameter[]
+  // No global parameters - they are now part of table configs
 }
 
 /**
@@ -16,7 +28,7 @@ interface BaseSettings {
 export interface UserSettings {
   controlWidth?: number
   namedTables?: Record<string, NamedTableConfig>
-  customParameters?: UserParameter[]
+  // No global parameters - they are now part of table configs
   [key: string]: unknown // Allow for extensibility
 }
 
@@ -34,21 +46,16 @@ export interface SettingsState extends BaseSettings {
 export interface SettingsUpdatePayload {
   controlWidth?: number
   namedTables?: Record<string, NamedTableConfig>
-  customParameters?: UserParameter[]
+  // No global parameters - they are now part of table configs
 }
-
-/**
- * Type for new parameter creation
- */
-export type NewCustomParameter = Omit<UserParameter, 'id'>
 
 /**
  * Default settings values
  */
 export const DEFAULT_SETTINGS: BaseSettings = {
   controlWidth: 300,
-  namedTables: {},
-  customParameters: []
+  namedTables: {}
+  // No global parameters - they are now part of table configs
 }
 
 /**
@@ -74,40 +81,7 @@ export function isUserSettings(value: unknown): value is UserSettings {
     }
   }
 
-  // Check customParameters if present
-  if (settings.customParameters !== undefined) {
-    if (!Array.isArray(settings.customParameters)) {
-      return false
-    }
-    // Verify each custom parameter
-    if (!settings.customParameters.every(isCustomParameter)) {
-      return false
-    }
-  }
-
   return true
-}
-
-/**
- * Type guard for CustomParameter
- */
-export function isCustomParameter(value: unknown): value is UserParameter {
-  if (!value || typeof value !== 'object') return false
-
-  const param = value as Record<string, unknown>
-
-  return (
-    typeof param.id === 'string' &&
-    typeof param.name === 'string' &&
-    typeof param.field === 'string' &&
-    typeof param.type === 'string' &&
-    typeof param.visible === 'boolean' &&
-    (!param.header || typeof param.header === 'string') &&
-    (!param.category || typeof param.category === 'string') &&
-    (!param.description || typeof param.description === 'string') &&
-    (!param.source || typeof param.source === 'string') &&
-    (!param.metadata || typeof param.metadata === 'object')
-  )
 }
 
 /**
@@ -129,13 +103,6 @@ export function isSettingsUpdatePayload(
     return false
   }
 
-  if (
-    payload.customParameters !== undefined &&
-    !Array.isArray(payload.customParameters)
-  ) {
-    return false
-  }
-
   return true
 }
 
@@ -145,8 +112,8 @@ export function isSettingsUpdatePayload(
 export function ensureRequiredSettings(settings: UserSettings): BaseSettings {
   return {
     controlWidth: settings.controlWidth ?? DEFAULT_SETTINGS.controlWidth,
-    namedTables: settings.namedTables ?? DEFAULT_SETTINGS.namedTables,
-    customParameters: settings.customParameters ?? DEFAULT_SETTINGS.customParameters
+    namedTables: settings.namedTables ?? DEFAULT_SETTINGS.namedTables
+    // No global parameters - they are now part of table configs
   }
 }
 

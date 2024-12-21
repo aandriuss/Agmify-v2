@@ -1,12 +1,8 @@
 import { ref, computed, type ComputedRef } from 'vue'
 import type { NamedTableConfig } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import {
-  defaultColumns,
-  defaultDetailColumns,
-  defaultTable
-} from '../config/defaultColumns'
-import { useStore } from '../core/store'
+import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
+import { useStore } from '~/composables/core/store'
 
 interface UseScheduleFlowOptions {
   currentTable: ComputedRef<NamedTableConfig | null>
@@ -35,14 +31,10 @@ export function useScheduleFlow({ currentTable }: UseScheduleFlowOptions) {
     const table = currentTable.value
     if (!table) {
       debug.log(DebugCategories.STATE, 'No table available, using defaults', {
-        defaultColumns: defaultColumns.length,
-        defaultDetailColumns: defaultDetailColumns.length
+        parentColumns: defaultTableConfig.parentColumns.length,
+        childColumns: defaultTableConfig.childColumns.length
       })
-      return {
-        ...defaultTable,
-        id: 'default-table',
-        name: 'Default Table'
-      }
+      return defaultTableConfig
     }
 
     debug.log(DebugCategories.STATE, 'Processing table config', {
@@ -52,21 +44,18 @@ export function useScheduleFlow({ currentTable }: UseScheduleFlowOptions) {
       childColumnsCount: table.childColumns.length
     })
 
-    // Ensure required columns are present
-    const parentColumns = table.parentColumns.length
-      ? table.parentColumns
-      : defaultColumns
-    const childColumns = table.childColumns.length
-      ? table.childColumns
-      : defaultDetailColumns
-
     // Return table with defaults as fallback
     return {
       ...table,
-      parentColumns,
-      childColumns,
-      categoryFilters: table.categoryFilters || defaultTable.categoryFilters,
-      customParameters: table.customParameters || []
+      parentColumns: table.parentColumns.length
+        ? table.parentColumns
+        : defaultTableConfig.parentColumns,
+      childColumns: table.childColumns.length
+        ? table.childColumns
+        : defaultTableConfig.childColumns,
+      categoryFilters: table.categoryFilters || defaultTableConfig.categoryFilters,
+      selectedParameters:
+        table.selectedParameters || defaultTableConfig.selectedParameters
     }
   })
 
@@ -82,21 +71,22 @@ export function useScheduleFlow({ currentTable }: UseScheduleFlowOptions) {
     try {
       // Only initialize if not already initialized
       if (!store.initialized.value) {
-        // Initialize store with table config
+        // Update store state
         await store.lifecycle.update({
           selectedTableId: tableConfig.value.id,
           currentTableId: tableConfig.value.id,
           tableName: tableConfig.value.name,
-          parentBaseColumns: tableConfig.value.parentColumns,
-          childBaseColumns: tableConfig.value.childColumns,
-          parentVisibleColumns: tableConfig.value.parentColumns,
-          childVisibleColumns: tableConfig.value.childColumns,
           selectedParentCategories:
             tableConfig.value.categoryFilters.selectedParentCategories,
           selectedChildCategories:
-            tableConfig.value.categoryFilters.selectedChildCategories,
-          customParameters: tableConfig.value.customParameters
+            tableConfig.value.categoryFilters.selectedChildCategories
         })
+
+        // Set current columns
+        store.setCurrentColumns(
+          tableConfig.value.parentColumns,
+          tableConfig.value.childColumns
+        )
 
         state.value.initialized = true
 

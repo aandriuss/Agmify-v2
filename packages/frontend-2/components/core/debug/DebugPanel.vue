@@ -27,61 +27,118 @@
             <div class="category-groups">
               <!-- Core -->
               <div class="category-group">
-                <h5>Core</h5>
-                <div class="category-toggles">
-                  <button
+                <div class="group-header">
+                  <h5>Core</h5>
+                </div>
+                <div class="category-list">
+                  <div
                     v-for="category in coreCategories"
                     :key="category"
-                    :class="{ active: debug.enabledCategories.value.has(category) }"
-                    @click="debug.toggleCategory(category)"
+                    class="category-item"
                   >
-                    {{ category }}
-                  </button>
+                    <label class="category-checkbox">
+                      <input
+                        type="checkbox"
+                        :checked="!hiddenCategories.has(category)"
+                        :aria-label="`Show ${category} logs`"
+                        @change="toggleCategoryVisibility(category)"
+                      />
+                      <button
+                        class="category-btn"
+                        :class="{ active: debug.enabledCategories.value.has(category) }"
+                        @click="debug.toggleCategory(category)"
+                      >
+                        {{ category }}
+                      </button>
+                    </label>
+                  </div>
                 </div>
               </div>
 
               <!-- Data -->
               <div class="category-group">
-                <h5>Data</h5>
-                <div class="category-toggles">
-                  <button
+                <div class="group-header">
+                  <h5>Data</h5>
+                </div>
+                <div class="category-list">
+                  <div
                     v-for="category in dataCategories"
                     :key="category"
-                    :class="{ active: debug.enabledCategories.value.has(category) }"
-                    @click="debug.toggleCategory(category)"
+                    class="category-item"
                   >
-                    {{ category }}
-                  </button>
+                    <label class="category-checkbox">
+                      <input
+                        type="checkbox"
+                        :checked="!hiddenCategories.has(category)"
+                        @change="toggleCategoryVisibility(category)"
+                      />
+                      <button
+                        class="category-btn"
+                        :class="{ active: debug.enabledCategories.value.has(category) }"
+                        @click="debug.toggleCategory(category)"
+                      >
+                        {{ category }}
+                      </button>
+                    </label>
+                  </div>
                 </div>
               </div>
 
               <!-- Table -->
               <div v-if="showTableCategories" class="category-group">
-                <h5>Table</h5>
-                <div class="category-toggles">
-                  <button
+                <div class="group-header">
+                  <h5>Table</h5>
+                </div>
+                <div class="category-list">
+                  <div
                     v-for="category in tableCategories"
                     :key="category"
-                    :class="{ active: debug.enabledCategories.value.has(category) }"
-                    @click="debug.toggleCategory(category)"
+                    class="category-item"
                   >
-                    {{ category }}
-                  </button>
+                    <label class="category-checkbox">
+                      <input
+                        type="checkbox"
+                        :checked="!hiddenCategories.has(category)"
+                        @change="toggleCategoryVisibility(category)"
+                      />
+                      <button
+                        class="category-btn"
+                        :class="{ active: debug.enabledCategories.value.has(category) }"
+                        @click="debug.toggleCategory(category)"
+                      >
+                        {{ category }}
+                      </button>
+                    </label>
+                  </div>
                 </div>
               </div>
 
               <!-- Parameters -->
               <div v-if="showParameterCategories" class="category-group">
-                <h5>Parameters</h5>
-                <div class="category-toggles">
-                  <button
+                <div class="group-header">
+                  <h5>Parameters</h5>
+                </div>
+                <div class="category-list">
+                  <div
                     v-for="category in parameterCategories"
                     :key="category"
-                    :class="{ active: debug.enabledCategories.value.has(category) }"
-                    @click="debug.toggleCategory(category)"
+                    class="category-item"
                   >
-                    {{ category }}
-                  </button>
+                    <label class="category-checkbox">
+                      <input
+                        type="checkbox"
+                        :checked="!hiddenCategories.has(category)"
+                        @change="toggleCategoryVisibility(category)"
+                      />
+                      <button
+                        class="category-btn"
+                        :class="{ active: debug.enabledCategories.value.has(category) }"
+                        @click="debug.toggleCategory(category)"
+                      >
+                        {{ category }}
+                      </button>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -175,15 +232,11 @@
                   </div>
                   <div class="count-item">
                     <span>Selected:</span>
-                    <span>
-                      {{ parameters.parentSelectedParameters.value?.length || 0 }}
-                    </span>
+                    <span>{{ parameterCounts.parent.selected }}</span>
                   </div>
                   <div class="count-item">
                     <span>Columns:</span>
-                    <span>
-                      {{ parameters.parentColumnDefinitions.value?.length || 0 }}
-                    </span>
+                    <span>{{ parameterCounts.parent.columns }}</span>
                   </div>
                 </div>
                 <div class="parameter-groups">
@@ -232,15 +285,11 @@
                   </div>
                   <div class="count-item">
                     <span>Selected:</span>
-                    <span>
-                      {{ parameters.childSelectedParameters.value?.length || 0 }}
-                    </span>
+                    <span>{{ parameterCounts.child.selected }}</span>
                   </div>
                   <div class="count-item">
                     <span>Columns:</span>
-                    <span>
-                      {{ parameters.childColumnDefinitions.value?.length || 0 }}
-                    </span>
+                    <span>{{ parameterCounts.child.columns }}</span>
                   </div>
                 </div>
                 <div class="parameter-groups">
@@ -330,10 +379,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { TableRow, ElementData, ColumnDef } from '~/composables/core/types'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
+import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
   AvailableBimParameter,
   AvailableUserParameter,
@@ -402,37 +452,54 @@ const uniqueChildCategories = computed(() =>
   )
 )
 
-// Use parameter store with safe access
+// Use stores with safe access
 const parameters = useParameterStore()
+const tableStore = useTableStore()
+
+// Type guard for selected parameters
+const isSelectedParameters = (
+  value: unknown
+): value is { parent: SelectedParameter[]; child: SelectedParameter[] } => {
+  return (
+    value !== null && typeof value === 'object' && 'parent' in value && 'child' in value
+  )
+}
 
 // Safe parameter access helpers
 const safeLength = (value: unknown[] | undefined | null) => value?.length || 0
 const safeValue = <T>(value: { value?: T | null } | undefined | null) => value?.value
 
-// Safe parameter counts
-const parameterCounts = computed(() => ({
-  parent: {
-    raw: safeLength(safeValue(parameters.parentRawParameters)),
-    availableBim: safeLength(safeValue(parameters.parentAvailableBimParameters)),
-    availableUser: safeLength(safeValue(parameters.parentAvailableUserParameters)),
-    selected: safeLength(safeValue(parameters.parentSelectedParameters)),
-    columns: safeLength(safeValue(parameters.parentColumnDefinitions))
-  },
-  child: {
-    raw: safeLength(safeValue(parameters.childRawParameters)),
-    availableBim: safeLength(safeValue(parameters.childAvailableBimParameters)),
-    availableUser: safeLength(safeValue(parameters.childAvailableUserParameters)),
-    selected: safeLength(safeValue(parameters.childSelectedParameters)),
-    columns: safeLength(safeValue(parameters.childColumnDefinitions))
+// Parameter counts with type safety
+const parameterCounts = computed(() => {
+  const currentTable = tableStore.currentTable.value
+  const selectedParams = currentTable?.selectedParameters
+  const hasSelectedParams = isSelectedParameters(selectedParams)
+
+  return {
+    parent: {
+      raw: safeLength(safeValue(parameters.parentRawParameters)),
+      availableBim: safeLength(safeValue(parameters.parentAvailableBimParameters)),
+      availableUser: safeLength(safeValue(parameters.parentAvailableUserParameters)),
+      selected: hasSelectedParams ? selectedParams.parent.length : 0,
+      columns: currentTable?.parentColumns?.length ?? 0
+    },
+    child: {
+      raw: safeLength(safeValue(parameters.childRawParameters)),
+      availableBim: safeLength(safeValue(parameters.childAvailableBimParameters)),
+      availableUser: safeLength(safeValue(parameters.childAvailableUserParameters)),
+      selected: hasSelectedParams ? selectedParams.child.length : 0,
+      columns: currentTable?.childColumns?.length ?? 0
+    }
   }
-}))
+})
 
 // Limit displayed logs for performance
-const MAX_DISPLAYED_LOGS = 100
+const MAX_DISPLAYED_LOGS = 200
 const displayedLogs = computed(() =>
-  debug.filteredLogs.value.slice(0, MAX_DISPLAYED_LOGS)
+  debug.filteredLogs.value
+    .filter((log) => !hiddenCategories.value.has(log.category))
+    .slice(0, MAX_DISPLAYED_LOGS)
 )
-
 // Group categories
 const coreCategories = computed(() => [
   DebugCategories.INITIALIZATION,
@@ -471,19 +538,25 @@ const elementsWithParameters = computed(
       .length || 0
 )
 
-// Safe parameter groups
-const parameterGroups = computed(() => ({
-  parent: getParameterGroups(
-    safeValue(parameters.parentAvailableBimParameters) || [],
-    safeValue(parameters.parentAvailableUserParameters) || [],
-    safeValue(parameters.parentSelectedParameters) || []
-  ),
-  child: getParameterGroups(
-    safeValue(parameters.childAvailableBimParameters) || [],
-    safeValue(parameters.childAvailableUserParameters) || [],
-    safeValue(parameters.childSelectedParameters) || []
-  )
-}))
+// Parameter groups with type safety
+const parameterGroups = computed(() => {
+  const currentTable = tableStore.currentTable.value
+  const selectedParams = currentTable?.selectedParameters
+  const hasSelectedParams = isSelectedParameters(selectedParams)
+
+  return {
+    parent: getParameterGroups(
+      safeValue(parameters.parentAvailableBimParameters) || [],
+      safeValue(parameters.parentAvailableUserParameters) || [],
+      hasSelectedParams ? selectedParams.parent : []
+    ),
+    child: getParameterGroups(
+      safeValue(parameters.childAvailableBimParameters) || [],
+      safeValue(parameters.childAvailableUserParameters) || [],
+      hasSelectedParams ? selectedParams.child : []
+    )
+  }
+})
 
 // Safe metadata access
 const metadata = computed(() => ({
@@ -500,6 +573,17 @@ interface ParameterGroupData {
     name: string
     visible: boolean
   }>
+}
+
+// Visibility tracking with Set
+const hiddenCategories = ref(new Set<string>())
+
+function toggleCategoryVisibility(category: string) {
+  if (hiddenCategories.value.has(category)) {
+    hiddenCategories.value.delete(category)
+  } else {
+    hiddenCategories.value.add(category)
+  }
 }
 
 type ParameterGroups = Record<string, ParameterGroupData>
@@ -619,6 +703,16 @@ function formatData(data: unknown): string {
   }
 }
 
+// Helper function to check if a group is hidden
+// function isGroupHidden(groupName: string): boolean {
+//   return (
+//     debug.categoryGroups[groupName] !== undefined &&
+//     debug.filteredLogs.value.every(
+//       (log) => !debug.categoryGroups[groupName].includes(log.category)
+//     )
+//   )
+// }
+
 function toggleTestMode() {
   emit('update:isTestMode', !props.isTestMode)
 }
@@ -686,10 +780,27 @@ function toggleTestMode() {
   margin-bottom: 12px;
 }
 
-.category-group h5 {
-  margin: 0 0 4px;
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.group-header h5 {
+  margin: 0;
   color: #888;
   font-size: 11px;
+}
+
+.group-toggle {
+  padding: 2px 6px;
+  font-size: 10px;
+  background: #444;
+}
+
+.group-toggle:hover {
+  background: #555;
 }
 
 .category-toggles {
@@ -894,16 +1005,6 @@ button:hover {
   border-radius: 4px;
 }
 
-.group-header {
-  display: flex;
-  justify-content: space-between;
-  padding: 2px 4px;
-  background: #2d2d2d;
-  border-radius: 2px;
-  margin-bottom: 4px;
-  font-size: 11px;
-}
-
 .group-parameters {
   display: flex;
   flex-wrap: wrap;
@@ -922,5 +1023,97 @@ button:hover {
 .parameter-item.active {
   opacity: 1;
   background: #0078d4;
+}
+
+.visibility-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.visibility-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.visibility-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.visibility-checkbox:hover {
+  background: #2d2d2d;
+  border-radius: 4px;
+}
+
+.visibility-checkbox input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.category-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.category-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-btn {
+  flex: 1;
+  text-align: left;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #3d3d3d;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.category-btn:hover {
+  background: #4d4d4d;
+}
+
+.category-btn.active {
+  background: #0078d4;
+}
+
+.category-item input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.group-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #888;
+  cursor: pointer;
+  font-size: 11px;
 }
 </style>

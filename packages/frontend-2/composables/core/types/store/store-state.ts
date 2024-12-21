@@ -55,17 +55,9 @@ export interface StoreState {
   evaluatedData: ElementData[]
   tableData: TableRow[]
 
-  // Columns
+  // Current view columns (temporary UI state)
   currentTableColumns: ColumnDef[]
   currentDetailColumns: ColumnDef[]
-  mergedTableColumns: ColumnDef[]
-  mergedDetailColumns: ColumnDef[]
-  parentBaseColumns: ColumnDef[]
-  parentAvailableColumns: ColumnDef[]
-  parentVisibleColumns: ColumnDef[]
-  childBaseColumns: ColumnDef[]
-  childAvailableColumns: ColumnDef[]
-  childVisibleColumns: ColumnDef[]
 
   // Headers
   availableHeaders: TableHeaders
@@ -98,9 +90,8 @@ export interface StoreMutations {
   setEvaluatedData: (data: ElementData[]) => void
   setTableData: (data: TableRow[]) => void
 
-  // Column mutations
+  // Current view column mutations
   setCurrentColumns: (table: ColumnDef[], detail: ColumnDef[]) => void
-  setMergedColumns: (table: ColumnDef[], detail: ColumnDef[]) => void
   setColumnVisibility: (columnId: string, visible: boolean) => void
   setColumnOrder: (columnId: string, newIndex: number) => void
 
@@ -152,50 +143,30 @@ export interface Store extends StoreMutations {
   scheduleData: ComputedRef<ElementData[]>
   evaluatedData: ComputedRef<ElementData[]>
   tableData: ComputedRef<TableRow[]>
-  // Columns
+
+  // Current view columns
   currentTableColumns: ComputedRef<ColumnDef[]>
   currentDetailColumns: ComputedRef<ColumnDef[]>
-  mergedTableColumns: ComputedRef<ColumnDef[]>
-  mergedDetailColumns: ComputedRef<ColumnDef[]>
-  parentBaseColumns: ComputedRef<ColumnDef[]>
-  parentAvailableColumns: ComputedRef<ColumnDef[]>
-  parentVisibleColumns: ComputedRef<ColumnDef[]>
-  childBaseColumns: ComputedRef<ColumnDef[]>
-  childAvailableColumns: ComputedRef<ColumnDef[]>
-  childVisibleColumns: ComputedRef<ColumnDef[]>
+
   // Headers
   availableHeaders: ComputedRef<TableHeaders>
+
   // Categories
   selectedCategories: ComputedRef<Set<string>>
   selectedParentCategories: ComputedRef<string[]>
   selectedChildCategories: ComputedRef<string[]>
+
   // Table info
   tablesArray: ComputedRef<TableInfo[]>
   tableName: ComputedRef<string>
   selectedTableId: ComputedRef<string>
   currentTableId: ComputedRef<string>
   tableKey: ComputedRef<string>
+
   // Status
   initialized: ComputedRef<boolean>
   loading: ComputedRef<boolean>
   error: ComputedRef<Error | null>
-
-  // Mutations
-  setProjectId: (id: string | null) => void
-  setScheduleData: (data: ElementData[]) => void
-  setEvaluatedData: (data: ElementData[]) => void
-  setTableData: (data: TableRow[]) => void
-  setSelectedCategories: (categories: Set<string>) => void
-  setParentCategories: (categories: string[]) => void
-  setChildCategories: (categories: string[]) => void
-  setTableInfo: (info: TableInfoUpdatePayload) => void
-  setTablesArray: (tables: TableInfo[]) => void
-  setElementVisibility: (elementId: string, visible: boolean) => void
-  setInitialized: (value: boolean) => void
-  setLoading: (value: boolean) => void
-  setError: (err: Error | null) => void
-  processData?: () => Promise<void>
-  reset: () => void
 
   // Lifecycle
   lifecycle: StoreLifecycle

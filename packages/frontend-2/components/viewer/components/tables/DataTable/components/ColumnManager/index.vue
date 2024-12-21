@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- Loading state -->
-    <div v-if="!isInitialized && !loadingError" class="p-4 text-center">
+    <div v-if="!isInitialized || isLoading" class="p-4 text-center">
       <span class="text-gray-500">Loading...</span>
     </div>
 
@@ -133,17 +133,36 @@ import Button from 'primevue/button'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import TabSelector from './TabSelector.vue'
 import EnhancedColumnList from './shared/EnhancedColumnList.vue'
-import type { ColumnDef, Parameter } from '~/composables/core/types'
 import { useColumnManager } from '~/components/viewer/components/tables/DataTable/composables/columns/useColumnManager'
+import { useTableStore } from '~/composables/core/tables/store/store'
+import { useParameterStore } from '~/composables/core/parameters/store/store'
+import type {
+  AvailableBimParameter,
+  AvailableUserParameter
+} from '~/composables/core/types/parameters/parameter-states'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
-// Helper to determine if item is a Parameter
-function isParameter(item: Parameter | ColumnDef): item is Parameter {
-  return 'kind' in item && ('sourceValue' in item || 'equation' in item)
+import type { ColumnDef } from '~/composables/core/types/tables'
+
+// Helper to get item identifier
+function getItemId(
+  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
+): string {
+  return 'field' in item ? item.field : item.id
 }
 
-// Helper to determine if item is a ColumnDef
-function isColumnDef(item: Parameter | ColumnDef): item is ColumnDef {
-  return 'currentGroup' in item && !('kind' in item)
+// Helper to determine if item is a Parameter
+function isParameter(
+  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
+): item is AvailableBimParameter | AvailableUserParameter {
+  return 'id' in item && !('field' in item)
+}
+
+// Helper to determine if item is a Column
+function isColumn(
+  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
+): item is ColumnDef {
+  return 'field' in item
 }
 
 // Props and Emits
@@ -151,21 +170,20 @@ interface Props {
   open: boolean
   tableId: string
   tableName: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-  availableParentParameters: Parameter[]
-  availableChildParameters: Parameter[]
 }
 
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  'update:columns': [updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }]
   cancel: []
   apply: []
   'table-updated': [updates: { tableId: string; tableName: string }]
 }>()
+
+// Stores and Composables
+const tableStore = useTableStore()
+const parameterStore = useParameterStore()
 
 // State
 const isInitialized = ref(false)
@@ -178,11 +196,7 @@ const showFilterOptions = ref(false)
 
 // Column Manager
 const columnManager = useColumnManager({
-  tableId: props.tableId,
-  initialParentColumns: props.parentColumns,
-  initialChildColumns: props.childColumns,
-  availableParentParameters: props.availableParentParameters,
-  availableChildParameters: props.availableChildParameters
+  tableId: props.tableId
 })
 
 // Drop State
@@ -204,9 +218,12 @@ const dropState = reactive<DropState>({
 
 // Computed
 const tableName = computed(() => props.tableName)
+const isLoading = computed(
+  () => tableStore.isLoading.value || parameterStore.isLoading.value
+)
 
 const hasHiddenColumns = computed(() =>
-  columnManager.activeColumns.value.some((col: ColumnDef) => !col.visible)
+  columnManager.activeColumns.value.some((col) => !col.visible)
 )
 
 const dialogButtons = computed<LayoutDialogButton[]>(() => [
@@ -262,7 +279,9 @@ const toggleFilterOptions = () => {
   showFilterOptions.value = !showFilterOptions.value
 }
 
-const handleAdd = async (item: Parameter | ColumnDef) => {
+const handleAdd = async (
+  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
+) => {
   if (!isParameter(item)) return
 
   try {
@@ -277,8 +296,10 @@ const handleAdd = async (item: Parameter | ColumnDef) => {
   }
 }
 
-const handleRemove = async (item: Parameter | ColumnDef) => {
-  if (!isColumnDef(item)) return
+const handleRemove = async (
+  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
+) => {
+  if (!isColumn(item)) return
 
   try {
     await columnManager.handleColumnOperation({
@@ -307,10 +328,10 @@ const handleReorder = async (fromIndex: number, toIndex: number) => {
 }
 
 const handleVisibilityChange = async (
-  item: Parameter | ColumnDef,
+  item: AvailableBimParameter | AvailableUserParameter | ColumnDef,
   visible: boolean
 ) => {
-  if (!isColumnDef(item)) return
+  if (!isColumn(item)) return
 
   try {
     await columnManager.handleColumnOperation({
@@ -327,10 +348,10 @@ const handleVisibilityChange = async (
 
 const handleDragStart = (
   event: DragEvent,
-  item: ColumnDef | Parameter,
+  item: AvailableBimParameter | AvailableUserParameter | ColumnDef,
   index: number
 ) => {
-  dropState.dragging = item.field
+  dropState.dragging = getItemId(item)
   dropState.sourceList = columnManager.currentView.value
   dropState.sourceIndex = index
 }
@@ -360,14 +381,14 @@ const handleDrop = async (event: DragEvent, targetIndex?: number) => {
 
   try {
     const sourceIndex = columnManager.activeColumns.value.findIndex(
-      (col: ColumnDef) => col.field === dropState.dragging
+      (col) => getItemId(col) === dropState.dragging
     )
 
     if (sourceIndex !== -1) {
       await handleReorder(sourceIndex, targetIndex)
     } else {
       const sourceItem = columnManager.availableParameters.value.find(
-        (p: Parameter) => p.field === dropState.dragging
+        (p) => getItemId(p) === dropState.dragging
       )
       if (sourceItem && isParameter(sourceItem)) {
         await handleAdd(sourceItem)
@@ -394,8 +415,8 @@ const handleCancel = () => {
 const showAllColumns = async () => {
   try {
     const promises = columnManager.activeColumns.value
-      .filter((col: ColumnDef) => !col.visible)
-      .map((col: ColumnDef) => handleVisibilityChange(col, true))
+      .filter((col) => !col.visible)
+      .map((col) => handleVisibilityChange(col, true))
 
     await Promise.all(promises)
     listRefreshKey.value++
@@ -407,18 +428,15 @@ const showAllColumns = async () => {
 
 const handleApply = async () => {
   try {
-    // First save the changes using columnManager
+    debug.startState(DebugCategories.PARAMETERS, 'Applying column changes')
+
+    // Save changes to table store
     const result = await columnManager.saveChanges()
     if (!result) {
       throw new Error('Failed to save column changes')
     }
 
-    // Then emit events
-    emit('update:columns', {
-      parentColumns: result.parentColumns,
-      childColumns: result.childColumns
-    })
-
+    // Emit events
     emit('table-updated', {
       tableId: props.tableId,
       tableName: props.tableName
@@ -426,20 +444,29 @@ const handleApply = async () => {
 
     emit('apply')
     emit('update:open', false)
+
+    debug.completeState(DebugCategories.PARAMETERS, 'Column changes applied')
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to apply changes')
+    debug.error(DebugCategories.PARAMETERS, 'Failed to apply changes:', error)
     loadingError.value = error
-    throw error // Re-throw to ensure error is propagated
+    throw error
   }
 }
 
 // Initialization
-onMounted(() => {
+onMounted(async () => {
   try {
-    // Just set initialized to true since columns are already provided via props
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing column manager')
+
+    // Load and initialize table
+    await tableStore.loadTable(props.tableId)
     isInitialized.value = true
+
+    debug.completeState(DebugCategories.INITIALIZATION, 'Column manager initialized')
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to initialize')
+    debug.error(DebugCategories.INITIALIZATION, 'Failed to initialize:', error)
     loadingError.value = error
   }
 })

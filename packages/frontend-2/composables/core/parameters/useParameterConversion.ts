@@ -4,8 +4,18 @@ import {
   createBimColumnDefWithDefaults,
   createUserColumnDefWithDefaults
 } from '~/composables/core/types/tables/column-types'
-import type { Parameter } from '~/composables/core/types/parameters/parameter-types'
-import type { PrimitiveValue } from '~/composables/core/types/parameters/value-types'
+import type {
+  AvailableParameter,
+  AvailableBimParameter,
+  AvailableUserParameter,
+  ParameterMetadata
+} from '~/composables/core/types/parameters/parameter-states'
+import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
+import type {
+  PrimitiveValue,
+  BimValueType,
+  UserValueType
+} from '~/composables/core/types/parameters/value-types'
 
 export class ParameterConversionError extends Error {
   constructor(message: string) {
@@ -17,43 +27,50 @@ export class ParameterConversionError extends Error {
 /**
  * Convert Parameter to ColumnDef
  */
-export function parameterToColumnDef(param: Parameter): ColumnDef {
+export function parameterToColumnDef(param: AvailableParameter): ColumnDef {
   try {
     debug.startState(DebugCategories.PARAMETERS, 'Converting parameter to column', {
       parameterId: param.id
     })
 
-    const base = {
-      id: param.id,
-      name: param.name,
-      field: param.field,
-      header: param.header,
-      category: param.category,
-      description: param.description,
-      visible: param.visible ?? true,
-      removable: param.removable ?? true,
-      metadata: param.metadata,
-      order: param.order ?? 0,
-      sortable: true,
-      filterable: true
-    }
+    // First convert to selected parameter
+    const selectedParam = createSelectedParameter(param, 0, true)
 
+    // Then create column definition
     let columnDef: ColumnDef
     if (param.kind === 'bim') {
       columnDef = createBimColumnDefWithDefaults({
-        ...base,
-        type: param.type,
-        sourceValue: param.sourceValue,
-        fetchedGroup: param.fetchedGroup,
+        id: selectedParam.id,
+        name: selectedParam.name,
+        field: selectedParam.id,
+        header: selectedParam.name,
+        type: selectedParam.type as BimValueType,
+        visible: selectedParam.visible,
+        removable: true,
+        order: selectedParam.order,
+        description: selectedParam.description,
+        category: selectedParam.category,
+        metadata: selectedParam.metadata ? { ...selectedParam.metadata } : undefined,
+        sourceValue: param.value as PrimitiveValue,
+        fetchedGroup: param.sourceGroup,
         currentGroup: param.currentGroup,
         isFixed: false
       })
     } else {
       columnDef = createUserColumnDefWithDefaults({
-        ...base,
-        type: param.type,
+        id: selectedParam.id,
+        name: selectedParam.name,
+        field: selectedParam.id,
+        header: selectedParam.name,
+        type: selectedParam.type as UserValueType,
+        visible: selectedParam.visible,
+        removable: true,
+        order: selectedParam.order,
+        description: selectedParam.description,
+        category: selectedParam.category,
+        metadata: selectedParam.metadata ? { ...selectedParam.metadata } : undefined,
         group: param.group,
-        isCustomParameter: param.isCustom
+        isCustomParameter: false
       })
     }
 
@@ -68,46 +85,43 @@ export function parameterToColumnDef(param: Parameter): ColumnDef {
 }
 
 /**
- * Convert ColumnDef to Parameter
+ * Convert ColumnDef to AvailableParameter
  */
-export function columnDefToParameter(col: ColumnDef): Parameter {
+export function columnDefToParameter(col: ColumnDef): AvailableParameter {
   try {
     debug.startState(DebugCategories.PARAMETERS, 'Converting column to parameter', {
       columnId: col.id
     })
 
-    const base = {
-      id: col.id,
-      name: col.name,
-      field: col.field,
-      header: col.header,
-      category: col.category,
-      description: col.description,
-      visible: col.visible,
-      removable: col.removable,
-      metadata: col.metadata,
-      order: col.order,
-      value: col.value
-    }
-
-    let parameter: Parameter
+    let parameter: AvailableParameter
     if (col.kind === 'bim') {
-      parameter = {
-        ...base,
+      const bimParam: AvailableBimParameter = {
         kind: 'bim',
+        id: col.id,
+        name: col.name,
         type: col.type,
-        sourceValue: col.sourceValue,
-        fetchedGroup: col.fetchedGroup,
-        currentGroup: col.currentGroup
+        value: col.value || null,
+        sourceGroup: col.fetchedGroup,
+        currentGroup: col.currentGroup,
+        isSystem: false,
+        category: col.category,
+        description: col.description,
+        metadata: col.metadata as ParameterMetadata | undefined
       }
+      parameter = bimParam
     } else {
-      parameter = {
-        ...base,
+      const userParam: AvailableUserParameter = {
         kind: 'user',
+        id: col.id,
+        name: col.name,
         type: col.type,
+        value: col.value || null,
         group: col.group,
-        isCustom: col.isCustomParameter
+        category: col.category,
+        description: col.description,
+        metadata: col.metadata as ParameterMetadata | undefined
       }
+      parameter = userParam
     }
 
     debug.completeState(DebugCategories.PARAMETERS, 'Column converted to parameter')

@@ -1,22 +1,19 @@
 import { ref, computed, watch } from 'vue'
-import type { ColumnDef, Parameter } from '~/composables/core/types'
+import type { ColumnDef, AvailableParameter } from '~/composables/core/types'
 import { useUserSettings } from '~/composables/useUserSettings'
-import {
-  defaultColumns,
-  defaultDetailColumns
-} from '~/components/viewer/schedules/config/defaultColumns'
+import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export interface UseColumnStateOptions {
   tableId: string
   initialParentColumns: ColumnDef[]
   initialChildColumns: ColumnDef[]
-  availableParentParameters: Parameter[]
-  availableChildParameters: Parameter[]
+  availableParentParameters: AvailableParameter[]
+  availableChildParameters: AvailableParameter[]
 }
 
 export interface DragItem {
-  item: ColumnDef | Parameter
+  item: ColumnDef | AvailableParameter
   sourceList: 'active' | 'available'
 }
 
@@ -44,7 +41,7 @@ export function useColumnState({
   const validateColumns = (cols: ColumnDef[]): ColumnDef[] => {
     if (!Array.isArray(cols) || cols.length === 0) {
       debug.log(DebugCategories.COLUMNS, 'Using default columns due to invalid input')
-      return defaultColumns
+      return defaultTableConfig.parentColumns
     }
 
     // Ensure essential columns exist
@@ -55,7 +52,7 @@ export function useColumnState({
 
     if (!hasEssentials) {
       debug.log(DebugCategories.COLUMNS, 'Adding missing essential columns')
-      const missingColumns = defaultColumns.filter(
+      const missingColumns = defaultTableConfig.parentColumns.filter(
         (defaultCol) =>
           essentialFields.includes(defaultCol.field) &&
           !cols.some((col) => col.field === defaultCol.field)
@@ -86,7 +83,7 @@ export function useColumnState({
   const pendingOperations = ref<PendingOperation[]>([])
 
   const draggedItem = ref<{
-    item: ColumnDef | Parameter
+    item: ColumnDef | AvailableParameter
     sourceList: 'active' | 'available'
     sourceIndex: number
   } | null>(null)
@@ -98,10 +95,10 @@ export function useColumnState({
 
       // Start with essential columns
       const essentialFields = ['mark', 'category']
-      const essentialParentColumns = defaultColumns.filter((col) =>
+      const essentialParentColumns = defaultTableConfig.parentColumns.filter((col) =>
         essentialFields.includes(col.field)
       )
-      const essentialChildColumns = defaultDetailColumns.filter((col) =>
+      const essentialChildColumns = defaultTableConfig.childColumns.filter((col) =>
         essentialFields.includes(col.field)
       )
 
@@ -195,7 +192,7 @@ export function useColumnState({
     return currentView.value === 'parent' ? parentColumns.value : childColumns.value
   })
 
-  const availableParameters = computed((): Parameter[] => {
+  const availableParameters = computed((): AvailableParameter[] => {
     return currentView.value === 'parent'
       ? availableParentParameters
       : availableChildParameters

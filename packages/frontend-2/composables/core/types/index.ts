@@ -145,10 +145,10 @@ export {
 
 // Settings types
 export type {
+  // Settings Types
   UserSettings,
   SettingsState,
-  SettingsUpdatePayload,
-  NewCustomParameter
+  SettingsUpdatePayload
 } from './settings'
 
 // Export settings constants and helpers

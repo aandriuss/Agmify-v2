@@ -2,11 +2,11 @@ import { ref, computed, watch } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
 import type {
   ElementData,
-  NamedTableConfig,
   ProcessingState,
   TableRow,
   DataState
 } from '~/composables/core/types'
+import { useTableParameters } from '../useTableParameters'
 import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
@@ -83,7 +83,10 @@ export function useElementsData(
         selectedParentCategories: [],
         selectedChildCategories: []
       },
-      selectedParameterIds: [],
+      selectedParameters: {
+        parent: [],
+        child: []
+      },
       lastUpdateTimestamp: Date.now()
     }
   })
@@ -227,7 +230,7 @@ export function useElementsData(
         })
 
         // Extract and process parameters
-        debug.log(DebugCategories.PARAMETERS, 'Processing parameters', {
+        debug.log(DebugCategories.SAVED_PARAMETERS, 'Processing parameters', {
           parentCount: parentElements.length,
           childCount: childElements.length
         })
@@ -255,14 +258,18 @@ export function useElementsData(
 
         // Verify parameters exist
         if (!parentState.raw.length && !childState.raw.length) {
-          debug.error(DebugCategories.PARAMETERS, 'No parameters found in store', {
-            parentElements: parentElements.length,
-            childElements: childElements.length
-          })
+          debug.error(
+            DebugCategories.PARAMETER_VALIDATION,
+            'No parameters found in store',
+            {
+              parentElements: parentElements.length,
+              childElements: childElements.length
+            }
+          )
           throw new Error('No parameters found in store')
         }
 
-        debug.log(DebugCategories.PARAMETERS, 'Using parameters from store', {
+        debug.log(DebugCategories.SAVED_PARAMETERS, 'Using parameters from store', {
           parent: {
             raw: parentState.raw.length,
             available: {
@@ -301,9 +308,13 @@ export function useElementsData(
           )
         }
 
-        debug.log(DebugCategories.PARAMETERS, 'Parameter groups found', parameterGroups)
+        debug.log(
+          DebugCategories.SAVED_PARAMETERS,
+          'Parameter groups found',
+          parameterGroups
+        )
 
-        debug.log(DebugCategories.PARAMETERS, 'Parameters processed', {
+        debug.log(DebugCategories.SAVED_PARAMETERS, 'Parameters processed', {
           parent: parentState
             ? {
                 raw: parentState.raw?.length || 0,
@@ -345,7 +356,7 @@ export function useElementsData(
                     }
                   } catch (err) {
                     debug.warn(
-                      DebugCategories.PARAMETERS,
+                      DebugCategories.PARAMETER_VALIDATION,
                       `Failed to parse nested parameter ${param.id}:`,
                       err
                     )
@@ -395,7 +406,7 @@ export function useElementsData(
                           }
                         } catch (err) {
                           debug.warn(
-                            DebugCategories.PARAMETERS,
+                            DebugCategories.PARAMETER_VALIDATION,
                             `Failed to parse nested parameter ${param.id}:`,
                             err
                           )
@@ -664,73 +675,17 @@ export function useElementsData(
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
       processingState.value.isProcessingElements = true
 
-      // Initialize BIM elements first to get parameters
+      // Initialize parameters using table parameters composable
+      const tableParams = useTableParameters()
+      await tableParams.initializeTableParameters(true) // Force initialization
+
+      // Initialize BIM elements to get parameters
       await bimElements.initializeElements()
       debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
 
       // Process elements and parameters
       await processElements(true)
       debug.log(DebugCategories.INITIALIZATION, 'Elements and parameters processed')
-
-      // Get current table configuration
-      const storeState = store.state.value
-      const currentTableId = storeState.currentTableId
-      const currentTable = storeState.tablesArray.find(
-        (table): table is NamedTableConfig => table.id === currentTableId
-      )
-
-      if (currentTable) {
-        debug.log(
-          DebugCategories.INITIALIZATION,
-          'Using existing table configuration',
-          {
-            id: currentTable.id,
-            parentColumns: currentTable.parentColumns.length,
-            childColumns: currentTable.childColumns.length
-          }
-        )
-
-        // If table has parent columns, use them as selected parameters
-        const parentColumns = storeState.parentVisibleColumns
-        if (parentColumns.length > 0) {
-          const parentSelected = parentColumns.map((col, index) => ({
-            id: col.field,
-            name: col.name,
-            kind: 'bim' as const,
-            type: col.type || ('string' as const),
-            value: null,
-            group: 'Parameters',
-            visible: true,
-            order: index
-          }))
-          parameterStore.setSelectedParameters(parentSelected, true)
-        } else {
-          // Create defaults if no columns
-          parameterStore.createDefaultSelectedParameters(true)
-        }
-
-        const childColumns = storeState.childVisibleColumns
-        if (childColumns.length > 0) {
-          const childSelected = childColumns.map((col, index) => ({
-            id: col.field,
-            name: col.name,
-            kind: 'bim' as const,
-            type: col.type || ('string' as const),
-            value: null,
-            group: 'Parameters',
-            visible: true,
-            order: index
-          }))
-          parameterStore.setSelectedParameters(childSelected, false)
-        } else {
-          // Create defaults if no columns
-          parameterStore.createDefaultSelectedParameters(false)
-        }
-      } else {
-        // No table configuration, create defaults
-        parameterStore.createDefaultSelectedParameters(true)
-        parameterStore.createDefaultSelectedParameters(false)
-      }
 
       // Initialize table flow
       await initializeTable()
@@ -739,7 +694,24 @@ export function useElementsData(
       // Wait for Vue to update the DOM
       await new Promise((resolve) => requestAnimationFrame(resolve))
 
-      debug.completeState(DebugCategories.INITIALIZATION, 'Data initialized')
+      debug.completeState(DebugCategories.INITIALIZATION, 'Data initialized', {
+        parameters: {
+          parent: {
+            selected: parameterStore.parentSelectedParameters.value?.length || 0,
+            available: {
+              bim: parameterStore.parentAvailableBimParameters.value?.length || 0,
+              user: parameterStore.parentAvailableUserParameters.value?.length || 0
+            }
+          },
+          child: {
+            selected: parameterStore.childSelectedParameters.value?.length || 0,
+            available: {
+              bim: parameterStore.childAvailableBimParameters.value?.length || 0,
+              user: parameterStore.childAvailableUserParameters.value?.length || 0
+            }
+          }
+        }
+      })
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Error initializing data:', err)
       processingState.value.error =

@@ -83,12 +83,12 @@
 
         <div class="schedule-container">
           <ScheduleMainView
-            :selected-table-id="store.selectedTableId.value || ''"
+            :selected-table-id="tableStore.currentTable.value?.id || ''"
             :current-table="_currentTable"
             :is-initialized="isInitialized"
-            :table-name="store.tableName.value || ''"
-            :current-table-id="store.currentTableId.value || ''"
-            :table-key="store.tableKey.value || '0'"
+            :table-name="tableStore.currentTable.value?.name || ''"
+            :current-table-id="tableStore.currentTable.value?.id || ''"
+            :table-key="tableStore.lastUpdated.value.toString()"
             :error="error"
             :parent-base-columns="parameterStore.parentColumnDefinitions.value"
             :parent-available-columns="
@@ -148,7 +148,7 @@ import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
 import { useViewerEventListener } from '~~/lib/viewer/composables/viewer'
 import { ViewerEvent } from '@speckle/viewer'
-
+import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
   ViewerNode,
   WorldTreeRoot
@@ -304,23 +304,21 @@ const childElements = computed<ElementData[]>(() => {
   return safeArrayFrom(elementsData.state.value.childElements)
 })
 
-// Get current table from tablesState with type safety
+// Convert TableSettings to NamedTableConfig
 const _currentTable = computed(() => {
-  const selectedId = store.selectedTableId.value
-  if (!selectedId) return null
+  const current = tableStore.currentTable.value
+  if (!current) return null
 
-  const tables = tablesState.state.value?.tables
-  if (!tables) return null
-
-  const tableValues = safeArrayFrom(Object.values(tables))
-  return (
-    tableValues.find((table): table is NamedTableConfig => isValidTable(table)) || null
-  )
+  return {
+    ...current,
+    lastUpdateTimestamp: tableStore.lastUpdated.value
+  }
 })
 
 // Initialize core composables
+const tableStore = useTableStore()
 const { initComponent } = useTableInitialization({
-  store,
+  store: tableStore,
   initialState: {
     selectedTableId: '',
     tableName: '',
@@ -712,6 +710,9 @@ onMounted(async () => {
     await initComponent.update({
       selectedTableId: tableIdToSelect
     })
+
+    // Initialize table to apply defaults
+    await initComponent.initialize()
 
     debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
   } catch (err) {

@@ -106,12 +106,14 @@ import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
+import { useTableStore } from '~/composables/core/tables/store/store'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useScheduleEvents } from '~/composables/core/tables/events/useScheduleEvents'
 import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
 import { useStore } from '~/composables/core/store'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
+import { useTableParameters } from '~/composables/core/tables/useTableParameters'
 
 const debug = useDebug()
 const store = useStore()
@@ -150,7 +152,11 @@ type ExtendedEmits = TableEmits & ScheduleEmits
 
 const emit = defineEmits<ExtendedEmits>()
 
-// Initialize core functionality first
+// Initialize stores and composables
+const tableStore = useTableStore()
+const tableParameters = useTableParameters()
+
+// Initialize core functionality
 const { scheduleData, tableData, initializeData, isLoading, state } = useElementsData({
   selectedParentCategories: computed(() => store.selectedParentCategories.value),
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
@@ -179,7 +185,10 @@ const {
       selectedParentCategories: [],
       selectedChildCategories: []
     },
-    selectedParameterIds: [],
+    selectedParameters: {
+      parent: [],
+      child: []
+    },
     lastUpdateTimestamp: Date.now()
   }
 })
@@ -367,6 +376,8 @@ const evaluatedData = computed(() => store.evaluatedData.value || [])
 // Initialize on mount
 onMounted(async () => {
   try {
+    const parameterStore = useParameterStore()
+
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedule view')
 
     // First wait for store to be initialized by parent
@@ -386,12 +397,77 @@ onMounted(async () => {
       })
     }
 
-    // Initialize data - this will handle BIM elements and parameter processing
+    // Initialize parameter store
+    debug.startState(DebugCategories.PARAMETERS, 'Initializing parameter store')
+    await parameterStore.init()
+
+    // Initialize table first
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
+    await initializeTable()
+
+    // Wait for table to be fully initialized
+    if (!props.currentTable) {
+      debug.log(DebugCategories.INITIALIZATION, 'Waiting for table data')
+      await new Promise<void>((resolve) => {
+        const unwatch = watch(
+          () => props.currentTable,
+          (table) => {
+            if (table) {
+              unwatch()
+              resolve()
+            }
+          },
+          { immediate: true }
+        )
+      })
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'Table initialized', {
+      tableId: props.selectedTableId,
+      settings: props.currentTable
+    })
+
+    // Initialize table parameters before processing data
+    debug.startState(DebugCategories.PARAMETERS, 'Initializing table parameters')
+    await tableParameters.initializeTableParameters()
+
+    // Now process data with parameters already set
     debug.startState(DebugCategories.PARAMETERS, 'Processing parameters')
     await initializeData()
 
-    // Log parameter processing state
-    const parameterStore = useParameterStore()
+    // Log parameter state after initialization
+    debug.log(DebugCategories.PARAMETERS, 'Parameter state after initialization', {
+      parentSelected: parameterStore.parentSelectedParameters.value.length,
+      childSelected: parameterStore.childSelectedParameters.value.length
+    })
+
+    // Verify parameters were initialized
+    if (
+      !parameterStore.parentSelectedParameters.value.length &&
+      !parameterStore.childSelectedParameters.value.length
+    ) {
+      debug.warn(
+        DebugCategories.PARAMETERS,
+        'No parameters selected after initialization',
+        {
+          tableId: props.selectedTableId,
+          settings: props.currentTable
+        }
+      )
+
+      // Create default parameters
+      debug.log(DebugCategories.PARAMETERS, 'Creating default parameters')
+      parameterStore.createDefaultSelectedParameters(true) // Parent
+      parameterStore.createDefaultSelectedParameters(false) // Child
+
+      // Update table with new selected parameters
+      tableStore.updateSelectedParameters({
+        parent: parameterStore.parentSelectedParameters.value,
+        child: parameterStore.childSelectedParameters.value
+      })
+    }
+
+    // Log final parameter state
     const parameterState = {
       raw: {
         parent: parameterStore.parentRawParameters.value?.length || 0,
@@ -425,10 +501,6 @@ onMounted(async () => {
 
     debug.log(DebugCategories.PARAMETERS, 'Parameters processed', parameterState)
 
-    // Initialize table with processed parameters
-    await initializeTable()
-    debug.log(DebugCategories.INITIALIZATION, 'Table initialized')
-
     // Wait for Vue to update the DOM
     await new Promise((resolve) => requestAnimationFrame(resolve))
 
@@ -439,6 +511,27 @@ onMounted(async () => {
     events.handleError({ error })
   }
 })
+
+// Watch for table changes
+watch(
+  () => props.selectedTableId,
+  async (newTableId) => {
+    if (newTableId) {
+      try {
+        debug.startState(
+          DebugCategories.PARAMETERS,
+          'Table changed, reinitializing parameters'
+        )
+        await tableParameters.initializeTableParameters()
+        debug.completeState(DebugCategories.PARAMETERS, 'Parameters reinitialized')
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err))
+        debug.error(DebugCategories.ERROR, 'Failed to reinitialize parameters:', error)
+        events.handleError({ error })
+      }
+    }
+  }
+)
 
 defineExpose({
   handleError,

@@ -5,7 +5,7 @@ import type {
   TableInitializationInstance,
   TableInitializationOptions
 } from '../../types/tables/initialization-types'
-import type { Store } from '../../types'
+import type { TableSettings, TableStore } from '../store/types'
 import { defaultTableConfig, ensureRequiredColumns } from '../config/defaults'
 
 const defaultState: TableInitializationState = {
@@ -18,7 +18,7 @@ const defaultState: TableInitializationState = {
 }
 
 export interface UseTableInitializationOptions extends TableInitializationOptions {
-  store: Store
+  store: TableStore
 }
 
 /**
@@ -44,10 +44,16 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
       try {
         debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
 
-        // Initialize store if needed
-        if (!store.initialized.value) {
-          await store.lifecycle.init()
-        }
+        // Get selected parameters from current table if available, otherwise use defaults
+        const existingParams =
+          store.currentTable.value?.selectedParameters ||
+          defaultTableConfig.selectedParameters
+
+        debug.log(DebugCategories.INITIALIZATION, 'Parameters initialized', {
+          parent: existingParams.parent.length,
+          child: existingParams.child.length,
+          note: 'Using default parameters until user customizes through Column Manager'
+        })
 
         // Ensure required columns are present
         const config = ensureRequiredColumns({
@@ -60,21 +66,23 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
             selectedParentCategories: state.value.selectedParentCategories,
             selectedChildCategories: state.value.selectedChildCategories
           },
-          userParameters: [],
-          selectedParameterIds: [],
+          selectedParameters: existingParams,
           lastUpdateTimestamp: Date.now()
         })
 
+        // Create table settings
+        const tableSettings: TableSettings = {
+          id: config.id,
+          name: config.name,
+          displayName: config.name,
+          parentColumns: config.parentColumns,
+          childColumns: config.childColumns,
+          categoryFilters: config.categoryFilters,
+          selectedParameters: config.selectedParameters
+        }
+
         // Update store with initial state
-        await store.lifecycle.update({
-          selectedTableId: config.id,
-          tableName: config.name,
-          currentTableColumns: config.parentColumns,
-          currentDetailColumns: config.childColumns,
-          selectedParentCategories: config.categoryFilters.selectedParentCategories,
-          selectedChildCategories: config.categoryFilters.selectedChildCategories,
-          userParameters: []
-        })
+        await Promise.resolve(store.updateTable(tableSettings))
 
         debug.completeState(DebugCategories.INITIALIZATION, 'Table initialized')
       } catch (err) {
@@ -93,18 +101,19 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
         // Reset state to defaults
         state.value = { ...defaultState }
 
+        // Create default table settings
+        const defaultSettings: TableSettings = {
+          id: defaultTableConfig.id,
+          name: defaultTableConfig.name,
+          displayName: defaultTableConfig.name,
+          parentColumns: defaultTableConfig.parentColumns,
+          childColumns: defaultTableConfig.childColumns,
+          categoryFilters: defaultTableConfig.categoryFilters,
+          selectedParameters: defaultTableConfig.selectedParameters
+        }
+
         // Update store with reset state
-        await store.lifecycle.update({
-          selectedTableId: defaultTableConfig.id,
-          tableName: defaultTableConfig.name,
-          currentTableColumns: defaultTableConfig.parentColumns,
-          currentDetailColumns: defaultTableConfig.childColumns,
-          selectedParentCategories:
-            defaultTableConfig.categoryFilters.selectedParentCategories,
-          selectedChildCategories:
-            defaultTableConfig.categoryFilters.selectedChildCategories,
-          userParameters: []
-        })
+        await Promise.resolve(store.updateTable(defaultSettings))
 
         debug.completeState(DebugCategories.STATE, 'Table state reset')
       } catch (err) {

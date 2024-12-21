@@ -10,10 +10,31 @@ import { createAvailableUserParameter } from './types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import {
   processRawParameters as processParams,
-  createSelectedParameters,
   createColumnDefinitions
 } from '../next/utils/parameter-processing'
 import type { UserValueType, ParameterValue } from '~/composables/core/types/parameters'
+
+/**
+ * Parameter Store
+ *
+ * Responsibilities:
+ * 1. Raw Parameter Management
+ *    - Stores raw parameters from BIM
+ *    - Processes raw parameters into available parameters
+ *
+ * 2. Available Parameter Management
+ *    - Maintains lists of available BIM and user parameters
+ *    - Provides filtering and grouping of available parameters
+ *
+ * 3. Parameter Processing
+ *    - Converts raw parameters into available parameters
+ *    - Handles parameter metadata and type inference
+ *
+ * Does NOT handle:
+ * - Selected parameters (managed by Table Store)
+ * - Column definitions (managed by Table Store)
+ * - UI state (managed by Core Store)
+ */
 
 /**
  * Parameter store state interface
@@ -107,7 +128,7 @@ function createParameterStore() {
       state.value.loading = true
       const target = isParent ? 'parent' : 'child'
 
-      debug.log(DebugCategories.PARAMETERS, 'Starting parameter processing', {
+      debug.log(DebugCategories.PARAMETERS, 'Store (?) Starting parameter processing', {
         count: parameters.length,
         isParent,
         target,
@@ -140,7 +161,7 @@ function createParameterStore() {
         sample: processed[0]
       })
 
-      // Create new collections with processed parameters
+      // Create new collections with processed parameters, preserving selected parameters
       const newCollections = {
         ...state.value.collections,
         [target]: {
@@ -149,8 +170,8 @@ function createParameterStore() {
             bim: bimParams,
             user: userParams
           },
-          selected: [],
-          columns: []
+          selected: state.value.collections[target].selected,
+          columns: state.value.collections[target].columns
         }
       }
 
@@ -195,15 +216,13 @@ function createParameterStore() {
         }
       })
 
-      // Note: Selected parameters are now managed separately through setSelectedParameters
-
       // Verify state after processing
       const currentState = state.value.collections[target]
       if (!currentState.raw.length || !currentState.available.bim.length) {
         throw new Error('Parameter state verification failed')
       }
 
-      debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
+      debug.log(DebugCategories.PARAMETERS, 'Store (?) Parameter processing complete', {
         raw: parameters.length,
         available: processed.length,
         collections: {
@@ -220,10 +239,14 @@ function createParameterStore() {
       state.value.lastUpdated = Date.now()
       state.value.error = null
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      debug.error(DebugCategories.PARAMETERS, 'Parameter processing failed:', error)
-      state.value.error = error
-      throw error
+      const processError = err instanceof Error ? err : new Error(String(err))
+      debug.error(
+        DebugCategories.PARAMETERS,
+        'Parameter processing failed:',
+        processError
+      )
+      state.value.error = processError
+      throw processError
     } finally {
       state.value.isProcessing = false
       state.value.loading = false
@@ -248,7 +271,7 @@ function createParameterStore() {
 
     state.value.lastUpdated = Date.now()
 
-    debug.log(DebugCategories.PARAMETERS, 'Selected parameters updated', {
+    debug.log(DebugCategories.SAVED_PARAMETERS, 'Selected parameters updated', {
       count: selectedParameters.length,
       visible: selectedParameters.filter((p) => p.visible).length,
       collections: {
@@ -281,7 +304,7 @@ function createParameterStore() {
 
       state.value.lastUpdated = Date.now()
 
-      debug.log(DebugCategories.PARAMETERS, 'Parameter visibility updated', {
+      debug.log(DebugCategories.PARAMETER_UPDATES, 'Parameter visibility updated', {
         id: parameterId,
         visible,
         collections: {
@@ -314,7 +337,7 @@ function createParameterStore() {
 
       state.value.lastUpdated = Date.now()
 
-      debug.log(DebugCategories.PARAMETERS, 'Parameter order updated', {
+      debug.log(DebugCategories.PARAMETER_UPDATES, 'Parameter order updated', {
         id: parameterId,
         order,
         collections: {
@@ -347,7 +370,7 @@ function createParameterStore() {
 
     state.value.lastUpdated = Date.now()
 
-    debug.log(DebugCategories.PARAMETERS, 'Parameters reordered', {
+    debug.log(DebugCategories.PARAMETER_UPDATES, 'Parameters reordered', {
       fromIndex: dragIndex,
       toIndex: dropIndex,
       collections: {
@@ -376,7 +399,7 @@ function createParameterStore() {
 
     state.value.lastUpdated = Date.now()
 
-    debug.log(DebugCategories.PARAMETERS, 'User parameter added', {
+    debug.log(DebugCategories.SAVED_PARAMETERS, 'User parameter added', {
       id,
       name,
       type,
@@ -406,7 +429,7 @@ function createParameterStore() {
 
     state.value.lastUpdated = Date.now()
 
-    debug.log(DebugCategories.PARAMETERS, 'Parameter removed', {
+    debug.log(DebugCategories.PARAMETER_UPDATES, 'Parameter removed', {
       id: parameterId,
       collections: {
         available: {
@@ -512,85 +535,21 @@ function createParameterStore() {
       // Wait for final state update
       await new Promise((resolve) => setTimeout(resolve, 0))
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
+      const initError = err instanceof Error ? err : new Error(String(err))
       debug.error(
         DebugCategories.INITIALIZATION,
         'Parameter store initialization failed:',
-        error
+        initError
       )
-      state.value.error = error
-      throw error
+      state.value.error = initError
+      throw initError
     } finally {
       state.value.loading = false
       state.value.isProcessing = false
     }
   }
 
-  /**
-   * Set selected parameters and create corresponding column definitions
-   * Used when loading selected parameters from PostgreSQL or setting defaults
-   */
-  function setSelectedParameters(
-    selectedParams: SelectedParameter[],
-    isParent: boolean,
-    isDefault = false
-  ) {
-    const target = isParent ? 'parent' : 'child'
-
-    debug.log(
-      DebugCategories.PARAMETERS,
-      isDefault ? 'Setting default selected parameters' : 'Setting selected parameters',
-      {
-        count: selectedParams.length,
-        isParent,
-        isDefault,
-        sample: selectedParams[0]
-      }
-    )
-
-    // Create column definitions
-    const columnDefs = createColumnDefinitions(selectedParams)
-
-    // Update store
-    state.value.collections[target].selected = selectedParams
-    state.value.collections[target].columns = columnDefs
-
-    state.value.lastUpdated = Date.now()
-
-    debug.log(DebugCategories.PARAMETERS, 'Selected parameters updated', {
-      selectedCount: selectedParams.length,
-      columnsCount: columnDefs.length,
-      sample: selectedParams[0],
-      groups: Array.from(new Set(selectedParams.map((p) => p.group)))
-    })
-  }
-
-  /**
-   * Create default selected parameters from available parameters
-   * Only used when no selected parameters are loaded from PostgreSQL
-   */
-  function createDefaultSelectedParameters(isParent: boolean) {
-    const target = isParent ? 'parent' : 'child'
-
-    debug.log(DebugCategories.PARAMETERS, 'Creating default selected parameters')
-
-    // Use a subset of available parameters as defaults
-    const defaultParams = state.value.collections[target].available.bim
-      .filter((param) => {
-        // Include parameters that are typically important
-        return (
-          param.name.toLowerCase().includes('name') ||
-          param.name.toLowerCase().includes('id') ||
-          param.name.toLowerCase().includes('type') ||
-          param.name.toLowerCase().includes('category') ||
-          param.sourceGroup === 'Identity Data'
-        )
-      })
-      .slice(0, 10) // Limit to first 10 parameters
-
-    const selectedParams = createSelectedParameters(defaultParams)
-    setSelectedParameters(selectedParams, isParent, true)
-  }
+  // Selected parameters are now managed by table store
 
   return {
     // State
@@ -634,8 +593,6 @@ function createParameterStore() {
     updateParameterVisibility,
     updateParameterOrder,
     reorderParameters,
-    setSelectedParameters,
-    createDefaultSelectedParameters,
 
     // Basic operations
     setRawParameters,

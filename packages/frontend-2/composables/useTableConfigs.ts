@@ -7,8 +7,8 @@ import type {
 } from '~/composables/core/types'
 import { useTablesState } from '~/composables/settings/tables/useTablesState'
 import { useParametersState } from '~/composables/parameters/useParametersState'
+import { useParameterStore } from '~/composables/core/parameters/store/store'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { getParameterGroup } from '~/composables/core/types'
 
 const LAST_SELECTED_TABLE_KEY = 'speckle:lastSelectedTableId'
 
@@ -33,10 +33,15 @@ export function useTableConfigs() {
     parameters,
     loading: parametersLoading,
     error: parametersError,
-    loadParameters,
     addParameterToTable,
     removeParameterFromTable
   } = useParametersState()
+
+  // Initialize stores
+  const parameterStore = useParameterStore()
+  if (!parameterStore) {
+    throw new Error('Failed to initialize parameter store')
+  }
 
   const selectedTableId = ref<string | null>(
     localStorage.getItem(LAST_SELECTED_TABLE_KEY)
@@ -60,31 +65,23 @@ export function useTableConfigs() {
 
   // Get parameters for current table
   const currentTableParameters = computed(() => {
-    if (!currentTable.value || !parameters.value) return []
-    return currentTable.value.selectedParameterIds
-      .map((id) => parameters.value[id])
-      .filter(Boolean)
+    if (!currentTable.value) return { parent: [], child: [] }
+    return currentTable.value.selectedParameters || { parent: [], child: [] }
   })
 
   // Get available parameters for parent/child tables
   const availableParameters = computed(() => {
     if (!parameters.value) return { parent: [], child: [] }
 
-    const allParams = Object.values(parameters.value)
     return {
-      parent: allParams.filter((param) => {
-        const group = getParameterGroup(param)
-        const category = param.category?.toLowerCase() || ''
-        return (
-          category.includes('parent') ||
-          (!category.includes('child') && !group?.toLowerCase().includes('child'))
-        )
-      }),
-      child: allParams.filter((param) => {
-        const group = getParameterGroup(param)
-        const category = param.category?.toLowerCase() || ''
-        return category.includes('child') || group?.toLowerCase().includes('child')
-      })
+      parent: {
+        bim: parameterStore?.parentAvailableBimParameters.value || [],
+        user: parameterStore?.parentAvailableUserParameters.value || []
+      },
+      child: {
+        bim: parameterStore?.childAvailableBimParameters.value || [],
+        user: parameterStore?.childAvailableUserParameters.value || []
+      }
     }
   })
 
@@ -92,10 +89,7 @@ export function useTableConfigs() {
     try {
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing table configs')
 
-      // Load parameters first
-      await loadParameters()
-
-      // Then load tables
+      // Load tables
       await loadTables()
 
       // Try to select last used table
@@ -136,7 +130,7 @@ export function useTableConfigs() {
           selectedParentCategories: [],
           selectedChildCategories: []
         },
-        selectedParameterIds: config?.selectedParameterIds || [],
+        selectedParameters: config?.selectedParameters || { parent: [], child: [] },
         metadata: config?.metadata || {},
         lastUpdateTimestamp: timestamp
       }
@@ -149,11 +143,13 @@ export function useTableConfigs() {
       await saveTables(updatedTables)
 
       // Add parameter mappings if any
-      if (newTable.selectedParameterIds.length > 0) {
+      if (newTable.selectedParameters) {
+        const allParams = [
+          ...newTable.selectedParameters.parent,
+          ...newTable.selectedParameters.child
+        ]
         await Promise.all(
-          newTable.selectedParameterIds.map((parameterId) =>
-            addParameterToTable(parameterId, newTableId)
-          )
+          allParams.map((param) => addParameterToTable(param.id, newTableId))
         )
       }
 
@@ -195,8 +191,8 @@ export function useTableConfigs() {
         parentColumns: updates.config?.parentColumns || currentTable.parentColumns,
         childColumns: updates.config?.childColumns || currentTable.childColumns,
         categoryFilters: updates.categoryFilters || currentTable.categoryFilters,
-        selectedParameterIds:
-          updates.config?.selectedParameterIds || currentTable.selectedParameterIds,
+        selectedParameters:
+          updates.config?.selectedParameters || currentTable.selectedParameters,
         metadata: {
           ...currentTable.metadata,
           ...(updates.config?.metadata || {})
@@ -205,17 +201,26 @@ export function useTableConfigs() {
       }
 
       // Update parameter mappings if they changed
-      if (updates.config?.selectedParameterIds) {
-        const addedParams = updates.config.selectedParameterIds.filter(
-          (id) => !currentTable.selectedParameterIds.includes(id)
+      if (updates.config?.selectedParameters) {
+        const newParams = [
+          ...updates.config.selectedParameters.parent,
+          ...updates.config.selectedParameters.child
+        ]
+        const oldParams = [
+          ...currentTable.selectedParameters.parent,
+          ...currentTable.selectedParameters.child
+        ]
+
+        const addedParams = newParams.filter(
+          (param) => !oldParams.find((p) => p.id === param.id)
         )
-        const removedParams = currentTable.selectedParameterIds.filter(
-          (id) => !updates.config?.selectedParameterIds?.includes(id)
+        const removedParams = oldParams.filter(
+          (param) => !newParams.find((p) => p.id === param.id)
         )
 
         await Promise.all([
-          ...addedParams.map((id) => addParameterToTable(id, tableId)),
-          ...removedParams.map((id) => removeParameterFromTable(id, tableId))
+          ...addedParams.map((param) => addParameterToTable(param.id, tableId)),
+          ...removedParams.map((param) => removeParameterFromTable(param.id, tableId))
         ])
       }
 
@@ -249,7 +254,7 @@ export function useTableConfigs() {
         config: {
           parentColumns,
           childColumns,
-          selectedParameterIds: table.selectedParameterIds
+          selectedParameters: table.selectedParameters
         }
       })
 
@@ -267,10 +272,12 @@ export function useTableConfigs() {
       const table = namedTables.value[tableId]
       if (table) {
         // Remove all parameter mappings
+        const allParams = [
+          ...table.selectedParameters.parent,
+          ...table.selectedParameters.child
+        ]
         await Promise.all(
-          table.selectedParameterIds.map((parameterId) =>
-            removeParameterFromTable(parameterId, tableId)
-          )
+          allParams.map((param) => removeParameterFromTable(param.id, tableId))
         )
       }
 

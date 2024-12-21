@@ -369,8 +369,8 @@ export function processRawParameters(
   // Flatten array and filter out any undefined/null values
   const validProcessed = processed.flat().filter(Boolean)
 
-  // Log processing stats
-  const stats = {
+  // Log processing stats and verify state
+  const processedStats = {
     input: rawParams.length,
     processed: validProcessed.length,
     bim: validProcessed.filter((p): p is AvailableBimParameter => p.kind === 'bim')
@@ -388,8 +388,36 @@ export function processRawParameters(
     }, {} as Record<string, number>)
   }
 
+  // Verify processed parameters
+  const isValid = validProcessed.every((param) => {
+    if (param.kind === 'bim') {
+      return (
+        param.id && param.name && param.type && param.sourceGroup && param.currentGroup
+      )
+    }
+    return param.id && param.name && param.type && param.group
+  })
+
+  if (!isValid) {
+    debug.error(DebugCategories.PARAMETERS, 'Invalid processed parameters', {
+      invalidParams: validProcessed.filter((param) => {
+        if (param.kind === 'bim') {
+          return !(
+            param.id &&
+            param.name &&
+            param.type &&
+            param.sourceGroup &&
+            param.currentGroup
+          )
+        }
+        return !(param.id && param.name && param.type && param.group)
+      })
+    })
+    throw new Error('Invalid processed parameters')
+  }
+
   debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
-    stats,
+    stats: processedStats,
     sample: validProcessed[0]
   })
 

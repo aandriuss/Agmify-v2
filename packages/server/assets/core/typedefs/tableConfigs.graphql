@@ -1,9 +1,18 @@
 """
-Table configuration for storing parent and child columns
+Selected parameters for table with parent/child separation
+"""
+type TableSelectedParameters {
+  parent: [Parameter!]!
+  child: [Parameter!]!
+}
+
+"""
+Table configuration for storing parent and child columns and parameters
 """
 type TableConfig {
   parentColumns: [TableColumn!]!
   childColumns: [TableColumn!]!
+  selectedParameters: TableSelectedParameters!
 }
 
 """
@@ -45,9 +54,21 @@ input TableColumnInput {
   order: Int!
 }
 
+"""
+Input for selected parameters
+"""
+input TableSelectedParametersInput {
+  parent: [ID!]!
+  child: [ID!]!
+}
+
+"""
+Input for table configuration
+"""
 input TableConfigInput {
   parentColumns: [TableColumnInput!]!
   childColumns: [TableColumnInput!]!
+  selectedParameters: TableSelectedParametersInput!
 }
 
 input CategoryFiltersInput {

@@ -1,25 +1,26 @@
 import { ref, computed, type ComputedRef } from 'vue'
-import type { NamedTableConfig } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
+import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
 import type {
   AvailableBimParameter,
   AvailableUserParameter,
   SelectedParameter
-} from '@/composables/core/parameters/store/types'
+} from '~/composables/core/types/parameters/parameter-states'
 import {
   createColumnDefinition,
   createSelectedParameter
-} from '@/composables/core/parameters/store/types'
+} from '~/composables/core/types/parameters/parameter-states'
 import {
   createBimColumnDefWithDefaults,
   createUserColumnDefWithDefaults,
   type ColumnDef,
   type BimColumnDef,
   type UserColumnDef,
-  type PrimitiveValue
-} from '~/composables/core/types/'
+  type PrimitiveValue,
+  type NamedTableConfig
+} from '~/composables/core/types'
 
 export interface UseTableFlowOptions {
   currentTable: ComputedRef<NamedTableConfig | null>
@@ -30,7 +31,10 @@ export interface UseTableFlowOptions {
     parentColumns: NamedTableConfig['parentColumns']
     childColumns: NamedTableConfig['childColumns']
     categoryFilters: NamedTableConfig['categoryFilters']
-    selectedParameterIds: string[]
+    selectedParameters: {
+      parent: SelectedParameter[]
+      child: SelectedParameter[]
+    }
     lastUpdateTimestamp: number
   }
 }
@@ -136,6 +140,7 @@ function convertToColumnDefs(
  */
 export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOptions) {
   const store = useStore()
+  const tableStore = useTableStore()
   const parameterStore = useParameterStore()
 
   const state = ref<InitializationState>({
@@ -146,50 +151,61 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
 
   // Keep the NamedTableConfig type intact, use defaults if no table
   const tableConfig = computed<NamedTableConfig>(() => {
-    const table = currentTable.value
-    if (!table) {
+    const inputTable = currentTable.value
+    const storedTable = tableStore.currentTable.value
+
+    // Use defaults if no input table
+    if (!inputTable) {
       debug.log(DebugCategories.STATE, 'No table available, using defaults', {
         defaultColumns: defaultConfig.parentColumns.length,
-        defaultDetailColumns: defaultConfig.childColumns.length
+        defaultDetailColumns: defaultConfig.childColumns.length,
+        note: 'Using default selected parameters until user customizes through Column Manager'
       })
       return {
         ...defaultConfig,
         id: defaultConfig.id,
         name: defaultConfig.name,
         displayName: defaultConfig.displayName,
+        selectedParameters: defaultConfig.selectedParameters, // Explicitly use default selected parameters
         lastUpdateTimestamp: Date.now()
       }
     }
 
     debug.log(DebugCategories.STATE, 'Processing table config', {
-      id: table.id,
-      name: table.name,
-      parentColumnsCount: table.parentColumns.length,
-      childColumnsCount: table.childColumns.length
+      id: inputTable.id,
+      name: inputTable.name,
+      parentColumnsCount: inputTable.parentColumns.length,
+      childColumnsCount: inputTable.childColumns.length
     })
 
-    // Convert columns using parameter store
+    // Convert columns using available parameters from parameter store
+    // and selected parameters from table store
+    const selectedParams = {
+      parent: storedTable?.selectedParameters?.parent || [],
+      child: storedTable?.selectedParameters?.child || []
+    }
+
     const parentColumns = convertToColumnDefs(
       parameterStore.parentAvailableBimParameters.value,
       parameterStore.parentAvailableUserParameters.value,
-      parameterStore.parentSelectedParameters.value
+      selectedParams.parent
     )
 
     const childColumns = convertToColumnDefs(
       parameterStore.childAvailableBimParameters.value,
       parameterStore.childAvailableUserParameters.value,
-      parameterStore.childSelectedParameters.value
+      selectedParams.child
     )
 
     // Return table with converted columns
     return {
-      ...table,
+      ...inputTable,
       parentColumns,
       childColumns,
-      categoryFilters: table.categoryFilters || defaultConfig.categoryFilters,
-      selectedParameterIds:
-        table.selectedParameterIds || defaultConfig.selectedParameterIds,
-      lastUpdateTimestamp: table.lastUpdateTimestamp || Date.now()
+      categoryFilters: inputTable.categoryFilters || defaultConfig.categoryFilters,
+      selectedParameters:
+        storedTable?.selectedParameters || defaultConfig.selectedParameters,
+      lastUpdateTimestamp: inputTable.lastUpdateTimestamp || Date.now()
     }
   })
 
@@ -199,26 +215,51 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
   async function initializeStore() {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing store')
 
-    // Initialize store if needed
-    if (!store.initialized.value) {
-      await store.lifecycle.init()
+    try {
+      // Initialize stores if needed
+      if (!store.initialized.value) {
+        await store.lifecycle.init()
+      }
+
+      // Initialize parameter store for raw/available parameters
+      debug.log(DebugCategories.PARAMETERS, 'Initializing parameter store')
+      await parameterStore.init()
+
+      const config = tableConfig.value
+
+      // Update stores
+      debug.log(DebugCategories.PARAMETERS, 'Updating stores with table configuration')
+
+      // Update table store with columns and parameters
+      await tableStore.updateTable({
+        ...config,
+        parentColumns: config.parentColumns,
+        childColumns: config.childColumns,
+        selectedParameters: config.selectedParameters
+      })
+
+      // Update core store with UI state
+      await store.lifecycle.update({
+        selectedTableId: config.id,
+        currentTableId: config.id,
+        tableName: config.name,
+        selectedParentCategories: config.categoryFilters.selectedParentCategories,
+        selectedChildCategories: config.categoryFilters.selectedChildCategories
+      })
+
+      // Update current view columns in core store
+      await store.setCurrentColumns(config.parentColumns, config.childColumns)
+
+      debug.completeState(DebugCategories.INITIALIZATION, 'Store initialized', {
+        selectedParameters: {
+          parent: tableStore.currentTable.value?.selectedParameters.parent.length || 0,
+          child: tableStore.currentTable.value?.selectedParameters.child.length || 0
+        }
+      })
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to initialize store:', err)
+      throw err
     }
-
-    // Update store with table configuration
-    await store.lifecycle.update({
-      selectedTableId: tableConfig.value.id,
-      currentTableId: tableConfig.value.id,
-      tableName: tableConfig.value.name,
-      parentBaseColumns: tableConfig.value.parentColumns,
-      childBaseColumns: tableConfig.value.childColumns,
-      parentVisibleColumns: tableConfig.value.parentColumns,
-      childVisibleColumns: tableConfig.value.childColumns,
-      selectedParentCategories:
-        tableConfig.value.categoryFilters.selectedParentCategories,
-      selectedChildCategories: tableConfig.value.categoryFilters.selectedChildCategories
-    })
-
-    debug.completeState(DebugCategories.INITIALIZATION, 'Store initialized')
   }
 
   /**

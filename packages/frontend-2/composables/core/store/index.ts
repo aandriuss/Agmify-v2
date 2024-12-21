@@ -1,3 +1,18 @@
+/**
+ * Core Store
+ *
+ * Purpose:
+ * - Manages UI state and view-specific data
+ * - Handles temporary column visibility/order for current view
+ * - Manages category filters and table info
+ *
+ * Does NOT handle:
+ * - Raw parameters (managed by Parameter Store)
+ * - Available parameters (managed by Parameter Store)
+ * - Selected parameters (managed by Table Store)
+ * - Persistent column definitions (managed by Table Store)
+ */
+
 import { ref, computed } from 'vue'
 import type {
   Store,
@@ -16,17 +31,9 @@ const initialState: StoreState = {
   scheduleData: [],
   evaluatedData: [],
   tableData: [],
-  // Columns
+  // Current view columns (temporary state)
   currentTableColumns: [],
   currentDetailColumns: [],
-  mergedTableColumns: [],
-  mergedDetailColumns: [],
-  parentBaseColumns: [],
-  parentAvailableColumns: [],
-  parentVisibleColumns: [],
-  childBaseColumns: [],
-  childAvailableColumns: [],
-  childVisibleColumns: [],
   // Headers
   availableHeaders: { parent: [], child: [] },
   // Categories
@@ -54,36 +61,12 @@ export class CoreStore implements Store {
   public readonly evaluatedData = computed(() => this.internalState.value.evaluatedData)
   public readonly tableData = computed(() => this.internalState.value.tableData)
 
-  // Columns
+  // Current view columns
   public readonly currentTableColumns = computed(
     () => this.internalState.value.currentTableColumns
   )
   public readonly currentDetailColumns = computed(
     () => this.internalState.value.currentDetailColumns
-  )
-  public readonly mergedTableColumns = computed(
-    () => this.internalState.value.mergedTableColumns
-  )
-  public readonly mergedDetailColumns = computed(
-    () => this.internalState.value.mergedDetailColumns
-  )
-  public readonly parentBaseColumns = computed(
-    () => this.internalState.value.parentBaseColumns
-  )
-  public readonly parentAvailableColumns = computed(
-    () => this.internalState.value.parentAvailableColumns
-  )
-  public readonly parentVisibleColumns = computed(
-    () => this.internalState.value.parentVisibleColumns
-  )
-  public readonly childBaseColumns = computed(
-    () => this.internalState.value.childBaseColumns
-  )
-  public readonly childAvailableColumns = computed(
-    () => this.internalState.value.childAvailableColumns
-  )
-  public readonly childVisibleColumns = computed(
-    () => this.internalState.value.childVisibleColumns
   )
 
   // Headers
@@ -131,7 +114,17 @@ export class CoreStore implements Store {
       }
     },
     update: async (state: Partial<StoreState>) => {
-      debug.startState(DebugCategories.STATE, 'Updating core store state')
+      // Determine the most specific category based on what's being updated
+      const category = Object.keys(state).some((key) => key.includes('parameter'))
+        ? DebugCategories.SAVED_PARAMETERS
+        : Object.keys(state).some((key) => key.includes('data'))
+        ? DebugCategories.DATA_TRANSFORM
+        : DebugCategories.STATE
+
+      debug.startState(category, 'Updating core store state', {
+        updatedFields: Object.keys(state),
+        type: category
+      })
       try {
         this.internalState.value.loading = true
         await Promise.resolve() // Make async
@@ -139,7 +132,11 @@ export class CoreStore implements Store {
           ...this.internalState.value,
           ...state
         }
-        debug.completeState(DebugCategories.STATE, 'Core store state updated')
+        debug.completeState(category, 'Core store state updated', {
+          updatedFields: Object.keys(state),
+          updates: state,
+          type: category
+        })
       } finally {
         this.internalState.value.loading = false
       }
@@ -163,11 +160,6 @@ export class CoreStore implements Store {
     this.lifecycle.update({
       currentTableColumns: table,
       currentDetailColumns: detail
-    })
-  public setMergedColumns = (table: ColumnDef[], detail: ColumnDef[]) =>
-    this.lifecycle.update({
-      mergedTableColumns: table,
-      mergedDetailColumns: detail
     })
   public setColumnVisibility = (columnId: string, visible: boolean) => {
     const columns = [...this.internalState.value.currentTableColumns]

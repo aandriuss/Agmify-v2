@@ -3602,16 +3602,32 @@ export type TableColumnInput = {
   width?: InputMaybe<Scalars['Int']['input']>;
 };
 
-/** Table configuration for storing parent and child columns */
+/** Table configuration for storing parent and child columns and parameters */
 export type TableConfig = {
   __typename?: 'TableConfig';
   childColumns: Array<TableColumn>;
   parentColumns: Array<TableColumn>;
+  selectedParameters: TableSelectedParameters;
 };
 
+/** Input for table configuration */
 export type TableConfigInput = {
   childColumns: Array<TableColumnInput>;
   parentColumns: Array<TableColumnInput>;
+  selectedParameters: TableSelectedParametersInput;
+};
+
+/** Selected parameters for table with parent/child separation */
+export type TableSelectedParameters = {
+  __typename?: 'TableSelectedParameters';
+  child: Array<Parameter>;
+  parent: Array<Parameter>;
+};
+
+/** Input for selected parameters */
+export type TableSelectedParametersInput = {
+  child: Array<Scalars['ID']['input']>;
+  parent: Array<Scalars['ID']['input']>;
 };
 
 export type TestAutomationRun = {
@@ -6587,6 +6603,7 @@ export type AllObjectTypes = {
   Subscription: Subscription,
   TableColumn: TableColumn,
   TableConfig: TableConfig,
+  TableSelectedParameters: TableSelectedParameters,
   TestAutomationRun: TestAutomationRun,
   TestAutomationRunTrigger: TestAutomationRunTrigger,
   TestAutomationRunTriggerPayload: TestAutomationRunTriggerPayload,
@@ -7571,6 +7588,11 @@ export type TableColumnFieldArgs = {
 export type TableConfigFieldArgs = {
   childColumns: {},
   parentColumns: {},
+  selectedParameters: {},
+}
+export type TableSelectedParametersFieldArgs = {
+  child: {},
+  parent: {},
 }
 export type TestAutomationRunFieldArgs = {
   automationRunId: {},
@@ -7955,6 +7977,7 @@ export type AllObjectFieldArgTypes = {
   Subscription: SubscriptionFieldArgs,
   TableColumn: TableColumnFieldArgs,
   TableConfig: TableConfigFieldArgs,
+  TableSelectedParameters: TableSelectedParametersFieldArgs,
   TestAutomationRun: TestAutomationRunFieldArgs,
   TestAutomationRunTrigger: TestAutomationRunTriggerFieldArgs,
   TestAutomationRunTriggerPayload: TestAutomationRunTriggerPayloadFieldArgs,

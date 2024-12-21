@@ -2,8 +2,13 @@ import { ref, watch } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTablesGraphQL } from './useTablesGraphQL'
 import { useUpdateQueue } from '../useUpdateQueue'
-import type { NamedTableConfig, ColumnDef, TableConfig } from '~/composables/core/types'
-import { defaultTable } from '~/components/viewer/schedules/config/defaultColumns'
+import type {
+  NamedTableConfig,
+  ColumnDef,
+  TableConfig,
+  SelectedParameter
+} from '~/composables/core/types'
+import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
 import {
   createBimColumnDefWithDefaults,
   createUserColumnDefWithDefaults,
@@ -37,6 +42,10 @@ interface TablesState {
 type RawTable = Omit<TableConfig, 'lastUpdateTimestamp'> & {
   displayName?: string
   description?: string
+  selectedParameters?: {
+    parent: SelectedParameter[]
+    child: SelectedParameter[]
+  }
 }
 
 function deepClone<T extends Record<string, unknown>>(obj: T): T {
@@ -125,11 +134,8 @@ export function useTablesState() {
         ? validateColumnDefs(rawTable.childColumns)
         : [],
       categoryFilters,
-      selectedParameterIds: Array.isArray(rawTable.selectedParameterIds)
-        ? rawTable.selectedParameterIds.filter(
-            (id): id is string => typeof id === 'string'
-          )
-        : [],
+      selectedParameters:
+        rawTable.selectedParameters || defaultTableConfig.selectedParameters,
       description: rawTable.description,
       lastUpdateTimestamp: Date.now()
     }
@@ -187,7 +193,7 @@ export function useTablesState() {
           // Only use default table if no tables exist
           state.value = {
             ...state.value,
-            tables: { defaultTable },
+            tables: { defaultTableConfig },
             error: null
           }
         }
@@ -229,7 +235,7 @@ export function useTablesState() {
       if (Object.keys(tables).length > 0) {
         state.value.tables = tables
       } else {
-        state.value.tables = { defaultTable }
+        state.value.tables = { defaultTableConfig }
         debug.log(DebugCategories.INITIALIZATION, 'No tables found, using default')
       }
 
@@ -258,8 +264,8 @@ export function useTablesState() {
       debug.error(DebugCategories.ERROR, 'Failed to load tables', error)
       state.value.error = error
       // Use default table on error
-      state.value.tables = { defaultTable }
-      originalTables.value = { defaultTable }
+      state.value.tables = { defaultTableConfig }
+      originalTables.value = { defaultTableConfig }
       throw error
     } finally {
       state.value.loading = false
@@ -289,7 +295,7 @@ export function useTablesState() {
         const existingTables = Object.entries(state.value.tables).reduce<
           Record<string, NamedTableConfig>
         >((acc, [key, table]) => {
-          if (table.id === defaultTable.id) return acc
+          if (table.id === defaultTableConfig.id) return acc
           return { ...acc, [key]: table }
         }, {})
 
@@ -298,7 +304,7 @@ export function useTablesState() {
           ...existingTables,
           ...Object.entries(newTables).reduce<Record<string, NamedTableConfig>>(
             (acc, [_, table]) => {
-              if (table.id === defaultTable.id) return acc
+              if (table.id === defaultTableConfig.id) return acc
               const validatedTable = validateAndTransformTable(table)
               const key = formatTableKey(validatedTable)
 
@@ -364,14 +370,16 @@ export function useTablesState() {
         selectedTableId: selectedTable.id,
         currentTableId: selectedTable.id,
         tableName: selectedTable.name,
-        parentBaseColumns: selectedTable.parentColumns,
-        childBaseColumns: selectedTable.childColumns,
-        parentVisibleColumns: selectedTable.parentColumns,
-        childVisibleColumns: selectedTable.childColumns,
         selectedParentCategories:
           selectedTable.categoryFilters.selectedParentCategories,
         selectedChildCategories: selectedTable.categoryFilters.selectedChildCategories
       })
+
+      // Update current view columns in core store
+      await store.setCurrentColumns(
+        selectedTable.parentColumns,
+        selectedTable.childColumns
+      )
     }
   }
 

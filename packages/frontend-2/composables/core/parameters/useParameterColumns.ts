@@ -1,16 +1,14 @@
 import { computed } from 'vue'
 import type { Ref } from 'vue'
 import type { Parameter } from '../types/parameters'
-import type {
-  ColumnDef,
-  BimColumnDef,
-  UserColumnDef
-} from '../types/tables/column-types'
+import type { ColumnDef } from '../types/tables/column-types'
 import type { BimValueType } from '../types/parameters/value-types'
-import { useParameters } from './next/useParameters'
 import { useColumnState } from '../tables/state/useColumnState'
 import { toBimValueType, toUserValueType } from '../utils/conversion'
-import { createBimParameter, createUserParameter } from '../types/parameters'
+import {
+  createBimColumnDefWithDefaults,
+  createUserColumnDefWithDefaults
+} from '../types/tables/column-types'
 
 export interface UseParameterColumnsOptions {
   parameters: (Parameter | ColumnDef)[]
@@ -40,9 +38,6 @@ function isColumnDef(value: Parameter | ColumnDef): value is ColumnDef {
  */
 export function useParameterColumns({
   parameters,
-  searchTerm,
-  isGrouped,
-  sortBy,
   onError
 }: UseParameterColumnsOptions) {
   const handleError = (err: unknown) => {
@@ -60,39 +55,32 @@ export function useParameterColumns({
 
           // Convert ColumnDef to Parameter
           if ('isCustomParameter' in item) {
-            return createUserParameter({
+            return {
+              kind: 'user',
               id: item.id,
               name: item.name,
-              field: item.field,
-              header: item.header,
               type: toUserValueType(item.type),
-              category: item.category,
-              description: item.description,
-              visible: item.visible,
-              removable: item.removable,
               value: item.value ?? null,
               group: item.group || '',
+              category: item.category,
+              description: item.description,
               metadata: item.metadata
-            })
+            }
           }
 
-          const bimType = toBimValueType(item.type) as BimValueType
-          return createBimParameter({
+          return {
+            kind: 'bim',
             id: item.id,
             name: item.name,
-            field: item.field,
-            header: item.header,
-            type: bimType,
+            type: toBimValueType(item.type) as BimValueType,
+            value: item.value ?? null,
+            sourceGroup: item.currentGroup || '',
+            currentGroup: item.currentGroup || '',
+            isSystem: false,
             category: item.category,
             description: item.description,
-            visible: item.visible,
-            removable: item.removable,
-            value: item.value ?? null,
-            sourceValue: item.sourceValue ?? null,
-            fetchedGroup: item.fetchedGroup || '',
-            currentGroup: item.currentGroup || '',
             metadata: item.metadata
-          })
+          }
         })
       } catch (err) {
         handleError(err)
@@ -100,13 +88,23 @@ export function useParameterColumns({
       }
     })
 
-    // Use parameter system for filtering and sorting
-    const { filteredParameters, groupedParameters } = useParameters({
-      initialParameters: normalizedParameters.value,
-      searchTerm,
-      isGrouped,
-      sortBy,
-      onError
+    // Create refs for filtered and grouped parameters
+    const filteredParameters = computed(() => normalizedParameters.value)
+    const groupedParameters = computed(() => {
+      const groups = new Map<string, Parameter[]>()
+
+      for (const param of normalizedParameters.value) {
+        const category = param.category || 'Uncategorized'
+        if (!groups.has(category)) {
+          groups.set(category, [])
+        }
+        groups.get(category)?.push(param)
+      }
+
+      return Array.from(groups.entries()).map(([category, parameters]) => ({
+        category,
+        parameters
+      }))
     })
 
     // Use column state for managing columns
@@ -116,39 +114,41 @@ export function useParameterColumns({
     function convertToColumnDef(param: Parameter): ColumnDef {
       try {
         const base = {
-          id: param.id,
+          field: param.id,
           name: param.name,
-          field: param.field,
-          header: param.header,
+          header: param.name,
+          visible: true,
+          removable: true,
+          order: 0,
           category: param.category,
           description: param.description,
-          visible: param.visible,
-          removable: param.removable,
-          metadata: param.metadata,
-          sortable: true,
-          filterable: true,
-          value: param.value ?? null
+          metadata: param.metadata
+            ? ({ ...param.metadata } as Record<string, unknown>)
+            : undefined,
+          value: param.value
         }
 
         if (param.kind === 'bim') {
-          return {
+          return createBimColumnDefWithDefaults({
             ...base,
-            kind: 'bim',
             type: param.type,
-            sourceValue: param.sourceValue ?? null,
-            fetchedGroup: param.fetchedGroup,
-            currentGroup: param.currentGroup,
-            isFixed: true
-          } as BimColumnDef
+            sourceValue: null,
+            fetchedGroup: param.sourceGroup || 'Default',
+            currentGroup: param.currentGroup || param.sourceGroup || 'Default',
+            isFixed: false,
+            sortable: true,
+            filterable: true
+          })
         }
 
-        return {
+        return createUserColumnDefWithDefaults({
           ...base,
-          kind: 'user',
           type: param.type,
-          group: param.group,
-          isCustomParameter: true
-        } as UserColumnDef
+          group: param.group || 'Custom',
+          isCustomParameter: false,
+          sortable: true,
+          filterable: true
+        })
       } catch (err) {
         handleError(err)
         throw err // This will never be reached due to handleError throwing
@@ -168,7 +168,10 @@ export function useParameterColumns({
       try {
         return groupedParameters.value.map((group) => ({
           name: group.category,
-          parameters: group.parameters.map(convertToColumnDef)
+          parameters: group.parameters.map((param) => ({
+            ...convertToColumnDef(param),
+            removable: param.kind === 'user'
+          }))
         }))
       } catch (err) {
         handleError(err)

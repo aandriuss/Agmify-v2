@@ -1,8 +1,24 @@
+/**
+ * Column Merging Utilities
+ *
+ * This module handles merging different types of columns:
+ * - Base columns from table configuration
+ * - Parameter-based columns (dynamically generated)
+ * - Detail columns for child elements
+ *
+ * The merging process:
+ * 1. Gets base columns from current table or defaults
+ * 2. Filters parameter columns based on category selection
+ * 3. Merges base and parameter columns with proper ordering
+ */
+
 import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type { ColumnDef } from '~/composables/core/types'
-import { defaultColumns, defaultDetailColumns } from '../config/defaultColumns'
+import type { BimValueType } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
+import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
+import { createBimColumnDefWithDefaults } from '~/composables/core/types/tables/column-types'
 
 interface UseMergedColumnsOptions {
   currentTableColumns: ComputedRef<ColumnDef[]>
@@ -40,7 +56,7 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
       return currentTableColumns.value
     }
     debug.log(DebugCategories.COLUMNS, 'Using default table columns')
-    return defaultColumns
+    return defaultTableConfig.parentColumns
   })
 
   const baseDetailColumns = computed<ColumnDef[]>(() => {
@@ -49,7 +65,7 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
       return currentDetailColumns.value
     }
     debug.log(DebugCategories.COLUMNS, 'Using default detail columns')
-    return defaultDetailColumns
+    return defaultTableConfig.childColumns
   })
 
   // Filter parameter columns based on category selection if categories are provided
@@ -106,19 +122,22 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
 
   const mergedTableColumns = computed<ColumnDef[]>(() => {
     const baseColumns = baseTableColumns.value
-    const paramCols = filteredParamColumns.value.map(
-      (col, index): ColumnDef => ({
+    const paramCols = filteredParamColumns.value.map((col, index): ColumnDef => {
+      return createBimColumnDefWithDefaults({
         field: col.field,
         header: col.header,
-        type: col.type || 'string', // Provide default type
+        type: (col.type || 'string') as BimValueType,
         visible: col.visible ?? true,
         removable: col.removable ?? true,
         order: baseColumns.length + index,
         category: col.category || '',
         description: col.description || '',
-        isFixed: false
+        isFixed: false,
+        fetchedGroup: 'Parameters',
+        currentGroup: 'Parameters',
+        sourceValue: null
       })
-    )
+    })
 
     const mergedColumns = [...baseColumns, ...paramCols]
 
@@ -140,19 +159,22 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
 
   const mergedDetailColumns = computed<ColumnDef[]>(() => {
     const baseColumns = baseDetailColumns.value
-    const paramCols = filteredParamColumns.value.map(
-      (col, index): ColumnDef => ({
+    const paramCols = filteredParamColumns.value.map((col, index): ColumnDef => {
+      return createBimColumnDefWithDefaults({
         field: col.field,
         header: col.header,
-        type: col.type || 'string', // Provide default type
+        type: (col.type || 'string') as BimValueType,
         visible: col.visible ?? true,
         removable: col.removable ?? true,
         order: baseColumns.length + index,
         category: col.category || '',
         description: col.description || '',
-        isFixed: false
+        isFixed: false,
+        fetchedGroup: 'Parameters',
+        currentGroup: 'Parameters',
+        sourceValue: null
       })
-    )
+    })
 
     const mergedColumns = [...baseColumns, ...paramCols]
 
