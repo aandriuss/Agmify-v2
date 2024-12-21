@@ -120,10 +120,30 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       // Fetch table from PostgreSQL
       const table = await tableService.fetchTable(tableId)
 
-      // Update store
-      state.value.tables.set(tableId, table)
+      // Create columns from selected parameters
+      const parentColumns = createTableColumns(table.selectedParameters.parent)
+      const childColumns = createTableColumns(table.selectedParameters.child)
+
+      // Update store with table and generated columns
+      state.value.tables.set(tableId, {
+        ...table,
+        parentColumns,
+        childColumns
+      })
       state.value.currentTableId = tableId
       state.value.lastUpdated = Date.now()
+
+      debug.log(DebugCategories.STATE, 'Table loaded with columns', {
+        tableId,
+        selectedParameters: {
+          parent: table.selectedParameters.parent.length,
+          child: table.selectedParameters.child.length
+        },
+        columns: {
+          parent: parentColumns.length,
+          child: childColumns.length
+        }
+      })
 
       debug.log(DebugCategories.STATE, 'Table loaded', {
         tableId,
@@ -153,9 +173,29 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       // Save to PostgreSQL
       const savedTable = await tableService.saveTable(settings)
 
-      // Update store
-      state.value.tables.set(savedTable.id, savedTable)
+      // Create columns from selected parameters
+      const parentColumns = createTableColumns(savedTable.selectedParameters.parent)
+      const childColumns = createTableColumns(savedTable.selectedParameters.child)
+
+      // Update store with table and generated columns
+      state.value.tables.set(savedTable.id, {
+        ...savedTable,
+        parentColumns,
+        childColumns
+      })
       state.value.lastUpdated = Date.now()
+
+      debug.log(DebugCategories.STATE, 'Table saved with columns', {
+        tableId: savedTable.id,
+        selectedParameters: {
+          parent: savedTable.selectedParameters.parent.length,
+          child: savedTable.selectedParameters.child.length
+        },
+        columns: {
+          parent: parentColumns.length,
+          child: childColumns.length
+        }
+      })
 
       debug.log(DebugCategories.STATE, 'Table saved', {
         tableId: savedTable.id,
@@ -205,7 +245,30 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       return
     }
 
-    const updated = { ...current, ...updates }
+    // If selected parameters are being updated, ensure columns are created
+    let updated = { ...current, ...updates }
+    if (updates.selectedParameters) {
+      const parentColumns = createTableColumns(updates.selectedParameters.parent)
+      const childColumns = createTableColumns(updates.selectedParameters.child)
+      updated = {
+        ...updated,
+        parentColumns,
+        childColumns
+      }
+
+      debug.log(DebugCategories.STATE, 'Table updated with new columns', {
+        tableId: current.id,
+        selectedParameters: {
+          parent: updates.selectedParameters.parent.length,
+          child: updates.selectedParameters.child.length
+        },
+        columns: {
+          parent: parentColumns.length,
+          child: childColumns.length
+        }
+      })
+    }
+
     state.value.tables.set(current.id, updated)
     state.value.lastUpdated = Date.now()
 
