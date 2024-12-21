@@ -1,4 +1,4 @@
-import type { ColumnDef, CategoryFilters } from '../tables'
+import type { TableColumn, CategoryFilters } from '../tables'
 import type { BimValueType, UserValueType } from '../parameters'
 
 /**
@@ -102,8 +102,8 @@ export interface ParametersOperationResponse {
 export interface TableResponse {
   id: string
   name: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
   metadata?: Record<string, unknown>
   categoryFilters: CategoryFilters
   selectedParameterIds: string[]
@@ -111,8 +111,8 @@ export interface TableResponse {
 
 export interface CreateNamedTableInput {
   name: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
   metadata?: Record<string, unknown>
   categoryFilters: CategoryFilters
   selectedParameterIds: string[]
@@ -121,15 +121,15 @@ export interface CreateNamedTableInput {
 export interface UpdateNamedTableInput {
   id: string
   name?: string
-  parentColumns?: ColumnDef[]
-  childColumns?: ColumnDef[]
+  parentColumns?: TableColumn[]
+  childColumns?: TableColumn[]
   metadata?: Record<string, unknown>
   categoryFilters?: CategoryFilters
   selectedParameterIds?: string[]
 }
 
 export interface TablesQueryResponse {
-  namedTableConfigs: TableResponse[]
+  tableSettingsP: TableResponse[]
 }
 
 export interface TablesMutationResponse {

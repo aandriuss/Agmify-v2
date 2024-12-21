@@ -1,4 +1,4 @@
-import type { ElementData, ColumnDef } from '~/composables/core/types'
+import type { ElementData, TableColumn } from '~/composables/core/types'
 import { createBimColumnDefWithDefaults } from '~/composables/core/types/tables/column-types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
@@ -12,8 +12,8 @@ export interface DataPipelineResult {
   filteredElements: ElementData[]
   processedElements: ElementData[]
   tableData: ElementData[]
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
   isProcessingComplete: boolean
 }
 
@@ -120,8 +120,8 @@ function filterElementsByCategory(
  */
 function processElements(elements: ElementData[]): {
   processedElements: ElementData[]
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
 } {
   try {
     debug.startState(DebugCategories.DATA_TRANSFORM, 'Processing elements')
@@ -159,9 +159,9 @@ function processElements(elements: ElementData[]): {
 /**
  * Extract columns from elements
  */
-function extractColumns(elements: ElementData[]): ColumnDef[] {
+function extractColumns(elements: ElementData[]): TableColumn[] {
   try {
-    const columns = new Map<string, ColumnDef>()
+    const columns = new Map<string, TableColumn>()
 
     elements.forEach((element) => {
       // Process parameters

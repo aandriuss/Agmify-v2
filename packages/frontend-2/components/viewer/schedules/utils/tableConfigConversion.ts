@@ -3,7 +3,7 @@
  *
  * This module provides utilities for converting between different table configuration formats:
  * - TableConfig: Base configuration used by the core system
- * - NamedTableConfig: Extended configuration with display properties
+ * - TableSettings: Extended configuration with display properties
  *
  * The conversion handles:
  * - Basic table properties (name, columns, etc.)
@@ -11,14 +11,14 @@
  * - Selected parameters (both BIM and user parameters)
  */
 
-import type { TableConfig, NamedTableConfig } from '~/composables/core/types'
+import type { TableConfig, TableSettings } from '~/composables/core/types'
 /**
- * Convert a partial TableConfig to a complete NamedTableConfig
+ * Convert a partial TableConfig to a complete TableSettings
  */
 export function toNamedTableConfig(
   config: Partial<TableConfig>,
   id: string
-): NamedTableConfig {
+): TableSettings {
   const timestamp = Date.now()
 
   return {
@@ -40,9 +40,9 @@ export function toNamedTableConfig(
 }
 
 /**
- * Convert a NamedTableConfig back to a TableConfig
+ * Convert a TableSettings back to a TableConfig
  */
-export function toTableConfig(namedConfig: NamedTableConfig): TableConfig {
+export function toTableConfig(namedConfig: TableSettings): TableConfig {
   return {
     id: namedConfig.id,
     name: namedConfig.name,

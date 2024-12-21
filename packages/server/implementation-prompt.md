@@ -1,183 +1,96 @@
-# BIM Schedule System - Parameter Display Phase
+# Table System Refactoring Implementation
 
 ## Context
 
-The BIM Schedule System displays building element parameters in a structured table format. We've completed the parameter discovery and state management phases, and now need to implement the parameter display and interaction features.
-
-IMPORTANT! There are separate fetches from BIM DATA. they go in parallel. We fetch unique parameters from selected categories for both parent and child elements (separately). Also we fetch bim elements by selected categories (like floors, walls, structural framing) with their active parameters and values for these parameters. so at the end we have two lists with available parameters and two element objects with parent and child elements, which hold also values for these parameters.
+We are refactoring the table system to simplify the relationship between parameters and their display in tables. Currently, there is unnecessary complexity with multiple column types and conversion layers. We want to create a clean, simple system that clearly separates data (parameters) from display (columns).
 
 ## Current State
 
-### Data Flow
+- Complex type system with BimColumnDef, UserColumnDef, etc.
+- Multiple conversion layers between parameters and columns
+- Duplicate properties between parameters and columns
+- Unclear separation of concerns
 
-1. Parameter Discovery:
+## Target State
 
-```typescript
-interface ProcessedHeader {
-  field: string
-  header: string
-  fetchedGroup: string
-  currentGroup: string
-  type: ParameterValueType
-  category: string
-  description: string
-  isFetched: boolean
-  source: string
-}
-```
+- Clear separation between data (SelectedParameter) and display (TableColumn)
+- Simple, direct relationship between parameters and columns
+- No unnecessary type conversions
+- Clean, maintainable code
 
-2. Parameter Values:
+## Implementation Plan
 
-```typescript
-interface ParameterValueState {
-  fetchedValue: ParameterValue
-  currentValue: ParameterValue
-  previousValue: ParameterValue
-  userValue: ParameterValue | null
-}
-```
+### 1. Core Types Update
 
-3. Element Structure:
+First, implement the new TableColumn type and update core type definitions:
 
-```typescript
-interface TableRow {
-  id: string
-  mark: string
-  category: string
-  type?: string
-  host?: string
-  parameters: Record<string, ParameterValueState>
-  _visible?: boolean
-  isChild?: boolean
-}
-```
+- [ ] Update table-column.ts with new TableColumn interface
+- [ ] Update tables/index.ts exports
+- [ ] Update store/types.ts to use TableColumn
+- [ ] Update TableSettings interface
 
-## Task Requirements
+### 2. Store Layer Update
 
-1. Parameter Display
+Next, simplify the store to work with the new types:
 
-- Show parameter values in DataTable cells
-- Handle null/undefined values gracefully
+- [ ] Update store/store.ts
+- [ ] Remove complex column creation logic
+- [ ] Use simple createTableColumns function
+- [ ] Update state management
 
-2. Parameter Interaction
+### 3. Service Layer Update
 
-- Allow editing parameter values
-- Track value changes in ParameterValueState
-- Update UI to reflect parameter states
-- Handle validation and type conversion
+Then update the service layer:
 
-3. Parameter Filtering
+- [ ] Update tableService.ts
+- [ ] Remove column type conversions
+- [ ] Work directly with TableColumn type
 
-- Filter by parameter groups
-- Show/hide parameter columns
-- Remember user preferences
-- Handle dynamic updates
+### 4. State Management Update
 
-4. Debug Features
+Update state management to use new types:
 
-- Show parameter statistics
-- Display value state changes
-- Log parameter operations
-- Provide debugging tools
+- [ ] Update useTableFlow.ts
+- [ ] Update useElementsData.ts
+- [ ] Simplify data flow
 
-## Technical Guidelines
+### 5. Component Update
 
-1. Type Safety
+Finally, update components:
 
-- Use strict TypeScript checks
-- Implement proper type guards
-- Handle all edge cases
-- Validate data transformations
+- [ ] Update Schedules.vue
+- [ ] Remove column type conversions
+- [ ] Use TableColumn directly
 
-2. Performance
+## Files to Modify
 
-- Optimize parameter updates
-- Use computed properties effectively
-- Implement virtual scrolling
-- Batch parameter operations
+1. ../frontend-2/composables/core/types/tables/table-column.ts
+2. ../frontend-2/composables/core/types/tables/index.ts
+3. ../frontend-2/composables/core/tables/store/types.ts
+4. ../frontend-2/composables/core/tables/store/store.ts
+5. ../frontend-2/composables/core/tables/services/tableService.ts
+6. ../frontend-2/composables/core/tables/state/useTableFlow.ts
+7. ../frontend-2/composables/core/tables/state/useElementsData.ts
+8. ../frontend-2/components/viewer/schedules/Schedules.vue
 
-3. Error Handling
+## Testing Requirements
 
-- Add error boundaries
-- Provide clear error messages
-- Handle edge cases gracefully
-- Log debugging information
-
-4. Testing
-
-- Add unit tests for parameter handling
-- Test edge cases
-- Verify type safety
-- Test performance
-
-## Example Usage
-
-```typescript
-// Parameter cell display
-<template>
-  <div class="parameter-cell" :class="{ modified: isModified }">
-    <div class="value">{{ displayValue }}</div>
-    <div v-if="isModified" class="state-indicator">Modified</div>
-  </div>
-</template>
-
-// Parameter state handling
-const displayValue = computed(() => {
-  const state = props.parameter as ParameterValueState
-  return state.userValue ?? state.currentValue
-})
-
-const isModified = computed(() => {
-  const state = props.parameter as ParameterValueState
-  return state.userValue !== null
-})
-
-// Parameter updates
-function updateValue(value: ParameterValue) {
-  const state = props.parameter as ParameterValueState
-  state.previousValue = state.currentValue
-  state.currentValue = value
-  state.userValue = value
-}
-```
+- Verify parameters display correctly in tables
+- Check column sorting/filtering functionality
+- Validate table persistence
+- Test parameter updates flow through correctly
 
 ## Success Criteria
 
-1. Functionality
+1. Clean type system with clear separation of concerns
+2. No type conversion layers
+3. All tests passing
+4. Improved code maintainability
+5. No regression in functionality
 
-- [ ] Parameters display correctly in table
-- [ ] Parameter groups are organized
-- [ ] Value states are tracked properly
-- [ ] Updates work smoothly
+## Notes
 
-2. Performance
-
-- [ ] Table scrolls smoothly
-- [ ] Updates are fast
-- [ ] Memory usage is optimized
-- [ ] No UI freezes
-
-3. Developer Experience
-
-- [ ] Clear error messages
-- [ ] Helpful debug output
-- [ ] Easy to maintain
-- [ ] Well documented
-
-4. User Experience
-
-- [ ] Intuitive parameter display
-- [ ] Clear state indicators
-- [ ] Smooth interactions
-- [ ] Helpful feedback
-
-## Next Steps
-
-1. Implement parameter cell component
-2. Add parameter group headers
-3. Create parameter state indicators
-4. Add parameter filtering UI
-5. Implement debug panel
-6. Add performance monitoring
-7. Create documentation
-8. Add tests
+- Take a step-by-step approach
+- Update one layer at a time
+- Ensure each change is working before moving to next
+- Keep backward compatibility until full migration

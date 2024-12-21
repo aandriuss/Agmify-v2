@@ -1,7 +1,7 @@
 import type { ComputedRef, Ref } from 'vue'
 import type { Viewer } from '@speckle/viewer'
 import type { ElementData, TableRow } from '~/composables/core/types'
-import type { ColumnDef } from '~/composables/core/types/tables'
+import type { TableColumn } from '~/composables/core/types/tables'
 
 /**
  * Table info interface
@@ -25,8 +25,8 @@ export interface TableInfoUpdatePayload {
  * Headers interface
  */
 export interface TableHeaders {
-  parent: ColumnDef[]
-  child: ColumnDef[]
+  parent: TableColumn[]
+  child: TableColumn[]
 }
 
 /**
@@ -56,8 +56,8 @@ export interface StoreState {
   tableData: TableRow[]
 
   // Current view columns (temporary UI state)
-  currentTableColumns: ColumnDef[]
-  currentDetailColumns: ColumnDef[]
+  currentTableColumns: TableColumn[]
+  currentDetailColumns: TableColumn[]
 
   // Headers
   availableHeaders: TableHeaders
@@ -91,7 +91,7 @@ export interface StoreMutations {
   setTableData: (data: TableRow[]) => void
 
   // Current view column mutations
-  setCurrentColumns: (table: ColumnDef[], detail: ColumnDef[]) => void
+  setCurrentColumns: (table: TableColumn[], detail: TableColumn[]) => void
   setColumnVisibility: (columnId: string, visible: boolean) => void
   setColumnOrder: (columnId: string, newIndex: number) => void
 
@@ -145,8 +145,8 @@ export interface Store extends StoreMutations {
   tableData: ComputedRef<TableRow[]>
 
   // Current view columns
-  currentTableColumns: ComputedRef<ColumnDef[]>
-  currentDetailColumns: ComputedRef<ColumnDef[]>
+  currentTableColumns: ComputedRef<TableColumn[]>
+  currentDetailColumns: ComputedRef<TableColumn[]>
 
   // Headers
   availableHeaders: ComputedRef<TableHeaders>

@@ -1,5 +1,5 @@
 import type { DataTableFilterMeta } from 'primevue/datatable'
-import type { ColumnDef } from '~/composables/core/types/tables/column-types'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
 import type { BaseItem } from '~/composables/core/types/common/base-types'
 
 /**
@@ -14,8 +14,8 @@ export interface BaseTableRow extends BaseItem {
  * Component state interface
  */
 export interface ComponentState<T extends BaseTableRow = BaseTableRow> {
-  columns: ColumnDef[]
-  detailColumns?: ColumnDef[]
+  columns: TableColumn[]
+  detailColumns?: TableColumn[]
   expandedRows: T[]
   selectedRows: T[]
   sortField?: string
@@ -30,8 +30,8 @@ export interface TableProps<T extends BaseTableRow = BaseTableRow> {
   tableId: string
   tableName?: string
   data: T[]
-  columns: ColumnDef[]
-  detailColumns?: ColumnDef[]
+  columns: TableColumn[]
+  detailColumns?: TableColumn[]
   loading?: boolean
   initialState?: {
     expandedRows?: T[]
@@ -46,8 +46,8 @@ export interface ColumnManagerProps {
   open: boolean
   tableId: string
   tableName: string
-  columns: ColumnDef[]
-  detailColumns?: ColumnDef[]
+  columns: TableColumn[]
+  detailColumns?: TableColumn[]
 }
 
 /**
@@ -55,8 +55,8 @@ export interface ColumnManagerProps {
  */
 export interface TableWrapperProps<T extends BaseTableRow = BaseTableRow> {
   data: T[]
-  columns: ColumnDef[]
-  detailColumns?: ColumnDef[]
+  columns: TableColumn[]
+  detailColumns?: TableColumn[]
   expandedRows: T[]
   loading: boolean
   sortField?: string

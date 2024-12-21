@@ -1,10 +1,10 @@
 import { ref } from 'vue'
-import type { ColumnDef } from '~/composables/core/types/tables/column-types'
-import type { BaseTableRow } from '~/components/tables/DataTable/types'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
+import type { BaseTableRow } from '~/composables/core/types'
 import type {
   DataTableState,
   DataTableStateOptions
-} from '~/composables/core/types/tables/state-types'
+} from '~/composables/core/types/tables/table-config'
 import { TableStateError } from '~/composables/core/types/errors'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTableState } from './useTableState'
@@ -30,7 +30,7 @@ export function useDataTableState({
   // UI-specific state
   const isLoading = ref(false)
   const expandedRows = ref<BaseTableRow[]>(initialState.expandedRows || [])
-  const detailColumns = ref<ColumnDef[]>(initialState.detailColumns || [])
+  const detailColumns = ref<TableColumn[]>(initialState.detailColumns || [])
 
   // Row operations
   function expandRow(row: BaseTableRow): void {
@@ -75,7 +75,7 @@ export function useDataTableState({
   }
 
   // Detail column operations
-  function updateDetailColumns(columns: ColumnDef[]): void {
+  function updateDetailColumns(columns: TableColumn[]): void {
     try {
       debug.startState(DebugCategories.TABLE_UPDATES, 'Updating detail columns', {
         tableId,

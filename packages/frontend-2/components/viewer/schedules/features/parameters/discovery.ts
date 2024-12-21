@@ -1,13 +1,9 @@
-import type {
-  ElementData,
-  BimParameter,
-  BimValueType,
-  BIMNodeRaw,
-  PrimitiveValue
-} from '~/composables/core/types'
+import type { ElementData, BIMNodeRaw, PrimitiveValue } from '~/composables/core/types'
+import type { BimValueType } from '~/composables/core/types/parameters'
+import type { AvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { getParameterGroup } from '../../config/parameters'
-import { createBimParameter } from '~/composables/core/types'
+import { createAvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
 
 // Parameter discovery interface
 export interface DiscoveredParameter {
@@ -42,7 +38,7 @@ const defaultOptions: Required<DiscoveryOptions> = {
 export async function discoverParameters(
   elements: ElementData[],
   options: DiscoveryOptions = {}
-): Promise<BimParameter[]> {
+): Promise<AvailableBimParameter[]> {
   debug.log(DebugCategories.PARAMETERS, 'Starting parameter discovery', {
     elementCount: elements.length,
     options
@@ -58,8 +54,7 @@ export async function discoverParameters(
     debug.log(DebugCategories.PARAMETERS, 'Parameter discovery complete', {
       discoveredCount: parameters.length,
       groups: [...new Set(parameters.map((p) => p.currentGroup))],
-      parameterGroups: [...new Set(filtered.map((p) => p.group))],
-      visibleCount: parameters.filter((p) => p.visible).length
+      parameterGroups: [...new Set(filtered.map((p) => p.group))]
     })
 
     return parameters
@@ -182,26 +177,21 @@ async function filterParameters(
 }
 
 // Convert discovered parameters to BimParameters
-function convertToParameters(discovered: DiscoveredParameter[]): BimParameter[] {
+function convertToParameters(
+  discovered: DiscoveredParameter[]
+): AvailableBimParameter[] {
   return discovered.map((param) =>
-    createBimParameter({
-      id: param.field,
-      field: param.field,
-      name: param.name,
-      type: param.type,
-      header: param.header,
-      visible: param.visible,
-      removable: true,
-      value: param.sourceValue,
-      sourceValue: param.sourceValue,
-      fetchedGroup: param.group,
-      currentGroup: param.group,
-      description: param.description,
-      metadata: {
-        category: param.category,
-        frequency: param.frequency
-      }
-    })
+    createAvailableBimParameter(
+      {
+        id: param.field,
+        name: param.name,
+        value: param.sourceValue,
+        sourceGroup: param.group,
+        metadata: {}
+      },
+      param.type,
+      param.sourceValue
+    )
   )
 }
 

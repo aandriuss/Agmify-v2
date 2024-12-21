@@ -1,11 +1,11 @@
 import { ref, computed, type ComputedRef } from 'vue'
-import type { NamedTableConfig } from '~/composables/core/types'
+import type { TableSettings } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
 import { useStore } from '~/composables/core/store'
 
 interface UseScheduleFlowOptions {
-  currentTable: ComputedRef<NamedTableConfig | null>
+  currentTable: ComputedRef<TableSettings | null>
 }
 
 interface InitializationState {
@@ -26,8 +26,8 @@ export function useScheduleFlow({ currentTable }: UseScheduleFlowOptions) {
     error: null
   })
 
-  // Keep the NamedTableConfig type intact, use defaults if no table
-  const tableConfig = computed<NamedTableConfig>(() => {
+  // Keep the TableSettings type intact, use defaults if no table
+  const tableConfig = computed<TableSettings>(() => {
     const table = currentTable.value
     if (!table) {
       debug.log(DebugCategories.STATE, 'No table available, using defaults', {

@@ -1,11 +1,23 @@
 import type { Ref } from 'vue'
-import type { NamedTableConfig } from './index'
-import type {
-  BaseTableRow,
-  CategoryFilters,
-  ColumnDef,
-  SelectedParameter
-} from '~/composables/core/types'
+import type { TableColumn } from './table-column'
+import type { BaseTableRow } from '~/composables/core/types'
+import type { SelectedParameter } from '../parameters/parameter-states'
+
+/**
+ * Table category filters
+ */
+export interface TableCategoryFilters {
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
+}
+
+/**
+ * Table selected parameters
+ */
+export interface TableSelectedParameters {
+  parent: SelectedParameter[]
+  child: SelectedParameter[]
+}
 
 /**
  * Filter definition type
@@ -20,7 +32,7 @@ export interface FilterDef {
  */
 export interface TableStateOptions {
   tableId: string
-  initialColumns?: ColumnDef[]
+  initialColumns?: TableColumn[]
   onError?: (error: Error) => void
   onUpdate?: () => void
 }
@@ -30,7 +42,7 @@ export interface TableStateOptions {
  */
 export interface CoreTableState {
   // State refs
-  columns: Ref<ColumnDef[]>
+  columns: Ref<TableColumn[]>
   sortField: Ref<string | undefined>
   sortOrder: Ref<number | undefined>
   filters: Ref<Record<string, FilterDef> | undefined>
@@ -38,14 +50,14 @@ export interface CoreTableState {
 
   // Computed
   tableState: Ref<{
-    columns: ColumnDef[]
+    columns: TableColumn[]
     sortField?: string
     sortOrder?: number
     filters?: Record<string, FilterDef>
   }>
 
   // Methods
-  updateColumns: (columns: ColumnDef[]) => void
+  updateColumns: (columns: TableColumn[]) => void
   updateSort: (field: string | undefined, order: number | undefined) => void
   updateFilters: (filters: Record<string, FilterDef> | undefined) => void
   resetState: () => void
@@ -56,8 +68,8 @@ export interface CoreTableState {
  */
 export interface NamedTableStateOptions extends TableStateOptions {
   initialState?: {
-    parentColumns?: ColumnDef[]
-    childColumns?: ColumnDef[]
+    parentColumns?: TableColumn[]
+    childColumns?: TableColumn[]
   }
 }
 
@@ -66,14 +78,14 @@ export interface NamedTableStateOptions extends TableStateOptions {
  */
 export interface NamedTableState extends CoreTableState {
   // Additional state
-  namedTables: Ref<Record<string, NamedTableConfig>>
+  namedTables: Ref<Record<string, BaseTableConfig>>
   activeTableId: Ref<string | null>
   currentView: Ref<'parent' | 'child'>
   isDirty: Ref<boolean>
 
   // Additional computed
-  activeTable: Ref<NamedTableConfig | null>
-  activeColumns: Ref<ColumnDef[]>
+  activeTable: Ref<BaseTableConfig | null>
+  activeColumns: Ref<TableColumn[]>
 
   // Additional methods
   setActiveTable: (tableId: string) => void
@@ -88,7 +100,7 @@ export interface NamedTableState extends CoreTableState {
 export interface DataTableStateOptions extends TableStateOptions {
   initialState?: {
     expandedRows?: BaseTableRow[]
-    detailColumns?: ColumnDef[]
+    detailColumns?: TableColumn[]
   }
 }
 
@@ -99,27 +111,24 @@ export interface DataTableState extends CoreTableState {
   // UI state
   isLoading: Ref<boolean>
   expandedRows: Ref<BaseTableRow[]>
-  detailColumns: Ref<ColumnDef[]>
+  detailColumns: Ref<TableColumn[]>
 
   // UI methods
   expandRow: (row: BaseTableRow) => void
   collapseRow: (row: BaseTableRow) => void
-  updateDetailColumns: (columns: ColumnDef[]) => void
+  updateDetailColumns: (columns: TableColumn[]) => void
 }
 
 /**
  * Base table configuration interface
  */
-export interface TableConfig {
+export interface BaseTableConfig {
   readonly id: string
   name: string
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-  categoryFilters: CategoryFilters
-  selectedParameters: {
-    parent: SelectedParameter[]
-    child: SelectedParameter[]
-  }
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
+  categoryFilters: TableCategoryFilters
+  selectedParameters: TableSelectedParameters
   metadata?: Record<string, unknown>
   lastUpdateTimestamp: number
 }

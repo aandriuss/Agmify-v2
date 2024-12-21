@@ -132,27 +132,27 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ColumnDef, TableRow } from '~/composables/core/types'
+import type { TableColumn, TableRow } from '~/composables/core/types'
 
 interface Props {
   data: TableRow[]
   scheduleData: TableRow[]
   expandedRows: TableRow[]
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
 }
 
 const props = defineProps<Props>()
 
-// Type guard for ColumnDef
-function isColumnDef(col: unknown): col is ColumnDef {
+// Type guard for TableColumn
+function isColumnDef(col: unknown): col is TableColumn {
   return (
     typeof col === 'object' &&
     col !== null &&
     'field' in col &&
-    typeof (col as ColumnDef).field === 'string' &&
+    typeof (col as TableColumn).field === 'string' &&
     'visible' in col &&
-    typeof (col as ColumnDef).visible === 'boolean'
+    typeof (col as TableColumn).visible === 'boolean'
   )
 }
 
@@ -225,7 +225,7 @@ function isRelationshipField(field: string): field is RelationshipField {
 const parentRelationshipFields = computed(() =>
   props.parentColumns
     .filter(
-      (col): col is ColumnDef => isColumnDef(col) && isRelationshipField(col.field)
+      (col): col is TableColumn => isColumnDef(col) && isRelationshipField(col.field)
     )
     .map((col) => col.field)
 )
@@ -233,7 +233,7 @@ const parentRelationshipFields = computed(() =>
 const childRelationshipFields = computed(() =>
   props.childColumns
     .filter(
-      (col): col is ColumnDef => isColumnDef(col) && isRelationshipField(col.field)
+      (col): col is TableColumn => isColumnDef(col) && isRelationshipField(col.field)
     )
     .map((col) => col.field)
 )

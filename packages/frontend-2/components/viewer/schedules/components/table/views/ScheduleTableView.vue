@@ -55,7 +55,7 @@
 import { ref, computed } from 'vue'
 import DataTable from '../../../../components/tables/DataTable/index.vue'
 import type {
-  ColumnDef,
+  TableColumn,
   TableConfig,
   TableRow,
   ElementData
@@ -76,12 +76,12 @@ interface TableProps {
 }
 
 interface ColumnProps {
-  parentBaseColumns: ColumnDef[]
-  parentAvailableColumns: ColumnDef[]
-  parentVisibleColumns: ColumnDef[]
-  childBaseColumns: ColumnDef[]
-  childAvailableColumns: ColumnDef[]
-  childVisibleColumns: ColumnDef[]
+  parentBaseColumns: TableColumn[]
+  parentAvailableColumns: TableColumn[]
+  parentVisibleColumns: TableColumn[]
+  childBaseColumns: TableColumn[]
+  childAvailableColumns: TableColumn[]
+  childVisibleColumns: TableColumn[]
 }
 
 interface DataProps {
@@ -109,7 +109,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:both-columns': [
-    updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
+    updates: { parentColumns: TableColumn[]; childColumns: TableColumn[] }
   ]
   'row-expand': [row: TableRow | ElementData]
   'row-collapse': [row: TableRow | ElementData]

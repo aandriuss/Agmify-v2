@@ -1,7 +1,7 @@
 <template>
   <div class="base-table">
     <!-- Loading State -->
-    <div v-if="loading || tableState.isLoading" class="table-state">
+    <div v-if="loading || tableStore.isLoading.value" class="table-state">
       <slot name="loading">
         <div class="p-4 text-center text-gray-500">
           <div class="flex flex-col items-center gap-2">
@@ -12,13 +12,11 @@
     </div>
 
     <!-- Error State -->
-    <div v-else-if="error || tableState.error.value" class="table-state">
-      <slot name="error" :error="error || tableState.error.value">
+    <div v-else-if="error || tableStore.hasError.value" class="table-state">
+      <slot name="error" :error="errorState">
         <div class="p-4 text-center text-red-500">
           <div class="flex flex-col items-center gap-2">
-            <span>
-              {{ (error || tableState.error.value)?.message || 'An error occurred' }}
-            </span>
+            <span>{{ errorState?.message || 'An error occurred' }}</span>
             <button
               class="text-sm text-primary hover:text-primary-focus"
               @click="handleRetry"
@@ -44,7 +42,6 @@
     <!-- Data Table -->
     <DataTable
       v-else
-      v-model:expanded-rows="tableState.expandedRows.value"
       :value="data"
       resizable-columns
       reorderable-columns
@@ -94,7 +91,6 @@
         :key="col.field"
         :field="col.field"
         :header="col.header"
-        :header-component="col.headerComponent"
         :data-field="col.field"
         :style="{ width: col.width ? `${col.width}px` : 'auto' }"
         sortable
@@ -108,13 +104,15 @@
 import { computed, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import type { BaseTableRow } from '~/components/tables/DataTable/types'
-import type { ColumnDef } from '~/composables/core/types'
-import { useDataTableState } from '~/composables/core/tables'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
+import { useTableStore } from '~/composables/core/tables/store/store'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
-import { type TableEmits } from '~/composables/core/types/events'
-import type { DataTableFilterEvent } from '~/composables/core/types/tables/filter-types'
-import filterUtils from '~/composables/core/types/tables/filter-types'
+import type { DataTableFilterEvent } from 'primevue/datatable'
+import type {
+  TableEmits,
+  BaseTableRow
+} from '~/composables/core/types/tables/table-events'
+import { filterUtils } from '~/composables/core/types/tables/table-events'
 
 const debug = useDebug()
 
@@ -122,8 +120,8 @@ interface BaseTableProps<T extends BaseTableRow> {
   tableId: string
   tableName?: string
   data: T[]
-  columns: ColumnDef[]
-  detailColumns?: ColumnDef[]
+  columns: TableColumn[]
+  detailColumns?: TableColumn[]
   loading?: boolean
   error?: Error | null
   initialState?: {
@@ -132,7 +130,7 @@ interface BaseTableProps<T extends BaseTableRow> {
   }
 }
 
-// Props
+// Props with defaults
 const props = withDefaults(defineProps<BaseTableProps<T>>(), {
   tableName: 'Untitled Table',
   loading: false,
@@ -141,34 +139,43 @@ const props = withDefaults(defineProps<BaseTableProps<T>>(), {
   initialState: () => ({})
 })
 
-// Emits
+// Emits with generic row type
 const emit = defineEmits<TableEmits<T>>()
 
-// Initialize table state
-const tableState = useDataTableState({
-  tableId: props.tableId,
-  initialState: {
-    expandedRows: props.initialState?.expandedRows,
-    detailColumns: props.detailColumns
-  },
-  onError: (error) => emit('error', { error }),
-  onUpdate: () => emit('table-updated', { timestamp: Date.now() })
+// Initialize table store and computed values
+const tableStore = useTableStore()
+
+const errorState = computed(() => {
+  if (props.error) {
+    return {
+      message: props.error.message,
+      name: props.error.name,
+      stack: props.error.stack
+    }
+  }
+  if (tableStore.hasError.value) {
+    const storeError = tableStore.error.value
+    return {
+      message: storeError?.message || 'An error occurred',
+      name: storeError?.name || 'Error',
+      stack: storeError?.stack
+    }
+  }
+  return null
 })
 
 // Computed values
-const visibleTableColumns = computed(() =>
-  tableState.columns.value.filter((col) => col.visible)
-)
+const visibleTableColumns = computed(() => props.columns.filter((col) => col.visible))
 
 const visibleDetailColumns = computed(() =>
-  tableState.detailColumns.value.filter((col) => col.visible)
+  props.detailColumns.filter((col) => col.visible)
 )
 
 // Watch for column changes
 watch(
   () => props.columns,
   (newColumns) => {
-    tableState.updateColumns(newColumns)
+    tableStore.updateColumns(newColumns, props.detailColumns || [])
   },
   { deep: true }
 )
@@ -177,7 +184,7 @@ watch(
   () => props.detailColumns,
   (newColumns) => {
     if (newColumns) {
-      tableState.updateDetailColumns(newColumns)
+      tableStore.updateColumns(props.columns, newColumns)
     }
   },
   { deep: true }
@@ -193,19 +200,25 @@ function handleFilter(event: DataTableFilterEvent): void {
   }
 }
 
-function handleError(err: Error): void {
+function handleError(err: unknown): void {
   const error = err instanceof Error ? err : new Error(String(err))
   emit('error', { error })
 }
 
-function handleColumnVisibilityChange(column: ColumnDef): void {
+function handleColumnVisibilityChange(column: TableColumn): void {
   try {
     debug.log(DebugCategories.COLUMNS, 'Column visibility change requested', {
-      field: column.field,
+      id: column.id,
       visible: !column.visible
     })
 
-    emit('column-visibility-change', { column, visible: !column.visible })
+    emit('column-visibility-change', {
+      column: {
+        ...column,
+        visible: !column.visible
+      },
+      visible: !column.visible
+    })
   } catch (err) {
     const error =
       err instanceof Error ? err : new Error('Failed to update column visibility')
@@ -218,11 +231,12 @@ function handleColumnResize(event: { element: HTMLElement; delta: number }): voi
     const field = event.element.dataset.field
     if (!field) return
 
-    const columns = [...tableState.columns.value]
+    const columns = [...props.columns]
     const column = columns.find((col) => col.field === field)
     if (column) {
-      column.width = event.element.offsetWidth
-      tableState.updateColumns(columns)
+      const updatedColumn = { ...column, width: event.element.offsetWidth }
+      const updatedColumns = columns.map((c) => (c.field === field ? updatedColumn : c))
+      tableStore.updateColumns(updatedColumns, props.detailColumns || [])
     }
 
     emit('column-resize', { element: event.element, delta: event.delta })
@@ -235,16 +249,17 @@ function handleColumnResize(event: { element: HTMLElement; delta: number }): voi
 function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
   try {
     const { dragIndex, dropIndex } = event
-    const columns = [...tableState.columns.value]
+    const columns = [...props.columns]
     const [movedColumn] = columns.splice(dragIndex, 1)
     columns.splice(dropIndex, 0, movedColumn)
 
-    // Update order
-    columns.forEach((col, index) => {
-      col.order = index
-    })
+    // Update column order
+    const updatedColumns = columns.map((col, index) => ({
+      ...col,
+      order: index
+    }))
 
-    tableState.updateColumns(columns)
+    tableStore.updateColumns(updatedColumns, props.detailColumns || [])
     emit('column-reorder', { dragIndex, dropIndex })
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to reorder columns')
@@ -254,7 +269,6 @@ function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): v
 
 function handleRowExpand(event: { data: T }): void {
   try {
-    tableState.expandRow(event.data)
     emit('row-expand', { row: event.data })
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to expand row')
@@ -264,7 +278,6 @@ function handleRowExpand(event: { data: T }): void {
 
 function handleRowCollapse(event: { data: T }): void {
   try {
-    tableState.collapseRow(event.data)
     emit('row-collapse', { row: event.data })
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to collapse row')

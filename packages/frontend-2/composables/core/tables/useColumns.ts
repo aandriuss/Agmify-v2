@@ -1,14 +1,14 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef } from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 interface ColumnState {
-  parentBaseColumns: ColumnDef[]
-  parentAvailableColumns: ColumnDef[]
-  parentVisibleColumns: ColumnDef[]
-  childBaseColumns: ColumnDef[]
-  childAvailableColumns: ColumnDef[]
-  childVisibleColumns: ColumnDef[]
+  parentBaseColumns: TableColumn[]
+  parentAvailableColumns: TableColumn[]
+  parentVisibleColumns: TableColumn[]
+  childBaseColumns: TableColumn[]
+  childAvailableColumns: TableColumn[]
+  childVisibleColumns: TableColumn[]
 }
 
 const initialState: ColumnState = {
@@ -31,8 +31,8 @@ export function useColumns() {
   const childVisibleColumns = computed(() => state.value.childVisibleColumns)
 
   function setColumns(
-    parentColumns: ColumnDef[],
-    childColumns: ColumnDef[],
+    parentColumns: TableColumn[],
+    childColumns: TableColumn[],
     type: 'base' | 'available' | 'visible'
   ) {
     debug.log(DebugCategories.PARAMETERS, `Setting ${type} columns`, {

@@ -21,9 +21,9 @@ import type {
   TableRow,
   TableInfo,
   TableInfoUpdatePayload,
-  TableHeaders
+  TableHeaders,
+  TableColumn
 } from '~/composables/core/types'
-import type { ColumnDef } from '~/composables/core/types/tables'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 const initialState: StoreState = {
@@ -156,7 +156,7 @@ export class CoreStore implements Store {
   public setTableData = (data: TableRow[]) => this.lifecycle.update({ tableData: data })
 
   // Column mutations
-  public setCurrentColumns = (table: ColumnDef[], detail: ColumnDef[]) =>
+  public setCurrentColumns = (table: TableColumn[], detail: TableColumn[]) =>
     this.lifecycle.update({
       currentTableColumns: table,
       currentDetailColumns: detail

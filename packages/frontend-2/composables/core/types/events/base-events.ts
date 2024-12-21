@@ -1,4 +1,4 @@
-import type { ColumnDef } from '../tables/column-types'
+import type { TableColumn } from '../tables/'
 import type { BaseItem } from '../common/base-types'
 import type { FilterEventPayload } from '../tables/filter-types'
 
@@ -14,12 +14,12 @@ export interface BaseEventPayloads {
  * Column-related event payloads
  */
 export interface ColumnEventPayloads {
-  'update:columns': { columns: ColumnDef[] }
-  'update:detail-columns': { columns: ColumnDef[] }
-  'update:both-columns': { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
+  'update:columns': { columns: TableColumn[] }
+  'update:detail-columns': { columns: TableColumn[] }
+  'update:both-columns': { parentColumns: TableColumn[]; childColumns: TableColumn[] }
   'column-reorder': { dragIndex: number; dropIndex: number }
   'column-resize': { element: HTMLElement; delta: number }
-  'column-visibility-change': { column: ColumnDef; visible: boolean }
+  'column-visibility-change': { column: TableColumn; visible: boolean }
 }
 
 /**

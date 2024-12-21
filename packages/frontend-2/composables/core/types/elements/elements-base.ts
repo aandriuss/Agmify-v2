@@ -1,51 +1,47 @@
 import type { BaseItem } from '../common/base-types'
-import type { BaseTableRow } from '~/components/tables/DataTable/types'
 import type { ParameterValue } from '../parameters'
+import type { TableColumn } from '../tables/table-column'
 
 /**
- * Element data interface that extends BaseItem and includes index signature
+ * Base table row interface
+ * Represents a row in any table
  */
-export interface ElementData extends BaseItem {
-  // BaseItem requirements
+export interface BaseTableRow extends BaseItem {
   id: string
   name: string
   field: string
   header: string
   visible: boolean
-  removable: boolean
-  order?: number
-
-  // Additional ElementData properties
-  type: string
-  mark?: string
-  category?: string
-  parameters: Record<string, ParameterValue>
-  metadata?: Record<string, unknown>
-  details?: ElementData[]
-  _visible?: boolean
-  host?: string
-  _raw?: unknown
-  isChild?: boolean
-
-  // Index signature for dynamic access
+  order: number
   [key: string]: unknown
 }
 
 /**
- * Viewer table row that extends BaseTableRow
+ * Element data interface that extends BaseTableRow
  */
-export interface ViewerTableRow extends BaseTableRow {
-  // Include all ElementData properties
+export interface ElementData extends BaseTableRow {
+  // Additional ElementData properties
   type: string
   mark?: string
   category?: string
-  parameters: Record<string, ParameterValue>
+  parameters?: Record<string, ParameterValue>
   metadata?: Record<string, unknown>
   details?: ElementData[]
   _visible?: boolean
   host?: string
   _raw?: unknown
   isChild?: boolean
+  removable: boolean // Required for element operations
+}
+
+/**
+ * Viewer table row that extends ElementData
+ * Used specifically for table display
+ */
+export interface ViewerTableRow extends ElementData {
+  // Ensure all required table properties are present
+  parameters: Record<string, ParameterValue> // Make parameters required
+  column?: TableColumn // Optional reference to display column
 }
 
 /**
@@ -76,14 +72,14 @@ export function createElementData(
 ): ElementData {
   const name = partial.name || partial.mark || partial.id
   return {
-    // Required BaseItem fields
+    // Required BaseTableRow fields
     id: partial.id,
     name,
     field: partial.field || partial.id,
     header: partial.header || name,
     visible: partial.visible ?? true,
+    order: partial.order ?? 0,
     removable: partial.removable ?? true,
-    order: partial.order,
 
     // Required ElementData fields
     type: partial.type,
@@ -104,17 +100,14 @@ export function createElementData(
 /**
  * Convert ElementData to ViewerTableRow
  */
-export function toViewerTableRow(element: ElementData): ViewerTableRow {
+export function toViewerTableRow(
+  element: ElementData,
+  column?: TableColumn
+): ViewerTableRow {
   return {
     ...element,
-    // Ensure all BaseTableRow properties are present
-    id: element.id,
-    name: element.name,
-    field: element.field,
-    header: element.header,
-    visible: element.visible,
-    removable: element.removable,
-    order: element.order
+    parameters: element.parameters || {}, // Ensure parameters is present
+    column // Optional reference to display column
   }
 }
 

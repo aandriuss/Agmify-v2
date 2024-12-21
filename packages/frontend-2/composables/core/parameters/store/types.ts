@@ -3,7 +3,6 @@ import type {
   AvailableBimParameter,
   AvailableUserParameter,
   SelectedParameter,
-  ColumnDefinition,
   ParameterCollections
 } from '~/composables/core/types/parameters'
 
@@ -13,7 +12,6 @@ export type {
   AvailableBimParameter,
   AvailableUserParameter,
   SelectedParameter,
-  ColumnDefinition,
   ParameterCollections
 }
 
@@ -21,6 +19,5 @@ export type {
 export {
   createAvailableBimParameter,
   createAvailableUserParameter,
-  createSelectedParameter,
-  createColumnDefinition
+  createSelectedParameter
 } from '~/composables/core/types/parameters'

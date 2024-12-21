@@ -46,7 +46,7 @@ import { ref, computed } from 'vue'
 import type { DataTableFilterMeta } from 'primevue/datatable'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import type { TableProps } from './types'
-import type { ColumnDef } from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types'
 import { TableError } from './utils'
 import { useDataTableState } from '~/composables/core/tables'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
@@ -97,7 +97,7 @@ function createTableError(err: unknown): TableError {
 }
 
 // Event Handlers
-function handleColumnVisibilityChange(column: ColumnDef, visible: boolean): void {
+function handleColumnVisibilityChange(column: TableColumn, visible: boolean): void {
   try {
     debug.log(DebugCategories.COLUMNS, 'Column visibility change in ViewerDataTable', {
       field: column.field,

@@ -9,10 +9,7 @@ import type {
 import { createAvailableUserParameter } from './types'
 import { defaultSelectedParameters } from '~/composables/core/tables/config/defaults'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import {
-  processRawParameters as processParams,
-  createColumnDefinitions
-} from '../parameter-processing'
+import { processRawParameters as processParams } from '../parameter-processing'
 import type { UserValueType, ParameterValue } from '~/composables/core/types/parameters'
 
 /**
@@ -59,8 +56,7 @@ function createInitialCollections(): ParameterCollections {
         bim: [],
         user: []
       },
-      selected: [],
-      columns: []
+      selected: []
     },
     child: {
       raw: [],
@@ -68,8 +64,7 @@ function createInitialCollections(): ParameterCollections {
         bim: [],
         user: []
       },
-      selected: [],
-      columns: []
+      selected: []
     }
   }
 }
@@ -100,7 +95,6 @@ function createParameterStore() {
     () => parentCollections.value.available.user
   )
   const parentSelectedParameters = computed(() => parentCollections.value.selected)
-  const parentColumnDefinitions = computed(() => parentCollections.value.columns)
 
   // Child parameters
   const childRawParameters = computed(() => childCollections.value.raw)
@@ -111,7 +105,6 @@ function createParameterStore() {
     () => childCollections.value.available.user
   )
   const childSelectedParameters = computed(() => childCollections.value.selected)
-  const childColumnDefinitions = computed(() => childCollections.value.columns)
 
   // Status
   const isLoading = computed(() => state.value.loading)
@@ -171,8 +164,7 @@ function createParameterStore() {
             bim: bimParams,
             user: userParams
           },
-          selected: state.value.collections[target].selected,
-          columns: state.value.collections[target].columns
+          selected: state.value.collections[target].selected
         }
       }
 
@@ -189,8 +181,7 @@ function createParameterStore() {
             bim: state.value.collections[target].available.bim.length,
             user: state.value.collections[target].available.user.length
           },
-          selected: state.value.collections[target].selected.length,
-          columns: state.value.collections[target].columns.length
+          selected: state.value.collections[target].selected.length
         }
       })
 
@@ -232,8 +223,7 @@ function createParameterStore() {
             bim: currentState.available.bim.length,
             user: currentState.available.user.length
           },
-          selected: currentState.selected.length,
-          columns: currentState.columns.length
+          selected: currentState.selected.length
         }
       })
 
@@ -255,7 +245,7 @@ function createParameterStore() {
   }
 
   /**
-   * Update selected parameters and create corresponding column definitions
+   * Update selected parameters
    */
   function updateSelectedParameters(
     selectedParameters: SelectedParameter[],
@@ -266,25 +256,19 @@ function createParameterStore() {
     // Update selected parameters
     state.value.collections[target].selected = selectedParameters
 
-    // Create column definitions for selected parameters
-    const columns = createColumnDefinitions(selectedParameters)
-    state.value.collections[target].columns = columns
-
     state.value.lastUpdated = Date.now()
 
     debug.log(DebugCategories.SAVED_PARAMETERS, 'Selected parameters updated', {
       count: selectedParameters.length,
       visible: selectedParameters.filter((p) => p.visible).length,
       collections: {
-        selected: state.value.collections[target].selected.length,
-        columns: state.value.collections[target].columns.length,
-        visibleColumns: columns.filter((c) => c.visible).length
+        selected: state.value.collections[target].selected.length
       }
     })
   }
 
   /**
-   * Update parameter visibility and corresponding column definition
+   * Update parameter visibility
    */
   function updateParameterVisibility(
     parameterId: string,
@@ -299,26 +283,20 @@ function createParameterStore() {
     if (selectedParam) {
       selectedParam.visible = visible
 
-      // Update column definitions to match
-      const columns = createColumnDefinitions(collections.selected)
-      collections.columns = columns
-
       state.value.lastUpdated = Date.now()
 
       debug.log(DebugCategories.PARAMETER_UPDATES, 'Parameter visibility updated', {
         id: parameterId,
         visible,
         collections: {
-          selected: collections.selected.length,
-          columns: collections.columns.length,
-          visibleColumns: columns.filter((c) => c.visible).length
+          selected: collections.selected.length
         }
       })
     }
   }
 
   /**
-   * Update parameter order and sort columns accordingly
+   * Update parameter order
    */
   function updateParameterOrder(parameterId: string, order: number, isParent: boolean) {
     const target = isParent ? 'parent' : 'child'
@@ -332,25 +310,20 @@ function createParameterStore() {
       // Sort selected parameters by order
       collections.selected.sort((a, b) => a.order - b.order)
 
-      // Update column definitions to match
-      const columns = createColumnDefinitions(collections.selected)
-      collections.columns = columns.sort((a, b) => a.order - b.order)
-
       state.value.lastUpdated = Date.now()
 
       debug.log(DebugCategories.PARAMETER_UPDATES, 'Parameter order updated', {
         id: parameterId,
         order,
         collections: {
-          selected: collections.selected.length,
-          columns: collections.columns.length
+          selected: collections.selected.length
         }
       })
     }
   }
 
   /**
-   * Reorder parameters and update column order
+   * Reorder parameters
    */
   function reorderParameters(dragIndex: number, dropIndex: number, isParent: boolean) {
     const target = isParent ? 'parent' : 'child'
@@ -365,18 +338,13 @@ function createParameterStore() {
       param.order = index
     })
 
-    // Update column definitions to match
-    const columns = createColumnDefinitions(collections.selected)
-    collections.columns = columns
-
     state.value.lastUpdated = Date.now()
 
     debug.log(DebugCategories.PARAMETER_UPDATES, 'Parameters reordered', {
       fromIndex: dragIndex,
       toIndex: dropIndex,
       collections: {
-        selected: collections.selected.length,
-        columns: collections.columns.length
+        selected: collections.selected.length
       }
     })
   }
@@ -500,12 +468,6 @@ function createParameterStore() {
     collections.parent.selected = defaultSelectedParameters.parent
     collections.child.selected = defaultSelectedParameters.child
 
-    // Create column definitions for default parameters
-    collections.parent.columns = createColumnDefinitions(
-      defaultSelectedParameters.parent
-    )
-    collections.child.columns = createColumnDefinitions(defaultSelectedParameters.child)
-
     state.value = {
       collections,
       loading: false,
@@ -516,12 +478,10 @@ function createParameterStore() {
 
     debug.log(DebugCategories.PARAMETERS, 'Parameter store reset with defaults', {
       parent: {
-        selected: collections.parent.selected.length,
-        columns: collections.parent.columns.length
+        selected: collections.parent.selected.length
       },
       child: {
-        selected: collections.child.selected.length,
-        columns: collections.child.columns.length
+        selected: collections.child.selected.length
       }
     })
   }
@@ -541,14 +501,6 @@ function createParameterStore() {
       collections.parent.selected = defaultSelectedParameters.parent
       collections.child.selected = defaultSelectedParameters.child
 
-      // Create column definitions for default parameters
-      collections.parent.columns = createColumnDefinitions(
-        defaultSelectedParameters.parent
-      )
-      collections.child.columns = createColumnDefinitions(
-        defaultSelectedParameters.child
-      )
-
       // Set state
       state.value.collections = collections
 
@@ -562,12 +514,10 @@ function createParameterStore() {
 
       debug.log(DebugCategories.PARAMETERS, 'Default parameters initialized', {
         parent: {
-          selected: collections.parent.selected.length,
-          columns: collections.parent.columns.length
+          selected: collections.parent.selected.length
         },
         child: {
-          selected: collections.child.selected.length,
-          columns: collections.child.columns.length
+          selected: collections.child.selected.length
         }
       })
 
@@ -596,8 +546,6 @@ function createParameterStore() {
     }
   }
 
-  // Selected parameters are now managed by table store
-
   return {
     // State
     state: computed(() => state.value),
@@ -614,14 +562,12 @@ function createParameterStore() {
     parentAvailableBimParameters,
     parentAvailableUserParameters,
     parentSelectedParameters,
-    parentColumnDefinitions,
 
     // Child parameters
     childRawParameters,
     childAvailableBimParameters,
     childAvailableUserParameters,
     childSelectedParameters,
-    childColumnDefinitions,
 
     // Status
     isLoading,

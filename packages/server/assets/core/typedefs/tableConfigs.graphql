@@ -30,7 +30,7 @@ type TableColumn {
 """
 Named table configuration with additional metadata
 """
-type NamedTableConfig {
+type TableSettings {
   id: ID!
   name: String!
   config: TableConfig!
@@ -93,24 +93,24 @@ extend type Query {
   """
   Get all named table configurations for the current user
   """
-  namedTableConfigs: [NamedTableConfig!]!
+  tableSettingsP: [TableSettings!]!
 
   """
   Get a specific named table configuration
   """
-  namedTableConfig(id: ID!): NamedTableConfig
+  tableSettings(id: ID!): TableSettings
 }
 
 extend type Mutation {
   """
   Create a new named table configuration
   """
-  createNamedTable(input: CreateNamedTableInput!): NamedTableConfig!
+  createNamedTable(input: CreateNamedTableInput!): TableSettings!
 
   """
   Update an existing named table configuration
   """
-  updateNamedTable(input: UpdateNamedTableInput!): NamedTableConfig!
+  updateNamedTable(input: UpdateNamedTableInput!): TableSettings!
 
   """
   Delete a named table configuration

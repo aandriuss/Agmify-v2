@@ -1,22 +1,22 @@
-import type { NamedTableConfig, ColumnDef } from '~/composables/core/types'
+import type { TableSettings, TableColumn } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 interface UseTableOperationsOptions {
-  settings: { value: { namedTables?: Record<string, NamedTableConfig> } }
-  saveTables: (tables: Record<string, NamedTableConfig>) => Promise<boolean>
+  settings: { value: { namedTables?: Record<string, TableSettings> } }
+  saveTables: (tables: Record<string, TableSettings>) => Promise<boolean>
   selectTable: (tableId: string) => void
 }
 
 export function useTableOperations(options: UseTableOperationsOptions) {
   const { settings, saveTables, selectTable } = options
 
-  function formatTableKey(table: NamedTableConfig): string {
+  function formatTableKey(table: TableSettings): string {
     // Create a key in format name_id
     const sanitizedName = table.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
     return `${sanitizedName}_${table.id}`
   }
 
-  function findTableById(id: string): NamedTableConfig | null {
+  function findTableById(id: string): TableSettings | null {
     // If no ID provided, return null
     if (!id) return null
 
@@ -50,8 +50,8 @@ export function useTableOperations(options: UseTableOperationsOptions) {
 
   async function updateTable(
     id: string,
-    config: Partial<NamedTableConfig>
-  ): Promise<NamedTableConfig> {
+    config: Partial<TableSettings>
+  ): Promise<TableSettings> {
     debug.startState(DebugCategories.TABLE_UPDATES, 'Updating table', {
       id,
       config
@@ -76,7 +76,7 @@ export function useTableOperations(options: UseTableOperationsOptions) {
       selectedParameterIds: []
     }
 
-    const updatedTable: NamedTableConfig = {
+    const updatedTable: TableSettings = {
       ...baseTable,
       ...config,
       // Ensure required fields are present
@@ -154,7 +154,7 @@ export function useTableOperations(options: UseTableOperationsOptions) {
     id: string,
     parentCategories: string[],
     childCategories: string[]
-  ): Promise<NamedTableConfig> {
+  ): Promise<TableSettings> {
     debug.startState(DebugCategories.CATEGORIES, 'Updating table categories', {
       id,
       parentCategories,
@@ -171,9 +171,9 @@ export function useTableOperations(options: UseTableOperationsOptions) {
 
   async function updateTableColumns(
     id: string,
-    parentColumns: ColumnDef[],
-    childColumns: ColumnDef[]
-  ): Promise<NamedTableConfig> {
+    parentColumns: TableColumn[],
+    childColumns: TableColumn[]
+  ): Promise<TableSettings> {
     debug.startState(DebugCategories.COLUMNS, 'Updating table columns', {
       id,
       parentColumnsCount: parentColumns?.length ?? 0,
@@ -192,8 +192,8 @@ export function useTableOperations(options: UseTableOperationsOptions) {
 
   async function createNamedTable(
     name: string,
-    config: Partial<NamedTableConfig>
-  ): Promise<{ id: string; config: NamedTableConfig }> {
+    config: Partial<TableSettings>
+  ): Promise<{ id: string; config: TableSettings }> {
     debug.startState(DebugCategories.TABLE_UPDATES, 'Creating new table', {
       name,
       config
@@ -203,7 +203,7 @@ export function useTableOperations(options: UseTableOperationsOptions) {
     const timestamp = Date.now()
     const internalId = `table-${timestamp}`
 
-    const newTable: NamedTableConfig = {
+    const newTable: TableSettings = {
       id: internalId,
       name,
       displayName: config.displayName || name,

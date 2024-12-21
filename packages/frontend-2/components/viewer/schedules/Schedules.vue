@@ -90,14 +90,14 @@
             :current-table-id="tableStore.currentTable.value?.id || ''"
             :table-key="tableStore.lastUpdated.value.toString()"
             :error="error"
-            :parent-base-columns="parameterStore.parentColumnDefinitions.value"
+            :parent-base-columns="tableStore.currentTable.value?.parentColumns || []"
             :parent-available-columns="
               parameterStore.parentAvailableBimParameters.value
             "
             :parent-visible-columns="
               parameterStore.parentSelectedParameters.value.filter((p) => p.visible)
             "
-            :child-base-columns="parameterStore.childColumnDefinitions.value"
+            :child-base-columns="tableStore.currentTable.value?.childColumns || []"
             :child-available-columns="parameterStore.childAvailableBimParameters.value"
             :child-visible-columns="
               parameterStore.childSelectedParameters.value.filter((p) => p.visible)
@@ -134,7 +134,9 @@ import { useTableInitialization } from '~/composables/core/tables/initialization
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import type { NamedTableConfig, ColumnDef, ElementData } from '~/composables/core/types'
+import type { ElementData } from '~/composables/core/types'
+import type { TableSettings } from '~/composables/core/tables/store/types'
+import type { ColumnVisibilityPayload } from '~/composables/core/types/tables/table-events'
 import { useTablesState } from '~/composables/settings/tables/useTablesState'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import {
@@ -304,7 +306,7 @@ const childElements = computed<ElementData[]>(() => {
   return safeArrayFrom(elementsData.state.value.childElements)
 })
 
-// Convert TableSettings to NamedTableConfig
+// Convert TableSettings to TableSettings
 const _currentTable = computed(() => {
   const current = tableStore.currentTable.value
   if (!current) return null
@@ -318,14 +320,24 @@ const _currentTable = computed(() => {
 // Initialize core composables
 const tableStore = useTableStore()
 const { initComponent } = useTableInitialization({
-  store: tableStore,
-  initialState: {
+  store: tableStore
+})
+
+// Expose necessary functions
+defineExpose({
+  handleError: (err: unknown) => updateErrorState(createSafeError(err)),
+  handleTableDataUpdate,
+  handleColumnVisibilityChange
+})
+
+// Initialize table state
+onMounted(async () => {
+  await initComponent.update({
     selectedTableId: '',
     tableName: '',
     selectedParentCategories: parentCategories,
     selectedChildCategories: childCategories
-  },
-  onError: (err) => handleError(createSafeError(err))
+  })
 })
 
 const _interactions = useTableInteractions({
@@ -364,9 +376,7 @@ const toggleParentCategory = async (category: string) => {
   } else {
     current.splice(index, 1)
   }
-  await store.lifecycle.update({
-    selectedParentCategories: current
-  })
+  store.setParentCategories(current)
   await elementsData.initializeData()
 }
 
@@ -378,9 +388,7 @@ const toggleChildCategory = async (category: string) => {
   } else {
     current.splice(index, 1)
   }
-  await store.lifecycle.update({
-    selectedChildCategories: current
-  })
+  store.setChildCategories(current)
   await elementsData.initializeData()
 }
 
@@ -389,27 +397,41 @@ function handleTableDataUpdate(): void {
   updateErrorState(null)
 }
 
-function isValidTable(table: unknown): table is NamedTableConfig {
+function isValidTable(table: unknown): table is TableSettings {
   if (!table || typeof table !== 'object') return false
   const candidate = table as { id?: unknown }
   return typeof candidate.id === 'string'
 }
 
-async function handleColumnVisibilityChange(column: ColumnDef): Promise<void> {
+async function handleColumnVisibilityChange(
+  payload: ColumnVisibilityPayload
+): Promise<void> {
   try {
     debug.log(DebugCategories.COLUMNS, 'Column visibility changed', {
-      field: column.field,
-      visible: column.visible
+      field: payload.column.id,
+      visible: payload.visible
     })
 
-    // Update parameter visibility in parameter store
-    await parameterStore.updateParameterVisibility(
-      column.field,
-      column.visible,
-      column.kind === 'bim'
-    )
+    // Update parameter visibility in both stores
+    await Promise.all([
+      parameterStore.updateParameterVisibility(
+        payload.column.parameter.id,
+        payload.visible,
+        payload.column.parameter.kind === 'bim'
+      ),
+      tableStore.updateColumns(
+        tableStore.currentTable.value?.parentColumns.map((col) => ({
+          ...col,
+          visible: col.id === payload.column.id ? payload.visible : col.visible
+        })) || [],
+        tableStore.currentTable.value?.childColumns.map((col) => ({
+          ...col,
+          visible: col.id === payload.column.id ? payload.visible : col.visible
+        })) || []
+      )
+    ])
 
-    debug.log(DebugCategories.COLUMNS, 'Column visibility updated in parameter store')
+    debug.log(DebugCategories.COLUMNS, 'Column visibility updated in stores')
   } catch (err) {
     updateErrorState(createSafeError(err))
   }
@@ -447,29 +469,50 @@ onMounted(async () => {
     await Promise.all([store.lifecycle.init(), parameterStore.init()])
     debug.log(DebugCategories.STATE, 'Stores initialized')
 
-    // Wait for viewer initialization
-    debug.log(DebugCategories.INITIALIZATION, 'Waiting for viewer initialization')
-    await init.promise
-    debug.log(DebugCategories.INITIALIZATION, 'Viewer initialized')
+    // Wait for viewer and world tree initialization
+    debug.log(DebugCategories.INITIALIZATION, 'Waiting for viewer and world tree')
+    await Promise.all([
+      init.promise,
+      new Promise<void>((resolve) => {
+        if (hasValidChildren(worldTree.value)) {
+          resolve()
+          return
+        }
+        const unwatch = watch(
+          worldTree,
+          (newTree) => {
+            if (hasValidChildren(newTree)) {
+              unwatch()
+              resolve()
+            }
+          },
+          { immediate: true }
+        )
+      })
+    ])
+    debug.log(DebugCategories.INITIALIZATION, 'Viewer and world tree initialized')
 
     // Verify parameter store initialization
     if (parameterStore.error.value) {
       throw new Error('Parameter store failed to initialize')
     }
 
-    // Initialize BIM elements and wait for parameter processing
+    // Initialize BIM elements with world tree
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
-    await bimElements.initializeElements()
+    const treeRoot: WorldTreeRoot = {
+      _root: {
+        children: hasValidChildren(worldTree.value)
+          ? worldTree.value._root.children
+          : []
+      }
+    }
+    await bimElements.initializeElements(treeRoot)
+    debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
 
-    // Wait for BIM elements to be fully processed
-    await new Promise((resolve) => setTimeout(resolve, 100))
-
-    // Initialize data and wait for parameter store
+    // Initialize element data
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing element data')
     await elementsData.initializeData()
-
-    // Wait for parameter store to be fully updated
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    debug.log(DebugCategories.INITIALIZATION, 'Element data initialized')
 
     // Verify BIM elements are ready
     if (!bimElements.allElements.value?.length) {
@@ -675,10 +718,10 @@ onMounted(async () => {
     })
 
     // Type-safe table processing
-    type TablesType = Record<string, NamedTableConfig>
+    type TablesType = Record<string, TableSettings>
     const tableEntries = safeObjectEntries<TablesType>(tables as TablesType)
     const validTableEntries = tableEntries.filter(
-      (entry): entry is [string, NamedTableConfig] => isValidTable(entry[1])
+      (entry): entry is [string, TableSettings] => isValidTable(entry[1])
     )
     const filteredEntries = validTableEntries.filter(
       ([_, table]) => table.id !== 'defaultTable'
@@ -719,13 +762,6 @@ onMounted(async () => {
     debug.error(DebugCategories.ERROR, 'Failed to initialize schedules', err)
     updateErrorState(createSafeError(err))
   }
-})
-
-// Expose necessary functions
-defineExpose({
-  handleError: (err: unknown) => updateErrorState(createSafeError(err)),
-  handleTableDataUpdate,
-  handleColumnVisibilityChange
 })
 </script>
 

@@ -1,5 +1,5 @@
 import type { BaseItem } from '../common/base-types'
-import type { ColumnDef } from '../tables/column-types'
+import type { TableColumn } from '../tables'
 import type { EventEmits, EventHandler } from './base-events'
 import type { DataTableFilterMeta } from 'primevue/datatable'
 import type {
@@ -11,8 +11,8 @@ import type {
  * Event payload types
  */
 type TimestampPayload = { timestamp: number }
-type ColumnsPayload = { columns: ColumnDef[] }
-type ColumnVisibilityPayload = { column: ColumnDef; visible: boolean }
+type ColumnsPayload = { columns: TableColumn[] }
+type ColumnVisibilityPayload = { column: TableColumn; visible: boolean }
 type ParameterVisibilityPayload = { parameter: SelectedParameter }
 type RowPayload<T> = { row: T }
 type RowsPayload<T> = { rows: T[] }
@@ -30,7 +30,7 @@ export interface TableEventPayloads<TRow extends BaseItem = BaseItem> {
   'table-updated': TimestampPayload
   'update:columns': ColumnsPayload
   'update:detail-columns': ColumnsPayload
-  'update:both-columns': { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
+  'update:both-columns': { parentColumns: TableColumn[]; childColumns: TableColumn[] }
   'column-reorder': { dragIndex: number; dropIndex: number }
   'column-resize': { element: HTMLElement; delta: number }
   'column-visibility-change': ColumnVisibilityPayload

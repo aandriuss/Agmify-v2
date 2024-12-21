@@ -39,12 +39,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Button from 'primevue/button'
-import type { ColumnDef } from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types'
 import EnhancedColumnList from '../shared/EnhancedColumnList.vue'
 
 const props = withDefaults(
   defineProps<{
-    columns: ColumnDef[]
+    columns: TableColumn[]
   }>(),
   {
     columns: () => []
@@ -52,9 +52,9 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  'update:columns': [columns: ColumnDef[]]
-  remove: [column: ColumnDef]
-  'visibility-change': [column: ColumnDef, visible: boolean]
+  'update:columns': [columns: TableColumn[]]
+  remove: [column: TableColumn]
+  'visibility-change': [column: TableColumn, visible: boolean]
   reorder: [fromIndex: number, toIndex: number]
 }>()
 
@@ -72,11 +72,11 @@ const hasHiddenColumns = computed(
 )
 
 // Methods
-const handleRemove = (column: ColumnDef) => {
+const handleRemove = (column: TableColumn) => {
   emit('remove', column)
 }
 
-const handleVisibilityChange = (column: ColumnDef, visible: boolean) => {
+const handleVisibilityChange = (column: TableColumn, visible: boolean) => {
   emit('visibility-change', column, visible)
 }
 
@@ -84,7 +84,7 @@ const handleReorderColumns = (fromIndex: number, toIndex: number) => {
   emit('reorder', fromIndex, toIndex)
 }
 
-const handleDragStart = (event: DragEvent, column: ColumnDef, index: number) => {
+const handleDragStart = (event: DragEvent, column: TableColumn, index: number) => {
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', JSON.stringify({ column, index }))

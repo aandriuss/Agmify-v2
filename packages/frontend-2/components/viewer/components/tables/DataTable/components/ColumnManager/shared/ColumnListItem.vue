@@ -68,14 +68,14 @@ import { computed } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import ParameterBadge from '~/components/parameters/ParameterBadge.vue'
-import type { ColumnDef, Parameter } from '~/composables/core/types'
+import type { TableColumn, AvailableParameter } from '~/composables/core/types'
 import {
   columnDefToParameter,
   isParameter
 } from '~/composables/parameters/useParameterConversion'
 
 interface Props {
-  column: ColumnDef | Parameter
+  column: TableColumn | AvailableParameter
   mode: 'active' | 'available'
   index: number
   isDragging?: boolean
@@ -90,16 +90,20 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  add: [column: Parameter]
-  remove: [column: ColumnDef]
-  'visibility-change': [column: ColumnDef, visible: boolean]
-  'drag-start': [event: DragEvent, column: ColumnDef | Parameter, index: number]
+  add: [column: AvailableParameter]
+  remove: [column: TableColumn]
+  'visibility-change': [column: TableColumn, visible: boolean]
+  'drag-start': [
+    event: DragEvent,
+    column: TableColumn | AvailableParameter,
+    index: number
+  ]
   'drag-end': [event: DragEvent]
   'drag-enter': [event: DragEvent, index: number]
   drop: [event: DragEvent, index: number]
 }>()
 
-function isColumnDef(value: ColumnDef | Parameter): value is ColumnDef {
+function isColumnDef(value: TableColumn | AvailableParameter): value is TableColumn {
   return 'visible' in value && 'removable' in value
 }
 

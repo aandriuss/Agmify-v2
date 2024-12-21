@@ -1,7 +1,7 @@
 import { ref, computed, watch } from 'vue'
 import type {
   ParameterDefinition,
-  ColumnDef,
+  TableColumn,
   UseColumnsOptions
 } from '~/composables/core/types'
 
@@ -13,7 +13,7 @@ export function useColumns({
   selectedCategories = ref<string[]>([])
 }: UseColumnsOptions) {
   // Initialize columns ref with proper type
-  const columns = ref<(ColumnDef | ParameterDefinition)[]>([])
+  const columns = ref<(TableColumn | ParameterDefinition)[]>([])
 
   // Initialize columns function
   const initializeColumns = (newColumns: any) => {
@@ -156,7 +156,7 @@ export function useColumns({
       }
       acc[category].push(col)
       return acc
-    }, {} as Record<string, (ColumnDef | ParameterDefinition)[]>)
+    }, {} as Record<string, (TableColumn | ParameterDefinition)[]>)
 
     return Object.entries(result)
       .map(([category, columns]) => ({
@@ -167,7 +167,7 @@ export function useColumns({
   })
 
   const updateColumns = (
-    newColumns: (ColumnDef | ParameterDefinition)[] | null | undefined
+    newColumns: (TableColumn | ParameterDefinition)[] | null | undefined
   ) => {
     // Safely handle non-array or undefined/null values
     if (!newColumns) {

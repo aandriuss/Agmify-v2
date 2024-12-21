@@ -1,4 +1,4 @@
-import type { ColumnDef, BaseColumnDef } from '../../types/tables/column-types'
+import type { TableColumn, BaseColumnDef } from '../../types/tables'
 import { safeString, safeBoolean, safeNumber } from '../../utils/validation'
 import {
   isColumnDef as isColumnDefTypeGuard,
@@ -8,7 +8,7 @@ import {
 } from '../../types/tables/column-types'
 
 /**
- * Type guard for ColumnDef - re-export from types
+ * Type guard for TableColumn - re-export from types
  */
 export { isColumnDefTypeGuard as isColumnDef }
 
@@ -24,7 +24,7 @@ export {
 /**
  * Get effective group for a column
  */
-export function getColumnGroup(column: ColumnDef): string {
+export function getColumnGroup(column: TableColumn): string {
   if ('currentGroup' in column) {
     return safeString(column.currentGroup, 'Default')
   }
@@ -41,14 +41,14 @@ export function getColumnDisplayName(column: BaseColumnDef): string {
 /**
  * Check if column is sortable
  */
-export function isColumnSortable(column: ColumnDef): boolean {
+export function isColumnSortable(column: TableColumn): boolean {
   return safeBoolean(column.sortable, true)
 }
 
 /**
  * Check if column is filterable
  */
-export function isColumnFilterable(column: ColumnDef): boolean {
+export function isColumnFilterable(column: TableColumn): boolean {
   return safeBoolean(column.filterable, true)
 }
 
@@ -69,7 +69,7 @@ export function isColumnRemovable(column: BaseColumnDef): boolean {
 /**
  * Get column width with default
  */
-export function getColumnWidth(column: ColumnDef): number {
+export function getColumnWidth(column: TableColumn): number {
   return safeNumber(column.width, 150)
 }
 

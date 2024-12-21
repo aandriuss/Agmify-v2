@@ -16,7 +16,7 @@ import {
 import { scheduleRowToCategoryRow } from '~/composables/core/types/tables/schedule-types'
 import type {
   ViewerTableRow,
-  ColumnDef,
+  TableColumn,
   UserParameter,
   TableParameter,
   ScheduleRow,
@@ -26,8 +26,8 @@ import { useStore } from '~/composables/core/store'
 
 interface UseScheduleTableOptions {
   tableId: string
-  initialParentColumns: ColumnDef[]
-  initialChildColumns: ColumnDef[]
+  initialParentColumns: TableColumn[]
+  initialChildColumns: TableColumn[]
   onError?: (error: Error) => void
 }
 

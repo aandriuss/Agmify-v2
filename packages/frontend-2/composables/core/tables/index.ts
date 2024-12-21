@@ -14,33 +14,5 @@ export * from './utils'
 // Re-export types
 export type {
   // Core types
-  ColumnDef,
-  TableConfig,
-  NamedTableConfig,
-  TableState,
-  TableInstanceState,
-  TableRegistry,
-  TableTypeSettings,
-  TableUpdateOperation,
-  TableUpdateOperationPayloads,
-  CategoryFilters,
-  SortBy,
-  SortByField,
-  SortDirection,
-  UseColumnsOptions,
-  TableSettings
+  TableColumn
 } from '../types'
-
-// Re-export state types
-export type {
-  // Core state types
-  TableStateOptions,
-  CoreTableState,
-  FilterDef,
-  // Named table types
-  NamedTableStateOptions,
-  NamedTableState,
-  // DataTable types
-  DataTableStateOptions,
-  DataTableState
-} from '../types/tables/state-types'

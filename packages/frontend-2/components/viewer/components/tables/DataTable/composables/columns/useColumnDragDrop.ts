@@ -1,14 +1,14 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef, ParameterDefinition } from '~/composables/core/types'
+import type { TableColumn, ParameterDefinition } from '~/composables/core/types'
 
 export interface DragItem {
-  item: ColumnDef | ParameterDefinition
+  item: TableColumn | ParameterDefinition
   sourceList: 'active' | 'available'
   sourceIndex: number
 }
 
 export interface DropResult {
-  item: ColumnDef | ParameterDefinition
+  item: TableColumn | ParameterDefinition
   sourceList: 'active' | 'available'
   targetList: 'active' | 'available'
   sourceIndex: number
@@ -33,7 +33,7 @@ export function useColumnDragDrop() {
 
   // Methods
   function startDrag(
-    item: ColumnDef | ParameterDefinition,
+    item: TableColumn | ParameterDefinition,
     sourceList: 'active' | 'available',
     sourceIndex: number
   ) {

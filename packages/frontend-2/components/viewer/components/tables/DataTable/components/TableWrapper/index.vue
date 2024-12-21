@@ -127,14 +127,14 @@ import type {
   DataTableFilterMeta,
   DataTableExpandedRows
 } from 'primevue/datatable'
-import type { ColumnDef, TableRow, ElementData } from '~/composables/core/types'
+import type { TableColumn, TableRow, ElementData } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 interface Props {
   data: (TableRow | ElementData)[]
   expandedRows: (TableRow | ElementData)[]
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
   loading?: boolean
   sortField?: string
   sortOrder?: number
@@ -267,8 +267,8 @@ function hasNestedChildren(data: TableRow | ElementData): boolean {
 }
 
 // Helper function to get valid columns from a group
-function validColumnsInGroup(columns: ColumnDef[]): ColumnDef[] {
-  return columns.filter((col): col is ColumnDef & { field: string } => {
+function validColumnsInGroup(columns: TableColumn[]): TableColumn[] {
+  return columns.filter((col): col is TableColumn & { field: string } => {
     const isValid = col.visible && typeof col.field === 'string' && col.field.length > 0
     debug.log(DebugCategories.COLUMN_VALIDATION, 'Column validation', {
       field: col.field,
@@ -281,7 +281,7 @@ function validColumnsInGroup(columns: ColumnDef[]): ColumnDef[] {
 }
 
 // Column styling
-function getColumnStyle(col: ColumnDef) {
+function getColumnStyle(col: TableColumn) {
   return {
     width: col.width ? `${col.width}px` : 'auto',
     minWidth: '100px',

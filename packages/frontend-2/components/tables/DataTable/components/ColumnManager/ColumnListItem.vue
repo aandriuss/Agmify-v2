@@ -64,10 +64,10 @@
 
 <script setup lang="ts">
 import { PlusIcon, MinusIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline'
-import type { ColumnDef } from '../../types'
+import type { TableColumn } from '~/composables/core/types'
 
 interface Props {
-  column: ColumnDef
+  column: TableColumn
   mode: 'available' | 'active'
   dropPosition?: 'above' | 'below' | null
 }
@@ -77,13 +77,13 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  add: [column: ColumnDef]
-  remove: [column: ColumnDef]
-  'drag-start': [event: DragEvent, column: ColumnDef]
+  add: [column: TableColumn]
+  remove: [column: TableColumn]
+  'drag-start': [event: DragEvent, column: TableColumn]
   'drag-end': [event: DragEvent]
   'drag-enter': [event: DragEvent]
   drop: [event: DragEvent]
-  'visibility-change': [column: ColumnDef, visible: boolean]
+  'visibility-change': [column: TableColumn, visible: boolean]
 }>()
 
 function handleDragStart(event: DragEvent): void {

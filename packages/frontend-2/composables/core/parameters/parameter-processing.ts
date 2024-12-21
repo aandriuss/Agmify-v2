@@ -6,15 +6,15 @@ import type {
   RawParameter,
   AvailableBimParameter,
   AvailableUserParameter,
-  SelectedParameter,
-  ColumnDefinition
+  SelectedParameter
 } from '~/composables/core/parameters/store/types'
 import {
   createAvailableBimParameter,
   createAvailableUserParameter,
-  createSelectedParameter,
-  createColumnDefinition
+  createSelectedParameter
 } from '~/composables/core/parameters/store/types'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
 
 interface ParameterStats {
   raw: number
@@ -524,67 +524,24 @@ export function createSelectedParameters(
 }
 
 /**
- * Create column definitions from selected parameters
+ * Create table columns from selected parameters
  * Preserves existing column properties if available
  */
-export function createColumnDefinitions(
+export function createTableColumns(
   selectedParams: SelectedParameter[],
-  existingColumns: ColumnDefinition[] = []
-): ColumnDefinition[] {
+  existingColumns: TableColumn[] = []
+): TableColumn[] {
   return selectedParams.map((param) => {
     const existing = existingColumns.find((col) => col.id === param.id)
     if (existing) {
       return {
         ...existing,
-        name: param.name,
-        value: param.value,
-        type: param.type,
+        header: param.name,
         visible: param.visible,
-        order: param.order
+        parameter: param
       }
     }
-    return createColumnDefinition(param)
-  })
-}
-
-/**
- * Create BIM column definition from parameter
- */
-export function createBimColumnDefinition(
-  param: AvailableBimParameter
-): ColumnDefinition {
-  // First create selected parameter
-  const selected = createSelectedParameter(param, 0, true)
-
-  // Then create column definition
-  return createColumnDefinition(selected)
-}
-
-/**
- * Create User column definition from parameter
- */
-export function createUserColumnDefinition(
-  param: AvailableUserParameter
-): ColumnDefinition {
-  // First create selected parameter
-  const selected = createSelectedParameter(param, 0, true)
-
-  // Then create column definition
-  return createColumnDefinition(selected)
-}
-
-/**
- * Create column definitions from parameters with proper type handling
- */
-export function createTypedColumnDefinitions(
-  params: (AvailableBimParameter | AvailableUserParameter)[]
-): ColumnDefinition[] {
-  return params.map((param, index) => {
-    // Create selected parameter first
-    const selected = createSelectedParameter(param, index, true)
-
-    // Then create column definition
-    return createColumnDefinition(selected)
+    return createTableColumn(param)
   })
 }
 

@@ -5,8 +5,7 @@ import type {
   RawParameter,
   AvailableBimParameter,
   AvailableUserParameter,
-  SelectedParameter,
-  ColumnDefinition
+  SelectedParameter
 } from './store/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { UserValueType } from '~/composables/core/types/parameters'
@@ -26,7 +25,6 @@ interface UseParametersReturn {
       user: ComputedRef<AvailableUserParameter[]>
     }
     selected: ComputedRef<SelectedParameter[]>
-    columns: ComputedRef<ColumnDefinition[]>
   }
   childParameters: {
     raw: ComputedRef<RawParameter[]>
@@ -35,7 +33,6 @@ interface UseParametersReturn {
       user: ComputedRef<AvailableUserParameter[]>
     }
     selected: ComputedRef<SelectedParameter[]>
-    columns: ComputedRef<ColumnDefinition[]>
   }
 
   // Parameter management
@@ -166,8 +163,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
             bim: store.parentAvailableBimParameters.value?.length || 0,
             user: store.parentAvailableUserParameters.value?.length || 0
           },
-          selected: store.parentSelectedParameters.value?.length || 0,
-          columns: store.parentColumnDefinitions.value?.length || 0
+          selected: store.parentSelectedParameters.value?.length || 0
         },
         child: {
           raw: store.childRawParameters.value?.length || 0,
@@ -175,8 +171,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
             bim: store.childAvailableBimParameters.value?.length || 0,
             user: store.childAvailableUserParameters.value?.length || 0
           },
-          selected: store.childSelectedParameters.value?.length || 0,
-          columns: store.childColumnDefinitions.value?.length || 0
+          selected: store.childSelectedParameters.value?.length || 0
         }
       })
 
@@ -198,8 +193,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
         bim: store.parentAvailableBimParameters,
         user: store.parentAvailableUserParameters
       },
-      selected: store.parentSelectedParameters,
-      columns: store.parentColumnDefinitions
+      selected: store.parentSelectedParameters
     },
     childParameters: {
       raw: store.childRawParameters,
@@ -207,8 +201,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
         bim: store.childAvailableBimParameters,
         user: store.childAvailableUserParameters
       },
-      selected: store.childSelectedParameters,
-      columns: store.childColumnDefinitions
+      selected: store.childSelectedParameters
     },
 
     // Parameter management

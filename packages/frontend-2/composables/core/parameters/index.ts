@@ -12,16 +12,7 @@ export { useParametersState } from './useParametersState'
 export { useParameterColumns, ParameterColumnError } from './useParameterColumns'
 
 // Parameter conversion
-export {
-  toPrimitiveValue,
-  parameterToColumnDef,
-  columnDefToParameter,
-  // Backward compatibility exports
-  parameterToColumnDef as createColumnDef
-} from './conversion'
-
-// Column conversion (from types)
-export { createBaseColumnDef as cloneColumnDefs } from '../types/tables/column-types'
+export { toPrimitiveValue } from './conversion'
 
 // Error types
 export class ParameterConversionError extends Error {

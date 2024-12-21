@@ -1,11 +1,11 @@
 import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import type { ColumnDef, UserValueType } from '~/composables/core/types'
+import type { TableColumn, UserValueType } from '~/composables/core/types'
 import { createUserColumnDefWithDefaults } from '~/composables/core/types/tables/column-types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export interface UseMergedColumnsOptions {
-  baseColumns: ComputedRef<ColumnDef[]>
+  baseColumns: ComputedRef<TableColumn[]>
   parameterColumns: ComputedRef<
     {
       field: string
@@ -17,9 +17,9 @@ export interface UseMergedColumnsOptions {
       description?: string
     }[]
   >
-  categoryFilter?: (column: ColumnDef) => boolean
+  categoryFilter?: (column: TableColumn) => boolean
   isInitialized?: Ref<boolean>
-  defaultColumns?: ColumnDef[]
+  defaultColumns?: TableColumn[]
 }
 
 /**
@@ -36,7 +36,7 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
   } = options
 
   // Get base columns, using defaults if settings are empty
-  const effectiveBaseColumns = computed<ColumnDef[]>(() => {
+  const effectiveBaseColumns = computed<TableColumn[]>(() => {
     // Wait for initialization before using current columns
     if (isInitialized?.value && baseColumns.value?.length) {
       return baseColumns.value
@@ -73,10 +73,10 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
       return validParams
     }
 
-    return validParams.filter((col) => categoryFilter(col as ColumnDef))
+    return validParams.filter((col) => categoryFilter(col as TableColumn))
   })
 
-  const mergedColumns = computed<ColumnDef[]>(() => {
+  const mergedColumns = computed<TableColumn[]>(() => {
     const baseColumns = effectiveBaseColumns.value
     const paramCols = filteredParamColumns.value.map((col, index) =>
       createUserColumnDefWithDefaults({

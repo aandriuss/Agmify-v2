@@ -1,5 +1,5 @@
 import type {
-  ColumnDef,
+  TableColumn,
   ParameterValue,
   TableRow,
   ElementData
@@ -46,7 +46,7 @@ export function validateData(
   }
 }
 
-export function sortColumnsByOrder(columns: ColumnDef[]): ColumnDef[] {
+export function sortColumnsByOrder(columns: TableColumn[]): TableColumn[] {
   return [...columns].sort((a, b) => {
     const orderA = typeof a.order === 'number' ? a.order : 0
     const orderB = typeof b.order === 'number' ? b.order : 0
@@ -78,8 +78,8 @@ function isValidParameters(item: unknown): boolean {
 }
 
 export function updateLocalColumns(
-  sourceColumns: ColumnDef[],
-  updateFn: (columns: ColumnDef[]) => void
+  sourceColumns: TableColumn[],
+  updateFn: (columns: TableColumn[]) => void
 ): void {
   debug.startState(DebugCategories.COLUMNS, 'Updating local columns', {
     count: sourceColumns.length,

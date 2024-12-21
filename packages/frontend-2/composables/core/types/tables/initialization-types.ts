@@ -1,5 +1,5 @@
 import type { ComputedRef } from 'vue'
-import type { ColumnDef } from './column-types'
+import type { TableColumn } from './table-column'
 import type { ParameterValue } from '../parameters'
 import type { EventEmits } from '../events/base-events'
 
@@ -9,8 +9,8 @@ import type { EventEmits } from '../events/base-events'
 export interface TableInitializationState {
   selectedTableId: string
   tableName: string
-  currentTableColumns: ColumnDef[]
-  currentDetailColumns: ColumnDef[]
+  currentTableColumns: TableColumn[]
+  currentDetailColumns: TableColumn[]
   selectedParentCategories: string[]
   selectedChildCategories: string[]
 }

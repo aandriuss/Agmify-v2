@@ -15,7 +15,7 @@
 import { onMounted, watch, computed } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
-  NamedTableConfig,
+  TableSettings,
   ElementData,
   TreeItemComponentModel
 } from '~/composables/core/types'
@@ -26,7 +26,7 @@ const props = defineProps<{
   updateRootNodes: (nodes: TreeItemComponentModel[]) => Promise<void>
   loadSettings: () => Promise<void>
   handleTableSelection: (id: string) => Promise<void>
-  currentTable: NamedTableConfig | null
+  currentTable: TableSettings | null
   selectedTableId: string
   currentTableId: string
   loadingError: Error | null
@@ -41,7 +41,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:initialized': [value: boolean]
-  'settings-loaded': [settings: { namedTables: Record<string, NamedTableConfig> }]
+  'settings-loaded': [settings: { namedTables: Record<string, TableSettings> }]
   'data-initialized': []
   error: [error: Error]
 }>()

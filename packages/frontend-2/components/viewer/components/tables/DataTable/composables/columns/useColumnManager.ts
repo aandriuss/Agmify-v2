@@ -5,7 +5,7 @@ import type {
   AvailableBimParameter,
   AvailableUserParameter
 } from '~/composables/core/types/parameters/parameter-states'
-import type { ColumnDef } from '~/composables/core/types/tables'
+import type { TableColumn } from '~/composables/core/types/tables'
 import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import type {
   BimValueType,
@@ -16,8 +16,8 @@ import { debug, DebugCategories } from '~/composables/core/utils/debug'
 type View = 'parent' | 'child'
 type ColumnOperation =
   | { type: 'add'; column: AvailableBimParameter | AvailableUserParameter }
-  | { type: 'remove'; column: ColumnDef }
-  | { type: 'visibility'; column: ColumnDef; visible: boolean }
+  | { type: 'remove'; column: TableColumn }
+  | { type: 'visibility'; column: TableColumn; visible: boolean }
   | { type: 'reorder'; fromIndex: number; toIndex: number }
 
 interface UseColumnManagerOptions {
@@ -233,7 +233,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
       if (!currentTable) return false
 
       // Convert selected parameters to column definitions
-      const parentColumns: ColumnDef[] = currentTable.selectedParameters.parent.map(
+      const parentColumns: TableColumn[] = currentTable.selectedParameters.parent.map(
         (param) => {
           return {
             id: param.id,
@@ -265,7 +265,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
         }
       )
 
-      const childColumns: ColumnDef[] = currentTable.selectedParameters.child.map(
+      const childColumns: TableColumn[] = currentTable.selectedParameters.child.map(
         (param) => {
           return {
             id: param.id,

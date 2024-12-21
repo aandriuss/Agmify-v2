@@ -12,16 +12,14 @@ export type Parameter = AvailableBimParameter | AvailableUserParameter
 export {
   isAvailableBimParameter as isBimParameter,
   isAvailableUserParameter as isUserParameter,
-  isSelectedParameter,
-  isColumnDefinition
+  isSelectedParameter
 } from './parameter-states'
 
 // Re-export creation utilities
 export {
   createAvailableBimParameter as createBimParameter,
   createAvailableUserParameter as createUserParameter,
-  createSelectedParameter,
-  createColumnDefinition
+  createSelectedParameter
 } from './parameter-states'
 
 // Export empty interfaces for backward compatibility

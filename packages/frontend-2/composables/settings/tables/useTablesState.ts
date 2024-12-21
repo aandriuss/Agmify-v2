@@ -3,18 +3,15 @@ import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTablesGraphQL } from './useTablesGraphQL'
 import { useUpdateQueue } from '../useUpdateQueue'
 import type {
-  NamedTableConfig,
-  ColumnDef,
-  TableConfig,
-  SelectedParameter
+  TableSettings,
+  TableColumn,
+  TableSelectedParameters,
+  TableCategoryFilters
 } from '~/composables/core/types'
+import type { SelectedParameter } from '~/composables/core/types/parameters/parameter-states'
+import type { BimValueType } from '~/composables/core/types/parameters'
 import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
-import {
-  createBimColumnDefWithDefaults,
-  createUserColumnDefWithDefaults,
-  isBimColumnDef,
-  isUserColumnDef
-} from '~/composables/core/types'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
 import { useStore } from '~/composables/core/store'
 
 const LAST_SELECTED_TABLE_KEY = 'speckle:lastSelectedTableId'
@@ -34,18 +31,20 @@ const DEFAULT_CHILD_CATEGORIES = [
 ]
 
 interface TablesState {
-  tables: Record<string, NamedTableConfig>
+  tables: Record<string, TableSettings>
   loading: boolean
   error: Error | null
 }
 
-type RawTable = Omit<TableConfig, 'lastUpdateTimestamp'> & {
+interface RawTable {
+  id: string
+  name: string
   displayName?: string
   description?: string
-  selectedParameters?: {
-    parent: SelectedParameter[]
-    child: SelectedParameter[]
-  }
+  parentColumns?: unknown[]
+  childColumns?: unknown[]
+  selectedParameters: TableSelectedParameters
+  categoryFilters: TableCategoryFilters
 }
 
 function deepClone<T extends Record<string, unknown>>(obj: T): T {
@@ -67,59 +66,57 @@ export function useTablesState() {
   const selectedTableId = ref<string | null>(
     localStorage.getItem(LAST_SELECTED_TABLE_KEY) || null
   )
-  const originalTables = ref<Record<string, NamedTableConfig>>({})
+  const originalTables = ref<Record<string, TableSettings>>({})
 
   // Initialize GraphQL operations
   const { result, queryLoading, fetchTables, updateTables } = useTablesGraphQL()
   const { queueUpdate } = useUpdateQueue()
 
-  function formatTableKey(table: NamedTableConfig): string {
+  function formatTableKey(table: TableSettings): string {
     const sanitizedName = table.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
     return `${sanitizedName}_${table.id}`
   }
 
-  function validateColumnDefs(arr: unknown[]): ColumnDef[] {
-    return arr.filter((col): col is ColumnDef => {
+  function validateColumnDefs(arr: unknown[]): TableColumn[] {
+    return arr.filter((col): col is TableColumn => {
       if (!col || typeof col !== 'object') return false
 
-      // Check if it's already a valid ColumnDef
-      if (isBimColumnDef(col) || isUserColumnDef(col)) return true
-
-      // Try to convert to appropriate type
       const candidate = col as Record<string, unknown>
-      if ('sourceValue' in candidate && 'fetchedGroup' in candidate) {
-        return isBimColumnDef(
-          createBimColumnDefWithDefaults({
-            ...candidate,
-            field: String(candidate.field || '')
-          })
-        )
-      }
+      if (!candidate.id || !candidate.field || !candidate.header) return false
 
-      if ('group' in candidate) {
-        return isUserColumnDef(
-          createUserColumnDefWithDefaults({
-            ...candidate,
-            field: String(candidate.field || '')
-          })
-        )
-      }
+      // Convert to TableColumn using parameter data
+      try {
+        const param: SelectedParameter = {
+          id: String(candidate.id),
+          name: String(candidate.header),
+          kind: 'bim',
+          type: (candidate.type as BimValueType) || 'string',
+          value: null,
+          group: String(candidate.group || 'Parameters'),
+          visible: Boolean(candidate.visible ?? true),
+          order: Number(candidate.order ?? 0),
+          category: candidate.category ? String(candidate.category) : undefined,
+          description: candidate.description ? String(candidate.description) : undefined
+        }
 
-      return false
+        createTableColumn(param)
+        return true
+      } catch {
+        return false
+      }
     })
   }
 
-  function validateAndTransformTable(rawTable: RawTable): NamedTableConfig {
+  function validateAndTransformTable(rawTable: RawTable): TableSettings {
     // Get existing categories or use defaults
-    const existingFilters = rawTable.categoryFilters || {}
-    const categoryFilters = {
+    const categoryFilters: TableCategoryFilters = {
       selectedParentCategories:
-        existingFilters.selectedParentCategories?.length > 0
-          ? existingFilters.selectedParentCategories
+        rawTable.categoryFilters?.selectedParentCategories?.length > 0
+          ? rawTable.categoryFilters.selectedParentCategories
           : DEFAULT_PARENT_CATEGORIES,
       selectedChildCategories:
-        existingFilters.selectedChildCategories?.length > 0
-          ? existingFilters.selectedChildCategories
+        rawTable.categoryFilters?.selectedChildCategories?.length > 0
+          ? rawTable.categoryFilters.selectedChildCategories
           : DEFAULT_CHILD_CATEGORIES
     }
 
@@ -136,7 +133,6 @@ export function useTablesState() {
       categoryFilters,
       selectedParameters:
         rawTable.selectedParameters || defaultTableConfig.selectedParameters,
-      description: rawTable.description,
       lastUpdateTimestamp: Date.now()
     }
   }
@@ -163,7 +159,7 @@ export function useTablesState() {
       try {
         // Process tables from the response
         if (newTables && Object.keys(newTables).length > 0) {
-          const processedTables: Record<string, NamedTableConfig> = {}
+          const processedTables: Record<string, TableSettings> = {}
 
           Object.entries(newTables).forEach(([_, tableData]) => {
             if (
@@ -273,7 +269,7 @@ export function useTablesState() {
   }
 
   async function saveTables(
-    newTables: Record<string, NamedTableConfig>
+    newTables: Record<string, TableSettings>
   ): Promise<boolean> {
     return queueUpdate(async () => {
       try {
@@ -293,7 +289,7 @@ export function useTablesState() {
 
         // Get existing tables from state, excluding default table
         const existingTables = Object.entries(state.value.tables).reduce<
-          Record<string, NamedTableConfig>
+          Record<string, TableSettings>
         >((acc, [key, table]) => {
           if (table.id === defaultTableConfig.id) return acc
           return { ...acc, [key]: table }
@@ -302,7 +298,7 @@ export function useTablesState() {
         // Only update tables that have changed
         const mergedTables = {
           ...existingTables,
-          ...Object.entries(newTables).reduce<Record<string, NamedTableConfig>>(
+          ...Object.entries(newTables).reduce<Record<string, TableSettings>>(
             (acc, [_, table]) => {
               if (table.id === defaultTableConfig.id) return acc
               const validatedTable = validateAndTransformTable(table)
@@ -389,7 +385,7 @@ export function useTablesState() {
     localStorage.removeItem(LAST_SELECTED_TABLE_KEY)
   }
 
-  function getSelectedTable(): NamedTableConfig | null {
+  function getSelectedTable(): TableSettings | null {
     if (!selectedTableId.value) return null
 
     // Find table by ID, not by key

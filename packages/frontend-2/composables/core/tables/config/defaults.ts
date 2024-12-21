@@ -1,8 +1,6 @@
-import type { NamedTableConfig } from '../../types'
 import type { SelectedParameter } from '../../types/parameters/parameter-states'
-import type { BimValueType } from '../../types/parameters/value-types'
-import { isPrimitiveValue } from '../../types/parameters/value-types'
-import { createBimColumnDefWithDefaults } from '../../types/tables/column-types'
+import type { TableSettings } from '../store/types'
+import { createTableColumns } from '../../types/tables/table-column'
 
 // Default selected parameters that should be consistent across the application
 export const defaultSelectedParameters: {
@@ -135,58 +133,16 @@ export const defaultSelectedParameters: {
   ]
 }
 
-/**
- * Convert selected parameters to column definitions
- */
-function createColumnsFromSelectedParameters(selectedParams: SelectedParameter[]) {
-  return selectedParams.map((param) =>
-    createBimColumnDefWithDefaults({
-      id: param.id,
-      name: param.name,
-      field: param.id,
-      header: param.name,
-      type: param.type as BimValueType,
-      visible: param.visible,
-      order: param.order,
-      removable: param.id !== 'mark', // Mark column should not be removable
-      description: param.name,
-      sourceValue: isPrimitiveValue(param.value) ? param.value : null,
-      fetchedGroup: param.group,
-      currentGroup: param.group
-    })
-  )
-}
-
-export const defaultTableConfig: NamedTableConfig = {
+export const defaultTableConfig: TableSettings = {
   id: 'default-table',
   name: 'Default Table',
   displayName: 'Default Table',
-  parentColumns: createColumnsFromSelectedParameters(defaultSelectedParameters.parent),
-  childColumns: createColumnsFromSelectedParameters(defaultSelectedParameters.child),
+  parentColumns: createTableColumns(defaultSelectedParameters.parent),
+  childColumns: createTableColumns(defaultSelectedParameters.child),
   categoryFilters: {
     selectedParentCategories: [],
     selectedChildCategories: []
   },
   selectedParameters: defaultSelectedParameters,
   lastUpdateTimestamp: Date.now()
-}
-
-/**
- * Ensure required columns are present in table configuration
- */
-export function ensureRequiredColumns(config: NamedTableConfig): NamedTableConfig {
-  const selectedParams = config.selectedParameters || defaultSelectedParameters
-
-  return {
-    ...config,
-    parentColumns: config.parentColumns.length
-      ? config.parentColumns
-      : createColumnsFromSelectedParameters(selectedParams.parent),
-    childColumns: config.childColumns.length
-      ? config.childColumns
-      : createColumnsFromSelectedParameters(selectedParams.child),
-    categoryFilters: config.categoryFilters || defaultTableConfig.categoryFilters,
-    selectedParameters: selectedParams,
-    lastUpdateTimestamp: config.lastUpdateTimestamp || Date.now()
-  }
 }

@@ -8,19 +8,19 @@ import { computed, watch } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import type {
-  Parameter,
+  AvailableParameter,
   ElementData,
   TableRow,
-  ColumnDef,
+  TableColumn,
   ElementsDataReturn
 } from '~/composables/core/types'
 
 const props = defineProps<{
   scheduleData: ElementData[]
   evaluatedData: ElementData[]
-  parameters: Parameter[]
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parameters: AvailableParameter[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
   selectedParentCategories: string[]
   selectedChildCategories: string[]
   isInitialized: boolean

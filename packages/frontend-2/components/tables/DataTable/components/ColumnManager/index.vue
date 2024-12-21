@@ -99,15 +99,15 @@ import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/vue/24/solid'
 import Button from 'primevue/button'
 import TabSelector from './TabSelector.vue'
 import ColumnList from './ColumnList.vue'
-import type { ColumnDef } from '../../types'
+import type { TableColumn } from '~/composables/core/types'
 import type { LayoutDialogButton } from '@speckle/ui-components'
 
 interface Props {
   open: boolean
   tableId: string
   tableName: string
-  columns: ColumnDef[]
-  detailColumns?: ColumnDef[]
+  columns: TableColumn[]
+  detailColumns?: TableColumn[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -116,7 +116,9 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  'update:columns': [updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }]
+  'update:columns': [
+    updates: { parentColumns: TableColumn[]; childColumns: TableColumn[] }
+  ]
   cancel: []
   apply: []
 }>()
@@ -131,8 +133,8 @@ const listRefreshKey = ref(0)
 const dropPosition = ref<'above' | 'below' | null>(null)
 
 // Local column state
-const localColumns = ref<ColumnDef[]>([...props.columns])
-const localDetailColumns = ref<ColumnDef[]>([...(props.detailColumns || [])])
+const localColumns = ref<TableColumn[]>([...props.columns])
+const localDetailColumns = ref<TableColumn[]>([...(props.detailColumns || [])])
 
 // Computed
 const activeColumns = computed(() => {
@@ -193,13 +195,13 @@ function handleSortUpdate(value: 'name' | 'category' | 'type'): void {
   sortBy.value = value
 }
 
-function handleAdd(column: ColumnDef): void {
+function handleAdd(column: TableColumn): void {
   const target = currentView.value === 'parent' ? localColumns : localDetailColumns
   target.value.push({ ...column })
   listRefreshKey.value++
 }
 
-function handleRemove(column: ColumnDef): void {
+function handleRemove(column: TableColumn): void {
   const target = currentView.value === 'parent' ? localColumns : localDetailColumns
   const index = target.value.findIndex((col) => col.id === column.id)
   if (index !== -1) {
@@ -208,7 +210,7 @@ function handleRemove(column: ColumnDef): void {
   }
 }
 
-function handleVisibilityChange(column: ColumnDef, visible: boolean): void {
+function handleVisibilityChange(column: TableColumn, visible: boolean): void {
   const target = currentView.value === 'parent' ? localColumns : localDetailColumns
   const index = target.value.findIndex((col) => col.id === column.id)
   if (index !== -1) {
@@ -216,7 +218,7 @@ function handleVisibilityChange(column: ColumnDef, visible: boolean): void {
   }
 }
 
-function handleDragStart(event: DragEvent, column: ColumnDef): void {
+function handleDragStart(event: DragEvent, column: TableColumn): void {
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', column.id)

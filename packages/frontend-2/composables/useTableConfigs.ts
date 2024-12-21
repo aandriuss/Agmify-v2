@@ -1,9 +1,9 @@
 import { ref, computed } from 'vue'
 import type {
   TableConfig,
-  NamedTableConfig,
+  TableSettings,
   CategoryFilters,
-  ColumnDef
+  TableColumn
 } from '~/composables/core/types'
 import { useTablesState } from '~/composables/settings/tables/useTablesState'
 import { useParametersState } from '~/composables/parameters/useParametersState'
@@ -47,10 +47,10 @@ export function useTableConfigs() {
     localStorage.getItem(LAST_SELECTED_TABLE_KEY)
   )
 
-  const namedTables = computed<Record<string, NamedTableConfig>>(() => {
+  const namedTables = computed<Record<string, TableSettings>>(() => {
     const tables = tablesState.value?.tables || {}
     // Filter out default table when returning named tables
-    return Object.entries(tables).reduce<Record<string, NamedTableConfig>>(
+    return Object.entries(tables).reduce<Record<string, TableSettings>>(
       (acc, [key, table]) => {
         if (table.id !== 'defaultTable') {
           acc[key] = table
@@ -120,7 +120,7 @@ export function useTableConfigs() {
       const newTableId = crypto.randomUUID()
       const timestamp = Date.now()
 
-      const newTable: NamedTableConfig = {
+      const newTable: TableSettings = {
         id: newTableId,
         name,
         displayName: name,
@@ -183,7 +183,7 @@ export function useTableConfigs() {
 
       const timestamp = Date.now()
 
-      const updatedTable: NamedTableConfig = {
+      const updatedTable: TableSettings = {
         ...currentTable,
         name: updates.name || currentTable.name,
         displayName: updates.displayName || currentTable.displayName,
@@ -239,8 +239,8 @@ export function useTableConfigs() {
 
   const updateTableColumns = async (
     tableId: string,
-    parentColumns: ColumnDef[],
-    childColumns: ColumnDef[]
+    parentColumns: TableColumn[],
+    childColumns: TableColumn[]
   ) => {
     try {
       debug.startState(DebugCategories.STATE, 'Updating table columns', { tableId })

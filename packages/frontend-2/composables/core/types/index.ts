@@ -96,7 +96,6 @@ export type {
   AvailableUserParameter,
   AvailableParameter,
   SelectedParameter,
-  ColumnDefinition,
   ParameterCollections,
 
   // Value Types
@@ -128,13 +127,11 @@ export {
   isAvailableBimParameter,
   isAvailableUserParameter,
   isSelectedParameter,
-  isColumnDefinition,
 
   // Parameter Creation
   createBimParameter,
   createUserParameter,
   createSelectedParameter,
-  createColumnDefinition,
 
   // Parameter Operations
   convertBimToUserType,
@@ -210,112 +207,21 @@ export {
 export type {
   // Base Table Types
   BaseTableRow,
+  TableColumn,
+  TableCategoryFilters,
+  TableSelectedParameters,
+  BaseTableConfig,
 
-  // Category Types
-  CategoryTableRow,
-
-  // Column Conversion Types
-  ColumnConversionOptions,
-
-  // Column Management Types
-  ManagedColumnProps,
-  ManagedBimColumnDef,
-  ManagedUserColumnDef,
-  ManagedColumnDef,
-  ColumnManagementState,
-  ColumnManagementOptions,
-
-  // Column Types
-  BaseColumnDef,
-  BimColumnDef,
-  UserColumnDef,
-  ColumnDef,
-
-  // DataTable Types
-  DataTableColumnReorderEvent,
-  DataTableColumnResizeEvent,
-
-  // Event Types
-  TableEvents,
-  ParameterEvents,
-  ScheduleEvents,
-  BimTableEvents,
-  UserTableEvents,
-  CombinedTableEvents,
-  BaseTableProps,
-  TableState,
-  BimTableProps,
-  UserTableProps,
-  CombinedTableProps,
-  EmitsToProps,
-
-  // Filter Types
-  DataTableFilterMeta,
-  DataTableFilterMetaData,
-  DataTableOperatorFilterMetaData,
-  DataTableFilterEvent,
-  FilterEventPayload,
-
-  // Initialization Types
-  TableInitializationState,
-  TableInitializationInstance,
-  TableInitializationOptions,
-  TableRowData,
-  TableEventHandlers,
-  TableInitializationEventPayloads,
-  TableInitializationEmits,
-
-  // Instance Types
-  TableInstanceState,
-  TableTypeSettings,
-  TableRegistry,
-  TableUpdateOperationPayloads,
-  TableUpdateOperation,
-  TableUIState,
-
-  // Parameter Table Types
-  TableParameter,
-  TableBimParameter,
-  TableUserParameter,
-  ParameterTableConfig,
-  ParameterTableState,
-
-  // Schedule Types
-  ScheduleRow,
-
-  // Settings Types
-  TableSettings,
-  NamedTableConfig,
-
-  // Sorting Types
-  SortByField,
-  SortDirection,
-  SortBy,
-  UseColumnsOptions,
-  CategoryFilters,
-
-  // State Types
-  FilterDef,
-  TableStateOptions,
-  CoreTableState,
-  NamedTableStateOptions,
-  NamedTableState,
-  DataTableStateOptions,
-  DataTableState,
-  TableConfig
-} from './tables'
-
-export {
-  createBimColumnDefWithDefaults,
-  toTableParameters,
-  createUserColumnDefWithDefaults,
-  isBimColumnDef,
-  isUserColumnDef
+  // Table Events
+  ColumnVisibilityPayload,
+  ColumnReorderPayload,
+  ColumnResizePayload,
+  TableUpdatePayload,
+  ErrorPayload
 } from './tables'
 
 // Table Functions
 export { createTableConfig } from '../tables/utils/'
-export { createColumnDef } from '~/composables/core/parameters/'
 
 // Validators
 export {
@@ -351,3 +257,5 @@ export type {
   WorldTreeRoot,
   ViewerNodeRaw
 } from './viewer'
+
+export type { TableSettings, TableStoreState, TableStore } from '../tables/store/types'

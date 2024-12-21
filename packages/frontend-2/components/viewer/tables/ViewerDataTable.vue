@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import { ref, onBeforeUnmount } from 'vue'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
-import type { ColumnDef, ViewerTableRow } from '~/composables/core/types'
+import type { TableColumn, ViewerTableRow } from '~/composables/core/types'
 import type { TableProps } from '~/components/tables/DataTable/types'
 import { useViewerTableState } from '~/composables/core/tables'
 import { TableStateError } from '~/composables/core/types/errors'
@@ -78,10 +78,10 @@ const props = defineProps<TableProps<ViewerTableRow>>()
 // Emits
 const emit = defineEmits<{
   'update:expanded-rows': [rows: ViewerTableRow[]]
-  'update:columns': [columns: ColumnDef[]]
-  'update:detail-columns': [columns: ColumnDef[]]
+  'update:columns': [columns: TableColumn[]]
+  'update:detail-columns': [columns: TableColumn[]]
   'update:both-columns': [
-    updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
+    updates: { parentColumns: TableColumn[]; childColumns: TableColumn[] }
   ]
   'column-reorder': [event: { dragIndex: number; dropIndex: number }]
   'row-expand': [row: ViewerTableRow]
@@ -140,7 +140,7 @@ function handleExpandedRowsUpdate(rows: ViewerTableRow[]): void {
   }
 }
 
-function handleColumnsUpdate(columns: ColumnDef[]): void {
+function handleColumnsUpdate(columns: TableColumn[]): void {
   try {
     debug.startState(DebugCategories.TABLE_UPDATES, 'Updating columns')
     tableState.updateColumns(columns)
@@ -157,7 +157,7 @@ function handleColumnsUpdate(columns: ColumnDef[]): void {
   }
 }
 
-function handleDetailColumnsUpdate(columns: ColumnDef[]): void {
+function handleDetailColumnsUpdate(columns: TableColumn[]): void {
   try {
     debug.startState(DebugCategories.TABLE_UPDATES, 'Updating detail columns')
     tableState.updateDetailColumns(columns)
@@ -175,8 +175,8 @@ function handleDetailColumnsUpdate(columns: ColumnDef[]): void {
 }
 
 function handleBothColumnsUpdate(updates: {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
 }): void {
   try {
     debug.startState(DebugCategories.TABLE_UPDATES, 'Updating both columns')

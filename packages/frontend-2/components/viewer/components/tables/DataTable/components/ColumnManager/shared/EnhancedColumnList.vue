@@ -187,11 +187,11 @@ import {
   ChevronRightIcon,
   ChevronDownIcon
 } from '@heroicons/vue/24/outline'
-import type { ColumnDef, Parameter } from '~/composables/core/types'
+import type { TableColumn, AvailableParameter } from '~/composables/core/types'
 import { getParameterGroup, isBimParameter } from '~/composables/core/types'
 
 interface Props {
-  items: (ColumnDef | Parameter)[]
+  items: (TableColumn | AvailableParameter)[]
   mode: 'active' | 'available'
   showFilterOptions?: boolean
   searchTerm?: string
@@ -212,25 +212,31 @@ const emit = defineEmits<{
   'update:search-term': [value: string]
   'update:is-grouped': [value: boolean]
   'update:sort-by': [value: string]
-  add: [item: Parameter | ColumnDef]
-  remove: [item: Parameter | ColumnDef]
-  'drag-start': [event: DragEvent, item: Parameter | ColumnDef, index: number]
+  add: [item: AvailableParameter | TableColumn]
+  remove: [item: AvailableParameter | TableColumn]
+  'drag-start': [
+    event: DragEvent,
+    item: AvailableParameter | TableColumn,
+    index: number
+  ]
   'drag-end': []
   'drag-enter': [event: DragEvent, index: number]
   drop: [event: DragEvent, index: number]
-  'visibility-change': [item: Parameter | ColumnDef, visible: boolean]
+  'visibility-change': [item: AvailableParameter | TableColumn, visible: boolean]
 }>()
 
 const localSearchTerm = ref(props.searchTerm)
 const expandedGroups = ref<Set<string>>(new Set())
 
 // Helper to determine if item is a Parameter
-function isParameter(item: Parameter | ColumnDef): item is Parameter {
+function isParameter(
+  item: AvailableParameter | TableColumn
+): item is AvailableParameter {
   return 'kind' in item
 }
 
 // Helper to get group name from item
-function getItemGroup(item: Parameter | ColumnDef): string {
+function getItemGroup(item: AvailableParameter | TableColumn): string {
   if (isParameter(item)) {
     return getParameterGroup(item)
   }
@@ -238,7 +244,7 @@ function getItemGroup(item: Parameter | ColumnDef): string {
 }
 
 // Helper to get item type
-function getItemType(item: Parameter | ColumnDef): string {
+function getItemType(item: AvailableParameter | TableColumn): string {
   if (isParameter(item)) {
     if (isBimParameter(item)) {
       return `BIM - ${item.type}`
@@ -249,7 +255,10 @@ function getItemType(item: Parameter | ColumnDef): string {
 }
 
 const groupedItems = computed(() => {
-  const groups: Record<string, { group: string; items: (Parameter | ColumnDef)[] }> = {}
+  const groups: Record<
+    string,
+    { group: string; items: (AvailableParameter | TableColumn)[] }
+  > = {}
 
   props.items.forEach((item) => {
     const group = getItemGroup(item)
@@ -289,7 +298,11 @@ const groupedItems = computed(() => {
     }))
 })
 
-function handleDragStart(event: DragEvent, item: Parameter | ColumnDef, index: number) {
+function handleDragStart(
+  event: DragEvent,
+  item: AvailableParameter | TableColumn,
+  index: number
+) {
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.dropEffect = 'move'

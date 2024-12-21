@@ -1,9 +1,9 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef, NamedTableConfig } from '~/composables/core/types'
+import type { TableColumn, TableSettings } from '~/composables/core/types'
 
 export function useTableState() {
   // Core state
-  const namedTables = ref<Record<string, NamedTableConfig>>({})
+  const namedTables = ref<Record<string, TableSettings>>({})
   const activeTableId = ref<string | null>(null)
   const currentView = ref<'parent' | 'child'>('parent')
   const isDirty = ref(false)
@@ -30,7 +30,7 @@ export function useTableState() {
     currentView.value = currentView.value === 'parent' ? 'child' : 'parent'
   }
 
-  function updateColumns(columns: ColumnDef[]) {
+  function updateColumns(columns: TableColumn[]) {
     if (!activeTable.value) return
 
     if (currentView.value === 'parent') {
@@ -42,7 +42,7 @@ export function useTableState() {
   }
 
   // Utility function for maintaining continuous order
-  function reorderColumns(columns: ColumnDef[]): ColumnDef[] {
+  function reorderColumns(columns: TableColumn[]): TableColumn[] {
     return columns.map((col, index) => ({
       ...col,
       order: index

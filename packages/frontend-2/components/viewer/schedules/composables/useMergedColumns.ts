@@ -14,15 +14,15 @@
 
 import { computed } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import type { ColumnDef } from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types'
 import type { BimValueType } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
-import { createBimColumnDefWithDefaults } from '~/composables/core/types/tables/column-types'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
 
 interface UseMergedColumnsOptions {
-  currentTableColumns: ComputedRef<ColumnDef[]>
-  currentDetailColumns: ComputedRef<ColumnDef[]>
+  currentTableColumns: ComputedRef<TableColumn[]>
+  currentDetailColumns: ComputedRef<TableColumn[]>
   parameterColumns: ComputedRef<
     {
       field: string
@@ -50,7 +50,7 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
   } = options
 
   // Get base columns, using defaults if settings are empty
-  const baseTableColumns = computed<ColumnDef[]>(() => {
+  const baseTableColumns = computed<TableColumn[]>(() => {
     // Wait for initialization before using current columns
     if (isInitialized?.value && currentTableColumns.value?.length) {
       return currentTableColumns.value
@@ -59,7 +59,7 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
     return defaultTableConfig.parentColumns
   })
 
-  const baseDetailColumns = computed<ColumnDef[]>(() => {
+  const baseDetailColumns = computed<TableColumn[]>(() => {
     // Wait for initialization before using current columns
     if (isInitialized?.value && currentDetailColumns.value?.length) {
       return currentDetailColumns.value
@@ -120,23 +120,25 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
     })
   })
 
-  const mergedTableColumns = computed<ColumnDef[]>(() => {
+  const mergedTableColumns = computed<TableColumn[]>(() => {
     const baseColumns = baseTableColumns.value
-    const paramCols = filteredParamColumns.value.map((col, index): ColumnDef => {
-      return createBimColumnDefWithDefaults({
-        field: col.field,
-        header: col.header,
+    const paramCols = filteredParamColumns.value.map((col, index): TableColumn => {
+      // First create a SelectedParameter
+      const param = {
+        id: col.field,
+        name: col.header,
+        kind: 'bim' as const,
         type: (col.type || 'string') as BimValueType,
+        value: null,
+        group: 'Parameters',
         visible: col.visible ?? true,
-        removable: col.removable ?? true,
         order: baseColumns.length + index,
         category: col.category || '',
-        description: col.description || '',
-        isFixed: false,
-        fetchedGroup: 'Parameters',
-        currentGroup: 'Parameters',
-        sourceValue: null
-      })
+        description: col.description || ''
+      }
+
+      // Then create TableColumn from the parameter
+      return createTableColumn(param)
     })
 
     const mergedColumns = [...baseColumns, ...paramCols]
@@ -157,23 +159,25 @@ export function useMergedColumns(options: UseMergedColumnsOptions) {
     return mergedColumns
   })
 
-  const mergedDetailColumns = computed<ColumnDef[]>(() => {
+  const mergedDetailColumns = computed<TableColumn[]>(() => {
     const baseColumns = baseDetailColumns.value
-    const paramCols = filteredParamColumns.value.map((col, index): ColumnDef => {
-      return createBimColumnDefWithDefaults({
-        field: col.field,
-        header: col.header,
+    const paramCols = filteredParamColumns.value.map((col, index): TableColumn => {
+      // First create a SelectedParameter
+      const param = {
+        id: col.field,
+        name: col.header,
+        kind: 'bim' as const,
         type: (col.type || 'string') as BimValueType,
+        value: null,
+        group: 'Parameters',
         visible: col.visible ?? true,
-        removable: col.removable ?? true,
         order: baseColumns.length + index,
         category: col.category || '',
-        description: col.description || '',
-        isFixed: false,
-        fetchedGroup: 'Parameters',
-        currentGroup: 'Parameters',
-        sourceValue: null
-      })
+        description: col.description || ''
+      }
+
+      // Then create TableColumn from the parameter
+      return createTableColumn(param)
     })
 
     const mergedColumns = [...baseColumns, ...paramCols]

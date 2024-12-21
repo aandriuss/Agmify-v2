@@ -81,17 +81,6 @@ export interface SelectedParameter {
 }
 
 /**
- * Column definition for display
- */
-export interface ColumnDefinition extends SelectedParameter {
-  field: string
-  header: string
-  width?: number
-  sortable?: boolean
-  filterable?: boolean
-}
-
-/**
  * Parameter collections with parent/child separation
  */
 export interface ParameterCollections {
@@ -102,7 +91,6 @@ export interface ParameterCollections {
       user: AvailableUserParameter[]
     }
     selected: SelectedParameter[]
-    columns: ColumnDefinition[]
   }
   child: {
     raw: RawParameter[]
@@ -111,7 +99,6 @@ export interface ParameterCollections {
       user: AvailableUserParameter[]
     }
     selected: SelectedParameter[]
-    columns: ColumnDefinition[]
   }
 }
 
@@ -173,12 +160,6 @@ export const isSelectedParameter = (param: unknown): param is SelectedParameter 
     'value' in p &&
     'type' in p
   )
-}
-
-export const isColumnDefinition = (param: unknown): param is ColumnDefinition => {
-  if (!isSelectedParameter(param)) return false
-  const p = param as Partial<ColumnDefinition>
-  return typeof p.field === 'string' && typeof p.header === 'string'
 }
 
 // Creation utilities
@@ -245,16 +226,4 @@ export const createSelectedParameter = (
   category: available.category,
   description: available.description,
   metadata: available.metadata
-})
-
-export const createColumnDefinition = (
-  selected: SelectedParameter,
-  width?: number
-): ColumnDefinition => ({
-  ...selected,
-  field: selected.id,
-  header: selected.name,
-  width,
-  sortable: true,
-  filterable: true
 })

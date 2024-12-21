@@ -314,7 +314,7 @@ import {
 } from '@headlessui/vue'
 
 import type {
-  ColumnDef,
+  TableColumn,
   DataTableColumnReorderEvent,
   CombinedTableEvents,
   CombinedTableProps
@@ -330,8 +330,8 @@ import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 
 // Props interface
 interface Props extends CombinedTableProps {
-  availableParentParameters: ColumnDef[]
-  availableChildParameters: ColumnDef[]
+  availableParentParameters: TableColumn[]
+  availableChildParameters: TableColumn[]
 }
 
 const props = defineProps<Props>()
@@ -371,14 +371,14 @@ const sortOptions = [
 ] as const
 
 // Column state
-const tempParentColumns = ref<ColumnDef[]>([])
-const tempChildColumns = ref<ColumnDef[]>([])
-const localParentColumns = ref<ColumnDef[]>([])
-const localChildColumns = ref<ColumnDef[]>([])
+const tempParentColumns = ref<TableColumn[]>([])
+const tempChildColumns = ref<TableColumn[]>([])
+const localParentColumns = ref<TableColumn[]>([])
+const localChildColumns = ref<TableColumn[]>([])
 
 // Drag and drop state
 const dragOverIndex = ref(-1)
-const draggedItem = ref<{ item: ColumnDef; source: string; index?: number } | null>(
+const draggedItem = ref<{ item: TableColumn; source: string; index?: number } | null>(
   null
 )
 
@@ -427,7 +427,7 @@ const filteredParameters = computed(() => {
 })
 
 const groupedParameters = computed(() => {
-  const groups: Record<string, ColumnDef[]> = {}
+  const groups: Record<string, TableColumn[]> = {}
 
   filteredParameters.value.forEach((param) => {
     const category = param.category || 'Other'
@@ -468,7 +468,7 @@ const clearFilters = () => {
   isGrouped.value = true
 }
 
-const isParameterActive = (param: ColumnDef) => {
+const isParameterActive = (param: TableColumn) => {
   return currentTempColumns.value.some((col) => col.field === param.field)
 }
 
@@ -520,7 +520,7 @@ const cancelChanges = () => {
 // Drag and drop handlers
 const dragStart = (
   event: DragEvent,
-  item: ColumnDef,
+  item: TableColumn,
   source: string,
   index?: number
 ) => {
@@ -576,7 +576,7 @@ const handleDropToActive = (_event: DragEvent) => {
   resetDragState()
 }
 
-const addColumn = (param: ColumnDef) => {
+const addColumn = (param: TableColumn) => {
   const columns = activeTab.value === 'parent' ? tempParentColumns : tempChildColumns
 
   if (!columns.value.find((col) => col.field === param.field)) {
@@ -591,7 +591,7 @@ const addColumn = (param: ColumnDef) => {
   }
 }
 
-const removeColumn = (column: ColumnDef) => {
+const removeColumn = (column: TableColumn) => {
   if (column.removable) {
     const columns = activeTab.value === 'parent' ? tempParentColumns : tempChildColumns
     const index = columns.value.findIndex((col) => col.field === column.field)
@@ -607,14 +607,14 @@ const removeColumn = (column: ColumnDef) => {
 
 // Initialize columns when component mounts
 if (props.columns) {
-  localParentColumns.value = JSON.parse(JSON.stringify(props.columns)) as ColumnDef[]
-  tempParentColumns.value = JSON.parse(JSON.stringify(props.columns)) as ColumnDef[]
+  localParentColumns.value = JSON.parse(JSON.stringify(props.columns)) as TableColumn[]
+  tempParentColumns.value = JSON.parse(JSON.stringify(props.columns)) as TableColumn[]
 }
 
 if (props.detailColumns) {
   localChildColumns.value = JSON.parse(
     JSON.stringify(props.detailColumns)
-  ) as ColumnDef[]
+  ) as TableColumn[]
 }
 
 // Column resize and reorder handlers
@@ -636,7 +636,7 @@ const onColumnResize = (event: ColumnResizeEvent) => {
   }
 }
 
-const handleVisibilityChange = (column: ColumnDef) => {
+const handleVisibilityChange = (column: TableColumn) => {
   const columns = activeTab.value === 'parent' ? tempParentColumns : tempChildColumns
   const targetColumn = columns.value.find((col) => col.field === column.field)
   if (targetColumn) {

@@ -44,9 +44,9 @@
             <BaseDataTable
               :table-id="selectedTableId"
               :table-name="tableName"
-              :data="tableData"
-              :columns="parameters.parentParameters.columns.value"
-              :detail-columns="parameters.childParameters.columns.value"
+              :data="tableData as ViewerTableRow[]"
+              :columns="tableStore.currentTable.value?.parentColumns || []"
+              :detail-columns="tableStore.currentTable.value?.childColumns || []"
               :loading="isLoading"
               :error="error"
               @row-expand="events.handleRowExpand"
@@ -73,8 +73,8 @@
             :table-data="tableData"
             :parent-elements="parentElements"
             :child-elements="childElements"
-            :parent-columns="parameters.parentParameters.columns.value"
-            :child-columns="parameters.childParameters.columns.value"
+            :parent-columns="tableStore.currentTable.value?.parentColumns || []"
+            :child-columns="tableStore.currentTable.value?.childColumns || []"
             :is-test-mode="isTestMode"
             @update:is-test-mode="(value: boolean) => events.handleTestModeUpdate({ value })"
           />
@@ -88,12 +88,12 @@
 import { computed, watch, onMounted, unref } from 'vue'
 import type { PropType } from 'vue'
 import type {
-  NamedTableConfig,
-  TableEmits,
-  ScheduleEmits,
   ElementData,
-  ColumnDef
-} from '~/composables/core/types'
+  ViewerTableRow
+} from '~/composables/core/types/elements/elements-base'
+import type { TableSettings } from '~/composables/core/tables/store/types'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
+import type { ScheduleEmits } from '~/composables/core/types/tables/table-events'
 import { useParameters } from '~/composables/core/parameters/useParameters'
 import type {
   SelectedParameter,
@@ -108,6 +108,7 @@ import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
+import { useSelectedElementsData } from '~/composables/core/tables/state/useSelectedElementsData'
 import { useScheduleEvents } from '~/composables/core/tables/events/useScheduleEvents'
 import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
 import { useStore } from '~/composables/core/store'
@@ -127,7 +128,7 @@ const props = defineProps({
     required: true
   },
   currentTable: {
-    type: Object as PropType<NamedTableConfig | null>,
+    type: Object as PropType<TableSettings | null>,
     default: null
   },
   tableName: {
@@ -148,20 +149,34 @@ const props = defineProps({
   }
 })
 
-// Define emit types using the built-in event payloads
-type ExtendedEmits = TableEmits & ScheduleEmits
-
-const emit = defineEmits<ExtendedEmits>()
+// Define emit types with generic row type
+const emit = defineEmits<ScheduleEmits<ElementData>>()
 
 // Initialize stores and composables
 const tableStore = useTableStore()
 const tableParameters = useTableParameters()
 
-// Initialize core functionality
-const { scheduleData, tableData, initializeData, isLoading, state } = useElementsData({
+// Initialize parameter extraction
+const { allElements, isLoading: isLoadingElements } = useElementsData({
   selectedParentCategories: computed(() => store.selectedParentCategories.value),
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
 })
+
+// Initialize selected elements processing
+const {
+  scheduleData,
+  tableData,
+  processElements,
+  isLoading: isLoadingSelected,
+  state
+} = useSelectedElementsData({
+  elements: allElements,
+  selectedParentCategories: computed(() => store.selectedParentCategories.value),
+  selectedChildCategories: computed(() => store.selectedChildCategories.value)
+})
+
+// Combined loading state
+const isLoading = computed(() => isLoadingElements.value || isLoadingSelected.value)
 
 // Initialize parameter system for UI interactions
 const parameters = useParameters({
@@ -199,8 +214,8 @@ const events = useScheduleEvents({
 
 // Computed states
 const hasParameters = computed(() => {
-  const parentParams = parameters.parentParameters.columns.value?.length ?? 0
-  const childParams = parameters.childParameters.columns.value?.length ?? 0
+  const parentParams = tableStore.currentTable.value?.parentColumns?.length ?? 0
+  const childParams = tableStore.currentTable.value?.childColumns?.length ?? 0
   return parentParams > 0 || childParams > 0
 })
 
@@ -214,42 +229,30 @@ const isComponentLoading = computed(() => {
   )
 })
 
-// Error handling
-interface ErrorWithDetails extends Error {
-  details?: string
-}
-
-function toErrorWithDetails(error: Error | null): ErrorWithDetails | null {
-  if (!error) return null
-  return {
-    name: error.name,
-    message: error.message,
-    stack: error.stack,
-    details: error instanceof Error ? error.stack : undefined
-  }
-}
-
-// Base error state
+// Error state
 const error = computed(() => {
-  return (
-    tableError.value ||
-    state.value?.error ||
-    bimElements.hasError.value ||
-    parameters.hasError.value ||
-    null
-  )
+  if (tableError.value) return tableError.value
+  if (state.value?.error) return state.value.error
+  if (bimElements.hasError.value) {
+    debug.error(DebugCategories.ERROR, 'BIM elements error')
+    return new Error('Failed to load BIM elements')
+  }
+  if (parameters.hasError.value) {
+    debug.error(DebugCategories.ERROR, 'Parameters error')
+    return new Error('Failed to process parameters')
+  }
+  return null
 })
 
-// Converted error state for LoadingState component
+// Error state for LoadingState component
 const errorState = computed(() => {
-  if (error.value === true) {
-    return {
-      name: 'Error',
-      message: 'An unknown error occurred',
-      details: undefined
-    } as ErrorWithDetails
+  const currentError = error.value
+  if (!currentError) return null
+  return {
+    message: currentError.message,
+    name: currentError.name,
+    stack: currentError.stack
   }
-  return toErrorWithDetails(error.value instanceof Error ? error.value : null)
 })
 
 // Event handlers
@@ -258,76 +261,114 @@ function handleParameterVisibilityChange(param: SelectedParameter) {
   emit('parameter-visibility-change', { parameter: param })
 }
 
-function handleColumnVisibilityChange(event: { column: ColumnDef; visible: boolean }) {
-  parameters.updateParameterVisibility(
-    event.column.field,
-    event.visible,
-    event.column.kind === 'bim'
-  )
-  emit('column-visibility-change', event)
+function handleColumnVisibilityChange(event: {
+  column: TableColumn
+  visible: boolean
+}) {
+  if (event.column.parameter) {
+    parameters.updateParameterVisibility(
+      event.column.parameter.id,
+      event.visible,
+      event.column.parameter.kind === 'bim'
+    )
+    emit('column-visibility-change', event)
+  } else {
+    debug.warn(
+      DebugCategories.PARAMETERS,
+      'Failed to update column visibility - missing field',
+      { column: event.column }
+    )
+  }
 }
 
 function handleParameterSelect(param: AvailableParameter, isParent: boolean) {
-  // Get parameter store instance
-  const parameterStore = useParameterStore()
+  try {
+    // Get parameter store instance
+    const parameterStore = useParameterStore()
 
-  // Create selected parameter using utility function
-  const selectedParam = createSelectedParameter(
-    param,
-    isParent
-      ? parameterStore.parentSelectedParameters.value.length
-      : parameterStore.childSelectedParameters.value.length
-  )
+    // Create selected parameter using utility function
+    const selectedParam = createSelectedParameter(
+      param,
+      isParent
+        ? parameterStore.parentSelectedParameters.value.length
+        : parameterStore.childSelectedParameters.value.length
+    )
 
-  // Get current selected parameters
-  const currentParams = isParent
-    ? parameterStore.parentSelectedParameters.value
-    : parameterStore.childSelectedParameters.value
+    // Get current selected parameters
+    const currentParams = isParent
+      ? parameterStore.parentSelectedParameters.value
+      : parameterStore.childSelectedParameters.value
 
-  // Update parameter store with new selection
-  parameterStore.updateSelectedParameters([...currentParams, selectedParam], isParent)
-  emit('parameter-select', { parameter: selectedParam })
+    // Update parameter store with new selection
+    parameterStore.updateSelectedParameters([...currentParams, selectedParam], isParent)
+    emit('parameter-select', { parameter: selectedParam })
+  } catch (err) {
+    handleError(err)
+  }
 }
 
 function handleParameterDeselect(param: AvailableParameter, isParent: boolean) {
-  // Get parameter store instance
-  const parameterStore = useParameterStore()
+  try {
+    // Get parameter store instance
+    const parameterStore = useParameterStore()
 
-  // Get current selected parameters
-  const currentParams = isParent
-    ? parameterStore.parentSelectedParameters.value
-    : parameterStore.childSelectedParameters.value
+    // Get current selected parameters
+    const currentParams = isParent
+      ? parameterStore.parentSelectedParameters.value
+      : parameterStore.childSelectedParameters.value
 
-  // Remove parameter from selected parameters
-  const selectedParams = currentParams.filter((p) => p.id !== param.id)
-  parameterStore.updateSelectedParameters(selectedParams, isParent)
-  emit('parameter-deselect', { parameter: param })
+    // Remove parameter from selected parameters
+    const selectedParams = currentParams.filter((p) => p.id !== param.id)
+    parameterStore.updateSelectedParameters(selectedParams, isParent)
+    emit('parameter-deselect', { parameter: param })
+  } catch (err) {
+    handleError(err)
+  }
 }
 
 function handleColumnReorder(event: { dragIndex: number; dropIndex: number }) {
-  // Get the columns array based on context (parent/child)
-  const isParent = true // Parent columns are the default
-  const columns = isParent
-    ? parameters.parentParameters.columns.value
-    : parameters.childParameters.columns.value
+  try {
+    const currentTable = tableStore.currentTable.value
+    if (!currentTable) {
+      debug.warn(DebugCategories.PARAMETERS, 'No current table found')
+      return
+    }
 
-  // Get parameter ID from dragIndex
-  const draggedColumn = columns[event.dragIndex]
-  if (!draggedColumn) {
-    debug.warn(
-      DebugCategories.PARAMETERS,
-      'Failed to reorder columns - invalid drag index',
-      {
-        dragIndex: event.dragIndex,
-        columnsLength: columns.length
-      }
-    )
-    return
+    // Get parent columns (default)
+    const parentColumns = [...(currentTable.parentColumns || [])]
+    const childColumns = [...(currentTable.childColumns || [])]
+
+    // Move column in parent array
+    const [movedParentColumn] = parentColumns.splice(event.dragIndex, 1)
+    parentColumns.splice(event.dropIndex, 0, movedParentColumn)
+
+    // Move column in child array
+    const [movedChildColumn] = childColumns.splice(event.dragIndex, 1)
+    childColumns.splice(event.dropIndex, 0, movedChildColumn)
+
+    // Update columns in table store
+    tableStore.updateColumns(parentColumns, childColumns)
+
+    // Also update parameter order to keep in sync
+    if (movedParentColumn?.parameter) {
+      parameters.updateParameterOrder(
+        movedParentColumn.parameter.id,
+        event.dropIndex,
+        true
+      )
+    }
+    if (movedChildColumn?.parameter) {
+      parameters.updateParameterOrder(
+        movedChildColumn.parameter.id,
+        event.dropIndex,
+        false
+      )
+    }
+
+    emit('column-reorder', event)
+  } catch (err) {
+    handleError(err)
   }
-
-  // Update parameter order using ID and new index
-  parameters.updateParameterOrder(draggedColumn.id, event.dropIndex, isParent)
-  emit('column-reorder', event)
 }
 
 function handleColumnResize(event: { element: HTMLElement; delta: number }) {
@@ -354,8 +395,24 @@ function handleParameterEdit(param: SelectedParameter) {
   emit('parameter-click', { parameter: baseParam })
 }
 
-function handleError(err: Error) {
-  emit('error', { error: err })
+interface AppError extends Error {
+  code?: string
+  details?: unknown
+}
+
+function isAppError(error: unknown): error is AppError {
+  return error instanceof Error
+}
+
+function createAppError(err: unknown): AppError {
+  if (isAppError(err)) return err
+  return new Error(typeof err === 'string' ? err : 'Unknown error')
+}
+
+function handleError(err: unknown): void {
+  const error = createAppError(err)
+  debug.error(DebugCategories.ERROR, 'Error in schedule view:', error)
+  emit('error', { error })
 }
 
 // Safe computed properties from state
@@ -378,10 +435,15 @@ onMounted(async () => {
 
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedule view')
 
-    // First wait for store to be initialized by parent
-    if (!store.initialized.value) {
-      debug.log(DebugCategories.INITIALIZATION, 'Waiting for store initialization')
-      await new Promise<void>((resolve) => {
+    // First wait for store and world tree to be initialized
+    debug.log(DebugCategories.INITIALIZATION, 'Waiting for initialization')
+    await Promise.all([
+      // Wait for store initialization
+      new Promise<void>((resolve) => {
+        if (store.initialized.value) {
+          resolve()
+          return
+        }
         const unwatch = watch(
           () => store.initialized.value,
           (initialized) => {
@@ -392,25 +454,17 @@ onMounted(async () => {
           },
           { immediate: true }
         )
-      })
-    }
-
-    // Initialize parameter store
-    debug.startState(DebugCategories.PARAMETERS, 'Initializing parameter store')
-    await parameterStore.init()
-
-    // Initialize table first
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
-    await initializeTable()
-
-    // Wait for table to be fully initialized
-    if (!props.currentTable) {
-      debug.log(DebugCategories.INITIALIZATION, 'Waiting for table data')
-      await new Promise<void>((resolve) => {
+      }),
+      // Wait for BIM elements to be ready
+      new Promise<void>((resolve) => {
+        if (bimElements.allElements.value?.length) {
+          resolve()
+          return
+        }
         const unwatch = watch(
-          () => props.currentTable,
-          (table) => {
-            if (table) {
+          () => bimElements.allElements.value,
+          (elements) => {
+            if (elements?.length) {
               unwatch()
               resolve()
             }
@@ -418,20 +472,52 @@ onMounted(async () => {
           { immediate: true }
         )
       })
+    ])
+
+    debug.log(DebugCategories.INITIALIZATION, 'Core systems initialized')
+
+    try {
+      // Initialize parameter store
+      debug.startState(DebugCategories.PARAMETERS, 'Initializing parameter store')
+      await parameterStore.init()
+
+      // Initialize table
+      debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
+      await initializeTable()
+
+      // Wait for table to be fully initialized
+      if (!props.currentTable) {
+        debug.log(DebugCategories.INITIALIZATION, 'Waiting for table data')
+        await new Promise<void>((resolve) => {
+          const unwatch = watch(
+            () => props.currentTable,
+            (table) => {
+              if (table) {
+                unwatch()
+                resolve()
+              }
+            },
+            { immediate: true }
+          )
+        })
+      }
+
+      debug.log(DebugCategories.INITIALIZATION, 'Table initialized', {
+        tableId: props.selectedTableId,
+        settings: props.currentTable
+      })
+
+      // Initialize table parameters
+      debug.startState(DebugCategories.PARAMETERS, 'Initializing table parameters')
+      await tableParameters.initializeTableParameters()
+
+      // Process data with parameters
+      debug.startState(DebugCategories.PARAMETERS, 'Processing data')
+      await processElements()
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to initialize component:', err)
+      throw err
     }
-
-    debug.log(DebugCategories.INITIALIZATION, 'Table initialized', {
-      tableId: props.selectedTableId,
-      settings: props.currentTable
-    })
-
-    // Initialize table parameters before processing data
-    debug.startState(DebugCategories.PARAMETERS, 'Initializing table parameters')
-    await tableParameters.initializeTableParameters()
-
-    // Now process data with parameters already set
-    debug.startState(DebugCategories.PARAMETERS, 'Processing parameters')
-    await initializeData()
 
     // Log parameter state after initialization
     debug.log(DebugCategories.PARAMETERS, 'Parameter state after initialization', {
@@ -497,9 +583,7 @@ onMounted(async () => {
 
     debug.completeState(DebugCategories.INITIALIZATION, 'Schedule view initialized')
   } catch (err) {
-    const error = err instanceof Error ? err : new Error(String(err))
-    debug.error(DebugCategories.ERROR, 'Failed to initialize schedule view:', error)
-    events.handleError({ error })
+    handleError(err)
   }
 })
 
@@ -516,9 +600,7 @@ watch(
         await tableParameters.initializeTableParameters()
         debug.completeState(DebugCategories.PARAMETERS, 'Parameters reinitialized')
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err))
-        debug.error(DebugCategories.ERROR, 'Failed to reinitialize parameters:', error)
-        events.handleError({ error })
+        handleError(err)
       }
     }
   }

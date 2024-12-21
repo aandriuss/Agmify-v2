@@ -1,27 +1,27 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef } from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types'
 
 export interface ColumnStateChange {
   type: 'ADD' | 'REMOVE' | 'REORDER' | 'UPDATE' | 'VISIBILITY'
   timestamp: number
   view: 'parent' | 'child'
-  columnDef: ColumnDef
-  previousState?: ColumnDef
+  columnDef: TableColumn
+  previousState?: TableColumn
   sourceIndex?: number
   targetIndex?: number
 }
 
 export interface ColumnState {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
   activeView: 'parent' | 'child'
   pendingChanges: ColumnStateChange[]
   lastSyncTimestamp: number
 }
 
 export interface UseColumnStateManagerOptions {
-  initialParentColumns: ColumnDef[]
-  initialChildColumns: ColumnDef[]
+  initialParentColumns: TableColumn[]
+  initialChildColumns: TableColumn[]
   _tableId: string
   onStateChange?: (changes: ColumnStateChange[]) => void
 }
@@ -65,7 +65,7 @@ export function useColumnStateManager({
   })
 
   // Validation helper
-  const validateColumns = (columns: unknown[]): columns is ColumnDef[] => {
+  const validateColumns = (columns: unknown[]): columns is TableColumn[] => {
     return (
       Array.isArray(columns) &&
       columns.every(
@@ -89,7 +89,7 @@ export function useColumnStateManager({
 
   // Update columns with change tracking
   const updateColumns = (
-    newColumns: ColumnDef[],
+    newColumns: TableColumn[],
     view: 'parent' | 'child'
   ): boolean => {
     if (!validateColumns(newColumns)) {
@@ -124,7 +124,7 @@ export function useColumnStateManager({
   }
 
   const trackChanges = (
-    newColumns: ColumnDef[],
+    newColumns: TableColumn[],
     view: 'parent' | 'child'
   ): ColumnStateChange[] => {
     const currentColumns =
@@ -215,7 +215,7 @@ export function useColumnStateManager({
 
   // Handle visibility changes
   const updateVisibility = (
-    column: ColumnDef,
+    column: TableColumn,
     visible: boolean,
     view: 'parent' | 'child'
   ): boolean => {

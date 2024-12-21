@@ -1382,7 +1382,7 @@ export type Mutation = {
   /** Create a new BIM parameter */
   createBimParameter: ParameterMutationResponse;
   /** Create a new named table configuration */
-  createNamedTable: NamedTableConfig;
+  createNamedTable: TableSettings;
   /** Create a new user parameter */
   createUserParameter: ParameterMutationResponse;
   /** Delete a named table configuration */
@@ -1482,7 +1482,7 @@ export type Mutation = {
   /** Update a BIM parameter */
   updateBimParameter: ParameterMutationResponse;
   /** Update an existing named table configuration */
-  updateNamedTable: NamedTableConfig;
+  updateNamedTable: TableSettings;
   /** Update a user parameter */
   updateUserParameter: ParameterMutationResponse;
   /**
@@ -1879,15 +1879,6 @@ export type MutationWebhookDeleteArgs = {
 
 export type MutationWebhookUpdateArgs = {
   webhook: WebhookUpdateInput;
-};
-
-/** Named table configuration with additional metadata */
-export type NamedTableConfig = {
-  __typename?: 'NamedTableConfig';
-  categoryFilters?: Maybe<CategoryFilters>;
-  config: TableConfig;
-  id: Scalars['ID']['output'];
-  name: Scalars['String']['output'];
 };
 
 export type Object = {
@@ -2680,10 +2671,6 @@ export type Query = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   discoverableStreams?: Maybe<StreamCollection>;
-  /** Get a specific named table configuration */
-  namedTableConfig?: Maybe<NamedTableConfig>;
-  /** Get all named table configurations for the current user */
-  namedTableConfigs: Array<NamedTableConfig>;
   /** Get the (limited) profile information of another server user */
   otherUser?: Maybe<LimitedUser>;
   /** Get a specific parameter by ID */
@@ -2735,6 +2722,10 @@ export type Query = {
   streams?: Maybe<StreamCollection>;
   /** Get all parameters for a specific table */
   tableParameters: Array<Parameter>;
+  /** Get a specific named table configuration */
+  tableSettings?: Maybe<TableSettings>;
+  /** Get all named table configurations for the current user */
+  tableSettingsP: Array<TableSettings>;
   /**
    * Gets the profile of a user. If no id argument is provided, will return the current authenticated user's profile (as extracted from the authorization header).
    * @deprecated To be removed in the near future! Use 'activeUser' to get info about the active user or 'otherUser' to get info about another user.
@@ -2825,11 +2816,6 @@ export type QueryDiscoverableStreamsArgs = {
 };
 
 
-export type QueryNamedTableConfigArgs = {
-  id: Scalars['ID']['input'];
-};
-
-
 export type QueryOtherUserArgs = {
   id: Scalars['String']['input'];
 };
@@ -2881,6 +2867,11 @@ export type QueryStreamsArgs = {
 
 export type QueryTableParametersArgs = {
   tableId: Scalars['ID']['input'];
+};
+
+
+export type QueryTableSettingsArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -3647,6 +3638,15 @@ export type TableSelectedParameters = {
 export type TableSelectedParametersInput = {
   child: Array<Scalars['ID']['input']>;
   parent: Array<Scalars['ID']['input']>;
+};
+
+/** Named table configuration with additional metadata */
+export type TableSettings = {
+  __typename?: 'TableSettings';
+  categoryFilters?: Maybe<CategoryFilters>;
+  config: TableConfig;
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
 };
 
 export type TestAutomationRun = {
@@ -4804,7 +4804,6 @@ export type ResolversTypes = {
   ModelsTreeItemCollection: ResolverTypeWrapper<Omit<ModelsTreeItemCollection, 'items'> & { items: Array<ResolversTypes['ModelsTreeItem']> }>;
   MoveVersionsInput: MoveVersionsInput;
   Mutation: ResolverTypeWrapper<{}>;
-  NamedTableConfig: ResolverTypeWrapper<Omit<NamedTableConfig, 'config'> & { config: ResolversTypes['TableConfig'] }>;
   Object: ResolverTypeWrapper<ObjectGraphQLReturn>;
   ObjectCollection: ResolverTypeWrapper<Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversTypes['Object']> }>;
   ObjectCreateInput: ObjectCreateInput;
@@ -4895,10 +4894,11 @@ export type ResolversTypes = {
   Subscription: ResolverTypeWrapper<{}>;
   TableColumn: ResolverTypeWrapper<TableColumn>;
   TableColumnInput: TableColumnInput;
-  TableConfig: ResolverTypeWrapper<Omit<TableConfig, 'childColumns' | 'parentColumns' | 'selectedParameters'> & { childColumns: Array<ResolversTypes['TableColumn']>, parentColumns: Array<ResolversTypes['TableColumn']>, selectedParameters: ResolversTypes['TableSelectedParameters'] }>;
+  TableConfig: ResolverTypeWrapper<Omit<TableConfig, 'selectedParameters'> & { selectedParameters: ResolversTypes['TableSelectedParameters'] }>;
   TableConfigInput: TableConfigInput;
   TableSelectedParameters: ResolverTypeWrapper<Omit<TableSelectedParameters, 'child' | 'parent'> & { child: Array<ResolversTypes['Parameter']>, parent: Array<ResolversTypes['Parameter']> }>;
   TableSelectedParametersInput: TableSelectedParametersInput;
+  TableSettings: ResolverTypeWrapper<Omit<TableSettings, 'config'> & { config: ResolversTypes['TableConfig'] }>;
   TestAutomationRun: ResolverTypeWrapper<TestAutomationRun>;
   TestAutomationRunTrigger: ResolverTypeWrapper<TestAutomationRunTrigger>;
   TestAutomationRunTriggerPayload: ResolverTypeWrapper<TestAutomationRunTriggerPayload>;
@@ -5083,7 +5083,6 @@ export type ResolversParentTypes = {
   ModelsTreeItemCollection: Omit<ModelsTreeItemCollection, 'items'> & { items: Array<ResolversParentTypes['ModelsTreeItem']> };
   MoveVersionsInput: MoveVersionsInput;
   Mutation: {};
-  NamedTableConfig: Omit<NamedTableConfig, 'config'> & { config: ResolversParentTypes['TableConfig'] };
   Object: ObjectGraphQLReturn;
   ObjectCollection: Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversParentTypes['Object']> };
   ObjectCreateInput: ObjectCreateInput;
@@ -5160,10 +5159,11 @@ export type ResolversParentTypes = {
   Subscription: {};
   TableColumn: TableColumn;
   TableColumnInput: TableColumnInput;
-  TableConfig: Omit<TableConfig, 'childColumns' | 'parentColumns' | 'selectedParameters'> & { childColumns: Array<ResolversParentTypes['TableColumn']>, parentColumns: Array<ResolversParentTypes['TableColumn']>, selectedParameters: ResolversParentTypes['TableSelectedParameters'] };
+  TableConfig: Omit<TableConfig, 'selectedParameters'> & { selectedParameters: ResolversParentTypes['TableSelectedParameters'] };
   TableConfigInput: TableConfigInput;
   TableSelectedParameters: Omit<TableSelectedParameters, 'child' | 'parent'> & { child: Array<ResolversParentTypes['Parameter']>, parent: Array<ResolversParentTypes['Parameter']> };
   TableSelectedParametersInput: TableSelectedParametersInput;
+  TableSettings: Omit<TableSettings, 'config'> & { config: ResolversParentTypes['TableConfig'] };
   TestAutomationRun: TestAutomationRun;
   TestAutomationRunTrigger: TestAutomationRunTrigger;
   TestAutomationRunTriggerPayload: TestAutomationRunTriggerPayload;
@@ -5870,7 +5870,7 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   commitsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsDeleteArgs, 'input'>>;
   commitsMove?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsMoveArgs, 'input'>>;
   createBimParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationCreateBimParameterArgs, 'input'>>;
-  createNamedTable?: Resolver<ResolversTypes['NamedTableConfig'], ParentType, ContextType, RequireFields<MutationCreateNamedTableArgs, 'input'>>;
+  createNamedTable?: Resolver<ResolversTypes['TableSettings'], ParentType, ContextType, RequireFields<MutationCreateNamedTableArgs, 'input'>>;
   createUserParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationCreateUserParameterArgs, 'input'>>;
   deleteNamedTable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteNamedTableArgs, 'id'>>;
   deleteParameter?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteParameterArgs, 'id'>>;
@@ -5900,7 +5900,7 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   streamUpdatePermission?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationStreamUpdatePermissionArgs, 'permissionParams'>>;
   streamsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, Partial<MutationStreamsDeleteArgs>>;
   updateBimParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationUpdateBimParameterArgs, 'id' | 'input'>>;
-  updateNamedTable?: Resolver<ResolversTypes['NamedTableConfig'], ParentType, ContextType, RequireFields<MutationUpdateNamedTableArgs, 'input'>>;
+  updateNamedTable?: Resolver<ResolversTypes['TableSettings'], ParentType, ContextType, RequireFields<MutationUpdateNamedTableArgs, 'input'>>;
   updateUserParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationUpdateUserParameterArgs, 'id' | 'input'>>;
   userCommentThreadActivityBroadcast?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserCommentThreadActivityBroadcastArgs, 'commentId' | 'streamId'>>;
   userDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserDeleteArgs, 'userConfirmation'>>;
@@ -5917,14 +5917,6 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   webhookDelete?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<MutationWebhookDeleteArgs, 'webhook'>>;
   webhookUpdate?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<MutationWebhookUpdateArgs, 'webhook'>>;
   workspaceMutations?: Resolver<ResolversTypes['WorkspaceMutations'], ParentType, ContextType>;
-};
-
-export type NamedTableConfigResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['NamedTableConfig'] = ResolversParentTypes['NamedTableConfig']> = {
-  categoryFilters?: Resolver<Maybe<ResolversTypes['CategoryFilters']>, ParentType, ContextType>;
-  config?: Resolver<ResolversTypes['TableConfig'], ParentType, ContextType>;
-  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
-  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export type ObjectResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['Object'] = ResolversParentTypes['Object']> = {
@@ -6199,8 +6191,6 @@ export type QueryResolvers<ContextType = GraphQLContext, ParentType extends Reso
   comment?: Resolver<Maybe<ResolversTypes['Comment']>, ParentType, ContextType, RequireFields<QueryCommentArgs, 'id' | 'streamId'>>;
   comments?: Resolver<Maybe<ResolversTypes['CommentCollection']>, ParentType, ContextType, RequireFields<QueryCommentsArgs, 'archived' | 'limit' | 'streamId'>>;
   discoverableStreams?: Resolver<Maybe<ResolversTypes['StreamCollection']>, ParentType, ContextType, RequireFields<QueryDiscoverableStreamsArgs, 'limit'>>;
-  namedTableConfig?: Resolver<Maybe<ResolversTypes['NamedTableConfig']>, ParentType, ContextType, RequireFields<QueryNamedTableConfigArgs, 'id'>>;
-  namedTableConfigs?: Resolver<Array<ResolversTypes['NamedTableConfig']>, ParentType, ContextType>;
   otherUser?: Resolver<Maybe<ResolversTypes['LimitedUser']>, ParentType, ContextType, RequireFields<QueryOtherUserArgs, 'id'>>;
   parameter?: Resolver<Maybe<ResolversTypes['Parameter']>, ParentType, ContextType, RequireFields<QueryParameterArgs, 'id'>>;
   parameters?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType>;
@@ -6215,6 +6205,8 @@ export type QueryResolvers<ContextType = GraphQLContext, ParentType extends Reso
   streamInvites?: Resolver<Array<ResolversTypes['PendingStreamCollaborator']>, ParentType, ContextType>;
   streams?: Resolver<Maybe<ResolversTypes['StreamCollection']>, ParentType, ContextType, RequireFields<QueryStreamsArgs, 'limit'>>;
   tableParameters?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType, RequireFields<QueryTableParametersArgs, 'tableId'>>;
+  tableSettings?: Resolver<Maybe<ResolversTypes['TableSettings']>, ParentType, ContextType, RequireFields<QueryTableSettingsArgs, 'id'>>;
+  tableSettingsP?: Resolver<Array<ResolversTypes['TableSettings']>, ParentType, ContextType>;
   user?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, Partial<QueryUserArgs>>;
   userPwdStrength?: Resolver<ResolversTypes['PasswordStrengthCheckResults'], ParentType, ContextType, RequireFields<QueryUserPwdStrengthArgs, 'pwd'>>;
   userSearch?: Resolver<ResolversTypes['UserSearchResultCollection'], ParentType, ContextType, RequireFields<QueryUserSearchArgs, 'archived' | 'emailOnly' | 'limit' | 'query'>>;
@@ -6467,6 +6459,14 @@ export type TableConfigResolvers<ContextType = GraphQLContext, ParentType extend
 export type TableSelectedParametersResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableSelectedParameters'] = ResolversParentTypes['TableSelectedParameters']> = {
   child?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType>;
   parent?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type TableSettingsResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableSettings'] = ResolversParentTypes['TableSettings']> = {
+  categoryFilters?: Resolver<Maybe<ResolversTypes['CategoryFilters']>, ParentType, ContextType>;
+  config?: Resolver<ResolversTypes['TableConfig'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -6882,7 +6882,6 @@ export type Resolvers<ContextType = GraphQLContext> = {
   ModelsTreeItem?: ModelsTreeItemResolvers<ContextType>;
   ModelsTreeItemCollection?: ModelsTreeItemCollectionResolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
-  NamedTableConfig?: NamedTableConfigResolvers<ContextType>;
   Object?: ObjectResolvers<ContextType>;
   ObjectCollection?: ObjectCollectionResolvers<ContextType>;
   Parameter?: ParameterResolvers<ContextType>;
@@ -6935,6 +6934,7 @@ export type Resolvers<ContextType = GraphQLContext> = {
   TableColumn?: TableColumnResolvers<ContextType>;
   TableConfig?: TableConfigResolvers<ContextType>;
   TableSelectedParameters?: TableSelectedParametersResolvers<ContextType>;
+  TableSettings?: TableSettingsResolvers<ContextType>;
   TestAutomationRun?: TestAutomationRunResolvers<ContextType>;
   TestAutomationRunTrigger?: TestAutomationRunTriggerResolvers<ContextType>;
   TestAutomationRunTriggerPayload?: TestAutomationRunTriggerPayloadResolvers<ContextType>;

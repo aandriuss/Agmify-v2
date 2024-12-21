@@ -1,5 +1,5 @@
 import type {
-  NamedTableConfig,
+  TableSettings,
   TableConfig,
   ElementData,
   TableRow,
@@ -75,9 +75,9 @@ export function toElementDataArray(rows: TableRow[]): ElementData[] {
 }
 
 /**
- * Convert NamedTableConfig to TableConfig
+ * Convert TableSettings to TableConfig
  */
-export function toTableConfig(config: NamedTableConfig | null): TableConfig | null {
+export function toTableConfig(config: TableSettings | null): TableConfig | null {
   if (!config) return null
 
   return {
@@ -88,7 +88,7 @@ export function toTableConfig(config: NamedTableConfig | null): TableConfig | nu
 }
 
 /**
- * Convert TableConfig to NamedTableConfig
+ * Convert TableConfig to TableSettings
  */
 export function toNamedTableConfig(
   config: TableConfig,
@@ -97,7 +97,7 @@ export function toNamedTableConfig(
     selectedParentCategories: string[]
     selectedChildCategories: string[]
   }
-): NamedTableConfig {
+): TableSettings {
   return {
     id,
     name: config.name,

@@ -398,7 +398,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import type { TableRow, ElementData, ColumnDef } from '~/composables/core/types'
+import type { TableRow, ElementData, TableColumn } from '~/composables/core/types'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
@@ -423,10 +423,10 @@ interface Props {
   tableData?: TableRow[]
   parentElements?: ElementData[]
   childElements?: ElementData[]
-  parentParameterColumns?: ColumnDef[]
-  childParameterColumns?: ColumnDef[]
-  availableParentHeaders?: ColumnDef[]
-  availableChildHeaders?: ColumnDef[]
+  parentParameterColumns?: TableColumn[]
+  childParameterColumns?: TableColumn[]
+  availableParentHeaders?: TableColumn[]
+  availableChildHeaders?: TableColumn[]
 }
 
 const emit = defineEmits<{

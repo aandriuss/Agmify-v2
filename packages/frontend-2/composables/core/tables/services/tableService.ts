@@ -6,152 +6,58 @@ import type {
   SaveTableResponse,
   DeleteTableResponse,
   SaveTableInput,
-  DeleteTableInput,
-  NamedTableConfig,
-  TableColumn
+  DeleteTableInput
 } from './types'
-import type { ColumnDef } from '~/composables/core/types/tables'
-import type { PrimitiveValue } from '~/composables/core/types/parameters/value-types'
-import {
-  createBimColumnDefWithDefaults,
-  createUserColumnDefWithDefaults
-} from '~/composables/core/types'
-import { toBimValueType, toUserValueType } from '~/composables/core/utils/conversion'
+import { createTableColumns } from '~/composables/core/types/tables/table-column'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 /**
- * Convert TableColumn to ColumnDef
+ * Convert API response to TableSettings
  */
-function toColumnDef(column: TableColumn): ColumnDef {
-  const base = {
-    id: column.field,
-    name: column.header,
-    field: column.field,
-    header: column.header,
-    visible: column.visible,
-    removable: column.removable,
-    order: column.order || 0,
-    category: column.category,
-    description: column.description,
-    metadata: column.metadata,
-    value: column.value
-  }
+function toTableSettings(response: GetTableResponse['tableSettings']): TableSettings {
+  const parentColumns = createTableColumns(response.config.selectedParameters.parent)
+  const childColumns = createTableColumns(response.config.selectedParameters.child)
 
-  if (column.kind === 'bim') {
-    return createBimColumnDefWithDefaults({
-      ...base,
-      type: toBimValueType(column.type || 'string'),
-      sourceValue: (column.sourceValue || null) as PrimitiveValue,
-      fetchedGroup: column.fetchedGroup || 'Default',
-      currentGroup: column.currentGroup || column.fetchedGroup || 'Default',
-      isFixed: column.isFixed || false
-    })
-  }
-
-  return createUserColumnDefWithDefaults({
-    ...base,
-    type: toUserValueType(column.type || 'fixed'),
-    group: column.group || 'Custom',
-    isCustomParameter: column.isCustomParameter || false
-  })
-}
-
-/**
- * Convert ColumnDef to TableColumn
- */
-function toTableColumn(column: ColumnDef): TableColumn {
-  const base = {
-    id: column.id,
-    name: column.name,
-    field: column.field,
-    header: column.header,
-    width: column.width,
-    visible: column.visible,
-    removable: column.removable,
-    order: column.order || 0,
-    category: column.category,
-    description: column.description,
-    metadata: column.metadata,
-    value: column.value,
-    type: column.type
-  }
-
-  if ('sourceValue' in column) {
-    return {
-      ...base,
-      kind: 'bim',
-      sourceValue: column.sourceValue,
-      fetchedGroup: column.fetchedGroup,
-      currentGroup: column.currentGroup,
-      isFixed: column.isFixed
-    }
-  }
-
-  return {
-    ...base,
-    kind: 'user',
-    group: column.group,
-    isCustomParameter: column.isCustomParameter
-  }
-}
-
-/**
- * Convert NamedTableConfig to TableSettings
- */
-/**
- * Convert NamedTableConfig to TableSettings
- */
-function toTableSettings(config: NamedTableConfig): TableSettings {
-  return {
-    id: config.id,
-    name: config.name,
-    displayName: config.name,
-    childColumns: config.config.childColumns.map(toColumnDef),
-    parentColumns: config.config.parentColumns.map(toColumnDef),
-    categoryFilters: config.categoryFilters,
-    selectedParameters: config.config.selectedParameters,
+  const settings: TableSettings = {
+    id: response.id,
+    name: response.name,
+    displayName: response.name,
+    parentColumns,
+    childColumns,
+    categoryFilters: {
+      selectedParentCategories:
+        response.config.categoryFilters.selectedParentCategories,
+      selectedChildCategories: response.config.categoryFilters.selectedChildCategories
+    },
+    selectedParameters: {
+      parent: response.config.selectedParameters.parent,
+      child: response.config.selectedParameters.child
+    },
     lastUpdateTimestamp: Date.now()
   }
+  return settings
 }
 
 /**
- * Convert TableSettings to UpdateNamedTableInput
+ * Convert TableSettings to API input
  */
-function toNamedTableInput(settings: TableSettings) {
+function toTableInput(settings: TableSettings): SaveTableInput['input'] {
   return {
     id: settings.id,
     name: settings.name,
     config: {
-      parentColumns: settings.parentColumns.map(toTableColumn),
-      childColumns: settings.childColumns.map(toTableColumn),
-      selectedParameters: settings.selectedParameters
-    },
-    categoryFilters: settings.categoryFilters
+      selectedParameters: settings.selectedParameters,
+      categoryFilters: settings.categoryFilters
+    }
   }
 }
 
 const GET_TABLE = gql`
   query GetTable($tableId: String!) {
-    namedTableConfig(id: $tableId) {
+    tableSettings(id: $tableId) {
       id
       name
       config {
-        parentColumns {
-          field
-          header
-          width
-          visible
-          removable
-          order
-        }
-        childColumns {
-          field
-          header
-          width
-          visible
-          removable
-          order
-        }
         selectedParameters {
           parent {
             id
@@ -159,7 +65,6 @@ const GET_TABLE = gql`
             kind
             type
             value
-            group
             visible
             order
             category
@@ -172,7 +77,6 @@ const GET_TABLE = gql`
             kind
             type
             value
-            group
             visible
             order
             category
@@ -180,10 +84,10 @@ const GET_TABLE = gql`
             metadata
           }
         }
-      }
-      categoryFilters {
-        selectedParentCategories
-        selectedChildCategories
+        categoryFilters {
+          selectedParentCategories
+          selectedChildCategories
+        }
       }
     }
   }
@@ -195,22 +99,6 @@ const SAVE_TABLE = gql`
       id
       name
       config {
-        parentColumns {
-          field
-          header
-          width
-          visible
-          removable
-          order
-        }
-        childColumns {
-          field
-          header
-          width
-          visible
-          removable
-          order
-        }
         selectedParameters {
           parent {
             id
@@ -218,7 +106,6 @@ const SAVE_TABLE = gql`
             kind
             type
             value
-            group
             visible
             order
             category
@@ -231,7 +118,6 @@ const SAVE_TABLE = gql`
             kind
             type
             value
-            group
             visible
             order
             category
@@ -239,10 +125,10 @@ const SAVE_TABLE = gql`
             metadata
           }
         }
-      }
-      categoryFilters {
-        selectedParentCategories
-        selectedChildCategories
+        categoryFilters {
+          selectedParentCategories
+          selectedChildCategories
+        }
       }
     }
   }
@@ -270,16 +156,16 @@ export function useTableService() {
         variables: { tableId }
       })
 
-      if (!data?.namedTableConfig) {
+      if (!data?.tableSettings) {
         throw new Error(`No table data returned for ID: ${tableId}`)
       }
 
       debug.log(DebugCategories.TABLE_DATA, 'Table fetched', {
         tableId,
-        data: data.namedTableConfig
+        data: data.tableSettings
       })
 
-      return toTableSettings(data.namedTableConfig)
+      return toTableSettings(data.tableSettings)
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       debug.error(DebugCategories.TABLE_DATA, 'Failed to fetch table:', error)
@@ -300,7 +186,7 @@ export function useTableService() {
       const client = resolveClient()
       const { data } = await client.mutate<SaveTableResponse, SaveTableInput>({
         mutation: SAVE_TABLE,
-        variables: { input: toNamedTableInput(settings) }
+        variables: { input: toTableInput(settings) }
       })
 
       if (!data?.updateNamedTable) {

@@ -3,14 +3,17 @@ import type {
   TableStore,
   TableStoreState,
   TableSettings,
-  TableCategoryFilters,
-  TableStoreOptions,
-  TableSelectedParameters
+  TableStoreOptions
 } from './types'
-import type { ColumnDef } from '~/composables/core/types'
+import type {
+  TableCategoryFilters,
+  TableSelectedParameters
+} from '~/composables/core/types/tables/table-config'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
 import { useTableService } from '../services/tableService'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { defaultSelectedParameters } from '../config/defaults'
+import { createTableColumns } from '~/composables/core/types/tables/table-column'
 
 /**
  * Table Store
@@ -25,7 +28,7 @@ import { defaultSelectedParameters } from '../config/defaults'
  *    - Manages parameter visibility and order
  *
  * 3. Column Management
- *    - Owns table columns (using ColumnDef type)
+ *    - Owns table columns (using TableColumn type)
  *    - Manages column visibility and order
  *
  * Does NOT handle:
@@ -229,7 +232,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   }
 
   /**
-   * Update selected parameters
+   * Update selected parameters and corresponding columns
    */
   function updateSelectedParameters(parameters: TableSelectedParameters) {
     if (!state.value.currentTableId) {
@@ -273,22 +276,38 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       return
     }
 
-    // Update table with new parameters
-    updateTable({ selectedParameters: parameters })
+    // Convert parameters to columns using createTableColumns
+    const parentColumns = createTableColumns(parameters.parent)
+    const childColumns = createTableColumns(parameters.child)
 
-    debug.completeState(DebugCategories.STATE, 'Selected parameters updated', {
-      tableId: state.value.currentTableId,
-      parameters: {
-        parent: {
-          count: parameters.parent.length,
-          ids: parameters.parent.map((p) => p.id)
+    // Update table with new parameters and columns
+    updateTable({
+      selectedParameters: parameters,
+      parentColumns,
+      childColumns
+    })
+
+    debug.completeState(
+      DebugCategories.STATE,
+      'Selected parameters and columns updated',
+      {
+        tableId: state.value.currentTableId,
+        parameters: {
+          parent: {
+            count: parameters.parent.length,
+            ids: parameters.parent.map((p) => p.id)
+          },
+          child: {
+            count: parameters.child.length,
+            ids: parameters.child.map((p) => p.id)
+          }
         },
-        child: {
-          count: parameters.child.length,
-          ids: parameters.child.map((p) => p.id)
+        columns: {
+          parent: parentColumns.length,
+          child: childColumns.length
         }
       }
-    })
+    )
   }
 
   /**
@@ -309,7 +328,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   /**
    * Update columns
    */
-  function updateColumns(parentColumns: ColumnDef[], childColumns: ColumnDef[]) {
+  function updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]) {
     if (!state.value.currentTableId) {
       debug.error(
         DebugCategories.ERROR,

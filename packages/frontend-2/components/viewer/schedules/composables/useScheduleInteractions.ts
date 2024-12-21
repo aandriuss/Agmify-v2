@@ -2,8 +2,8 @@ import { ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
-  ColumnDef,
-  NamedTableConfig,
+  TableColumn,
+  TableSettings,
   ScheduleInitializationInstance
 } from '~/composables/core/types'
 import { useUserSettings } from '~/composables/useUserSettings'
@@ -12,17 +12,20 @@ import { useStore } from '../core/store'
 interface ScheduleInteractionsState {
   selectedTableId: string
   tableName: string
-  currentTable: NamedTableConfig | null
+  currentTable: TableSettings | null
   selectedParentCategories: string[]
   selectedChildCategories: string[]
-  currentTableColumns: ColumnDef[]
-  currentDetailColumns: ColumnDef[]
+  currentTableColumns: TableColumn[]
+  currentDetailColumns: TableColumn[]
 }
 
 interface ScheduleInteractionsOptions {
   state: ScheduleInteractionsState
   initComponent: Ref<ScheduleInitializationInstance | null>
-  updateCurrentColumns: (tableColumns: ColumnDef[], detailColumns: ColumnDef[]) => void
+  updateCurrentColumns: (
+    tableColumns: TableColumn[],
+    detailColumns: TableColumn[]
+  ) => void
   handleError: (error: unknown) => void
   emit?: (event: 'close') => void
 }
@@ -95,7 +98,7 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
       const currentDetailColumns = state.value.currentDetailColumns || []
 
       // Create table config
-      const tableConfig: Partial<NamedTableConfig> = {
+      const tableConfig: Partial<TableSettings> = {
         name: trimmedName,
         displayName: trimmedName,
         parentColumns: currentTableColumns,
@@ -107,7 +110,7 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
         selectedParameterIds: []
       }
 
-      let savedTable: NamedTableConfig
+      let savedTable: TableSettings
 
       // Create new table or update existing one
       if (!state.value.selectedTableId) {
@@ -169,8 +172,8 @@ export function useScheduleInteractions(options: ScheduleInteractionsOptions) {
   }
 
   async function handleBothColumnsUpdate(updates: {
-    parentColumns: ColumnDef[]
-    childColumns: ColumnDef[]
+    parentColumns: TableColumn[]
+    childColumns: TableColumn[]
   }) {
     try {
       debug.log(DebugCategories.COLUMNS, 'Both columns update requested', updates)

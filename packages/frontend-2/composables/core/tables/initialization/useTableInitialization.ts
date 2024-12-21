@@ -4,9 +4,9 @@ import type {
   TableInitializationState,
   TableInitializationInstance,
   TableInitializationOptions
-} from '../../types/tables/initialization-types'
+} from '~/composables/core/types/tables/initialization-types'
 import type { TableSettings, TableStore } from '../store/types'
-import { defaultTableConfig, ensureRequiredColumns } from '../config/defaults'
+import { defaultTableConfig } from '../config/defaults'
 
 const defaultState: TableInitializationState = {
   selectedTableId: defaultTableConfig.id,
@@ -55,8 +55,8 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
           note: 'Using default parameters until user customizes through Column Manager'
         })
 
-        // Ensure required columns are present
-        const config = ensureRequiredColumns({
+        // Create table settings with current state
+        const tableSettings: TableSettings = {
           id: state.value.selectedTableId,
           name: state.value.tableName,
           displayName: state.value.tableName,
@@ -68,17 +68,6 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
           },
           selectedParameters: existingParams,
           lastUpdateTimestamp: Date.now()
-        })
-
-        // Create table settings
-        const tableSettings: TableSettings = {
-          id: config.id,
-          name: config.name,
-          displayName: config.name,
-          parentColumns: config.parentColumns,
-          childColumns: config.childColumns,
-          categoryFilters: config.categoryFilters,
-          selectedParameters: config.selectedParameters
         }
 
         // Update store with initial state
@@ -109,7 +98,8 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
           parentColumns: defaultTableConfig.parentColumns,
           childColumns: defaultTableConfig.childColumns,
           categoryFilters: defaultTableConfig.categoryFilters,
-          selectedParameters: defaultTableConfig.selectedParameters
+          selectedParameters: defaultTableConfig.selectedParameters,
+          lastUpdateTimestamp: Date.now()
         }
 
         // Update store with reset state

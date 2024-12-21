@@ -1,4 +1,4 @@
-import type { NamedTableConfig } from '../../types/tables'
+import type { TableSettings } from '../../types'
 import { safeString } from '../../utils/validation'
 
 /**
@@ -22,7 +22,7 @@ export function createTableConfig(
   name: string,
   displayName?: string,
   description?: string
-): NamedTableConfig {
+): TableSettings {
   return {
     id: safeString(id, crypto.randomUUID()),
     name: safeString(name, 'Untitled Table'),

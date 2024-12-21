@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef } from '~/composables/core/types/tables/column-types'
-import type { NamedTableConfig } from '~/composables/core/types/tables'
+import type { TableColumn } from '~/composables/core/types'
+import type { TableSettings } from '~/composables/core/types/tables'
 import type {
   NamedTableState,
   NamedTableStateOptions
@@ -10,18 +10,18 @@ import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTableState } from './useTableState'
 
 /**
- * Type guard for NamedTableConfig
+ * Type guard for TableSettings
  */
-function isNamedTableConfig(value: unknown): value is NamedTableConfig {
+function isNamedTableConfig(value: unknown): value is TableSettings {
   return (
     typeof value === 'object' &&
     value !== null &&
     'id' in value &&
-    typeof (value as NamedTableConfig).id === 'string' &&
+    typeof (value as TableSettings).id === 'string' &&
     'parentColumns' in value &&
-    Array.isArray((value as NamedTableConfig).parentColumns) &&
+    Array.isArray((value as TableSettings).parentColumns) &&
     'childColumns' in value &&
-    Array.isArray((value as NamedTableConfig).childColumns)
+    Array.isArray((value as TableSettings).childColumns)
   )
 }
 
@@ -44,7 +44,7 @@ export function useNamedTableState({
   })
 
   // Additional state for named tables
-  const namedTables = ref<Record<string, NamedTableConfig>>({})
+  const namedTables = ref<Record<string, TableSettings>>({})
   const activeTableId = ref<string | null>(null)
   const currentView = ref<'parent' | 'child'>('parent')
   const isDirty = ref(false)
@@ -119,7 +119,7 @@ export function useNamedTableState({
     }
   }
 
-  function updateColumns(columns: ColumnDef[]) {
+  function updateColumns(columns: TableColumn[]) {
     try {
       debug.startState(DebugCategories.TABLE_UPDATES, 'Updating columns')
 

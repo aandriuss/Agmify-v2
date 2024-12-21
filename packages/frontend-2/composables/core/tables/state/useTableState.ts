@@ -1,10 +1,10 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef } from '../../types/tables/column-types'
+import type { TableColumn } from '~/composables/core/types/'
 import type {
   CoreTableState,
   TableStateOptions,
   FilterDef
-} from '~/composables/core/types/tables/state-types'
+} from '~/composables/core/types/tables/table-config'
 import { TableStateError } from '../../types/errors'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
@@ -19,7 +19,7 @@ export function useTableState({
   onUpdate
 }: TableStateOptions): CoreTableState {
   // Core state
-  const columns = ref<ColumnDef[]>(initialColumns)
+  const columns = ref<TableColumn[]>(initialColumns)
   const sortField = ref<string | undefined>(undefined)
   const sortOrder = ref<number | undefined>(undefined)
   const filters = ref<Record<string, FilterDef> | undefined>(undefined)
@@ -38,7 +38,7 @@ export function useTableState({
   }
 
   // Column operations
-  function updateColumns(newColumns: ColumnDef[]): void {
+  function updateColumns(newColumns: TableColumn[]): void {
     try {
       debug.startState(DebugCategories.TABLE_UPDATES, 'Updating columns', {
         tableId,

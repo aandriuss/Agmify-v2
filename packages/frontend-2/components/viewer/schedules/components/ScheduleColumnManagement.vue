@@ -8,18 +8,18 @@ import { computed, watch } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 // Types
-import type { ColumnDef } from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types'
 
 const props = defineProps<{
-  currentTableColumns: ColumnDef[]
-  currentDetailColumns: ColumnDef[]
-  parameterColumns: ColumnDef[]
+  currentTableColumns: TableColumn[]
+  currentDetailColumns: TableColumn[]
+  parameterColumns: TableColumn[]
   isInitialized: boolean
 }>()
 
 const emit = defineEmits<{
-  'update:merged-table-columns': [columns: ColumnDef[]]
-  'update:merged-detail-columns': [columns: ColumnDef[]]
+  'update:merged-table-columns': [columns: TableColumn[]]
+  'update:merged-detail-columns': [columns: TableColumn[]]
   'column-visibility-change': []
   'column-order-change': []
   error: [error: Error]

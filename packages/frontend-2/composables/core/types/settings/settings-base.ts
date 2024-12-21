@@ -11,14 +11,14 @@
  * to better align with the parameter system architecture.
  */
 
-import type { NamedTableConfig } from '../tables'
+import type { TableSettings } from '../tables'
 
 /**
  * Base settings interface with required fields
  */
 interface BaseSettings {
   controlWidth: number
-  namedTables: Record<string, NamedTableConfig>
+  namedTables: Record<string, TableSettings>
   // No global parameters - they are now part of table configs
 }
 
@@ -27,7 +27,7 @@ interface BaseSettings {
  */
 export interface UserSettings {
   controlWidth?: number
-  namedTables?: Record<string, NamedTableConfig>
+  namedTables?: Record<string, TableSettings>
   // No global parameters - they are now part of table configs
   [key: string]: unknown // Allow for extensibility
 }
@@ -45,7 +45,7 @@ export interface SettingsState extends BaseSettings {
  */
 export interface SettingsUpdatePayload {
   controlWidth?: number
-  namedTables?: Record<string, NamedTableConfig>
+  namedTables?: Record<string, TableSettings>
   // No global parameters - they are now part of table configs
 }
 

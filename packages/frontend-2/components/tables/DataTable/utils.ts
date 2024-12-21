@@ -1,14 +1,5 @@
 import type { BaseTableRow } from './types'
-import type {
-  ColumnDef,
-  BimColumnDef,
-  UserColumnDef
-} from '~/composables/core/types/tables/column-types'
-import { createBaseColumnDef } from '~/composables/core/types/tables/column-types'
-import type {
-  BimValueType,
-  UserValueType
-} from '~/composables/core/types/parameters/value-types'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
 
 /**
  * Custom error class for table operations
@@ -81,7 +72,7 @@ export function safeJSONClone<T>(obj: T): T {
 /**
  * Sort columns by their order property
  */
-export function sortColumnsByOrder(columns: ColumnDef[]): ColumnDef[] {
+export function sortColumnsByOrder(columns: TableColumn[]): TableColumn[] {
   return [...columns].sort((a, b) => {
     const orderA = a.order ?? Number.MAX_SAFE_INTEGER
     const orderB = b.order ?? Number.MAX_SAFE_INTEGER
@@ -90,121 +81,13 @@ export function sortColumnsByOrder(columns: ColumnDef[]): ColumnDef[] {
 }
 
 /**
- * Convert text type to BIM value type
- */
-function toBimValueType(type: string | undefined): BimValueType {
-  switch (type?.toLowerCase()) {
-    case 'text':
-    case 'string':
-      return 'string'
-    case 'number':
-      return 'number'
-    case 'boolean':
-      return 'boolean'
-    case 'date':
-      return 'date'
-    case 'object':
-      return 'object'
-    case 'array':
-      return 'array'
-    default:
-      return 'string'
-  }
-}
-
-/**
- * Convert text type to user value type
- */
-function toUserValueType(type: string | undefined): UserValueType {
-  switch (type?.toLowerCase()) {
-    case 'equation':
-      return 'equation'
-    default:
-      return 'fixed'
-  }
-}
-
-/**
- * Create a BIM column definition
- */
-function createBimColumn(
-  base: ReturnType<typeof createBaseColumnDef>,
-  column: Partial<BimColumnDef>
-): BimColumnDef {
-  const defaultGroup = 'Default'
-  return {
-    ...base,
-    kind: 'bim',
-    type: toBimValueType(column.type),
-    sourceValue: column.sourceValue || null,
-    fetchedGroup: column.fetchedGroup || defaultGroup,
-    currentGroup: column.currentGroup || column.fetchedGroup || defaultGroup,
-    source: column.source
-  }
-}
-
-/**
- * Create a user column definition
- */
-function createUserColumn(
-  base: ReturnType<typeof createBaseColumnDef>,
-  column: Partial<UserColumnDef>
-): UserColumnDef {
-  const defaultGroup = 'Default'
-  return {
-    ...base,
-    kind: 'user',
-    type: toUserValueType(column.type),
-    group: column.group || defaultGroup,
-    isCustomParameter: column.isCustomParameter,
-    parameterRef: column.parameterRef
-  }
-}
-
-/**
- * Ensure all required column properties are present
- */
-export function ensureColumnProperties(column: Partial<ColumnDef>): ColumnDef {
-  const base = createBaseColumnDef({
-    id: column.id || crypto.randomUUID(),
-    name: column.name || column.header || column.field || 'Unnamed Column',
-    field: column.field || '',
-    header: column.header || column.name || column.field || 'Unnamed Column',
-    visible: column.visible ?? true,
-    removable: column.removable ?? true,
-    order: column.order,
-    metadata: column.metadata,
-    description: column.description,
-    category: column.category
-  })
-
-  // For BIM columns
-  if ('sourceValue' in column) {
-    return createBimColumn(base, column as Partial<BimColumnDef>)
-  }
-
-  // For User columns
-  return createUserColumn(base, column as Partial<UserColumnDef>)
-}
-
-/**
  * Update local columns with proper validation
  */
 export function updateLocalColumns(
-  newColumns: Partial<ColumnDef>[],
-  setter: (columns: ColumnDef[]) => void
+  newColumns: TableColumn[],
+  setter: (columns: TableColumn[]) => void
 ): void {
-  const validColumns = newColumns
-    .filter((col): col is Partial<ColumnDef> => {
-      const hasRequiredBase = col && typeof col === 'object'
-      if (!hasRequiredBase) {
-        throw new TableError('Invalid column definition', col)
-      }
-      return true
-    })
-    .map(ensureColumnProperties)
-
-  setter(sortColumnsByOrder(validColumns))
+  setter(sortColumnsByOrder(newColumns))
 }
 
 /**
@@ -303,7 +186,7 @@ export function filterRow(
 /**
  * Update column order after reordering
  */
-export function updateColumnOrder(columns: ColumnDef[]): ColumnDef[] {
+export function updateColumnOrder(columns: TableColumn[]): TableColumn[] {
   return columns.map((col, index) => ({
     ...col,
     order: index
@@ -311,22 +194,8 @@ export function updateColumnOrder(columns: ColumnDef[]): ColumnDef[] {
 }
 
 /**
- * Group columns by category
- */
-export function groupColumnsByCategory(
-  columns: ColumnDef[]
-): Record<string, ColumnDef[]> {
-  return columns.reduce((groups, column) => {
-    const category = column.category || 'Default'
-    groups[category] = groups[category] || []
-    groups[category].push(column)
-    return groups
-  }, {} as Record<string, ColumnDef[]>)
-}
-
-/**
  * Get visible columns
  */
-export function getVisibleColumns(columns: ColumnDef[]): ColumnDef[] {
+export function getVisibleColumns(columns: TableColumn[]): TableColumn[] {
   return columns.filter((col) => col.visible)
 }

@@ -1,11 +1,11 @@
 import { ref, computed } from 'vue'
-import type { ColumnDef } from '../../types/tables'
-import { isColumnDef } from '../../types/tables/column-types'
-import { toUserColumn } from '../../types/tables/column-conversion'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
+import type { SelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export interface UseColumnStateOptions {
-  initialColumns?: ColumnDef[]
+  initialParameters?: SelectedParameter[]
   onError?: (error: string) => void
 }
 
@@ -21,7 +21,7 @@ export class ColumnStateError extends Error {
  * Handles column operations, visibility, and ordering
  */
 export function useColumnState({
-  initialColumns = [],
+  initialParameters = [],
   onError
 }: UseColumnStateOptions = {}) {
   const handleError = (err: unknown) => {
@@ -31,53 +31,47 @@ export function useColumnState({
   }
 
   // Column state
-  const columns = ref<ColumnDef[]>(initialColumns)
+  const columns = ref<TableColumn[]>(initialParameters.map(createTableColumn))
 
   // Computed properties
-  const visibleColumns = computed(() => {
-    return columns.value.filter((col) => col.visible)
-  })
+  const visibleColumns = computed(() => columns.value.filter((col) => col.visible))
 
-  const sortedColumns = computed(() => {
-    return [...columns.value].sort((a, b) => {
-      if (typeof a.order === 'number' && typeof b.order === 'number') {
-        return a.order - b.order
-      }
-      return 0
-    })
-  })
+  const sortedColumns = computed(() =>
+    [...columns.value].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  )
 
-  const columnsByField = computed(() => {
-    return columns.value.reduce((acc, col) => {
+  const columnsByField = computed(() =>
+    columns.value.reduce((acc, col) => {
       acc[col.field] = col
       return acc
-    }, {} as Record<string, ColumnDef>)
-  })
+    }, {} as Record<string, TableColumn>)
+  )
 
   // Column operations
-  const addColumn = (column: { field: string } & Partial<ColumnDef>) => {
+  const addColumn = (parameter: SelectedParameter) => {
     try {
-      if (columnsByField.value[column.field]) {
-        throw new ColumnStateError(`Column with field ${column.field} already exists`)
+      if (columnsByField.value[parameter.id]) {
+        throw new ColumnStateError(
+          `Column for parameter ${parameter.id} already exists`
+        )
       }
 
       debug.log(DebugCategories.COLUMNS, 'Adding new column', {
-        field: column.field,
-        type: column.type
+        id: parameter.id,
+        name: parameter.name
       })
 
-      // Convert to UserColumnDef
-      const newColumn = toUserColumn({
-        ...column,
+      const newColumn = createTableColumn({
+        ...parameter,
         order: columns.value.length
       })
 
       columns.value = [...columns.value, newColumn]
 
       debug.log(DebugCategories.COLUMNS, 'Column added successfully', {
-        field: newColumn.field,
-        type: newColumn.type,
-        group: newColumn.group
+        id: newColumn.id,
+        name: newColumn.header,
+        order: newColumn.order
       })
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to add column:', err)
@@ -85,42 +79,31 @@ export function useColumnState({
     }
   }
 
-  const removeColumn = (field: string) => {
+  const removeColumn = (id: string) => {
     try {
-      const column = columnsByField.value[field]
+      const column = columnsByField.value[id]
       if (!column) {
-        throw new ColumnStateError(`Column with field ${field} not found`)
+        throw new ColumnStateError(`Column with id ${id} not found`)
       }
 
-      if (!column.removable) {
-        throw new ColumnStateError(`Column ${field} cannot be removed`)
-      }
-
-      columns.value = columns.value.filter((col) => col.field !== field)
+      columns.value = columns.value.filter((col) => col.id !== id)
       reorderColumns() // Update order after removal
     } catch (err) {
       handleError(err)
     }
   }
 
-  const updateColumn = (field: string, updates: Partial<ColumnDef>) => {
+  const updateColumn = (id: string, parameter: SelectedParameter) => {
     try {
-      const index = columns.value.findIndex((col) => col.field === field)
+      const index = columns.value.findIndex((col) => col.id === id)
       if (index === -1) {
-        throw new ColumnStateError(`Column with field ${field} not found`)
+        throw new ColumnStateError(`Column with id ${id} not found`)
       }
 
-      const currentColumn = columns.value[index]
-      const updatedColumn = {
-        ...currentColumn,
-        ...updates,
-        field, // Prevent field from being changed
-        kind: currentColumn.kind // Preserve the original kind
-      }
-
-      if (!isColumnDef(updatedColumn)) {
-        throw new ColumnStateError('Invalid column definition')
-      }
+      const updatedColumn = createTableColumn({
+        ...parameter,
+        order: columns.value[index].order
+      })
 
       columns.value = [
         ...columns.value.slice(0, index),
@@ -132,14 +115,15 @@ export function useColumnState({
     }
   }
 
-  const toggleVisibility = (field: string, visible?: boolean) => {
+  const toggleVisibility = (id: string, visible?: boolean) => {
     try {
-      const column = columnsByField.value[field]
+      const column = columnsByField.value[id]
       if (!column) {
-        throw new ColumnStateError(`Column with field ${field} not found`)
+        throw new ColumnStateError(`Column with id ${id} not found`)
       }
 
-      updateColumn(field, {
+      updateColumn(id, {
+        ...column.parameter,
         visible: visible ?? !column.visible
       })
     } catch (err) {
@@ -147,11 +131,11 @@ export function useColumnState({
     }
   }
 
-  const moveColumn = (field: string, toIndex: number) => {
+  const moveColumn = (id: string, toIndex: number) => {
     try {
-      const fromIndex = columns.value.findIndex((col) => col.field === field)
+      const fromIndex = columns.value.findIndex((col) => col.id === id)
       if (fromIndex === -1) {
-        throw new ColumnStateError(`Column with field ${field} not found`)
+        throw new ColumnStateError(`Column with id ${id} not found`)
       }
 
       const newColumns = [...columns.value]
@@ -178,7 +162,7 @@ export function useColumnState({
 
   const reset = () => {
     try {
-      columns.value = initialColumns
+      columns.value = initialParameters.map(createTableColumn)
     } catch (err) {
       handleError(err)
     }

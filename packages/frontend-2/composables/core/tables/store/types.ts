@@ -11,7 +11,7 @@
  *    - Manage parameter visibility and order
  *
  * 3. Column Management
- *    - Own table columns (using ColumnDef type)
+ *    - Own table columns using TableColumn type
  *    - Manage column visibility and order
  *
  * Does NOT handle:
@@ -21,43 +21,24 @@
  */
 
 import type { Ref } from 'vue'
-import type { ColumnDef } from '~/composables/core/types/tables'
-import type { SelectedParameter } from '~/composables/core/types/parameters/parameter-states'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
 
-/**
- * Category filters for table
- * Used to filter table rows by category
- */
-export interface TableCategoryFilters {
-  selectedChildCategories: string[]
-  selectedParentCategories: string[]
-}
-
-/**
- * Selected parameters for table with parent/child separation
- * These are the parameters that have been selected from available parameters
- * and are used to create column definitions
- */
-export interface TableSelectedParameters {
-  parent: SelectedParameter[]
-  child: SelectedParameter[]
-}
+import type {
+  BaseTableConfig,
+  TableCategoryFilters,
+  TableSelectedParameters
+} from '~/composables/core/types/tables/table-config'
 
 /**
  * Table settings stored in PostgreSQL
- * This is the complete table configuration including:
- * - Column definitions (derived from selected parameters)
- * - Category filters
- * - Selected parameters
+ * Extends base config with display-specific properties
  */
-export interface TableSettings {
+export interface TableSettings extends BaseTableConfig {
   id: string
   name: string
   displayName: string
-  childColumns: ColumnDef[]
-  parentColumns: ColumnDef[]
-  categoryFilters: TableCategoryFilters
-  selectedParameters: TableSelectedParameters
+  childColumns: TableColumn[]
+  parentColumns: TableColumn[]
   lastUpdateTimestamp: number
 }
 
@@ -106,7 +87,7 @@ export interface TableStore {
   updateCategoryFilters(filters: TableCategoryFilters): void
 
   // Column management
-  updateColumns(parentColumns: ColumnDef[], childColumns: ColumnDef[]): void
+  updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]): void
 
   // Store management
   reset(): void

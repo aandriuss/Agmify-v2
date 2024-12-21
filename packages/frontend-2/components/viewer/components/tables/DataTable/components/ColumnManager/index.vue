@@ -142,26 +142,26 @@ import type {
 } from '~/composables/core/types/parameters/parameter-states'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
-import type { ColumnDef } from '~/composables/core/types/tables'
+import type { TableColumn } from '~/composables/core/types'
 
 // Helper to get item identifier
 function getItemId(
-  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
+  item: AvailableBimParameter | AvailableUserParameter | TableColumn
 ): string {
   return 'field' in item ? item.field : item.id
 }
 
 // Helper to determine if item is a Parameter
 function isParameter(
-  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
+  item: AvailableBimParameter | AvailableUserParameter | TableColumn
 ): item is AvailableBimParameter | AvailableUserParameter {
   return 'id' in item && !('field' in item)
 }
 
 // Helper to determine if item is a Column
 function isColumn(
-  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
-): item is ColumnDef {
+  item: AvailableBimParameter | AvailableUserParameter | TableColumn
+): item is TableColumn {
   return 'field' in item
 }
 
@@ -280,7 +280,7 @@ const toggleFilterOptions = () => {
 }
 
 const handleAdd = async (
-  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
+  item: AvailableBimParameter | AvailableUserParameter | TableColumn
 ) => {
   if (!isParameter(item)) return
 
@@ -297,7 +297,7 @@ const handleAdd = async (
 }
 
 const handleRemove = async (
-  item: AvailableBimParameter | AvailableUserParameter | ColumnDef
+  item: AvailableBimParameter | AvailableUserParameter | TableColumn
 ) => {
   if (!isColumn(item)) return
 
@@ -328,7 +328,7 @@ const handleReorder = async (fromIndex: number, toIndex: number) => {
 }
 
 const handleVisibilityChange = async (
-  item: AvailableBimParameter | AvailableUserParameter | ColumnDef,
+  item: AvailableBimParameter | AvailableUserParameter | TableColumn,
   visible: boolean
 ) => {
   if (!isColumn(item)) return
@@ -348,7 +348,7 @@ const handleVisibilityChange = async (
 
 const handleDragStart = (
   event: DragEvent,
-  item: AvailableBimParameter | AvailableUserParameter | ColumnDef,
+  item: AvailableBimParameter | AvailableUserParameter | TableColumn,
   index: number
 ) => {
   dropState.dragging = getItemId(item)

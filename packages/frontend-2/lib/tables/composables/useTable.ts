@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import { useTableRegistry } from '../stores/tableRegistry'
-import type { TableInstanceState, ColumnDef } from '~/composables/core/types'
+import type { TableInstanceState, TableColumn } from '~/composables/core/types'
 
 export function useTable(
   id: string,
@@ -25,7 +25,7 @@ export function useTable(
   const childColumns = computed(() => tableState.value?.childColumns || [])
 
   // Update methods
-  const updateParentColumns = async (columns: ColumnDef[]) => {
+  const updateParentColumns = async (columns: TableColumn[]) => {
     if (!tableState.value) return
 
     await registry.updateTable(id, {
@@ -33,7 +33,7 @@ export function useTable(
     })
   }
 
-  const updateChildColumns = async (columns: ColumnDef[]) => {
+  const updateChildColumns = async (columns: TableColumn[]) => {
     if (!tableState.value) return
 
     await registry.updateTable(id, {

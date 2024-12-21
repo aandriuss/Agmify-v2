@@ -1,19 +1,19 @@
 import { ref, computed, watch } from 'vue'
-import type { ColumnDef, AvailableParameter } from '~/composables/core/types'
+import type { TableColumn, AvailableParameter } from '~/composables/core/types'
 import { useUserSettings } from '~/composables/useUserSettings'
 import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export interface UseColumnStateOptions {
   tableId: string
-  initialParentColumns: ColumnDef[]
-  initialChildColumns: ColumnDef[]
+  initialParentColumns: TableColumn[]
+  initialChildColumns: TableColumn[]
   availableParentParameters: AvailableParameter[]
   availableChildParameters: AvailableParameter[]
 }
 
 export interface DragItem {
-  item: ColumnDef | AvailableParameter
+  item: TableColumn | AvailableParameter
   sourceList: 'active' | 'available'
 }
 
@@ -38,7 +38,7 @@ export function useColumnState({
   availableChildParameters
 }: UseColumnStateOptions) {
   // Modified validation to support progressive loading
-  const validateColumns = (cols: ColumnDef[]): ColumnDef[] => {
+  const validateColumns = (cols: TableColumn[]): TableColumn[] => {
     if (!Array.isArray(cols) || cols.length === 0) {
       debug.log(DebugCategories.COLUMNS, 'Using default columns due to invalid input')
       return defaultTableConfig.parentColumns
@@ -70,8 +70,8 @@ export function useColumnState({
   const currentView = ref<'parent' | 'child'>('parent')
 
   // Column state with progressive loading
-  const parentColumns = ref<ColumnDef[]>([])
-  const childColumns = ref<ColumnDef[]>([])
+  const parentColumns = ref<TableColumn[]>([])
+  const childColumns = ref<TableColumn[]>([])
   const isLoadingColumns = ref(true)
 
   // Loading state
@@ -83,7 +83,7 @@ export function useColumnState({
   const pendingOperations = ref<PendingOperation[]>([])
 
   const draggedItem = ref<{
-    item: ColumnDef | AvailableParameter
+    item: TableColumn | AvailableParameter
     sourceList: 'active' | 'available'
     sourceIndex: number
   } | null>(null)
@@ -154,7 +154,7 @@ export function useColumnState({
       }
 
       const updatedParentColumns = parentColumns.value.map(
-        (col: ColumnDef, index: number) => ({
+        (col: TableColumn, index: number) => ({
           ...col,
           order: index,
           visible: col.visible ?? true,
@@ -163,7 +163,7 @@ export function useColumnState({
       )
 
       const updatedChildColumns = childColumns.value.map(
-        (col: ColumnDef, index: number) => ({
+        (col: TableColumn, index: number) => ({
           ...col,
           order: index,
           visible: col.visible ?? true,

@@ -1,11 +1,11 @@
 import type {
   ParameterCollections,
-  RawBimParameter,
+  RawParameter,
   AvailableBimParameter,
   AvailableUserParameter,
-  SelectedParameter,
-  ColumnDefinition
+  SelectedParameter
 } from '../parameters/parameter-states'
+import type { TableColumn } from '../tables/table-column'
 
 /**
  * Parameter store state interface
@@ -24,8 +24,8 @@ export interface ParameterStoreState {
  */
 export interface ParameterStoreMutations {
   // Raw parameter mutations
-  setParentRawParameters: (params: RawBimParameter[]) => void
-  setChildRawParameters: (params: RawBimParameter[]) => void
+  setParentRawParameters: (params: RawParameter[]) => void
+  setChildRawParameters: (params: RawParameter[]) => void
 
   // Available parameter mutations
   setParentAvailableBimParameters: (params: AvailableBimParameter[]) => void
@@ -40,8 +40,8 @@ export interface ParameterStoreMutations {
   updateParameterOrder: (id: string, newOrder: number) => void
 
   // Column mutations
-  setParentColumnDefinitions: (columns: ColumnDefinition[]) => void
-  setChildColumnDefinitions: (columns: ColumnDefinition[]) => void
+  setParentColumns: (columns: TableColumn[]) => void
+  setChildColumns: (columns: TableColumn[]) => void
   updateColumnWidth: (id: string, width: number) => void
 
   // Status mutations
@@ -58,22 +58,22 @@ export interface ParameterStoreMutations {
  */
 export interface ParameterStoreGetters {
   // Parent parameter getters
-  parentRawParameters: RawBimParameter[]
+  parentRawParameters: RawParameter[]
   parentAvailableBimParameters: AvailableBimParameter[]
   parentAvailableUserParameters: AvailableUserParameter[]
   parentSelectedParameters: SelectedParameter[]
-  parentColumnDefinitions: ColumnDefinition[]
+  parentColumns: TableColumn[]
 
   // Child parameter getters
-  childRawParameters: RawBimParameter[]
+  childRawParameters: RawParameter[]
   childAvailableBimParameters: AvailableBimParameter[]
   childAvailableUserParameters: AvailableUserParameter[]
   childSelectedParameters: SelectedParameter[]
-  childColumnDefinitions: ColumnDefinition[]
+  childColumns: TableColumn[]
 
   // Filtered getters
-  visibleParentColumns: ColumnDefinition[]
-  visibleChildColumns: ColumnDefinition[]
+  visibleParentColumns: TableColumn[]
+  visibleChildColumns: TableColumn[]
   systemParameters: AvailableBimParameter[]
   userParameters: AvailableUserParameter[]
 

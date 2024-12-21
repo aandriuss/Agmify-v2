@@ -1,8 +1,8 @@
-import type { ColumnDef, ParameterDefinition } from '~/composables/core/types'
+import type { TableColumn, ParameterDefinition } from '~/composables/core/types'
 
 // Core table types
 export interface TableState {
-  columns: ColumnDef[]
+  columns: TableColumn[]
   expandedRows: unknown[]
   sortField?: string
   sortOrder?: number
@@ -11,8 +11,8 @@ export interface TableState {
 
 // Table events
 export interface ColumnUpdateEvent {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
 }
 
 export interface ColumnResizeEvent {
@@ -27,7 +27,7 @@ export interface ColumnReorderEvent {
 }
 
 // Re-export types for convenience
-export type { ColumnDef }
+export type { TableColumn }
 export type { ParameterDefinition }
 
 // Parameter grouping

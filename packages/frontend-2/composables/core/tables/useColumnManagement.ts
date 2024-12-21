@@ -1,11 +1,27 @@
 import { debug, DebugCategories } from '../utils/debug'
-import type { ColumnDef } from '../types/tables/column-types'
-import {
-  type ColumnManagementOptions,
-  type ManagedColumnDef,
-  toManagedColumn,
-  fromManagedColumn
-} from '../types/tables/column-management-types'
+import type { TableColumn } from '../types/tables/table-column'
+
+export interface ColumnManagementOptions {
+  state: {
+    mergedTableColumns: TableColumn[]
+    mergedDetailColumns: TableColumn[]
+    currentTableColumns: TableColumn[]
+    currentDetailColumns: TableColumn[]
+    parameterColumns: TableColumn[]
+  }
+  updateMergedColumns: (
+    tableColumns: TableColumn[],
+    detailColumns: TableColumn[]
+  ) => void
+  updateCurrentColumns: (
+    tableColumns: TableColumn[],
+    detailColumns: TableColumn[]
+  ) => void
+  updateParameterVisibility?: (parameterId: string, visible: boolean) => void
+  handleError: (error: Error) => void
+  defaultSource?: string
+  defaultCategory?: string
+}
 
 /**
  * Generic column management functionality for data tables
@@ -18,65 +34,42 @@ export function useColumnManagement(options: ColumnManagementOptions) {
     updateCurrentColumns,
     updateParameterVisibility,
     handleError,
-    defaultSource = 'Parameters',
-    defaultCategory = 'Parameters'
+    defaultSource = 'Parameters'
   } = options
 
   /**
    * Handles changes to column visibility
    */
-  function handleColumnVisibilityChange(column: ColumnDef) {
+  function handleColumnVisibilityChange(column: TableColumn) {
     debug.log(DebugCategories.COLUMNS, 'Column visibility change requested', {
       column,
       visible: column.visible
     })
 
     try {
-      if (!('field' in column)) {
-        throw new Error('Invalid column definition')
-      }
-
       // Handle parameter visibility if configured
-      if (
-        updateParameterVisibility &&
-        'parameterRef' in column &&
-        typeof column.parameterRef === 'string'
-      ) {
-        updateParameterVisibility(column.parameterRef, column.visible ?? true)
+      if (updateParameterVisibility) {
+        updateParameterVisibility(column.parameter.id, column.visible)
       }
 
       // Update visibility in merged columns
-      const updatedTableColumns = state.mergedTableColumns.map((col) => {
-        if ('field' in col && col.field === column.field) {
-          return fromManagedColumn(
-            toManagedColumn(
-              { ...col, visible: column.visible },
-              defaultSource,
-              defaultCategory
-            )
-          )
-        }
-        return col
-      })
+      const updatedTableColumns = state.mergedTableColumns.map((col) =>
+        col.parameter.id === column.parameter.id
+          ? { ...col, visible: column.visible }
+          : col
+      )
 
-      const updatedDetailColumns = state.mergedDetailColumns.map((col) => {
-        if ('field' in col && col.field === column.field) {
-          return fromManagedColumn(
-            toManagedColumn(
-              { ...col, visible: column.visible },
-              defaultSource,
-              defaultCategory
-            )
-          )
-        }
-        return col
-      })
+      const updatedDetailColumns = state.mergedDetailColumns.map((col) =>
+        col.parameter.id === column.parameter.id
+          ? { ...col, visible: column.visible }
+          : col
+      )
 
       // Update state
       updateMergedColumns(updatedTableColumns, updatedDetailColumns)
 
       debug.log(DebugCategories.COLUMNS, 'Column visibility updated', {
-        field: column.field,
+        id: column.parameter.id,
         visible: column.visible
       })
     } catch (err) {
@@ -90,48 +83,34 @@ export function useColumnManagement(options: ColumnManagementOptions) {
   /**
    * Handles changes to column order
    */
-  function handleColumnOrderChange(column: ColumnDef, newOrder: number) {
+  function handleColumnOrderChange(column: TableColumn, newOrder: number) {
     debug.log(DebugCategories.COLUMNS, 'Column order change requested', {
       column,
       newOrder
     })
 
     try {
-      if (!('field' in column)) {
-        throw new Error('Invalid column definition')
-      }
-
-      // Convert to managed columns for sorting
-      const managedTableColumns = state.mergedTableColumns.map((col) =>
-        toManagedColumn(col, defaultSource, defaultCategory)
-      )
-      const managedDetailColumns = state.mergedDetailColumns.map((col) =>
-        toManagedColumn(col, defaultSource, defaultCategory)
-      )
-
-      // Sort columns
-      const sortColumns = (columns: ManagedColumnDef[]) =>
+      // Sort columns by source and order
+      const sortColumns = (columns: TableColumn[]) =>
         [...columns].sort((a, b) => {
-          const sourceCompare = (a.source || '').localeCompare(b.source || '')
+          const sourceCompare = (a.parameter.group || defaultSource).localeCompare(
+            b.parameter.group || defaultSource
+          )
           if (sourceCompare !== 0) return sourceCompare
 
-          if (a.field === column.field) return newOrder
-          if (b.field === column.field) return -newOrder
-          return (a.order || 0) - (b.order || 0)
+          if (a.parameter.id === column.parameter.id) return newOrder
+          if (b.parameter.id === column.parameter.id) return -newOrder
+          return a.parameter.order - b.parameter.order
         })
 
-      const sortedTableColumns = sortColumns(managedTableColumns)
-      const sortedDetailColumns = sortColumns(managedDetailColumns)
-
-      // Convert back to regular columns
-      const updatedTableColumns = sortedTableColumns.map(fromManagedColumn)
-      const updatedDetailColumns = sortedDetailColumns.map(fromManagedColumn)
+      const updatedTableColumns = sortColumns(state.mergedTableColumns)
+      const updatedDetailColumns = sortColumns(state.mergedDetailColumns)
 
       // Update state
       updateMergedColumns(updatedTableColumns, updatedDetailColumns)
 
       debug.log(DebugCategories.COLUMNS, 'Column order updated', {
-        field: column.field,
+        id: column.parameter.id,
         newOrder
       })
     } catch (err) {
@@ -149,21 +128,10 @@ export function useColumnManagement(options: ColumnManagementOptions) {
     debug.log(DebugCategories.COLUMNS, 'Merging parameter columns')
 
     try {
-      // Convert all columns to managed columns
-      const managedParamColumns = state.parameterColumns.map((col) =>
-        toManagedColumn(col, defaultSource, defaultCategory)
-      )
-      const managedTableColumns = state.currentTableColumns.map((col) =>
-        toManagedColumn(col, defaultSource, defaultCategory)
-      )
-      const managedDetailColumns = state.currentDetailColumns.map((col) =>
-        toManagedColumn(col, defaultSource, defaultCategory)
-      )
-
       // Group parameters by source
-      const paramsBySource = new Map<string, ManagedColumnDef[]>()
-      managedParamColumns.forEach((col) => {
-        const source = col.source || defaultSource
+      const paramsBySource = new Map<string, TableColumn[]>()
+      state.parameterColumns.forEach((col) => {
+        const source = col.parameter.group || defaultSource
         if (!paramsBySource.has(source)) {
           paramsBySource.set(source, [])
         }
@@ -172,37 +140,37 @@ export function useColumnManagement(options: ColumnManagementOptions) {
 
       // Sort parameters within each group
       paramsBySource.forEach((cols) => {
-        cols.sort((a, b) => (a.order || 0) - (b.order || 0))
+        cols.sort((a, b) => a.parameter.order - b.parameter.order)
       })
 
       // Merge and sort columns
       const mergeAndSortColumns = (
-        baseColumns: ManagedColumnDef[],
-        paramColumns: ManagedColumnDef[]
+        baseColumns: TableColumn[],
+        paramColumns: TableColumn[]
       ) => {
-        const merged = [
+        return [
           ...baseColumns,
           ...paramColumns.filter(
             (param) =>
-              !baseColumns.some((col) => 'field' in col && col.field === param.field)
+              !baseColumns.some((col) => col.parameter.id === param.parameter.id)
           )
         ].sort((a, b) => {
-          const sourceCompare = (a.source || '').localeCompare(b.source || '')
+          const sourceCompare = (a.parameter.group || defaultSource).localeCompare(
+            b.parameter.group || defaultSource
+          )
           if (sourceCompare !== 0) return sourceCompare
-          return (a.order || 0) - (b.order || 0)
+          return a.parameter.order - b.parameter.order
         })
-
-        return merged.map(fromManagedColumn)
       }
 
       // Update both current and merged columns
       const updatedTableColumns = mergeAndSortColumns(
-        managedTableColumns,
-        managedParamColumns
+        state.currentTableColumns,
+        state.parameterColumns
       )
       const updatedDetailColumns = mergeAndSortColumns(
-        managedDetailColumns,
-        managedParamColumns
+        state.currentDetailColumns,
+        state.parameterColumns
       )
 
       updateCurrentColumns(updatedTableColumns, updatedDetailColumns)
@@ -214,7 +182,7 @@ export function useColumnManagement(options: ColumnManagementOptions) {
         groups: [
           ...new Set(
             [...updatedTableColumns, ...updatedDetailColumns].map(
-              (c) => toManagedColumn(c, defaultSource, defaultCategory).source
+              (c) => c.parameter.group || defaultSource
             )
           )
         ]

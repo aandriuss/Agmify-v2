@@ -1363,7 +1363,7 @@ export type Mutation = {
   /** Create a new BIM parameter */
   createBimParameter: ParameterMutationResponse;
   /** Create a new named table configuration */
-  createNamedTable: NamedTableConfig;
+  createNamedTable: TableSettings;
   /** Create a new user parameter */
   createUserParameter: ParameterMutationResponse;
   /** Delete a named table configuration */
@@ -1463,7 +1463,7 @@ export type Mutation = {
   /** Update a BIM parameter */
   updateBimParameter: ParameterMutationResponse;
   /** Update an existing named table configuration */
-  updateNamedTable: NamedTableConfig;
+  updateNamedTable: TableSettings;
   /** Update a user parameter */
   updateUserParameter: ParameterMutationResponse;
   /**
@@ -1860,15 +1860,6 @@ export type MutationWebhookDeleteArgs = {
 
 export type MutationWebhookUpdateArgs = {
   webhook: WebhookUpdateInput;
-};
-
-/** Named table configuration with additional metadata */
-export type NamedTableConfig = {
-  __typename?: 'NamedTableConfig';
-  categoryFilters?: Maybe<CategoryFilters>;
-  config: TableConfig;
-  id: Scalars['ID']['output'];
-  name: Scalars['String']['output'];
 };
 
 export type Object = {
@@ -2661,10 +2652,6 @@ export type Query = {
    * @deprecated Part of the old API surface and will be removed in the future.
    */
   discoverableStreams?: Maybe<StreamCollection>;
-  /** Get a specific named table configuration */
-  namedTableConfig?: Maybe<NamedTableConfig>;
-  /** Get all named table configurations for the current user */
-  namedTableConfigs: Array<NamedTableConfig>;
   /** Get the (limited) profile information of another server user */
   otherUser?: Maybe<LimitedUser>;
   /** Get a specific parameter by ID */
@@ -2716,6 +2703,10 @@ export type Query = {
   streams?: Maybe<StreamCollection>;
   /** Get all parameters for a specific table */
   tableParameters: Array<Parameter>;
+  /** Get a specific named table configuration */
+  tableSettings?: Maybe<TableSettings>;
+  /** Get all named table configurations for the current user */
+  tableSettingsP: Array<TableSettings>;
   /**
    * Gets the profile of a user. If no id argument is provided, will return the current authenticated user's profile (as extracted from the authorization header).
    * @deprecated To be removed in the near future! Use 'activeUser' to get info about the active user or 'otherUser' to get info about another user.
@@ -2806,11 +2797,6 @@ export type QueryDiscoverableStreamsArgs = {
 };
 
 
-export type QueryNamedTableConfigArgs = {
-  id: Scalars['ID']['input'];
-};
-
-
 export type QueryOtherUserArgs = {
   id: Scalars['String']['input'];
 };
@@ -2862,6 +2848,11 @@ export type QueryStreamsArgs = {
 
 export type QueryTableParametersArgs = {
   tableId: Scalars['ID']['input'];
+};
+
+
+export type QueryTableSettingsArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -3628,6 +3619,15 @@ export type TableSelectedParameters = {
 export type TableSelectedParametersInput = {
   child: Array<Scalars['ID']['input']>;
   parent: Array<Scalars['ID']['input']>;
+};
+
+/** Named table configuration with additional metadata */
+export type TableSettings = {
+  __typename?: 'TableSettings';
+  categoryFilters?: Maybe<CategoryFilters>;
+  config: TableConfig;
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
 };
 
 export type TestAutomationRun = {
@@ -6552,7 +6552,6 @@ export type AllObjectTypes = {
   ModelsTreeItem: ModelsTreeItem,
   ModelsTreeItemCollection: ModelsTreeItemCollection,
   Mutation: Mutation,
-  NamedTableConfig: NamedTableConfig,
   Object: Object,
   ObjectCollection: ObjectCollection,
   ParameterMutationResponse: ParameterMutationResponse,
@@ -6604,6 +6603,7 @@ export type AllObjectTypes = {
   TableColumn: TableColumn,
   TableConfig: TableConfig,
   TableSelectedParameters: TableSelectedParameters,
+  TableSettings: TableSettings,
   TestAutomationRun: TestAutomationRun,
   TestAutomationRunTrigger: TestAutomationRunTrigger,
   TestAutomationRunTriggerPayload: TestAutomationRunTriggerPayload,
@@ -7149,12 +7149,6 @@ export type MutationFieldArgs = {
   webhookUpdate: MutationWebhookUpdateArgs,
   workspaceMutations: {},
 }
-export type NamedTableConfigFieldArgs = {
-  categoryFilters: {},
-  config: {},
-  id: {},
-  name: {},
-}
 export type ObjectFieldArgs = {
   applicationId: {},
   children: ObjectChildrenArgs,
@@ -7369,8 +7363,6 @@ export type QueryFieldArgs = {
   comment: QueryCommentArgs,
   comments: QueryCommentsArgs,
   discoverableStreams: QueryDiscoverableStreamsArgs,
-  namedTableConfig: QueryNamedTableConfigArgs,
-  namedTableConfigs: {},
   otherUser: QueryOtherUserArgs,
   parameter: QueryParameterArgs,
   parameters: {},
@@ -7385,6 +7377,8 @@ export type QueryFieldArgs = {
   streamInvites: {},
   streams: QueryStreamsArgs,
   tableParameters: QueryTableParametersArgs,
+  tableSettings: QueryTableSettingsArgs,
+  tableSettingsP: {},
   user: QueryUserArgs,
   userPwdStrength: QueryUserPwdStrengthArgs,
   userSearch: QueryUserSearchArgs,
@@ -7593,6 +7587,12 @@ export type TableConfigFieldArgs = {
 export type TableSelectedParametersFieldArgs = {
   child: {},
   parent: {},
+}
+export type TableSettingsFieldArgs = {
+  categoryFilters: {},
+  config: {},
+  id: {},
+  name: {},
 }
 export type TestAutomationRunFieldArgs = {
   automationRunId: {},
@@ -7926,7 +7926,6 @@ export type AllObjectFieldArgTypes = {
   ModelsTreeItem: ModelsTreeItemFieldArgs,
   ModelsTreeItemCollection: ModelsTreeItemCollectionFieldArgs,
   Mutation: MutationFieldArgs,
-  NamedTableConfig: NamedTableConfigFieldArgs,
   Object: ObjectFieldArgs,
   ObjectCollection: ObjectCollectionFieldArgs,
   ParameterMutationResponse: ParameterMutationResponseFieldArgs,
@@ -7978,6 +7977,7 @@ export type AllObjectFieldArgTypes = {
   TableColumn: TableColumnFieldArgs,
   TableConfig: TableConfigFieldArgs,
   TableSelectedParameters: TableSelectedParametersFieldArgs,
+  TableSettings: TableSettingsFieldArgs,
   TestAutomationRun: TestAutomationRunFieldArgs,
   TestAutomationRunTrigger: TestAutomationRunTriggerFieldArgs,
   TestAutomationRunTriggerPayload: TestAutomationRunTriggerPayloadFieldArgs,

@@ -81,21 +81,9 @@ import {
   updateLocalColumns as updateColumns,
   validateTableRows
 } from './composables/useTableUtils'
-import type {
-  ColumnDef,
-  AvailableParameter,
-  ElementData,
-  TableRow,
-  UserValueType,
-  BimValueType
-} from '~/composables/core/types'
-import {
-  createBimColumnDefWithDefaults,
-  createUserColumnDefWithDefaults,
-  isBimColumnDef,
-  isUserColumnDef
-} from '~/composables/core/types/tables/column-types'
-import { createBaseItem } from '~/composables/core/types/common/base-types'
+import type { ElementData, TableRow } from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
+import type { SelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   DataTableColumnReorderEvent,
@@ -110,17 +98,17 @@ interface Props {
   tableName?: string
   data: (TableRow | ElementData)[]
   scheduleData: (TableRow | ElementData)[]
-  columns: ColumnDef[]
-  detailColumns: ColumnDef[]
-  availableParentParameters: AvailableParameter[]
-  availableChildParameters: AvailableParameter[]
+  columns: TableColumn[]
+  detailColumns: TableColumn[]
+  availableParentParameters: SelectedParameter[]
+  availableChildParameters: SelectedParameter[]
   loading?: boolean
   initialState?: TableState
 }
 
 interface TableState {
-  columns: ColumnDef[] // Parent columns
-  detailColumns: ColumnDef[] // Child columns
+  columns: TableColumn[] // Parent columns
+  detailColumns: TableColumn[] // Child columns
   expandedRows: (TableRow | ElementData)[]
   sortField?: string
   sortOrder?: number
@@ -134,10 +122,10 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   'update:expandedRows': [value: (TableRow | ElementData)[]]
-  'update:columns': [columns: ColumnDef[]]
-  'update:detail-columns': [columns: ColumnDef[]]
+  'update:columns': [columns: TableColumn[]]
+  'update:detail-columns': [columns: TableColumn[]]
   'update:both-columns': [
-    updates: { parentColumns: ColumnDef[]; childColumns: ColumnDef[] }
+    updates: { parentColumns: TableColumn[]; childColumns: TableColumn[] }
   ]
   'column-reorder': [event: DataTableColumnReorderEvent]
   'row-expand': [row: TableRow | ElementData]
@@ -162,10 +150,10 @@ const sortOrder = ref<number>(1)
 const filters = ref<DataTableFilterMeta>({})
 
 // Column State
-const localParentColumns = ref<ColumnDef[]>([])
-const localChildColumns = ref<ColumnDef[]>([])
-const tempParentColumns = ref<ColumnDef[]>([])
-const tempChildColumns = ref<ColumnDef[]>([])
+const localParentColumns = ref<TableColumn[]>([])
+const localChildColumns = ref<TableColumn[]>([])
+const tempParentColumns = ref<TableColumn[]>([])
+const tempChildColumns = ref<TableColumn[]>([])
 
 // Initialize table configs
 const tableConfigs = useTableConfigs()
@@ -274,61 +262,35 @@ function handleRowCollapse(row: TableRow | ElementData): void {
 }
 
 // Helper function to ensure column properties
-function ensureColumnProperties(column: ColumnDef): ColumnDef {
-  // Create base item first with type safety
-  const base = createBaseItem({
-    field: String(column.field || ''),
-    id: String(column.id || crypto.randomUUID()),
-    name: String(column.name || column.field || ''),
-    header: String(column.header || column.name || column.field || ''),
-    visible: column.visible ?? true,
-    removable: column.removable ?? true,
-    order: column.order,
-    metadata: column.metadata,
-    description: column.description,
-    category: column.category
-  })
+function ensureColumnProperties(column: Partial<TableColumn>): TableColumn {
+  const id = column.id || crypto.randomUUID()
+  const name = column.header || column.field || 'Unnamed Column'
+  const visible = column.visible ?? true
+  const order = column.order ?? 0
 
-  // First check if it's already a properly typed column
-  if (isBimColumnDef(column)) {
-    return createBimColumnDefWithDefaults({
-      ...base,
-      type: column.type as BimValueType,
-      sourceValue: column.sourceValue ?? null,
-      fetchedGroup: column.fetchedGroup || 'Default',
-      currentGroup: column.currentGroup || column.fetchedGroup || 'Default',
-      source: column.source,
-      width: column.width,
-      sortable: column.sortable,
-      filterable: column.filterable,
-      headerComponent: column.headerComponent,
-      color: column.color,
-      expander: column.expander
-    })
-  }
-
-  if (isUserColumnDef(column)) {
-    return createUserColumnDefWithDefaults({
-      ...base,
-      type: column.type as UserValueType,
-      group: column.group || 'Default',
-      isCustomParameter: column.isCustomParameter,
-      parameterRef: column.parameterRef,
-      width: column.width,
-      sortable: column.sortable,
-      filterable: column.filterable,
-      headerComponent: column.headerComponent,
-      color: column.color,
-      expander: column.expander
-    })
-  }
-
-  // If it's not a typed column, create a default user column
-  return createUserColumnDefWithDefaults({
-    ...base,
-    type: 'fixed' as UserValueType,
+  const parameter: SelectedParameter = column.parameter || {
+    id,
+    name,
+    visible,
+    order,
+    kind: 'bim',
+    type: 'string',
+    value: null,
     group: 'Default'
-  })
+  }
+
+  return {
+    id,
+    field: column.field || '',
+    header: name,
+    visible,
+    sortable: column.sortable ?? true,
+    filterable: column.filterable ?? true,
+    width: column.width,
+    order,
+    headerComponent: column.headerComponent,
+    parameter
+  }
 }
 
 // Update initialization to properly type expanded rows
@@ -366,12 +328,12 @@ async function initializeState(): Promise<void> {
     } else {
       // Initialize from props with proper defaults
       updateColumns(
-        props.columns.map((col) => ensureColumnProperties(col)),
-        (cols) => (localParentColumns.value = cols)
+        props.columns.map((col): TableColumn => ensureColumnProperties(col)),
+        (cols: TableColumn[]) => (localParentColumns.value = cols)
       )
       updateColumns(
-        props.detailColumns.map((col) => ensureColumnProperties(col)),
-        (cols) => (localChildColumns.value = cols)
+        props.detailColumns.map((col): TableColumn => ensureColumnProperties(col)),
+        (cols: TableColumn[]) => (localChildColumns.value = cols)
       )
     }
 
@@ -385,8 +347,8 @@ async function initializeState(): Promise<void> {
       expandedRows: expandedRowsState.value.length,
       groups: [
         ...new Set([
-          ...localParentColumns.value.map((c) => c.category),
-          ...localChildColumns.value.map((c) => c.category)
+          ...localParentColumns.value.map((c) => c.parameter.group),
+          ...localChildColumns.value.map((c) => c.parameter.group)
         ])
       ]
     })
@@ -411,8 +373,8 @@ function openDialog(): void {
 }
 
 function handleColumnsUpdate(updates: {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
+  parentColumns: Partial<TableColumn>[]
+  childColumns: Partial<TableColumn>[]
 }): void {
   tempParentColumns.value = safeJSONClone(
     updates.parentColumns.map((col) => ensureColumnProperties(col))
@@ -434,33 +396,15 @@ async function handleApplyColumns(): Promise<void> {
     const parameterStore = useParameterStore()
 
     // Update parent parameters
-    const parentSelectedParameters = localParentColumns.value.map((column) => ({
-      id: column.id,
-      name: column.name,
-      kind: column.isCustomParameter ? ('user' as const) : ('bim' as const),
-      type: column.type,
-      value: column.sourceValue ?? null,
-      group: column.currentGroup || column.fetchedGroup || 'Default',
-      visible: column.visible,
-      order: column.order ?? 0,
-      category: column.category,
-      description: column.description
-    }))
+    const parentSelectedParameters = localParentColumns.value.map(
+      (column) => column.parameter
+    )
     parameterStore.updateSelectedParameters(parentSelectedParameters, true)
 
     // Update child parameters
-    const childSelectedParameters = localChildColumns.value.map((column) => ({
-      id: column.id,
-      name: column.name,
-      kind: column.isCustomParameter ? ('user' as const) : ('bim' as const),
-      type: column.type,
-      value: column.sourceValue ?? null,
-      group: column.currentGroup || column.fetchedGroup || 'Default',
-      visible: column.visible,
-      order: column.order ?? 0,
-      category: column.category,
-      description: column.description
-    }))
+    const childSelectedParameters = localChildColumns.value.map(
+      (column) => column.parameter
+    )
     parameterStore.updateSelectedParameters(childSelectedParameters, false)
 
     // Update table configs
@@ -497,7 +441,7 @@ function handleColumnResize(event: { element: HTMLElement }): void {
     const field = event.element.dataset.field
     const width = event.element.offsetWidth
 
-    const updateColumnWidth = (columns: ColumnDef[]) => {
+    const updateColumnWidth = (columns: TableColumn[]) => {
       const column = columns.find((col) => col.field === field)
       if (column) {
         column.width = width

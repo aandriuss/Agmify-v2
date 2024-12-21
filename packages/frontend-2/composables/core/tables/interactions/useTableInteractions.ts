@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
-  NamedTableConfig,
+  TableSettings,
   TableInitializationInstance,
   Store
 } from '~/composables/core/types'
@@ -9,7 +9,7 @@ import type {
 export interface TableInteractionsState {
   selectedTableId: string
   tableName: string
-  currentTable: NamedTableConfig | null
+  currentTable: TableSettings | null
   selectedParentCategories: string[]
   selectedChildCategories: string[]
 }
@@ -78,7 +78,7 @@ export function useTableInteractions(options: TableInteractionsOptions) {
       const trimmedName = validateTableName(state.value.tableName)
 
       // Create table config
-      const tableConfig: Partial<NamedTableConfig> = {
+      const tableConfig: Partial<TableSettings> = {
         name: trimmedName,
         displayName: trimmedName,
         categoryFilters: {

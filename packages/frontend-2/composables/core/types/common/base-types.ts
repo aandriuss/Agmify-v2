@@ -11,9 +11,9 @@ import type {
 export interface BaseItem {
   readonly id: string
   name: string
-  field: string
-  header: string
-  visible: boolean
+  field?: string
+  header?: string
+  visible?: boolean
   removable: boolean
   order?: number
   category?: string

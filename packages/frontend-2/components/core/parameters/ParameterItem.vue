@@ -56,24 +56,24 @@ import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import Tooltip from 'primevue/tooltip'
 
-import type { Parameter, ColumnDef } from '~/composables/core/types'
+import type { AvailableParameter, TableColumn } from '~/composables/core/types'
 import { columnDefToParameter } from '~/composables/core/parameters'
 import ParameterBadge from './ParameterBadge.vue'
 
 const props = defineProps<{
-  parameter: Parameter | ColumnDef
+  parameter: AvailableParameter | TableColumn
   isActive: boolean
   showVisibility?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'add', parameter: Parameter | ColumnDef): void
-  (e: 'remove', parameter: Parameter | ColumnDef): void
+  (e: 'add', parameter: AvailableParameter | TableColumn): void
+  (e: 'remove', parameter: AvailableParameter | TableColumn): void
   (e: 'update:visible', value: boolean): void
   (e: 'dragstart', event: DragEvent): void
 }>()
 
-const parameterValue = computed<Parameter>(() => {
+const parameterValue = computed<AvailableParameter>(() => {
   if ('kind' in props.parameter) {
     return props.parameter
   }

@@ -23,13 +23,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ColumnDef } from '~/composables/core/types/tables'
+import type { TableColumn } from '~/composables/core/types/tables'
 import type { Parameter } from '~/composables/core/types/parameters/parameter-types'
 import { useParameterFiltering } from '~/composables/parameters/useParameterFiltering'
 import EnhancedColumnList from '../shared/EnhancedColumnList.vue'
 
 const props = defineProps<{
-  parameters: ColumnDef[]
+  parameters: TableColumn[]
   searchTerm: string
   isGrouped: boolean
   sortBy: 'name' | 'category' | 'type' | 'fixed'
@@ -40,8 +40,8 @@ const emit = defineEmits<{
   'update:searchTerm': [value: string]
   'update:isGrouped': [value: boolean]
   'update:sortBy': [value: 'name' | 'category' | 'type' | 'fixed']
-  add: [param: ColumnDef]
-  'drag-start': [event: DragEvent, param: ColumnDef]
+  add: [param: TableColumn]
+  'drag-start': [event: DragEvent, param: TableColumn]
 }>()
 
 const { filteredParameters } = useParameterFiltering({
@@ -52,23 +52,23 @@ const { filteredParameters } = useParameterFiltering({
 })
 
 // Methods
-const handleAdd = (item: ColumnDef | Parameter) => {
+const handleAdd = (item: TableColumn | Parameter) => {
   if (!isParameterActive(item) && 'field' in item) {
-    emit('add', item as ColumnDef)
+    emit('add', item as TableColumn)
   }
 }
 
-const handleRemove = (_item: ColumnDef | Parameter) => {
+const handleRemove = (_item: TableColumn | Parameter) => {
   // No-op for available columns
 }
 
 const handleDragStart = (
   event: DragEvent,
-  item: ColumnDef | Parameter,
+  item: TableColumn | Parameter,
   _index: number
 ) => {
   if ('field' in item) {
-    emit('drag-start', event, item as ColumnDef)
+    emit('drag-start', event, item as TableColumn)
   }
 }
 
@@ -84,7 +84,7 @@ const handleDrop = (_event: DragEvent, _index: number) => {
   // No-op for available columns
 }
 
-const handleVisibilityChange = (_item: ColumnDef | Parameter, _visible: boolean) => {
+const handleVisibilityChange = (_item: TableColumn | Parameter, _visible: boolean) => {
   // No-op for available columns
 }
 
@@ -100,7 +100,7 @@ const handleSortChange = (value: string) => {
 }
 
 // Computed properties
-const isParameterActive = (item: ColumnDef | Parameter) => {
+const isParameterActive = (item: TableColumn | Parameter) => {
   return 'field' in item && props.activeColumns.some((col) => col.field === item.field)
 }
 </script>

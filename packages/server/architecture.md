@@ -312,7 +312,7 @@ Store Initialization -> ViewerState -> BIMElements -> Components
        ↑                    ↑              ↑
        └── Error ──────────┴── State ─────┘
 
-NamedTableConfig -> TableConfig -> Component Props
+TableSettings -> TableConfig -> Component Props
          ↑                ↓             ↓
          └── State Updates ←───── Direct Data Access
 ```
