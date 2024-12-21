@@ -58,13 +58,16 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   const state = ref<TableStoreState>(createInitialState())
   const tableService = useTableService()
 
-  // Create default table
+  // Create default table with columns created from default parameters
+  const defaultParentColumns = createTableColumns(defaultSelectedParameters.parent)
+  const defaultChildColumns = createTableColumns(defaultSelectedParameters.child)
+
   const defaultTable: TableSettings = {
     id: 'default',
     name: 'Default Table',
     displayName: 'Default Table',
-    parentColumns: [],
-    childColumns: [],
+    parentColumns: defaultParentColumns,
+    childColumns: defaultChildColumns,
     categoryFilters: {
       selectedParentCategories: [],
       selectedChildCategories: []
@@ -76,6 +79,17 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   // Set default table and make it current
   state.value.tables.set(defaultTable.id, defaultTable)
   state.value.currentTableId = defaultTable.id
+
+  debug.log(DebugCategories.STATE, 'Default table created', {
+    selectedParameters: {
+      parent: defaultSelectedParameters.parent.length,
+      child: defaultSelectedParameters.child.length
+    },
+    columns: {
+      parent: defaultParentColumns.length,
+      child: defaultChildColumns.length
+    }
+  })
 
   // Add initial tables if provided
   if (options.initialTables) {
@@ -383,13 +397,16 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     // Create initial state
     const initialState = createInitialState()
 
-    // Create default table with default parameters
+    // Create default table with columns created from default parameters
+    const defaultParentColumns = createTableColumns(defaultSelectedParameters.parent)
+    const defaultChildColumns = createTableColumns(defaultSelectedParameters.child)
+
     const defaultTable: TableSettings = {
       id: 'default',
       name: 'Default Table',
       displayName: 'Default Table',
-      parentColumns: [],
-      childColumns: [],
+      parentColumns: defaultParentColumns,
+      childColumns: defaultChildColumns,
       categoryFilters: {
         selectedParentCategories: [],
         selectedChildCategories: []
@@ -401,6 +418,17 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     // Set default table
     initialState.tables.set(defaultTable.id, defaultTable)
     initialState.currentTableId = defaultTable.id
+
+    debug.log(DebugCategories.STATE, 'Default table reset with columns', {
+      selectedParameters: {
+        parent: defaultSelectedParameters.parent.length,
+        child: defaultSelectedParameters.child.length
+      },
+      columns: {
+        parent: defaultParentColumns.length,
+        child: defaultChildColumns.length
+      }
+    })
 
     // Update state
     state.value = initialState

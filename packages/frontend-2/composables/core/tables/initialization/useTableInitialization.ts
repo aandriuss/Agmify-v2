@@ -5,7 +5,7 @@ import type {
   TableInitializationInstance,
   TableInitializationOptions
 } from '~/composables/core/types/tables/initialization-types'
-import type { TableSettings, TableStore } from '../store/types'
+import type { TableStore } from '../store/types'
 import { defaultTableConfig } from '../config/defaults'
 
 const defaultState: TableInitializationState = {
@@ -55,23 +55,21 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
           note: 'Using default parameters until user customizes through Column Manager'
         })
 
-        // Create table settings with current state
-        const tableSettings: TableSettings = {
-          id: state.value.selectedTableId,
-          name: state.value.tableName,
-          displayName: state.value.tableName,
-          parentColumns: state.value.currentTableColumns,
-          childColumns: state.value.currentDetailColumns,
-          categoryFilters: {
-            selectedParentCategories: state.value.selectedParentCategories,
-            selectedChildCategories: state.value.selectedChildCategories
-          },
-          selectedParameters: existingParams,
-          lastUpdateTimestamp: Date.now()
-        }
+        // Update store with initial state using updateSelectedParameters to ensure columns are created
+        await Promise.resolve(store.updateSelectedParameters(existingParams))
 
-        // Update store with initial state
-        await Promise.resolve(store.updateTable(tableSettings))
+        // Update other table settings
+        await Promise.resolve(
+          store.updateTable({
+            id: state.value.selectedTableId,
+            name: state.value.tableName,
+            displayName: state.value.tableName,
+            categoryFilters: {
+              selectedParentCategories: state.value.selectedParentCategories,
+              selectedChildCategories: state.value.selectedChildCategories
+            }
+          })
+        )
 
         debug.completeState(DebugCategories.INITIALIZATION, 'Table initialized')
       } catch (err) {
@@ -90,20 +88,20 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
         // Reset state to defaults
         state.value = { ...defaultState }
 
-        // Create default table settings
-        const defaultSettings: TableSettings = {
-          id: defaultTableConfig.id,
-          name: defaultTableConfig.name,
-          displayName: defaultTableConfig.name,
-          parentColumns: defaultTableConfig.parentColumns,
-          childColumns: defaultTableConfig.childColumns,
-          categoryFilters: defaultTableConfig.categoryFilters,
-          selectedParameters: defaultTableConfig.selectedParameters,
-          lastUpdateTimestamp: Date.now()
-        }
+        // Update selected parameters first to ensure columns are created
+        await Promise.resolve(
+          store.updateSelectedParameters(defaultTableConfig.selectedParameters)
+        )
 
-        // Update store with reset state
-        await Promise.resolve(store.updateTable(defaultSettings))
+        // Update other table settings
+        await Promise.resolve(
+          store.updateTable({
+            id: defaultTableConfig.id,
+            name: defaultTableConfig.name,
+            displayName: defaultTableConfig.name,
+            categoryFilters: defaultTableConfig.categoryFilters
+          })
+        )
 
         debug.completeState(DebugCategories.STATE, 'Table state reset')
       } catch (err) {

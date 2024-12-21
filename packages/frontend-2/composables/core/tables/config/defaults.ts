@@ -1,6 +1,6 @@
 import type { SelectedParameter } from '../../types/parameters/parameter-states'
 import type { TableSettings } from '../store/types'
-import { createTableColumns } from '../../types/tables/table-column'
+import { createTableColumns } from '~/composables/core/types/tables/table-column'
 
 // Default selected parameters that should be consistent across the application
 export const defaultSelectedParameters: {

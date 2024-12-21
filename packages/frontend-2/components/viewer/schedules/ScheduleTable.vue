@@ -98,7 +98,7 @@ import type {
   ColumnReorderPayload,
   BaseTableRow
 } from '~/composables/core/types'
-import type { TableState } from '~/composables/core/tables/'
+import type { TableState } from '~/components/viewer/components/tables/DataTable/composables/types'
 import type { DataTableFilterMeta } from 'primevue/datatable'
 
 // Props

@@ -91,11 +91,11 @@
 import { ref, computed } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
-import type { TableState } from '../../tables/DataTable/types'
+import type { TableState } from '~/components/viewer/components/tables/DataTable/composables/types'
 import { TableError } from '~/components/tables/DataTable/utils'
 import type { ScheduleRow } from '../../viewer/schedules/types'
-import type { UserColumnDef } from '~/composables/core/types/tables/column-types'
-import { createUserColumnDefWithDefaults } from '~/composables/core/types/tables/column-types'
+import type { TableColumn } from '~/composables/core/types'
+import { createTableColumns } from '~/composables/core/types/tables/table-column'
 
 // Props
 interface Props {
@@ -116,7 +116,7 @@ const error = ref<Error | null>(null)
 const currentError = computed(() => error.value)
 const isLoading = ref(false)
 const parameterData = ref<ScheduleRow[]>([])
-const columns = ref<UserColumnDef[]>([])
+const columns = ref<TableColumn[]>([])
 const initialState = ref<TableState | undefined>(undefined)
 const selectedParameters = ref<ScheduleRow[]>([])
 
@@ -138,11 +138,11 @@ function handleColumnsUpdate(newColumns: unknown): void {
   try {
     if (!Array.isArray(newColumns)) return
     const validColumns = newColumns.filter(
-      (col): col is UserColumnDef =>
+      (col): col is TableColumn =>
         typeof col === 'object' &&
         col !== null &&
         'kind' in col &&
-        (col as UserColumnDef).kind === 'user'
+        (col as TableColumn).kind === 'user'
     )
     columns.value = validColumns
   } catch (err) {
@@ -250,7 +250,7 @@ async function handleRetry(): Promise<void> {
   }
 }
 
-// Initialize component
+// Initialize component ( do we need these if we have default selected parameters)
 async function initialize(): Promise<void> {
   try {
     isLoading.value = true
@@ -259,7 +259,7 @@ async function initialize(): Promise<void> {
 
     // Set initial columns
     columns.value = [
-      createUserColumnDefWithDefaults({
+      createTableColumns({
         id: 'name',
         name: 'Name',
         field: 'name',
@@ -270,7 +270,7 @@ async function initialize(): Promise<void> {
         removable: false,
         order: 0
       }),
-      createUserColumnDefWithDefaults({
+      createTableColumns({
         id: 'category',
         name: 'Category',
         field: 'category',
@@ -281,7 +281,7 @@ async function initialize(): Promise<void> {
         removable: true,
         order: 1
       }),
-      createUserColumnDefWithDefaults({
+      createTableColumns({
         id: 'kind',
         name: 'Kind',
         field: 'kind',
@@ -292,7 +292,7 @@ async function initialize(): Promise<void> {
         removable: true,
         order: 2
       }),
-      createUserColumnDefWithDefaults({
+      createTableColumns({
         id: 'sourceValue',
         name: 'Source Value',
         field: 'sourceValue',
@@ -303,7 +303,7 @@ async function initialize(): Promise<void> {
         removable: true,
         order: 3
       }),
-      createUserColumnDefWithDefaults({
+      createTableColumns({
         id: 'equation',
         name: 'Equation',
         field: 'equation',
