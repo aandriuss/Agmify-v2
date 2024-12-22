@@ -3,7 +3,7 @@ import type { ParameterValue, BimValueType, UserValueType } from '../parameters'
 /**
  * Parameter metadata interface
  */
-export interface ParameterMetadata {
+export interface ParameterMetadata extends Record<string, unknown> {
   category?: string
   fullKey?: string
   isSystem?: boolean
@@ -36,6 +36,7 @@ export interface AvailableBimParameter {
   value: ParameterValue
   sourceGroup: string
   currentGroup: string
+  visible?: boolean
   isSystem: boolean
   category?: string
   description?: string
@@ -52,6 +53,7 @@ export interface AvailableUserParameter {
   type: UserValueType
   value: ParameterValue
   group: string
+  visible: boolean
   equation?: string
   category?: string
   description?: string
@@ -183,6 +185,7 @@ export const createAvailableBimParameter = (
     value: processedValue,
     sourceGroup,
     currentGroup: sourceGroup,
+    visible: true,
     isSystem: isSystem || raw.name.startsWith('__') || sourceGroup.startsWith('__'),
     metadata: raw.metadata
   }
@@ -203,6 +206,7 @@ export const createAvailableUserParameter = (
   type,
   value,
   group,
+  visible: true,
   equation,
   metadata
 })

@@ -1,11 +1,7 @@
 import { ref, computed } from 'vue'
-import type { ViewerTableRow } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { TableStateError } from '~/composables/core/types/errors'
-
-export interface CategoryTableRow extends ViewerTableRow {
-  category?: string
-}
+import type { CategoryTableRow } from '~/composables/core/types/tables/category-types'
 
 export interface UseCategoryTableStateOptions {
   onError?: (error: Error) => void

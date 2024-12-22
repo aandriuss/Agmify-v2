@@ -1,28 +1,26 @@
 import { computed, watch, ref } from 'vue'
-import {
-  TableStateError,
-  createUserParameterWithDefaults
-} from '~/composables/core/types'
+import { TableStateError } from '~/composables/core/types/errors'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTableInitialization } from '~/composables/core/tables/initialization/useTableInitialization'
 import { useCategoryTableState } from '~/composables/core/tables/state/useCategoryTableState'
 import { useParameterGroups } from '~/composables/core/parameters/useParameterGroups'
-import { useBIMParameters } from '~/composables/viewer/parameters/useBIMParameters'
+import type { ScheduleRow } from '~/composables/core/types/schedules/schedule-types'
+import { selectedParameterToScheduleRow } from '~/composables/core/types/schedules/schedule-types'
 import {
-  toTableParameter,
-  toTableParameters,
-  isTableUserParameter
-} from '~/composables/core/types/tables/parameter-table-types'
-import { scheduleRowToCategoryRow } from '~/composables/core/types/tables/schedule-types'
-import type {
-  ViewerTableRow,
-  TableColumn,
-  UserParameter,
-  TableParameter,
-  ScheduleRow,
-  Parameter
-} from '~/composables/core/types'
+  type SelectedParameter,
+  createAvailableBimParameter,
+  createSelectedParameter
+} from '~/composables/core/types/parameters/parameter-states'
+import type { TableStore } from '~/composables/core/tables/store/types'
 import { useStore } from '~/composables/core/store'
+import {
+  toViewerTableRow,
+  createElementData,
+  type ElementData
+} from '~/composables/core/types/elements/elements-base'
+import type { TableColumn } from '~/composables/core/types'
+import type { TableRow } from '~/composables/core/types/data/data-core'
+import type { ParameterValue } from '~/composables/core/types/parameters'
 
 interface UseScheduleTableOptions {
   tableId: string
@@ -36,8 +34,8 @@ interface UseScheduleTableOptions {
  * Combines viewer table state with category and parameter group functionality
  */
 export function useScheduleTable(options: UseScheduleTableOptions) {
-  const store = useStore()
-  const { extractBIMParameter } = useBIMParameters()
+  const coreStore = useStore()
+  const store = coreStore as unknown as TableStore
 
   // Initialize core states
   const { initComponent: tableInit } = useTableInitialization({
@@ -59,120 +57,102 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
   const expandedRows = ref<ScheduleRow[]>([])
 
   // Convert viewer rows to parameters
-  const parameters = computed<Parameter[]>(() => {
-    return (store.tableData.value || []).map((row): Parameter => {
-      const viewerRow = row as ViewerTableRow
-      // Try to extract as BIM parameter first
-      const bimParam = extractBIMParameter(viewerRow, viewerRow.name)
-      if (bimParam) return bimParam
+  const parameters = computed<SelectedParameter[]>(() => {
+    return (coreStore.tableData.value || []).flatMap((row: TableRow) => {
+      // Convert to ElementData first
+      const elementData = createElementData({
+        id: typeof row.id === 'string' ? row.id : String(row.id),
+        type: typeof row.type === 'string' ? row.type : 'unknown',
+        parameters:
+          typeof row.parameters === 'object' && row.parameters
+            ? (row.parameters as Record<string, ParameterValue>)
+            : {},
+        name: typeof row.name === 'string' ? row.name : String(row.name || ''),
+        field: typeof row.field === 'string' ? row.field : String(row.field || ''),
+        header: typeof row.header === 'string' ? row.header : String(row.header || ''),
+        removable: typeof row.removable === 'boolean' ? row.removable : true,
+        category: typeof row.category === 'string' ? row.category : undefined,
+        metadata:
+          typeof row.metadata === 'object' && row.metadata !== null
+            ? (row.metadata as Record<string, unknown>)
+            : undefined,
+        order: typeof row.order === 'number' ? row.order : 0,
+        visible: typeof row.visible === 'boolean' ? row.visible : true
+      } as ElementData)
 
-      // Fall back to user parameter
-      return createUserParameterWithDefaults({
-        id: viewerRow.id,
-        name: viewerRow.name,
-        field: viewerRow.field,
-        type: 'fixed',
-        header: viewerRow.header,
-        visible: viewerRow.visible,
-        removable: viewerRow.removable,
-        order: viewerRow.order,
-        group: String(viewerRow.metadata?.kind || 'Custom'),
-        metadata: viewerRow.metadata
-      })
+      // Convert to ViewerTableRow
+      const viewerRow = toViewerTableRow(elementData)
+      const params: SelectedParameter[] = []
+
+      if (viewerRow.parameters) {
+        Object.entries(viewerRow.parameters).forEach(([key, value], index) => {
+          // Skip system parameters
+          if (key.startsWith('__')) return
+
+          // Create raw parameter
+          const raw = {
+            id: key,
+            name: key.split('.').pop() || key,
+            value,
+            sourceGroup: key.split('.')[0] || 'Parameters',
+            metadata: {
+              category: viewerRow.category,
+              fullKey: key,
+              isSystem: false,
+              group: key.split('.')[0] || 'Parameters',
+              elementId: viewerRow.id
+            }
+          }
+
+          // Create BIM parameter
+          const bimParam = createAvailableBimParameter(
+            raw,
+            typeof value === 'number' ? 'number' : 'string',
+            value,
+            false
+          )
+
+          // Convert to selected parameter
+          params.push(createSelectedParameter(bimParam, index, true))
+        })
+      }
+
+      return params
     })
-  })
-
-  // Convert parameters to table parameters
-  const tableParameters = computed<TableParameter[]>(() => {
-    return toTableParameters(parameters.value)
-  })
-
-  // Filter user parameters for parameter groups
-  const userParameters = computed<UserParameter[]>(() => {
-    return tableParameters.value.filter(isTableUserParameter).map(
-      (p): UserParameter => ({
-        id: p.id,
-        kind: 'user',
-        name: p.name,
-        field: p.field,
-        type: p.type,
-        header: p.header,
-        visible: p.visible,
-        removable: p.removable,
-        order: p.order,
-        value: p.value,
-        group: p.group,
-        metadata: p.metadata
-      })
-    )
   })
 
   // Convert to schedule rows for display
   const scheduleRows = computed<ScheduleRow[]>(() => {
-    return tableParameters.value.map(
-      (param): ScheduleRow => ({
-        id: param.id,
-        name: param.name,
-        type: param.type,
-        field: param.field,
-        header: param.header,
-        visible: param.visible,
-        removable: param.removable,
-        order: param.order,
-        category: param.category,
-        kind: param.kind,
-        parameters: {},
-        selected: false,
-        metadata: param.metadata
-      })
-    )
+    return parameters.value.map(selectedParameterToScheduleRow)
   })
 
   // Parameter groups state
   const parameterState = useParameterGroups({
-    parameters: userParameters,
+    parameters: computed(() => parameters.value.filter((p) => p.kind === 'user')),
     onError: (message) => handleError(new Error(message))
   })
 
   // Computed properties
   const availableCategories = computed(() => {
-    return categoryState.getAvailableCategories(
-      scheduleRows.value.map(scheduleRowToCategoryRow)
-    )
+    return categoryState.getAvailableCategories(scheduleRows.value)
   })
 
   // For backward compatibility with ScheduleTable.vue
   const parameterGroups = computed(() => {
     const groups = new Map<string, ScheduleRow[]>()
-    categoryState.filteredRows.value.forEach((row) => {
-      const param = toTableParameter(
-        parameters.value.find((p) => p.id === row.id) ||
-          createUserParameterWithDefaults({
-            field: row.id,
-            name: row.name,
-            type: 'fixed',
-            group: 'Custom'
-          })
-      )
-      const scheduleRow = {
-        id: param.id,
-        name: param.name,
-        type: param.type,
-        field: param.field,
-        header: param.header,
-        visible: param.visible,
-        removable: param.removable,
-        order: param.order,
-        category: param.category,
-        kind: param.kind,
-        parameters: {},
-        selected: false,
-        metadata: param.metadata
-      }
-      if (scheduleRow.kind) {
-        const existingGroup = groups.get(scheduleRow.kind) || []
-        existingGroup.push(scheduleRow)
-        groups.set(scheduleRow.kind, existingGroup)
+    const rows = categoryState.hasSelectedCategories.value
+      ? categoryState.filteredRows.value
+      : scheduleRows.value
+
+    rows.forEach((row) => {
+      const param = parameters.value.find((p) => p.id === row.id)
+      if (param) {
+        const scheduleRow = selectedParameterToScheduleRow(param)
+        if (scheduleRow.kind) {
+          const existingGroup = groups.get(scheduleRow.kind) || []
+          existingGroup.push(scheduleRow)
+          groups.set(scheduleRow.kind, existingGroup)
+        }
       }
     })
     return groups
@@ -194,7 +174,7 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
 
   // Watch for changes that affect filtering and grouping
   watch(scheduleRows, (rows) => {
-    categoryState.filterRowsByCategories(rows.map(scheduleRowToCategoryRow))
+    categoryState.filterRowsByCategories(rows)
   })
 
   // Error handling
@@ -228,7 +208,6 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedule table')
 
       await tableInit.initialize()
-      await store.lifecycle.init()
 
       debug.completeState(DebugCategories.INITIALIZATION, 'Schedule table initialized')
     } catch (err) {

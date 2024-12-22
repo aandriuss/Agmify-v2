@@ -44,19 +44,28 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
       try {
         debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
 
-        // Get selected parameters from current table if available, otherwise use defaults
-        const existingParams =
-          store.currentTable.value?.selectedParameters ||
-          defaultTableConfig.selectedParameters
+        // Get selected parameters from current table if available
+        const currentParams = store.currentTable.value?.selectedParameters
 
-        debug.log(DebugCategories.INITIALIZATION, 'Parameters initialized', {
-          parent: existingParams.parent.length,
-          child: existingParams.child.length,
-          note: 'Using default parameters until user customizes through Column Manager'
-        })
+        // If we have current parameters, use them
+        if (currentParams?.parent?.length && currentParams?.child?.length) {
+          debug.log(DebugCategories.INITIALIZATION, 'Using existing parameters', {
+            parent: currentParams.parent.length,
+            child: currentParams.child.length
+          })
 
-        // Update store with initial state using updateSelectedParameters to ensure columns are created
-        await Promise.resolve(store.updateSelectedParameters(existingParams))
+          await Promise.resolve(store.updateSelectedParameters(currentParams))
+        } else {
+          // Otherwise use defaults
+          const defaultParams = defaultTableConfig.selectedParameters
+
+          debug.log(DebugCategories.INITIALIZATION, 'Using default parameters', {
+            parent: defaultParams.parent.length,
+            child: defaultParams.child.length
+          })
+
+          await Promise.resolve(store.updateSelectedParameters(defaultParams))
+        }
 
         // Update other table settings
         await Promise.resolve(

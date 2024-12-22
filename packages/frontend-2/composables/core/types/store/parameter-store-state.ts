@@ -103,8 +103,7 @@ export const createDefaultParameterStoreState = (): ParameterStoreState => ({
         bim: [],
         user: []
       },
-      selected: [],
-      columns: []
+      selected: []
     },
     child: {
       raw: [],
@@ -112,8 +111,7 @@ export const createDefaultParameterStoreState = (): ParameterStoreState => ({
         bim: [],
         user: []
       },
-      selected: [],
-      columns: []
+      selected: []
     }
   },
   metadata: {
