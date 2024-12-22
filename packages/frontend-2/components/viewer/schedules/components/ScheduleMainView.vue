@@ -89,17 +89,26 @@ import { computed, watch, onMounted, unref } from 'vue'
 import type { PropType } from 'vue'
 import type {
   ElementData,
-  ViewerTableRow
-} from '~/composables/core/types/elements/elements-base'
+  ViewerTableRow,
+  WorldTreeRoot,
+  ViewerNode
+} from '~/composables/core/types'
+import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import type { TableSettings } from '~/composables/core/tables/store/types'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
 import type { ScheduleEmits } from '~/composables/core/types/tables/table-events'
 import { useParameters } from '~/composables/core/parameters/useParameters'
 import type {
   SelectedParameter,
-  AvailableParameter
+  AvailableParameter,
+  ParameterCollections
 } from '~/composables/core/types/parameters/parameter-states'
-import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
+import {
+  createSelectedParameter,
+  createAvailableBimParameter,
+  isRawParameter,
+  isSelectedParameter
+} from '~/composables/core/types/parameters/parameter-states'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import ParameterManager from '~/components/core/parameters/next/ParameterManager.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
@@ -107,7 +116,6 @@ import TableLayout from '~/components/core/tables/TableLayout.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTableStore } from '~/composables/core/tables/store/store'
-import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useSelectedElementsData } from '~/composables/core/tables/state/useSelectedElementsData'
 import { useScheduleEvents } from '~/composables/core/tables/events/useScheduleEvents'
 import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
@@ -119,7 +127,149 @@ import { defaultSelectedParameters } from '~/composables/core/tables/config/defa
 
 const debug = useDebug()
 const store = useStore()
-const bimElements = useBIMElements()
+// Get viewer state with type safety
+const viewerState = useInjectedViewerState()
+const worldTree = computed(() => viewerState.viewer.metadata.worldTree)
+
+// Initialize stores
+const parameterStore = useParameterStore()
+const tableStore = useTableStore()
+const tableParameters = useTableParameters()
+
+// Create reactive categories
+const selectedChildCategories = computed(
+  () => store.selectedChildCategories.value || []
+)
+
+// Initialize BIM elements with reactive categories
+const {
+  allElements: bimElements,
+  isLoading: isLoadingBim,
+  hasError: hasBimError,
+  initializeElements
+} = useBIMElements({
+  childCategories: unref(selectedChildCategories)
+})
+
+// Watch for category changes to update BIM elements
+watch(selectedChildCategories, async (newCategories) => {
+  debug.log(DebugCategories.DATA, 'Child categories updated', {
+    categories: newCategories
+  })
+  if (bimElements.value?.length) {
+    // Get current world tree
+    const currentTree = worldTree.value
+    if (isValidWorldTree(currentTree)) {
+      // Update categories and process elements
+      await initializeElements(currentTree)
+      await processElements()
+
+      // Log debug state
+      debug.log(DebugCategories.DATA, 'Categories updated', {
+        tree: {
+          valid: true,
+          childCount: currentTree._root.children.length
+        },
+        parameters: {
+          raw: {
+            parent: parameterStore.parentRawParameters.value?.length || 0,
+            child: parameterStore.childRawParameters.value?.length || 0
+          },
+          available: {
+            parent: parameterStore.parentAvailableBimParameters.value?.length || 0,
+            child: parameterStore.childAvailableBimParameters.value?.length || 0
+          }
+        },
+        elements: {
+          total: bimElements.value?.length || 0,
+          parent: parentElements.value?.length || 0,
+          child: childElements.value?.length || 0
+        }
+      })
+    } else {
+      debug.warn(DebugCategories.DATA, 'Invalid world tree for category update')
+    }
+  }
+})
+
+// Watch for world tree changes
+watch(worldTree, async (newTree) => {
+  if (isValidWorldTree(newTree)) {
+    debug.log(DebugCategories.DATA, 'World tree updated, reinitializing elements')
+    await initializeElements(newTree)
+  }
+})
+
+// Watch for category changes
+watch(
+  [
+    () => store.selectedParentCategories.value,
+    () => store.selectedChildCategories.value
+  ],
+  async ([parentCategories, childCategories]) => {
+    debug.log(DebugCategories.PARAMETERS, 'Categories changed', {
+      parent: parentCategories,
+      child: childCategories
+    })
+
+    try {
+      // Process elements with new categories
+      await processElements()
+
+      // Get parameter store
+      const parameterStore = useParameterStore()
+
+      // Log debug information with store data
+      debug.log(DebugCategories.DATA, 'BIM Data', {
+        elementCounts: {
+          raw: bimElements.value?.length || 0,
+          parent: parentElements.value?.length || 0,
+          child: childElements.value?.length || 0
+        },
+        categories: {
+          parent: parentCategories,
+          child: childCategories
+        },
+        parameters: {
+          raw: {
+            parent: parameterStore.parentRawParameters.value?.length || 0,
+            child: parameterStore.childRawParameters.value?.length || 0
+          },
+          available: {
+            parent: parameterStore.parentAvailableBimParameters.value?.length || 0,
+            child: parameterStore.childAvailableBimParameters.value?.length || 0
+          },
+          selected: {
+            parent: parameterStore.parentSelectedParameters.value?.length || 0,
+            child: parameterStore.childSelectedParameters.value?.length || 0
+          }
+        },
+        table: {
+          columns: {
+            parent: tableStore.currentTable.value?.parentColumns?.length || 0,
+            child: tableStore.currentTable.value?.childColumns?.length || 0
+          }
+        }
+      })
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to process elements:', err)
+      handleError(err)
+    }
+  }
+)
+
+// Type guard for world tree
+function isValidWorldTree(tree: unknown): tree is WorldTreeRoot {
+  if (!tree || typeof tree !== 'object') return false
+  const candidate = tree as { _root?: { children?: ViewerNode[] } }
+  return !!(
+    candidate._root?.children &&
+    Array.isArray(candidate._root.children) &&
+    candidate._root.children.every(
+      (node) => node && typeof node === 'object' && 'id' in node && 'model' in node
+    )
+  )
+}
 
 // Define props
 const props = defineProps({
@@ -152,16 +302,6 @@ const props = defineProps({
 // Define emit types with generic row type
 const emit = defineEmits<ScheduleEmits<ElementData>>()
 
-// Initialize stores and composables
-const tableStore = useTableStore()
-const tableParameters = useTableParameters()
-
-// Initialize parameter extraction
-const { allElements, isLoading: isLoadingElements } = useElementsData({
-  selectedParentCategories: computed(() => store.selectedParentCategories.value),
-  selectedChildCategories: computed(() => store.selectedChildCategories.value)
-})
-
 // Initialize selected elements processing
 const {
   scheduleData,
@@ -170,21 +310,21 @@ const {
   isLoading: isLoadingSelected,
   state
 } = useSelectedElementsData({
-  elements: allElements,
+  elements: computed(() => bimElements.value || []),
   selectedParentCategories: computed(() => store.selectedParentCategories.value),
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
 })
 
 // Combined loading state
-const isLoading = computed(() => isLoadingElements.value || isLoadingSelected.value)
+const isLoading = computed(() => isLoadingBim.value || isLoadingSelected.value)
 
-// Initialize parameter system for UI interactions
+// Initialize parameter system with store sync
 const parameters = useParameters({
   selectedParentCategories: computed(() => store.selectedParentCategories.value),
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
 })
 
-// Initialize table flow
+// Initialize table flow with parameter sync
 const {
   initialize: initializeTable,
   isInitialized,
@@ -198,11 +338,85 @@ const {
     parentColumns: [],
     childColumns: [],
     categoryFilters: {
-      selectedParentCategories: [],
-      selectedChildCategories: []
+      selectedParentCategories: store.selectedParentCategories.value || [],
+      selectedChildCategories: store.selectedChildCategories.value || []
     },
     selectedParameters: defaultSelectedParameters,
     lastUpdateTimestamp: Date.now()
+  }
+})
+
+// Watch for raw parameter changes
+watch(
+  [
+    () => parameters.parentParameters.raw.value,
+    () => parameters.childParameters.raw.value
+  ],
+  async ([parentRawParams, childRawParams]) => {
+    if (parentRawParams?.length || childRawParams?.length) {
+      debug.log(DebugCategories.PARAMETERS, 'Raw parameters received', {
+        parent: parentRawParams?.length || 0,
+        child: childRawParams?.length || 0
+      })
+
+      // Update raw parameters
+      await parameterStore.updateRawParameters(parentRawParams || [], true)
+      await parameterStore.updateRawParameters(childRawParams || [], false)
+
+      // Process and update available parameters
+      const parentAvailable = parentRawParams
+        ?.filter(isRawParameter)
+        .map((param) =>
+          createAvailableBimParameter(param, 'string', String(param.value))
+        )
+      const childAvailable = childRawParams
+        ?.filter(isRawParameter)
+        .map((param) =>
+          createAvailableBimParameter(param, 'string', String(param.value))
+        )
+
+      // Update available parameters
+      await parameterStore.updateAvailableParameters(
+        { bim: parentAvailable || [], user: [] },
+        true
+      )
+      await parameterStore.updateAvailableParameters(
+        { bim: childAvailable || [], user: [] },
+        false
+      )
+    }
+  }
+)
+
+// Watch for table changes
+watch(tableStore.currentTable, async (newTable) => {
+  if (newTable?.selectedParameters) {
+    debug.log(DebugCategories.PARAMETERS, 'Table parameters received', {
+      parent: newTable.parentColumns.length,
+      child: newTable.childColumns.length
+    })
+
+    // Convert table parameters to selected parameters
+    const selectedParams = (
+      Array.isArray(newTable.selectedParameters) ? newTable.selectedParameters : []
+    ).filter(isSelectedParameter)
+
+    // Create parameter collections with selected parameters
+    const collections: ParameterCollections = {
+      parent: {
+        ...parameterStore.state.value.collections.parent,
+        selected: selectedParams.filter((p): p is SelectedParameter => p.kind === 'bim')
+      },
+      child: {
+        ...parameterStore.state.value.collections.child,
+        selected: selectedParams.filter(
+          (p): p is SelectedParameter => p.kind === 'user'
+        )
+      }
+    }
+
+    // Update store
+    await parameterStore.updateState({ collections })
   }
 })
 
@@ -224,7 +438,7 @@ const isComponentLoading = computed(() => {
     isLoading.value ||
     parameters.isProcessing.value ||
     !isInitialized.value ||
-    bimElements.isLoading.value ||
+    isLoadingBim.value ||
     !hasParameters.value
   )
 })
@@ -233,7 +447,7 @@ const isComponentLoading = computed(() => {
 const error = computed(() => {
   if (tableError.value) return tableError.value
   if (state.value?.error) return state.value.error
-  if (bimElements.hasError.value) {
+  if (hasBimError.value) {
     debug.error(DebugCategories.ERROR, 'BIM elements error')
     return new Error('Failed to load BIM elements')
   }
@@ -457,14 +671,14 @@ onMounted(async () => {
       }),
       // Wait for BIM elements to be ready
       new Promise<void>((resolve) => {
-        if (bimElements.allElements.value?.length) {
+        if (bimElements.value?.length > 0) {
           resolve()
           return
         }
         const unwatch = watch(
-          () => bimElements.allElements.value,
+          () => bimElements.value,
           (elements) => {
-            if (elements?.length) {
+            if (elements && Array.isArray(elements) && elements.length > 0) {
               unwatch()
               resolve()
             }

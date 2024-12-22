@@ -124,7 +124,6 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
-import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useTableInteractions } from '~/composables/core/tables/interactions/useTableInteractions'
 import { useTableInitialization } from '~/composables/core/tables/initialization/useTableInitialization'
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
@@ -144,7 +143,6 @@ import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/ou
 import ScheduleMainView from './components/ScheduleMainView.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
-import { useOnViewerLoadComplete } from '~~/lib/viewer/composables/viewer'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
   ViewerNode,
@@ -189,13 +187,54 @@ function safeObjectEntries<T extends Record<string, unknown>>(
   return Object.entries(obj) as [string, T[keyof T]][]
 }
 
-// Initialize systems
+// Initialize refs first
+const error = ref<Error | null>(null)
+const showCategoryOptions = ref(false)
+
+// Type-safe error handling
+function updateErrorState(newError: Error | null): void {
+  const currentError = error.value
+  const shouldUpdate =
+    !currentError || !newError || currentError.message !== newError.message
+
+  if (shouldUpdate) {
+    error.value = newError
+  }
+
+  if (newError) {
+    debug.error(DebugCategories.ERROR, 'Schedule error:', {
+      name: newError.name,
+      message: newError.message,
+      stack: newError.stack
+    })
+  }
+}
+
+// Initialize core systems
 const debug = useDebug()
 const store = useStore()
 const parameterStore = useParameterStore()
 const tablesState = useTablesState()
+const tableStore = useTableStore()
+
+// Initialize data composables with category refs
+const categories = useTableCategories({
+  initialState: {
+    selectedParentCategories: parentCategories,
+    selectedChildCategories: childCategories
+  },
+  onUpdate: async (state) => {
+    await store.lifecycle.update({
+      selectedParentCategories: state.selectedParentCategories,
+      selectedChildCategories: state.selectedChildCategories
+    })
+  },
+  onError: (err) => updateErrorState(createSafeError(err))
+})
+
+// Initialize BIM elements with reactive categories
 const bimElements = useBIMElements({
-  childCategories
+  childCategories: categories.selectedChildCategories.value
 })
 
 // Get viewer state
@@ -205,6 +244,11 @@ const {
     init
   }
 } = useInjectedViewerState()
+
+// Initialize table flow
+const { initComponent } = useTableInitialization({
+  store: tableStore
+})
 
 // Wait for world tree to be populated with retry logic
 async function waitForWorldTree(maxAttempts = 5, delayMs = 1000): Promise<void> {
@@ -250,39 +294,15 @@ watch(worldTree, (newTree) => {
   })
 })
 
-// Initialize refs with proper types
-const error = ref<Error | null>(null)
-const showCategoryOptions = ref(false)
-
-// Initialize data composables with category refs
-const categories = useTableCategories({
-  initialState: {
-    selectedParentCategories: parentCategories,
-    selectedChildCategories: childCategories
-  },
-  onUpdate: async (state) => {
-    await store.lifecycle.update({
-      selectedParentCategories: state.selectedParentCategories,
-      selectedChildCategories: state.selectedChildCategories
-    })
-  },
-  onError: (err) => updateErrorState(createSafeError(err))
-})
-
-const elementsData = useElementsData({
-  selectedParentCategories: categories.selectedParentCategories,
-  selectedChildCategories: categories.selectedChildCategories
-})
-
-// Safe computed properties from state
+// Safe computed properties from BIM elements
 const parentElements = computed<ElementData[]>(() => {
-  if (!elementsData.state.value) return []
-  return safeArrayFrom(elementsData.state.value.parentElements)
+  if (!bimElements.allElements.value) return []
+  return safeArrayFrom(bimElements.allElements.value.filter((el) => !el.isChild))
 })
 
 const childElements = computed<ElementData[]>(() => {
-  if (!elementsData.state.value) return []
-  return safeArrayFrom(elementsData.state.value.childElements)
+  if (!bimElements.allElements.value) return []
+  return safeArrayFrom(bimElements.allElements.value.filter((el) => el.isChild))
 })
 
 // Convert TableSettings to TableSettings
@@ -294,12 +314,6 @@ const _currentTable = computed(() => {
     ...current,
     lastUpdateTimestamp: tableStore.lastUpdated.value
   }
-})
-
-// Initialize core composables
-const tableStore = useTableStore()
-const { initComponent } = useTableInitialization({
-  store: tableStore
 })
 
 // Expose necessary functions
@@ -337,14 +351,12 @@ const isLoading = computed(() => {
   const hasData =
     (store.scheduleData.value?.length ?? 0) > 0 ||
     (store.tableData.value?.length ?? 0) > 0
-  return (
-    !hasData || elementsData.state.value.loading || parameterStore.isProcessing.value
-  )
+  return !hasData || bimElements.isLoading.value || parameterStore.isProcessing.value
 })
 
 const isInitialized = computed(() => store.initialized.value ?? false)
 
-const isUpdating = computed(() => elementsData.state.value.loading)
+const isUpdating = computed(() => bimElements.isLoading.value)
 
 // Category toggle handlers with type safety
 const toggleParentCategory = async (category: string) => {
@@ -355,8 +367,15 @@ const toggleParentCategory = async (category: string) => {
   } else {
     current.splice(index, 1)
   }
-  store.setParentCategories(current)
-  await elementsData.initializeData()
+  await store.setParentCategories(current)
+  if (hasValidChildren(worldTree.value)) {
+    const treeRoot: WorldTreeRoot = {
+      _root: {
+        children: worldTree.value._root.children
+      }
+    }
+    await bimElements.initializeElements(treeRoot)
+  }
 }
 
 const toggleChildCategory = async (category: string) => {
@@ -367,8 +386,15 @@ const toggleChildCategory = async (category: string) => {
   } else {
     current.splice(index, 1)
   }
-  store.setChildCategories(current)
-  await elementsData.initializeData()
+  await store.setChildCategories(current)
+  if (hasValidChildren(worldTree.value)) {
+    const treeRoot: WorldTreeRoot = {
+      _root: {
+        children: worldTree.value._root.children
+      }
+    }
+    await bimElements.initializeElements(treeRoot)
+  }
 }
 
 // Handler functions with type safety
@@ -416,25 +442,6 @@ async function handleColumnVisibilityChange(
   }
 }
 
-// Type-safe error handling
-function updateErrorState(newError: Error | null): void {
-  const currentError = error.value
-  const shouldUpdate =
-    !currentError || !newError || currentError.message !== newError.message
-
-  if (shouldUpdate) {
-    error.value = newError
-  }
-
-  if (newError) {
-    debug.error(DebugCategories.ERROR, 'Schedule error:', {
-      name: newError.name,
-      message: newError.message,
-      stack: newError.stack
-    })
-  }
-}
-
 function handleError(err: unknown): void {
   updateErrorState(createSafeError(err))
 }
@@ -464,27 +471,59 @@ onMounted(async () => {
         throw new Error('Parameter store failed to initialize')
       }
 
-      // 5. Initialize BIM elements with world tree
+      // 5. Initialize BIM elements with retry logic
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
-      const treeRoot: WorldTreeRoot = {
-        _root: {
-          children: hasValidChildren(worldTree.value)
-            ? worldTree.value._root.children
-            : []
+      let initializeSuccess = false
+      let attempts = 0
+      const maxAttempts = 3
+
+      while (!initializeSuccess && attempts < maxAttempts) {
+        try {
+          attempts++
+          debug.log(
+            DebugCategories.INITIALIZATION,
+            `BIM elements initialization attempt ${attempts}`
+          )
+
+          const treeRoot: WorldTreeRoot = {
+            _root: {
+              children: hasValidChildren(worldTree.value)
+                ? worldTree.value._root.children
+                : []
+            }
+          }
+
+          // Initialize BIM elements first
+          await bimElements.initializeElements(treeRoot)
+
+          // Verify BIM elements are ready
+          if (!bimElements.allElements.value?.length) {
+            throw new Error('No BIM elements found after initialization')
+          }
+
+          // If we get here, initialization was successful
+          initializeSuccess = true
+          debug.log(
+            DebugCategories.INITIALIZATION,
+            'BIM elements and data initialized successfully'
+          )
+        } catch (err) {
+          const safeError = createSafeError(err)
+          debug.error(
+            DebugCategories.ERROR,
+            `BIM elements initialization attempt ${attempts} failed:`,
+            safeError
+          )
+
+          if (attempts === maxAttempts) {
+            throw new Error(
+              `Failed to initialize BIM elements after ${maxAttempts} attempts: ${safeError.message}`
+            )
+          }
+
+          // Wait before retrying
+          await new Promise((resolve) => setTimeout(resolve, 1000))
         }
-      }
-      await bimElements.initializeElements(treeRoot)
-      debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
-
-      // 6. Initialize element data
-      debug.startState(DebugCategories.INITIALIZATION, 'Initializing element data')
-      await elementsData.initializeData()
-      debug.log(DebugCategories.INITIALIZATION, 'Element data initialized')
-
-      // 7. Verify BIM elements are ready
-      if (!bimElements.allElements.value?.length) {
-        debug.error(DebugCategories.INITIALIZATION, 'No BIM elements found')
-        throw new Error('No BIM elements found')
       }
 
       // 8. Wait for stores to be updated with processed data

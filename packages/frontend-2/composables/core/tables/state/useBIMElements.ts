@@ -5,7 +5,8 @@ import type {
   TreeNode,
   ViewerNode,
   ViewerNodeRaw,
-  WorldTreeRoot
+  WorldTreeRoot,
+  SelectedParameter
 } from '~/composables/core/types'
 import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
@@ -17,10 +18,7 @@ import {
   isSpeckleReference,
   isViewerNodeRaw
 } from '~/composables/core/types/viewer/viewer-types'
-import {
-  processRawParameters,
-  convertToParameterValue
-} from '~/composables/core/parameters/parameter-processing'
+import { convertToParameterValue } from '~/composables/core/parameters/parameter-processing'
 
 interface BIMElementsState {
   worldTree: ViewerTree | null
@@ -31,408 +29,46 @@ interface BIMElementsState {
 }
 
 interface BIMElementsOptions {
-  childCategories?: string[]
-}
-
-interface ParameterStats {
-  raw: number
-  unique: Set<string>
-  groups: Map<string, Set<string>>
-  activeGroups: Map<string, Set<string>>
-}
-
-function initParameterStats(): ParameterStats {
-  return {
-    raw: 0,
-    unique: new Set(),
-    groups: new Map(),
-    activeGroups: new Map()
-  }
-}
-
-function updateParameterStats(
-  stats: ParameterStats,
-  key: string,
-  _value: unknown
-): void {
-  stats.raw++
-  stats.unique.add(key)
-
-  // Handle parameter grouping
-  const parts = key.split('.')
-  if (parts.length > 1) {
-    const group = parts[0]
-    const param = parts[parts.length - 1]
-    if (!stats.groups.has(group)) {
-      stats.groups.set(group, new Set())
-      stats.activeGroups.set(group, new Set())
-    }
-    stats.groups.get(group)!.add(param)
-    // Mark as active if not a system parameter
-    if (!key.startsWith('__')) {
-      stats.activeGroups.get(group)!.add(param)
-    }
-  } else {
-    if (!stats.groups.has('Parameters')) {
-      stats.groups.set('Parameters', new Set())
-      stats.activeGroups.set('Parameters', new Set())
-    }
-    stats.groups.get('Parameters')!.add(key)
-    // Mark as active if not a system parameter
-    if (!key.startsWith('__')) {
-      stats.activeGroups.get('Parameters')!.add(key)
-    }
-  }
+  childCategories: string[]
 }
 
 /**
- * Process parameter object with flattened dot notation
+ * Safely get node property with type assertion
  */
-function processParameterObject(
-  obj: Record<string, unknown>,
+function getNodeProperty(
   nodeData: ViewerNodeRaw,
-  prefix = '',
-  result: Record<string, ParameterValue> = {},
-  stats?: ParameterStats
-): Promise<Record<string, ParameterValue>> {
-  for (const [key, value] of Object.entries(obj)) {
-    // Skip system parameters
-    if (key.startsWith('__')) continue
-
-    // Handle already flattened parameters (with dot notation)
-    // const parts = key.split('.')
-    // const paramName = parts[parts.length - 1]
-    const fullKey = prefix ? `${prefix}.${key}` : key
-
-    if (value !== null && value !== undefined) {
-      // Handle different value types
-      let parsedValue: unknown = value
-      let isJsonString = false
-      let isComplexType = false
-
-      if (typeof value === 'string') {
-        // Try parsing JSON strings
-        if (value.startsWith('{') && value.endsWith('}')) {
-          try {
-            const parsed = JSON.parse(value) as Record<string, unknown>
-            if (typeof parsed === 'object' && parsed !== null) {
-              parsedValue = parsed
-              isJsonString = true
-              isComplexType = !Array.isArray(parsed)
-            }
-          } catch (err) {
-            debug.warn(
-              DebugCategories.PARAMETERS,
-              `Failed to parse JSON parameter ${key}:`,
-              err
-            )
-          }
-        }
-      } else if (value !== null && typeof value === 'object') {
-        // Handle arrays and objects directly
-        if (Array.isArray(value)) {
-          parsedValue = value
-          isComplexType = false
-        } else {
-          // Ensure we have a proper Record type
-          const objValue = value as Record<string, unknown>
-          parsedValue = objValue
-          isComplexType = true
-        }
-      }
-
-      // Create raw parameter without processing
-      result[fullKey] = convertToParameterValue(parsedValue)
-      if (stats) {
-        updateParameterStats(stats, fullKey, parsedValue)
-      }
-
-      // Process nested parameters for complex objects (not arrays)
-      if (
-        (isJsonString || isComplexType) &&
-        typeof parsedValue === 'object' &&
-        !Array.isArray(parsedValue)
-      ) {
-        // Ensure we have a proper Record type
-        const objValue = parsedValue as Record<string, unknown>
-        for (const [nestedKey, nestedValue] of Object.entries(objValue)) {
-          const nestedFullKey = `${fullKey}.${nestedKey}`
-          // Add nested parameter without processing
-          result[nestedFullKey] = convertToParameterValue(nestedValue)
-          if (stats) {
-            updateParameterStats(stats, nestedFullKey, nestedValue)
-          }
-        }
-      }
-    }
-  }
-
-  return Promise.resolve(result)
+  key: keyof ViewerNodeRaw,
+  defaultValue: string
+): string {
+  const value = nodeData[key]
+  return (value as string | undefined) ?? defaultValue
 }
 
 /**
- * Extract parameters from node data
+ * Safely get node ID with type assertion
  */
-async function extractParameters(
-  nodeData: ViewerNodeRaw
-): Promise<Record<string, ParameterValue>> {
-  const parameters: Record<string, ParameterValue> = {}
-  const stats = initParameterStats()
-
-  // Ensure we have a valid ViewerNodeRaw
-  if (!isViewerNodeRaw(nodeData)) {
-    debug.warn(DebugCategories.PARAMETERS, 'Invalid node data format')
-    return parameters
+function getNodeId(node: ViewerNodeRaw | ViewerNode): string {
+  if ('id' in node) {
+    return (node.id as string | undefined) ?? ''
   }
-
-  // debug.log(DebugCategories.PARAMETERS, 'Raw node data', {
-  //   id: nodeData.id,
-  //   type: nodeData.type,
-  //   hasIdentityData: !!nodeData['Identity Data'],
-  //   hasOther: !!nodeData.Other,
-  //   hasParameters: !!nodeData.parameters
-  // })
-
-  // Get core properties from ViewerNodeRaw type
-  const coreProperties = new Set([
-    'id',
-    'type',
-    'Name',
-    'metadata',
-    'children',
-    'parameters'
-  ])
-
-  // Process all properties as potential parameter groups
-  const entries = Object.entries(nodeData)
-  const parameterPromises = entries
-    .filter(([key]) => {
-      // Skip core properties and system parameters
-      const isCore = coreProperties.has(key)
-      const isSystem = key.startsWith('__') || key.startsWith('@')
-      return !isCore && !isSystem
-    })
-    .map(async ([key, value]) => {
-      // Handle value based on type
-      if (value === null || value === undefined) {
-        return
-      }
-
-      // Determine parameter group
-      const group = key.includes('.') ? key.split('.')[0] : 'Parameters'
-
-      if (typeof value === 'object') {
-        if (!Array.isArray(value)) {
-          // Handle object properties as parameter groups
-          await processParameterObject(
-            value as Record<string, unknown>,
-            nodeData,
-            group,
-            parameters,
-            stats
-          )
-        } else {
-          // Handle array values as stringified JSON
-          const rawParam = {
-            id: key,
-            name: key.includes('.') ? key.split('.')[1] : key,
-            value: JSON.stringify(value),
-            sourceGroup: group,
-            metadata: {
-              category: nodeData.type || 'Uncategorized',
-              fullKey: key,
-              isSystem: false,
-              group,
-              elementId: nodeData.id
-            }
-          }
-          const [processed] = await processRawParameters([rawParam])
-          if (processed) {
-            parameters[key] = processed.value
-            updateParameterStats(stats, key, processed.value)
-          }
-        }
-      } else if (value !== undefined && value !== null) {
-        // Handle primitive values as top-level parameters
-        const rawParam = {
-          id: key,
-          name: key,
-          value,
-          sourceGroup: 'Parameters',
-          metadata: {
-            category: nodeData.type || 'Uncategorized',
-            fullKey: key,
-            isSystem: false,
-            group: 'Parameters',
-            elementId: nodeData.id
-          }
-        }
-        const [processed] = await processRawParameters([rawParam])
-        if (processed) {
-          parameters[key] = processed.value
-          updateParameterStats(stats, key, processed.value)
-        }
-      }
-    })
-
-  await Promise.all(parameterPromises)
-
-  // debug.log(DebugCategories.PARAMETERS, 'Parameter extraction stats', {
-  //   raw: stats.raw,
-  //   unique: stats.unique.size,
-  //   groups: Object.fromEntries(
-  //     Array.from(stats.groups.entries()).map(([group, params]) => [
-  //       group,
-  //       {
-  //         total: params.size,
-  //         active: stats.activeGroups.get(group)?.size || 0,
-  //         parameters: Array.from(params),
-  //         activeParameters: Array.from(stats.activeGroups.get(group) || new Set())
-  //       }
-  //     ])
-  //   ),
-  //   extractedParameters: parameters
-  // })
-
-  return parameters
+  return ''
 }
 
 /**
- * Convert ViewerNode to ElementData format
+ * Create viewer node with type safety
  */
-async function convertViewerNodeToElementData(
-  node: ViewerNode,
-  childCategories: string[] = []
-): Promise<ElementData> {
-  const nodeData = node.model?.raw
-  if (!nodeData || isSpeckleReference(nodeData)) {
-    debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data', {
-      id: node.id,
-      hasRaw: !!nodeData,
-      isReference: isSpeckleReference(nodeData)
-    })
-    return {
-      id: node.id,
-      type: '',
-      name: '',
-      field: node.id,
-      header: '',
-      visible: true,
-      removable: true,
-      isChild: false,
-      category: 'Uncategorized',
-      parameters: {},
-      metadata: {},
-      details: []
-    }
-  }
-
-  if (!isViewerNodeRaw(nodeData)) {
-    debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data format', {
-      id: node.id
-    })
-    return {
-      id: node.id,
-      type: '',
-      name: '',
-      field: node.id,
-      header: '',
-      visible: true,
-      removable: true,
-      isChild: false,
-      category: 'Uncategorized',
-      parameters: {},
-      metadata: {},
-      details: []
-    }
-  }
-
-  const category =
-    (nodeData.Other as { Category?: string })?.Category ||
-    nodeData.speckle_type ||
-    nodeData.type ||
-    'Uncategorized'
-  const isChild = childCategories.includes(category)
-
-  // debug.log(DebugCategories.DATA_TRANSFORM, 'Converting node', {
-  //   id: nodeData.id,
-  //   category,
-  //   isChild,
-  //   type: nodeData.type
-  // })
-
-  // Extract all parameters with proper grouping
-  const parameters = await extractParameters(nodeData)
-
-  // debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
-  //   nodeId: nodeData.id,
-  //   parameterCount: Object.keys(parameters).length,
-  //   groups: Array.from(new Set(Object.keys(parameters).map((key) => key.split('.')[0])))
-  // })
-
+function createViewerNode(element: ViewerNodeRaw): ViewerNode {
   return {
-    id: nodeData.id,
-    type: nodeData.type || '',
-    name: nodeData.Name || '',
-    field: nodeData.id,
-    header: nodeData.type || '',
-    visible: true,
-    removable: true,
-    isChild,
-    category,
-    parameters,
-    metadata: nodeData.metadata || {},
-    details: []
+    id: getNodeId(element),
+    model: { raw: element }
   }
-}
-
-/**
- * Recursively traverse node and its children/elements
- */
-async function traverseNode(
-  node: ViewerNode,
-  childCategories: string[] = []
-): Promise<ElementData[]> {
-  const elements: ElementData[] = []
-
-  // Convert current node
-  elements.push(await convertViewerNodeToElementData(node, childCategories))
-
-  // Get raw data
-  const raw = node.model?.raw
-  if (!raw || isSpeckleReference(raw)) return elements
-
-  // Check for elements array
-  if ('elements' in raw && Array.isArray(raw.elements)) {
-    for (const element of raw.elements) {
-      if (isViewerNodeRaw(element)) {
-        // Convert element to ViewerNode format
-        const elementNode: ViewerNode = {
-          id: element.id,
-          model: {
-            raw: element
-          }
-        }
-        elements.push(...(await traverseNode(elementNode, childCategories)))
-      }
-    }
-  }
-
-  // Check for children array
-  if (node.children && Array.isArray(node.children)) {
-    for (const child of node.children) {
-      elements.push(...(await traverseNode(child, childCategories)))
-    }
-  }
-
-  return elements
 }
 
 /**
  * BIM elements composable
  * Handles BIM element initialization and state management
  */
-export function useBIMElements(options: BIMElementsOptions = {}) {
+export function useBIMElements(options: BIMElementsOptions) {
   const store = useStore()
   const parameterStore = useParameterStore()
 
@@ -444,6 +80,152 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
     isLoading: false,
     error: null
   })
+
+  /**
+   * Phase 2: Collect values only for selected parameters
+   */
+  function collectSelectedParameterValues(
+    nodeData: ViewerNodeRaw,
+    selectedParams: string[]
+  ): Record<string, ParameterValue> {
+    const parameters: Record<string, ParameterValue> = {}
+
+    if (nodeData.parameters) {
+      Object.entries(nodeData.parameters).forEach(([key, value]) => {
+        if (selectedParams.includes(key)) {
+          parameters[key] = convertToParameterValue(value)
+        }
+      })
+    }
+
+    return parameters
+  }
+
+  /**
+   * Convert ViewerNode to basic ElementData format without parameters
+   */
+  function convertViewerNodeToBasicElementData(
+    node: ViewerNode,
+    childCategories: string[]
+  ): ElementData {
+    const nodeData = node.model?.raw
+    if (!nodeData || isSpeckleReference(nodeData)) {
+      debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data', {
+        id: node.id,
+        hasRaw: !!nodeData,
+        isReference: isSpeckleReference(nodeData)
+      })
+      return createEmptyElementData(node.id)
+    }
+
+    if (!isViewerNodeRaw(nodeData)) {
+      debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data format', {
+        id: node.id
+      })
+      return createEmptyElementData(node.id)
+    }
+
+    const category =
+      (nodeData.Other as { Category?: string })?.Category ||
+      nodeData.speckle_type ||
+      nodeData.type ||
+      'Uncategorized'
+    const isChild = childCategories.includes(category)
+
+    return {
+      id: getNodeProperty(nodeData, 'id', ''),
+      type: getNodeProperty(nodeData, 'type', ''),
+      name: getNodeProperty(nodeData, 'Name', ''),
+      field: getNodeProperty(nodeData, 'id', ''),
+      header: getNodeProperty(nodeData, 'type', ''),
+      visible: true,
+      removable: true,
+      isChild,
+      category: category as string,
+      parameters: {}, // Empty initially, filled in phase 2
+      metadata: nodeData.metadata ?? {},
+      details: [],
+      order: 0
+    }
+  }
+
+  /**
+   * Create empty ElementData
+   */
+  function createEmptyElementData(id: string): ElementData {
+    return {
+      id,
+      type: '',
+      name: '',
+      field: id,
+      header: '',
+      visible: true,
+      removable: true,
+      isChild: false,
+      category: 'Uncategorized',
+      parameters: {},
+      metadata: {},
+      details: [],
+      order: 0
+    }
+  }
+
+  /**
+   * Recursively collect parameters from a node and its children
+   */
+  function collectNodeParameters(
+    node: ViewerNode,
+    categoryParams: Map<string, Set<string>>,
+    nodeParams: Map<string, Record<string, unknown>>
+  ): void {
+    const nodeData = node.model?.raw
+    if (!nodeData || isSpeckleReference(nodeData)) return
+
+    const category =
+      (nodeData.Other as { Category?: string })?.Category ||
+      nodeData.speckle_type ||
+      nodeData.type ||
+      'Uncategorized'
+
+    // Store node parameters for later use
+    if (nodeData.parameters) {
+      const nodeId = getNodeProperty(nodeData, 'id', '')
+      if (nodeId) {
+        nodeParams.set(nodeId, nodeData.parameters)
+      }
+
+      // Add parameters to category set
+      if (!categoryParams.has(category)) {
+        categoryParams.set(category, new Set())
+      }
+      Object.keys(nodeData.parameters).forEach((key) => {
+        if (!key.startsWith('__')) {
+          categoryParams.get(category)?.add(key)
+        }
+      })
+    }
+
+    // Recursively process elements array
+    const elements = nodeData.elements as ViewerNodeRaw[] | undefined
+    if (Array.isArray(elements)) {
+      elements.forEach((element) => {
+        if (isViewerNodeRaw(element)) {
+          const elementNode = createViewerNode(element)
+          collectNodeParameters(elementNode, categoryParams, nodeParams)
+        }
+      })
+    }
+
+    // Recursively process children array
+    const children = node.children as ViewerNode[] | undefined
+    if (Array.isArray(children)) {
+      children.forEach((child) => {
+        if (child) {
+          collectNodeParameters(child, categoryParams, nodeParams)
+        }
+      })
+    }
+  }
 
   // Refhack for world tree reactivity
   const refhack = ref(1)
@@ -465,94 +247,275 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
   /**
    * Initialize BIM elements directly from world tree
    */
-  async function initializeElements(worldTree?: WorldTreeRoot): Promise<void> {
+  async function initializeElements(worldTree: WorldTreeRoot): Promise<void> {
     try {
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
       state.value.isLoading = true
       state.value.error = null
 
-      // Get nodes from world tree
-      const tree = worldTree
-      if (!tree?._root?.children?.length) {
-        debug.error(DebugCategories.DATA, 'No world tree data available')
-        throw new Error('No world tree data available')
-      }
+      // Phase 1: Parameter Discovery
+      debug.startState(DebugCategories.DATA, 'Phase 1: Parameter Discovery')
+      const categoryParams = new Map<string, Set<string>>()
+      const nodeMap = new Map<string, ViewerNode>()
 
-      debug.log(DebugCategories.DATA, 'World tree data', {
-        hasRoot: !!tree._root,
-        childrenCount: tree._root.children.length,
-        firstChild: tree._root.children[0]
-      })
-
-      // Convert nodes to ElementData format recursively
-      const convertedElements: ElementData[] = []
-      for (const node of tree._root.children) {
+      // First traverse tree to discover parameters
+      const nodeParams = new Map<string, Record<string, unknown>>()
+      for (const node of worldTree._root.children || []) {
         if (node) {
-          convertedElements.push(...(await traverseNode(node, options.childCategories)))
+          try {
+            collectNodeParameters(node, categoryParams, nodeParams)
+          } catch (err) {
+            debug.error(
+              DebugCategories.ERROR,
+              'Failed to collect parameters from node:',
+              {
+                nodeId: node.id,
+                error: err instanceof Error ? err.message : String(err)
+              }
+            )
+          }
         }
       }
 
-      debug.log(DebugCategories.DATA, 'Converted elements', {
-        count: convertedElements.length,
-        sample: convertedElements[5],
-        childCount: convertedElements.filter((el) => el.isChild).length,
-        parentCount: convertedElements.filter((el) => !el.isChild).length
+      debug.log(DebugCategories.DATA, 'Parameter collection complete', {
+        categoryCount: categoryParams.size,
+        nodeCount: nodeParams.size
       })
 
-      // Update local state
-      state.value.elements = convertedElements
+      // Process discovered parameters by category
+      debug.startState(DebugCategories.DATA, 'Processing discovered parameters')
+      const processedParams = new Map<
+        string,
+        {
+          isChild: boolean
+          params: Array<{
+            id: string
+            name: string
+            value: null
+            sourceGroup: string
+            metadata: {
+              category: string
+              fullKey: string
+              isSystem: boolean
+              group: string
+            }
+          }>
+        }
+      >()
 
-      // Update stores with element data and parameters
-      await Promise.all([
-        store.lifecycle.update({
-          scheduleData: convertedElements
-        }),
-        // Extract parameters for parameter store
-        (async () => {
-          const parentElements = convertedElements.filter((el) => !el.isChild)
-          const childElements = convertedElements.filter((el) => el.isChild)
+      categoryParams.forEach((params, category) => {
+        const isChild = options.childCategories.includes(category)
+        const rawParams = Array.from(params).map((paramKey) => {
+          const parts = paramKey.split('.')
+          const name = parts.pop() || paramKey
+          const group = parts.length > 0 ? parts.join('.') : 'Ungrouped'
 
-          // Process parent parameters
-          if (parentElements.length > 0) {
-            const parentParams = parentElements.flatMap((element) =>
-              Object.entries(element.parameters).map(([key, value]) => ({
-                id: key,
-                name: key.includes('.') ? key.split('.').pop()! : key,
-                value,
-                sourceGroup: key.includes('.') ? key.split('.')[0] : 'Parameters',
-                metadata: {
-                  category: element.category,
-                  fullKey: key,
-                  isSystem: false,
-                  group: key.includes('.') ? key.split('.')[0] : 'Parameters',
-                  elementId: element.id
-                }
-              }))
+          return {
+            id: paramKey,
+            name,
+            value: null,
+            sourceGroup: group,
+            metadata: {
+              category,
+              fullKey: paramKey,
+              isSystem: false,
+              group
+            }
+          }
+        })
+
+        processedParams.set(category, { isChild, params: rawParams })
+      })
+
+      // Phase 2: Process Elements and Update Stores
+      debug.startState(DebugCategories.DATA, 'Phase 2: Processing Elements')
+
+      // First update parameter store
+      const parentParams: Array<{
+        id: string
+        name: string
+        value: null
+        sourceGroup: string
+        metadata: {
+          category: string
+          fullKey: string
+          isSystem: boolean
+          group: string
+        }
+      }> = []
+
+      const childParams: Array<{
+        id: string
+        name: string
+        value: null
+        sourceGroup: string
+        metadata: {
+          category: string
+          fullKey: string
+          isSystem: boolean
+          group: string
+        }
+      }> = []
+
+      processedParams.forEach(({ isChild, params }) => {
+        if (isChild) {
+          childParams.push(...params)
+        } else {
+          parentParams.push(...params)
+        }
+      })
+
+      // Update parameter store once for each type
+      if (parentParams.length) {
+        debug.log(DebugCategories.PARAMETERS, 'Processing parent parameters', {
+          count: parentParams.length
+        })
+        parameterStore.processRawParameters(parentParams, true)
+      }
+      if (childParams.length) {
+        debug.log(DebugCategories.PARAMETERS, 'Processing child parameters', {
+          count: childParams.length
+        })
+        parameterStore.processRawParameters(childParams, false)
+      }
+
+      // Then process elements
+      const convertedElements: ElementData[] = []
+      const processedNodes = new Set<string>()
+
+      function processNodeAndChildren(node: ViewerNode): void {
+        const nodeData = node.model?.raw
+        if (!nodeData || isSpeckleReference(nodeData)) return
+
+        // Map node if it has parameters
+        if (isViewerNodeRaw(nodeData)) {
+          const nodeId = getNodeProperty(nodeData, 'id', '')
+          if (nodeId && !processedNodes.has(nodeId)) {
+            nodeMap.set(nodeId, node)
+            processedNodes.add(nodeId)
+
+            // Convert to element data
+            const element = convertViewerNodeToBasicElementData(
+              node,
+              options.childCategories
             )
-            await parameterStore.processRawParameters(parentParams, true)
+
+            // Add parameter values
+            const category = element.category || 'Uncategorized'
+            const isChild = options.childCategories.includes(category)
+            const selectedParams = parameterStore.state.value.collections[
+              isChild ? 'child' : 'parent'
+            ].selected
+              .filter((param): param is SelectedParameter => param.kind === 'bim')
+              .map((param) => param.id)
+
+            element.parameters = collectSelectedParameterValues(
+              nodeData,
+              selectedParams
+            )
+
+            convertedElements.push(element)
           }
 
-          // Process child parameters
-          if (childElements.length > 0) {
-            const childParams = childElements.flatMap((element) =>
-              Object.entries(element.parameters).map(([key, value]) => ({
-                id: key,
-                name: key.includes('.') ? key.split('.').pop()! : key,
-                value,
-                sourceGroup: key.includes('.') ? key.split('.')[0] : 'Parameters',
-                metadata: {
-                  category: element.category,
-                  fullKey: key,
-                  isSystem: false,
-                  group: key.includes('.') ? key.split('.')[0] : 'Parameters',
-                  elementId: element.id
-                }
-              }))
-            )
-            await parameterStore.processRawParameters(childParams, false)
+          // Process elements array
+          const elements = nodeData.elements as ViewerNodeRaw[] | undefined
+          if (Array.isArray(elements)) {
+            elements.forEach((element) => {
+              if (isViewerNodeRaw(element)) {
+                const elementNode = createViewerNode(element)
+                processNodeAndChildren(elementNode)
+              }
+            })
           }
-        })()
-      ])
+        }
+
+        // Process children array
+        const children = node.children as ViewerNode[] | undefined
+        if (Array.isArray(children)) {
+          children.forEach((child) => {
+            if (child) {
+              processNodeAndChildren(child)
+            }
+          })
+        }
+      }
+
+      // Process all nodes
+      let processedCount = 0
+      let errorCount = 0
+      for (const node of worldTree._root.children || []) {
+        if (node) {
+          try {
+            processNodeAndChildren(node)
+            processedCount++
+          } catch (err) {
+            errorCount++
+            debug.error(DebugCategories.ERROR, 'Failed to process node and children:', {
+              nodeId: node.id,
+              error: err instanceof Error ? err.message : String(err)
+            })
+          }
+        }
+      }
+
+      debug.log(DebugCategories.DATA, 'Node processing complete', {
+        processedCount,
+        errorCount,
+        totalNodes: (worldTree._root.children || []).length
+      })
+
+      // Group elements by category for logging
+      const categorizedElements = new Map<string, ElementData[]>()
+      convertedElements.forEach((element) => {
+        const category = element.category || 'Uncategorized'
+        const existingElements = categorizedElements.get(category) || []
+        categorizedElements.set(category, [...existingElements, element])
+      })
+
+      debug.log(DebugCategories.DATA, 'Processing summary', {
+        parameters: {
+          categories: Array.from(categoryParams.keys()),
+          counts: Array.from(categoryParams.entries()).map(([cat, params]) => ({
+            category: cat,
+            count: params.size
+          }))
+        },
+        elements: {
+          total: convertedElements.length,
+          byCategory: Array.from(categorizedElements.entries()).map(([cat, els]) => ({
+            category: cat,
+            count: els.length,
+            isChild: options.childCategories.includes(cat)
+          })),
+          childCount: convertedElements.filter((el) => el.isChild).length,
+          parentCount: convertedElements.filter((el) => !el.isChild).length
+        },
+        processing: {
+          errors: {
+            total: errorCount,
+            rate: `${((errorCount / processedCount) * 100).toFixed(1)}%`
+          },
+          success: {
+            total: processedCount,
+            rate: `${(
+              (processedCount / (worldTree._root.children || []).length) *
+              100
+            ).toFixed(1)}%`
+          }
+        }
+      })
+
+      // Update stores
+      state.value = {
+        ...state.value,
+        elements: convertedElements,
+        isLoading: false,
+        error: null
+      }
+
+      await store.lifecycle.update({
+        scheduleData: convertedElements
+      })
 
       debug.completeState(DebugCategories.INITIALIZATION, 'BIM elements initialized', {
         elementCount: convertedElements.length,
@@ -560,7 +523,11 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
         nodeCount: state.value.treeNodes.length
       })
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to initialize BIM elements:', err)
+      debug.error(
+        DebugCategories.ERROR,
+        'Failed to initialize BIM elements:',
+        err instanceof Error ? err : new Error(String(err))
+      )
       state.value.error =
         err instanceof Error ? err : new Error('Failed to initialize BIM elements')
       throw state.value.error
@@ -569,20 +536,12 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
     }
   }
 
-  /**
-   * Stop watching world tree changes
-   */
-  function stopWorldTreeWatch(): void {
-    debug.log(DebugCategories.STATE, 'Stopped watching world tree changes')
-  }
-
   return {
     allElements,
     rawWorldTree,
     rawTreeNodes,
     isLoading,
     hasError,
-    initializeElements,
-    stopWorldTreeWatch
+    initializeElements
   }
 }
