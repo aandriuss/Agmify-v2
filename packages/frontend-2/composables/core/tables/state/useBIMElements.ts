@@ -7,6 +7,7 @@ import type {
   ViewerNodeRaw,
   WorldTreeRoot
 } from '~/composables/core/types'
+import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
@@ -16,9 +17,10 @@ import {
   isSpeckleReference,
   isViewerNodeRaw
 } from '~/composables/core/types/viewer/viewer-types'
-
-import type { ParameterValue } from '~/composables/core/types/parameters'
-import { createElementData } from '~/composables/core/types/elements'
+import {
+  processRawParameters,
+  convertToParameterValue
+} from '~/composables/core/parameters/parameter-processing'
 
 interface BIMElementsState {
   worldTree: ViewerTree | null
@@ -32,11 +34,150 @@ interface BIMElementsOptions {
   childCategories?: string[]
 }
 
+interface ParameterStats {
+  raw: number
+  unique: Set<string>
+  groups: Map<string, Set<string>>
+  activeGroups: Map<string, Set<string>>
+}
+
+function initParameterStats(): ParameterStats {
+  return {
+    raw: 0,
+    unique: new Set(),
+    groups: new Map(),
+    activeGroups: new Map()
+  }
+}
+
+function updateParameterStats(
+  stats: ParameterStats,
+  key: string,
+  _value: unknown
+): void {
+  stats.raw++
+  stats.unique.add(key)
+
+  // Handle parameter grouping
+  const parts = key.split('.')
+  if (parts.length > 1) {
+    const group = parts[0]
+    const param = parts[parts.length - 1]
+    if (!stats.groups.has(group)) {
+      stats.groups.set(group, new Set())
+      stats.activeGroups.set(group, new Set())
+    }
+    stats.groups.get(group)!.add(param)
+    // Mark as active if not a system parameter
+    if (!key.startsWith('__')) {
+      stats.activeGroups.get(group)!.add(param)
+    }
+  } else {
+    if (!stats.groups.has('Parameters')) {
+      stats.groups.set('Parameters', new Set())
+      stats.activeGroups.set('Parameters', new Set())
+    }
+    stats.groups.get('Parameters')!.add(key)
+    // Mark as active if not a system parameter
+    if (!key.startsWith('__')) {
+      stats.activeGroups.get('Parameters')!.add(key)
+    }
+  }
+}
+
 /**
- * Extract BIM parameters from node data
+ * Process parameter object with flattened dot notation
  */
-function extractParameters(nodeData: ViewerNodeRaw): Record<string, ParameterValue> {
+function processParameterObject(
+  obj: Record<string, unknown>,
+  nodeData: ViewerNodeRaw,
+  prefix = '',
+  result: Record<string, ParameterValue> = {},
+  stats?: ParameterStats
+): Promise<Record<string, ParameterValue>> {
+  for (const [key, value] of Object.entries(obj)) {
+    // Skip system parameters
+    if (key.startsWith('__')) continue
+
+    // Handle already flattened parameters (with dot notation)
+    // const parts = key.split('.')
+    // const paramName = parts[parts.length - 1]
+    const fullKey = prefix ? `${prefix}.${key}` : key
+
+    if (value !== null && value !== undefined) {
+      // Handle different value types
+      let parsedValue: unknown = value
+      let isJsonString = false
+      let isComplexType = false
+
+      if (typeof value === 'string') {
+        // Try parsing JSON strings
+        if (value.startsWith('{') && value.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(value) as Record<string, unknown>
+            if (typeof parsed === 'object' && parsed !== null) {
+              parsedValue = parsed
+              isJsonString = true
+              isComplexType = !Array.isArray(parsed)
+            }
+          } catch (err) {
+            debug.warn(
+              DebugCategories.PARAMETERS,
+              `Failed to parse JSON parameter ${key}:`,
+              err
+            )
+          }
+        }
+      } else if (value !== null && typeof value === 'object') {
+        // Handle arrays and objects directly
+        if (Array.isArray(value)) {
+          parsedValue = value
+          isComplexType = false
+        } else {
+          // Ensure we have a proper Record type
+          const objValue = value as Record<string, unknown>
+          parsedValue = objValue
+          isComplexType = true
+        }
+      }
+
+      // Create raw parameter without processing
+      result[fullKey] = convertToParameterValue(parsedValue)
+      if (stats) {
+        updateParameterStats(stats, fullKey, parsedValue)
+      }
+
+      // Process nested parameters for complex objects (not arrays)
+      if (
+        (isJsonString || isComplexType) &&
+        typeof parsedValue === 'object' &&
+        !Array.isArray(parsedValue)
+      ) {
+        // Ensure we have a proper Record type
+        const objValue = parsedValue as Record<string, unknown>
+        for (const [nestedKey, nestedValue] of Object.entries(objValue)) {
+          const nestedFullKey = `${fullKey}.${nestedKey}`
+          // Add nested parameter without processing
+          result[nestedFullKey] = convertToParameterValue(nestedValue)
+          if (stats) {
+            updateParameterStats(stats, nestedFullKey, nestedValue)
+          }
+        }
+      }
+    }
+  }
+
+  return Promise.resolve(result)
+}
+
+/**
+ * Extract parameters from node data
+ */
+async function extractParameters(
+  nodeData: ViewerNodeRaw
+): Promise<Record<string, ParameterValue>> {
   const parameters: Record<string, ParameterValue> = {}
+  const stats = initParameterStats()
 
   // Ensure we have a valid ViewerNodeRaw
   if (!isViewerNodeRaw(nodeData)) {
@@ -44,42 +185,114 @@ function extractParameters(nodeData: ViewerNodeRaw): Record<string, ParameterVal
     return parameters
   }
 
-  // Get core properties to skip
+  // debug.log(DebugCategories.PARAMETERS, 'Raw node data', {
+  //   id: nodeData.id,
+  //   type: nodeData.type,
+  //   hasIdentityData: !!nodeData['Identity Data'],
+  //   hasOther: !!nodeData.Other,
+  //   hasParameters: !!nodeData.parameters
+  // })
+
+  // Get core properties from ViewerNodeRaw type
   const coreProperties = new Set([
     'id',
     'type',
     'Name',
     'metadata',
     'children',
-    'parameters',
-    'elements'
+    'parameters'
   ])
 
-  // Process direct parameters first
-  Object.entries(nodeData)
+  // Process all properties as potential parameter groups
+  const entries = Object.entries(nodeData)
+  const parameterPromises = entries
     .filter(([key]) => {
+      // Skip core properties and system parameters
       const isCore = coreProperties.has(key)
       const isSystem = key.startsWith('__') || key.startsWith('@')
       return !isCore && !isSystem
     })
-    .forEach(([key, value]) => {
-      if (value === null || value === undefined) return
+    .map(async ([key, value]) => {
+      // Handle value based on type
+      if (value === null || value === undefined) {
+        return
+      }
 
-      if (typeof value === 'object' && !Array.isArray(value)) {
-        // This is a parameter group (like Dimensions, Constraints, etc)
-        const groupValues = value as Record<string, unknown>
-        Object.entries(groupValues).forEach(([subKey, subValue]) => {
-          if (subValue !== null && subValue !== undefined) {
-            // Create grouped parameter key (e.g., "Dimensions.Length")
-            const paramKey = `${key}.${subKey}`
-            parameters[paramKey] = subValue as ParameterValue
+      // Determine parameter group
+      const group = key.includes('.') ? key.split('.')[0] : 'Parameters'
+
+      if (typeof value === 'object') {
+        if (!Array.isArray(value)) {
+          // Handle object properties as parameter groups
+          await processParameterObject(
+            value as Record<string, unknown>,
+            nodeData,
+            group,
+            parameters,
+            stats
+          )
+        } else {
+          // Handle array values as stringified JSON
+          const rawParam = {
+            id: key,
+            name: key.includes('.') ? key.split('.')[1] : key,
+            value: JSON.stringify(value),
+            sourceGroup: group,
+            metadata: {
+              category: nodeData.type || 'Uncategorized',
+              fullKey: key,
+              isSystem: false,
+              group,
+              elementId: nodeData.id
+            }
           }
-        })
-      } else {
-        // This is a direct parameter
-        parameters[key] = value as ParameterValue
+          const [processed] = await processRawParameters([rawParam])
+          if (processed) {
+            parameters[key] = processed.value
+            updateParameterStats(stats, key, processed.value)
+          }
+        }
+      } else if (value !== undefined && value !== null) {
+        // Handle primitive values as top-level parameters
+        const rawParam = {
+          id: key,
+          name: key,
+          value,
+          sourceGroup: 'Parameters',
+          metadata: {
+            category: nodeData.type || 'Uncategorized',
+            fullKey: key,
+            isSystem: false,
+            group: 'Parameters',
+            elementId: nodeData.id
+          }
+        }
+        const [processed] = await processRawParameters([rawParam])
+        if (processed) {
+          parameters[key] = processed.value
+          updateParameterStats(stats, key, processed.value)
+        }
       }
     })
+
+  await Promise.all(parameterPromises)
+
+  // debug.log(DebugCategories.PARAMETERS, 'Parameter extraction stats', {
+  //   raw: stats.raw,
+  //   unique: stats.unique.size,
+  //   groups: Object.fromEntries(
+  //     Array.from(stats.groups.entries()).map(([group, params]) => [
+  //       group,
+  //       {
+  //         total: params.size,
+  //         active: stats.activeGroups.get(group)?.size || 0,
+  //         parameters: Array.from(params),
+  //         activeParameters: Array.from(stats.activeGroups.get(group) || new Set())
+  //       }
+  //     ])
+  //   ),
+  //   extractedParameters: parameters
+  // })
 
   return parameters
 }
@@ -92,20 +305,46 @@ async function convertViewerNodeToElementData(
   childCategories: string[] = []
 ): Promise<ElementData> {
   const nodeData = node.model?.raw
-  if (!nodeData || isSpeckleReference(nodeData) || !isViewerNodeRaw(nodeData)) {
+  if (!nodeData || isSpeckleReference(nodeData)) {
     debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data', {
       id: node.id,
       hasRaw: !!nodeData,
-      isReference: isSpeckleReference(nodeData),
-      isValidFormat: isViewerNodeRaw(nodeData)
+      isReference: isSpeckleReference(nodeData)
     })
-    return createElementData({
+    return {
       id: node.id,
       type: '',
       name: '',
+      field: node.id,
+      header: '',
+      visible: true,
+      removable: true,
+      isChild: false,
       category: 'Uncategorized',
-      isChild: false
+      parameters: {},
+      metadata: {},
+      details: []
+    }
+  }
+
+  if (!isViewerNodeRaw(nodeData)) {
+    debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data format', {
+      id: node.id
     })
+    return {
+      id: node.id,
+      type: '',
+      name: '',
+      field: node.id,
+      header: '',
+      visible: true,
+      removable: true,
+      isChild: false,
+      category: 'Uncategorized',
+      parameters: {},
+      metadata: {},
+      details: []
+    }
   }
 
   const category =
@@ -131,17 +370,20 @@ async function convertViewerNodeToElementData(
   //   groups: Array.from(new Set(Object.keys(parameters).map((key) => key.split('.')[0])))
   // })
 
-  return createElementData({
+  return {
     id: nodeData.id,
     type: nodeData.type || '',
     name: nodeData.Name || '',
     field: nodeData.id,
     header: nodeData.type || '',
+    visible: true,
+    removable: true,
     isChild,
     category,
     parameters,
-    metadata: nodeData.metadata || {}
-  })
+    metadata: nodeData.metadata || {},
+    details: []
+  }
 }
 
 /**
@@ -270,41 +512,43 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
           const parentElements = convertedElements.filter((el) => !el.isChild)
           const childElements = convertedElements.filter((el) => el.isChild)
 
-          // Helper function to convert parameters to BIM parameters
-          const convertToBimParams = (element: ElementData) => {
-            const params = element.parameters || {}
-            return Object.entries(params).map(([key, value]) => {
-              const parts = key.split('.')
-              const name = parts.length > 1 ? parts[parts.length - 1] : key
-              const group = parts.length > 1 ? parts[0] : 'Parameters'
-
-              return {
+          // Process parent parameters
+          if (parentElements.length > 0) {
+            const parentParams = parentElements.flatMap((element) =>
+              Object.entries(element.parameters).map(([key, value]) => ({
                 id: key,
-                name,
+                name: key.includes('.') ? key.split('.').pop()! : key,
                 value,
-                sourceGroup: group,
+                sourceGroup: key.includes('.') ? key.split('.')[0] : 'Parameters',
                 metadata: {
                   category: element.category,
                   fullKey: key,
                   isSystem: false,
-                  group,
-                  elementId: element.id,
-                  isNested: parts.length > 1,
-                  parentKey: parts.length > 1 ? parts[0] : undefined
+                  group: key.includes('.') ? key.split('.')[0] : 'Parameters',
+                  elementId: element.id
                 }
-              }
-            })
-          }
-
-          // Process parent parameters
-          if (parentElements.length > 0) {
-            const parentParams = parentElements.flatMap(convertToBimParams)
+              }))
+            )
             await parameterStore.processRawParameters(parentParams, true)
           }
 
           // Process child parameters
           if (childElements.length > 0) {
-            const childParams = childElements.flatMap(convertToBimParams)
+            const childParams = childElements.flatMap((element) =>
+              Object.entries(element.parameters).map(([key, value]) => ({
+                id: key,
+                name: key.includes('.') ? key.split('.').pop()! : key,
+                value,
+                sourceGroup: key.includes('.') ? key.split('.')[0] : 'Parameters',
+                metadata: {
+                  category: element.category,
+                  fullKey: key,
+                  isSystem: false,
+                  group: key.includes('.') ? key.split('.')[0] : 'Parameters',
+                  elementId: element.id
+                }
+              }))
+            )
             await parameterStore.processRawParameters(childParams, false)
           }
         })()

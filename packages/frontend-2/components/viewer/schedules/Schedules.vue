@@ -144,12 +144,26 @@ import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/ou
 import ScheduleMainView from './components/ScheduleMainView.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
+import { useOnViewerLoadComplete } from '~~/lib/viewer/composables/viewer'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
   ViewerNode,
   WorldTreeRoot
 } from '~/composables/core/types/viewer/viewer-types'
-import { parentCategories, childCategories } from './config/categories'
+
+// Available categories
+const parentCategories = ['Walls', 'Floors', 'Roofs']
+const childCategories = [
+  'Structural Framing',
+  'Structural Connections',
+  'Windows',
+  'Doors',
+  'Ducts',
+  'Pipes',
+  'Cable Trays',
+  'Conduits',
+  'Lighting Fixtures'
+]
 
 // Type-safe array utilities
 function safeArrayFrom<T>(value: T[] | undefined | null): T[] {

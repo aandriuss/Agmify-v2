@@ -1,6 +1,6 @@
 // Parent categories (main elements)
 export const parentCategories = [
-  'Uncategorized',
+  'Uncategorized', // Add Uncategorized as a parent category
   'Walls',
   'Floors',
   'Roofs',
