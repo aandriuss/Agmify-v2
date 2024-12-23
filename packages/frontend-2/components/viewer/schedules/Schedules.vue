@@ -124,6 +124,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
+import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useTableInteractions } from '~/composables/core/tables/interactions/useTableInteractions'
 import { useTableInitialization } from '~/composables/core/tables/initialization/useTableInitialization'
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
@@ -232,6 +233,12 @@ const categories = useTableCategories({
   onError: (err) => updateErrorState(createSafeError(err))
 })
 
+// Initialize element data with proper parameter extraction
+const elementsData = useElementsData({
+  selectedParentCategories: categories.selectedParentCategories,
+  selectedChildCategories: categories.selectedChildCategories
+})
+
 // Initialize BIM elements with reactive categories
 const bimElements = useBIMElements({
   childCategories: categories.selectedChildCategories.value
@@ -294,15 +301,15 @@ watch(worldTree, (newTree) => {
   })
 })
 
-// Safe computed properties from BIM elements
+// Safe computed properties from element data
 const parentElements = computed<ElementData[]>(() => {
-  if (!bimElements.allElements.value) return []
-  return safeArrayFrom(bimElements.allElements.value.filter((el) => !el.isChild))
+  if (!elementsData.state.value) return []
+  return safeArrayFrom(elementsData.state.value.parentElements)
 })
 
 const childElements = computed<ElementData[]>(() => {
-  if (!bimElements.allElements.value) return []
-  return safeArrayFrom(bimElements.allElements.value.filter((el) => el.isChild))
+  if (!elementsData.state.value) return []
+  return safeArrayFrom(elementsData.state.value.childElements)
 })
 
 // Convert TableSettings to TableSettings
@@ -351,12 +358,19 @@ const isLoading = computed(() => {
   const hasData =
     (store.scheduleData.value?.length ?? 0) > 0 ||
     (store.tableData.value?.length ?? 0) > 0
-  return !hasData || bimElements.isLoading.value || parameterStore.isProcessing.value
+  return (
+    !hasData ||
+    bimElements.isLoading.value ||
+    parameterStore.isProcessing.value ||
+    elementsData.state.value?.loading
+  )
 })
 
 const isInitialized = computed(() => store.initialized.value ?? false)
 
-const isUpdating = computed(() => bimElements.isLoading.value)
+const isUpdating = computed(
+  () => bimElements.isLoading.value || elementsData.state.value?.loading
+)
 
 // Category toggle handlers with type safety
 const toggleParentCategory = async (category: string) => {
@@ -375,6 +389,7 @@ const toggleParentCategory = async (category: string) => {
       }
     }
     await bimElements.initializeElements(treeRoot)
+    await elementsData.initializeData()
   }
 }
 
@@ -394,6 +409,7 @@ const toggleChildCategory = async (category: string) => {
       }
     }
     await bimElements.initializeElements(treeRoot)
+    await elementsData.initializeData()
   }
 }
 
@@ -493,10 +509,11 @@ onMounted(async () => {
             }
           }
 
-          // Initialize BIM elements first
+          // Initialize BIM elements and element data
           await bimElements.initializeElements(treeRoot)
+          await elementsData.initializeData()
 
-          // Verify BIM elements are ready
+          // Verify initialization
           if (!bimElements.allElements.value?.length) {
             throw new Error('No BIM elements found after initialization')
           }
@@ -505,7 +522,7 @@ onMounted(async () => {
           initializeSuccess = true
           debug.log(
             DebugCategories.INITIALIZATION,
-            'BIM elements and data initialized successfully'
+            'BIM elements and element data initialized successfully'
           )
         } catch (err) {
           const safeError = createSafeError(err)

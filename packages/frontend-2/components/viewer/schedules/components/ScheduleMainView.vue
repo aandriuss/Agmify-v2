@@ -100,8 +100,7 @@ import type { ScheduleEmits } from '~/composables/core/types/tables/table-events
 import { useParameters } from '~/composables/core/parameters/useParameters'
 import type {
   SelectedParameter,
-  AvailableParameter,
-  ParameterCollections
+  AvailableParameter
 } from '~/composables/core/types/parameters/parameter-states'
 import {
   createSelectedParameter,
@@ -197,6 +196,8 @@ watch(worldTree, async (newTree) => {
   if (isValidWorldTree(newTree)) {
     debug.log(DebugCategories.DATA, 'World tree updated, reinitializing elements')
     await initializeElements(newTree)
+    await processElements()
+    debug.log(DebugCategories.DATA, 'Elements and parameters reinitialized')
   }
 })
 
@@ -352,7 +353,7 @@ watch(
     () => parameters.parentParameters.raw.value,
     () => parameters.childParameters.raw.value
   ],
-  async ([parentRawParams, childRawParams]) => {
+  ([parentRawParams, childRawParams]) => {
     if (parentRawParams?.length || childRawParams?.length) {
       debug.log(DebugCategories.PARAMETERS, 'Raw parameters received', {
         parent: parentRawParams?.length || 0,
@@ -360,30 +361,28 @@ watch(
       })
 
       // Update raw parameters
-      await parameterStore.updateRawParameters(parentRawParams || [], true)
-      await parameterStore.updateRawParameters(childRawParams || [], false)
+      parameterStore.setRawParameters(parentRawParams || [], true)
+      parameterStore.setRawParameters(childRawParams || [], false)
 
       // Process and update available parameters
-      const parentAvailable = parentRawParams
-        ?.filter(isRawParameter)
-        .map((param) =>
-          createAvailableBimParameter(param, 'string', String(param.value))
-        )
-      const childAvailable = childRawParams
-        ?.filter(isRawParameter)
-        .map((param) =>
-          createAvailableBimParameter(param, 'string', String(param.value))
-        )
+      const parentAvailable =
+        parentRawParams
+          ?.filter(isRawParameter)
+          .map((param) =>
+            createAvailableBimParameter(param, 'string', String(param.value))
+          ) || []
+      const childAvailable =
+        childRawParams
+          ?.filter(isRawParameter)
+          .map((param) =>
+            createAvailableBimParameter(param, 'string', String(param.value))
+          ) || []
 
       // Update available parameters
-      await parameterStore.updateAvailableParameters(
-        { bim: parentAvailable || [], user: [] },
-        true
-      )
-      await parameterStore.updateAvailableParameters(
-        { bim: childAvailable || [], user: [] },
-        false
-      )
+      parameterStore.setAvailableBimParameters(parentAvailable, true)
+      parameterStore.setAvailableUserParameters([], true)
+      parameterStore.setAvailableBimParameters(childAvailable, false)
+      parameterStore.setAvailableUserParameters([], false)
     }
   }
 )
@@ -396,27 +395,24 @@ watch(tableStore.currentTable, async (newTable) => {
       child: newTable.childColumns.length
     })
 
-    // Convert table parameters to selected parameters
-    const selectedParams = (
-      Array.isArray(newTable.selectedParameters) ? newTable.selectedParameters : []
-    ).filter(isSelectedParameter)
+    // Convert table parameters to selected parameters and filter by kind
+    const selectedParams = Array.isArray(newTable.selectedParameters)
+      ? newTable.selectedParameters.filter(isSelectedParameter)
+      : []
 
-    // Create parameter collections with selected parameters
-    const collections: ParameterCollections = {
-      parent: {
-        ...parameterStore.state.value.collections.parent,
-        selected: selectedParams.filter((p): p is SelectedParameter => p.kind === 'bim')
-      },
-      child: {
-        ...parameterStore.state.value.collections.child,
-        selected: selectedParams.filter(
-          (p): p is SelectedParameter => p.kind === 'user'
-        )
-      }
-    }
-
-    // Update store
-    await parameterStore.updateState({ collections })
+    // Split parameters by kind and update store
+    await Promise.all([
+      // Update parent parameters (BIM)
+      parameterStore.updateSelectedParameters(
+        selectedParams.filter((p): p is SelectedParameter => p.kind === 'bim'),
+        true
+      ),
+      // Update child parameters (User)
+      parameterStore.updateSelectedParameters(
+        selectedParams.filter((p): p is SelectedParameter => p.kind === 'user'),
+        false
+      )
+    ])
   }
 })
 
@@ -669,16 +665,20 @@ onMounted(async () => {
           { immediate: true }
         )
       }),
-      // Wait for BIM elements to be ready
+      // Wait for BIM elements and element data to be ready
       new Promise<void>((resolve) => {
-        if (bimElements.value?.length > 0) {
+        if (bimElements.value?.length > 0 && state.value?.parentElements?.length > 0) {
           resolve()
           return
         }
         const unwatch = watch(
-          () => bimElements.value,
-          (elements) => {
-            if (elements && Array.isArray(elements) && elements.length > 0) {
+          [() => bimElements.value, () => state.value?.parentElements],
+          ([elements, parentElements]) => {
+            if (
+              elements?.length > 0 &&
+              Array.isArray(parentElements) &&
+              parentElements.length > 0
+            ) {
               unwatch()
               resolve()
             }
@@ -691,9 +691,34 @@ onMounted(async () => {
     debug.log(DebugCategories.INITIALIZATION, 'Core systems initialized')
 
     try {
-      // Initialize parameter store
+      // Initialize parameter store and wait for processing
       debug.startState(DebugCategories.PARAMETERS, 'Initializing parameter store')
       await parameterStore.init()
+
+      // Wait for parameter store to finish processing
+      await new Promise<void>((resolve) => {
+        const unwatch = watch(
+          () => parameterStore.isProcessing.value,
+          (isProcessing) => {
+            if (!isProcessing) {
+              unwatch()
+              resolve()
+            }
+          },
+          { immediate: true }
+        )
+      })
+
+      debug.log(DebugCategories.PARAMETERS, 'Parameter store state after init', {
+        raw: {
+          parent: parameterStore.parentRawParameters.value?.length || 0,
+          child: parameterStore.childRawParameters.value?.length || 0
+        },
+        available: {
+          parent: parameterStore.parentAvailableBimParameters.value?.length || 0,
+          child: parameterStore.childAvailableBimParameters.value?.length || 0
+        }
+      })
 
       // Initialize table
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
