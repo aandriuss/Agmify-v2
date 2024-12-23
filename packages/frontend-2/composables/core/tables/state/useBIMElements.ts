@@ -19,6 +19,7 @@ import {
 } from '~/composables/core/types/viewer/viewer-types'
 import {
   processRawParameters,
+  extractRawParameters,
   convertToParameterValue
 } from '~/composables/core/parameters/parameter-processing'
 
@@ -34,166 +35,30 @@ interface BIMElementsOptions {
   childCategories?: string[]
 }
 
-interface ParameterStats {
-  raw: number
-  unique: Set<string>
-  groups: Map<string, Set<string>>
-  activeGroups: Map<string, Set<string>>
-}
-
-function initParameterStats(): ParameterStats {
-  return {
-    raw: 0,
-    unique: new Set(),
-    groups: new Map(),
-    activeGroups: new Map()
-  }
-}
-
-function updateParameterStats(
-  stats: ParameterStats,
-  key: string,
-  _value: unknown
-): void {
-  stats.raw++
-  stats.unique.add(key)
-
-  // Handle parameter grouping
-  const parts = key.split('.')
-  if (parts.length > 1) {
-    const group = parts[0]
-    const param = parts[parts.length - 1]
-    if (!stats.groups.has(group)) {
-      stats.groups.set(group, new Set())
-      stats.activeGroups.set(group, new Set())
-    }
-    stats.groups.get(group)!.add(param)
-    // Mark as active if not a system parameter
-    if (!key.startsWith('__')) {
-      stats.activeGroups.get(group)!.add(param)
-    }
-  } else {
-    if (!stats.groups.has('Parameters')) {
-      stats.groups.set('Parameters', new Set())
-      stats.activeGroups.set('Parameters', new Set())
-    }
-    stats.groups.get('Parameters')!.add(key)
-    // Mark as active if not a system parameter
-    if (!key.startsWith('__')) {
-      stats.activeGroups.get('Parameters')!.add(key)
-    }
-  }
-}
-
 /**
- * Process parameter object with flattened dot notation
- */
-function processParameterObject(
-  obj: Record<string, unknown>,
-  nodeData: ViewerNodeRaw,
-  prefix = '',
-  result: Record<string, ParameterValue> = {},
-  stats?: ParameterStats
-): Promise<Record<string, ParameterValue>> {
-  for (const [key, value] of Object.entries(obj)) {
-    // Skip system parameters
-    if (key.startsWith('__')) continue
-
-    // Handle already flattened parameters (with dot notation)
-    // const parts = key.split('.')
-    // const paramName = parts[parts.length - 1]
-    const fullKey = prefix ? `${prefix}.${key}` : key
-
-    if (value !== null && value !== undefined) {
-      // Handle different value types
-      let parsedValue: unknown = value
-      let isJsonString = false
-      let isComplexType = false
-
-      if (typeof value === 'string') {
-        // Try parsing JSON strings
-        if (value.startsWith('{') && value.endsWith('}')) {
-          try {
-            const parsed = JSON.parse(value) as Record<string, unknown>
-            if (typeof parsed === 'object' && parsed !== null) {
-              parsedValue = parsed
-              isJsonString = true
-              isComplexType = !Array.isArray(parsed)
-            }
-          } catch (err) {
-            debug.warn(
-              DebugCategories.PARAMETERS,
-              `Failed to parse JSON parameter ${key}:`,
-              err
-            )
-          }
-        }
-      } else if (value !== null && typeof value === 'object') {
-        // Handle arrays and objects directly
-        if (Array.isArray(value)) {
-          parsedValue = value
-          isComplexType = false
-        } else {
-          // Ensure we have a proper Record type
-          const objValue = value as Record<string, unknown>
-          parsedValue = objValue
-          isComplexType = true
-        }
-      }
-
-      // Create raw parameter without processing
-      result[fullKey] = convertToParameterValue(parsedValue)
-      if (stats) {
-        updateParameterStats(stats, fullKey, parsedValue)
-      }
-
-      // Process nested parameters for complex objects (not arrays)
-      if (
-        (isJsonString || isComplexType) &&
-        typeof parsedValue === 'object' &&
-        !Array.isArray(parsedValue)
-      ) {
-        // Ensure we have a proper Record type
-        const objValue = parsedValue as Record<string, unknown>
-        for (const [nestedKey, nestedValue] of Object.entries(objValue)) {
-          const nestedFullKey = `${fullKey}.${nestedKey}`
-          // Add nested parameter without processing
-          result[nestedFullKey] = convertToParameterValue(nestedValue)
-          if (stats) {
-            updateParameterStats(stats, nestedFullKey, nestedValue)
-          }
-        }
-      }
-    }
-  }
-
-  return Promise.resolve(result)
-}
-
-/**
- * Extract parameters from node data
+ * Extract parameters from node data using the parameter processing utilities
  */
 async function extractParameters(
   nodeData: ViewerNodeRaw
 ): Promise<Record<string, ParameterValue>> {
-  const parameters: Record<string, ParameterValue> = {}
-  const stats = initParameterStats()
-
-  // Ensure we have a valid ViewerNodeRaw
-  if (!isViewerNodeRaw(nodeData)) {
-    debug.warn(DebugCategories.PARAMETERS, 'Invalid node data format')
-    return parameters
+  // Create a temporary element with node data as parameters
+  const tempElement: ElementData = {
+    id: nodeData.id,
+    type: nodeData.type || '',
+    name: nodeData.Name || '',
+    field: nodeData.id,
+    header: nodeData.type || '',
+    visible: true,
+    removable: true,
+    isChild: false,
+    category: nodeData.type || 'Uncategorized',
+    parameters: {},
+    metadata: nodeData.metadata || {},
+    details: [],
+    order: 0
   }
 
-  // debug.log(DebugCategories.PARAMETERS, 'Raw node data', {
-  //   id: nodeData.id,
-  //   type: nodeData.type,
-  //   hasIdentityData: !!nodeData['Identity Data'],
-  //   hasOther: !!nodeData.Other,
-  //   hasParameters: !!nodeData.parameters
-  // })
-
-  // Get core properties from ViewerNodeRaw type
+  // Get core properties that should be excluded
   const coreProperties = new Set([
     'id',
     'type',
@@ -203,96 +68,33 @@ async function extractParameters(
     'parameters'
   ])
 
-  // Process all properties as potential parameter groups
-  const entries = Object.entries(nodeData)
-  const parameterPromises = entries
+  // Convert node data to parameters object
+  const paramObj: Record<string, ParameterValue> = {}
+  Object.entries(nodeData)
     .filter(([key]) => {
       // Skip core properties and system parameters
       const isCore = coreProperties.has(key)
       const isSystem = key.startsWith('__') || key.startsWith('@')
       return !isCore && !isSystem
     })
-    .map(async ([key, value]) => {
-      // Handle value based on type
-      if (value === null || value === undefined) {
-        return
-      }
-
-      // Determine parameter group
-      const group = key.includes('.') ? key.split('.')[0] : 'Parameters'
-
-      if (typeof value === 'object') {
-        if (!Array.isArray(value)) {
-          // Handle object properties as parameter groups
-          await processParameterObject(
-            value as Record<string, unknown>,
-            nodeData,
-            group,
-            parameters,
-            stats
-          )
-        } else {
-          // Handle array values as stringified JSON
-          const rawParam = {
-            id: key,
-            name: key.includes('.') ? key.split('.')[1] : key,
-            value: JSON.stringify(value),
-            sourceGroup: group,
-            metadata: {
-              category: nodeData.type || 'Uncategorized',
-              fullKey: key,
-              isSystem: false,
-              group,
-              elementId: nodeData.id
-            }
-          }
-          const [processed] = await processRawParameters([rawParam])
-          if (processed) {
-            parameters[key] = processed.value
-            updateParameterStats(stats, key, processed.value)
-          }
-        }
-      } else if (value !== undefined && value !== null) {
-        // Handle primitive values as top-level parameters
-        const rawParam = {
-          id: key,
-          name: key,
-          value,
-          sourceGroup: 'Parameters',
-          metadata: {
-            category: nodeData.type || 'Uncategorized',
-            fullKey: key,
-            isSystem: false,
-            group: 'Parameters',
-            elementId: nodeData.id
-          }
-        }
-        const [processed] = await processRawParameters([rawParam])
-        if (processed) {
-          parameters[key] = processed.value
-          updateParameterStats(stats, key, processed.value)
-        }
+    .forEach(([key, value]) => {
+      if (value !== null && value !== undefined) {
+        paramObj[key] = convertToParameterValue(value)
       }
     })
 
-  await Promise.all(parameterPromises)
+  // Set parameters on temp element
+  tempElement.parameters = paramObj
 
-  // debug.log(DebugCategories.PARAMETERS, 'Parameter extraction stats', {
-  //   raw: stats.raw,
-  //   unique: stats.unique.size,
-  //   groups: Object.fromEntries(
-  //     Array.from(stats.groups.entries()).map(([group, params]) => [
-  //       group,
-  //       {
-  //         total: params.size,
-  //         active: stats.activeGroups.get(group)?.size || 0,
-  //         parameters: Array.from(params),
-  //         activeParameters: Array.from(stats.activeGroups.get(group) || new Set())
-  //       }
-  //     ])
-  //   ),
-  //   extractedParameters: parameters
-  // })
+  // Use parameter processing utilities to extract and process parameters
+  const rawParams = extractRawParameters([{ ...tempElement, parameters: paramObj }])
+  const processed = await processRawParameters(rawParams)
+
+  // Convert processed parameters back to Record format
+  const parameters: Record<string, ParameterValue> = {}
+  processed.forEach((param) => {
+    parameters[param.id] = param.value
+  })
 
   return parameters
 }
@@ -323,7 +125,8 @@ async function convertViewerNodeToElementData(
       category: 'Uncategorized',
       parameters: {},
       metadata: {},
-      details: []
+      details: [],
+      order: 0
     }
   }
 
@@ -343,7 +146,8 @@ async function convertViewerNodeToElementData(
       category: 'Uncategorized',
       parameters: {},
       metadata: {},
-      details: []
+      details: [],
+      order: 0
     }
   }
 
@@ -382,7 +186,8 @@ async function convertViewerNodeToElementData(
     category,
     parameters,
     metadata: nodeData.metadata || {},
-    details: []
+    details: [],
+    order: 0
   }
 }
 
@@ -507,49 +312,25 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
         store.lifecycle.update({
           scheduleData: convertedElements
         }),
-        // Extract parameters for parameter store
+        // Process parameters for parent and child elements
         (async () => {
           const parentElements = convertedElements.filter((el) => !el.isChild)
           const childElements = convertedElements.filter((el) => el.isChild)
 
           // Process parent parameters
           if (parentElements.length > 0) {
-            const parentParams = parentElements.flatMap((element) =>
-              Object.entries(element.parameters).map(([key, value]) => ({
-                id: key,
-                name: key.includes('.') ? key.split('.').pop()! : key,
-                value,
-                sourceGroup: key.includes('.') ? key.split('.')[0] : 'Parameters',
-                metadata: {
-                  category: element.category,
-                  fullKey: key,
-                  isSystem: false,
-                  group: key.includes('.') ? key.split('.')[0] : 'Parameters',
-                  elementId: element.id
-                }
-              }))
-            )
-            await parameterStore.processRawParameters(parentParams, true)
+            const parentParams = extractRawParameters(parentElements)
+            if (parentParams.length > 0) {
+              await parameterStore.processRawParameters(parentParams, true)
+            }
           }
 
           // Process child parameters
           if (childElements.length > 0) {
-            const childParams = childElements.flatMap((element) =>
-              Object.entries(element.parameters).map(([key, value]) => ({
-                id: key,
-                name: key.includes('.') ? key.split('.').pop()! : key,
-                value,
-                sourceGroup: key.includes('.') ? key.split('.')[0] : 'Parameters',
-                metadata: {
-                  category: element.category,
-                  fullKey: key,
-                  isSystem: false,
-                  group: key.includes('.') ? key.split('.')[0] : 'Parameters',
-                  elementId: element.id
-                }
-              }))
-            )
-            await parameterStore.processRawParameters(childParams, false)
+            const childParams = extractRawParameters(childElements)
+            if (childParams.length > 0) {
+              await parameterStore.processRawParameters(childParams, false)
+            }
           }
         })()
       ])

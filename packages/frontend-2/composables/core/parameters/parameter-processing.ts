@@ -99,9 +99,9 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
             group = 'Parameters'
             paramName = parts.slice(1).join('.')
           } else if (parts.length > 1) {
-            // Handle other dot notation
+            // Handle dot notation (e.g. "Model Properties.Slope_Angle_End_T")
             group = parts[0]
-            paramName = parts[1]
+            paramName = parts.slice(1).join('.')
           } else {
             // Default case
             group = 'Parameters'
@@ -291,21 +291,32 @@ export function processRawParameters(
             // Extract nested parameters
             Object.entries(parsed).forEach(([key, value]) => {
               const nestedId = `${raw.id}.${key}`
+              const parts = nestedId.split('.')
+              const group = parts[0]
+              const paramName = parts.slice(1).join('.')
+
               nestedParams.push({
                 id: nestedId,
-                name: key,
+                name: paramName,
                 value,
-                sourceGroup: raw.sourceGroup,
+                sourceGroup: group,
                 metadata: {
                   category: raw.metadata?.category || 'Uncategorized',
                   fullKey: nestedId,
                   isSystem: raw.metadata?.isSystem || false,
-                  group: raw.metadata?.group || raw.sourceGroup,
+                  group,
                   elementId: raw.metadata?.elementId || raw.id,
                   isNested: true,
                   parentKey: raw.id,
                   isJsonString: false
                 }
+              })
+
+              debug.log(DebugCategories.PARAMETERS, 'Added nested parameter', {
+                id: nestedId,
+                name: paramName,
+                value,
+                group
               })
             })
           }
@@ -574,9 +585,9 @@ function updateParameterStats(
     group = 'Parameters'
     paramName = parts.slice(1).join('.')
   } else if (parts.length > 1) {
-    // Handle other dot notation
+    // Handle dot notation (e.g. "Model Properties.Slope_Angle_End_T")
     group = parts[0]
-    paramName = parts[1]
+    paramName = parts.slice(1).join('.')
   } else {
     // Default case
     group = 'Parameters'

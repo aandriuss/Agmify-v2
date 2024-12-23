@@ -144,7 +144,6 @@ import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/ou
 import ScheduleMainView from './components/ScheduleMainView.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
-import { useOnViewerLoadComplete } from '~~/lib/viewer/composables/viewer'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
   ViewerNode,
