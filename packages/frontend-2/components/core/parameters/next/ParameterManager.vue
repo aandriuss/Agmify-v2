@@ -16,19 +16,32 @@
           </div>
 
           <!-- Parameters List -->
+          <ParameterList
+            :parameters="group.parameters"
+            :is-selected="isParameterSelected"
+            :is-visible="getParameterVisibility"
+            :nested-parameters="nestedParametersMap"
+            @visibility-change="toggleParameterVisibility"
+            @toggle-nested="toggleNestedVisibility"
+          />
+        </div>
+
+        <!-- User Parameters -->
+        <div v-if="userParameters.length > 0" class="parameter-group">
+          <div class="group-header">
+            <h3 class="group-title">User Parameters</h3>
+            <span class="parameter-count">{{ userParameters.length }}</span>
+          </div>
+
           <div class="parameters-list">
-            <div
-              v-for="parameter in group.parameters"
-              :key="parameter.id"
-              class="parameter-item"
-              :class="{
-                'is-selected': isParameterSelected(parameter),
-                'is-visible': getParameterVisibility(parameter),
-                'has-nested': parameter.nested?.length
-              }"
-            >
-              <!-- Main Parameter -->
-              <div class="parameter-row">
+            <template v-for="parameter in userParameters" :key="parameter.id">
+              <div
+                class="parameter-item"
+                :class="{
+                  'is-selected': isParameterSelected(parameter),
+                  'is-visible': getParameterVisibility(parameter)
+                }"
+              >
                 <FormButton
                   text
                   size="sm"
@@ -47,96 +60,15 @@
                   {{ parameter.type }}
                 </span>
 
-                <!-- Nested Parameters Indicator -->
+                <!-- Edit Button for User Parameters -->
                 <FormButton
-                  v-if="parameter.nested?.length"
                   text
                   size="sm"
-                  :icon-left="parameter.showNested ? ChevronUpIcon : ChevronDownIcon"
-                  @click="toggleNestedVisibility(parameter)"
+                  :icon-left="PencilIcon"
+                  @click="editUserParameter(parameter)"
                 />
               </div>
-
-              <!-- Nested Parameters -->
-              <div
-                v-if="parameter.nested?.length && parameter.showNested"
-                class="nested-parameters"
-              >
-                <div
-                  v-for="nestedParam in parameter.nested"
-                  :key="nestedParam.id"
-                  class="parameter-item nested"
-                  :class="{
-                    'is-selected': isParameterSelected(nestedParam),
-                    'is-visible': getParameterVisibility(nestedParam)
-                  }"
-                >
-                  <FormButton
-                    text
-                    size="sm"
-                    :icon-left="
-                      getParameterVisibility(nestedParam)
-                        ? CheckCircleIcon
-                        : CheckCircleIconOutlined
-                    "
-                    @click="toggleParameterVisibility(nestedParam)"
-                  >
-                    {{ nestedParam.name }}
-                  </FormButton>
-
-                  <!-- Parameter Type Badge -->
-                  <span class="parameter-type" :class="nestedParam.type">
-                    {{ nestedParam.type }}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- User Parameters -->
-        <div v-if="userParameters.length > 0" class="parameter-group">
-          <div class="group-header">
-            <h3 class="group-title">User Parameters</h3>
-            <span class="parameter-count">{{ userParameters.length }}</span>
-          </div>
-
-          <div class="parameters-list">
-            <div
-              v-for="parameter in userParameters"
-              :key="parameter.id"
-              class="parameter-item"
-              :class="{
-                'is-selected': isParameterSelected(parameter),
-                'is-visible': getParameterVisibility(parameter)
-              }"
-            >
-              <FormButton
-                text
-                size="sm"
-                :icon-left="
-                  getParameterVisibility(parameter)
-                    ? CheckCircleIcon
-                    : CheckCircleIconOutlined
-                "
-                @click="toggleParameterVisibility(parameter)"
-              >
-                {{ parameter.name }}
-              </FormButton>
-
-              <!-- Parameter Type Badge -->
-              <span class="parameter-type" :class="parameter.type">
-                {{ parameter.type }}
-              </span>
-
-              <!-- Edit Button for User Parameters -->
-              <FormButton
-                text
-                size="sm"
-                :icon-left="PencilIcon"
-                @click="editUserParameter(parameter)"
-              />
-            </div>
+            </template>
           </div>
         </div>
       </div>
@@ -160,21 +92,24 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { PropType } from 'vue'
-import {
-  CheckCircleIcon,
-  PlusIcon,
-  PencilIcon,
-  ChevronUpIcon,
-  ChevronDownIcon
-} from '@heroicons/vue/24/solid'
+import { CheckCircleIcon, PlusIcon, PencilIcon } from '@heroicons/vue/24/solid'
 import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/outline'
 import type {
   AvailableBimParameter,
   AvailableUserParameter,
   SelectedParameter
 } from '~/composables/core/types/parameters/parameter-states'
-import { useParameters } from '~/composables/core/parameters/useParameters'
 import LoadingState from '~/components/core/LoadingState.vue'
+import ParameterList from './ParameterList.vue'
+
+interface ExtendedBimParameter extends AvailableBimParameter {
+  showNested?: boolean
+}
+
+interface ParameterGroup {
+  name: string
+  parameters: ExtendedBimParameter[]
+}
 
 // Props
 const props = defineProps({
@@ -184,6 +119,22 @@ const props = defineProps({
   },
   selectedChildCategories: {
     type: Array as PropType<string[]>,
+    required: true
+  },
+  availableParentParameters: {
+    type: Array as PropType<AvailableBimParameter[]>,
+    required: true
+  },
+  availableChildParameters: {
+    type: Array as PropType<AvailableBimParameter[]>,
+    required: true
+  },
+  selectedParentParameters: {
+    type: Array as PropType<SelectedParameter[]>,
+    required: true
+  },
+  selectedChildParameters: {
+    type: Array as PropType<SelectedParameter[]>,
     required: true
   },
   canCreateParameters: {
@@ -200,95 +151,82 @@ const emit = defineEmits<{
   (e: 'error', error: Error): void
 }>()
 
-// Initialize parameter management
-const parameters = useParameters({
-  selectedParentCategories: computed(() => props.selectedParentCategories),
-  selectedChildCategories: computed(() => props.selectedChildCategories)
-})
-
 // Track nested parameter visibility
 const nestedVisibility = ref(new Set<string>())
 
-// Computed properties
-const isLoading = computed(() => parameters.isProcessing.value)
-const error = computed(() =>
-  parameters.hasError.value ? new Error('Failed to load parameters') : null
-)
+// Loading and error states
+const isLoading = ref(false)
+const error = ref<Error | null>(null)
 
 // Group BIM parameters by source group with nested structure
-const parameterGroups = computed(() => {
-  const groups = new Map<
-    string,
-    {
-      name: string
-      parameters: (AvailableBimParameter & {
-        nested?: AvailableBimParameter[]
-        showNested?: boolean
-      })[]
-    }
-  >()
+const parameterGroups = computed<ParameterGroup[]>(() => {
+  const groups = new Map<string, ParameterGroup>()
 
   // First pass: Group parent BIM parameters
-  parameters.parentParameters.available.bim.value.forEach((param) => {
-    const group = param.sourceGroup
-    if (!groups.has(group)) {
-      groups.set(group, { name: group, parameters: [] })
-    }
+  const parentParams = props.availableParentParameters
+  if (parentParams) {
+    parentParams.forEach((param) => {
+      const group = param.sourceGroup
+      if (!groups.has(group)) {
+        groups.set(group, { name: group, parameters: [] })
+      }
 
-    // Skip nested parameters in first pass
-    if (!param.metadata?.isNested) {
-      groups.get(group)!.parameters.push({
+      // Skip nested parameters in first pass
+      if (!param.metadata?.isNested) {
+        groups.get(group)!.parameters.push({
+          ...param,
+          showNested: nestedVisibility.value.has(param.id)
+        })
+      }
+    })
+  }
+
+  // Sort parameters within each group
+  groups.forEach((group) => {
+    group.parameters.sort((a, b) => a.name.localeCompare(b.name))
+  })
+
+  return Array.from(groups.values())
+})
+
+// Create map of nested parameters
+const nestedParametersMap = computed(() => {
+  const map: Record<string, ExtendedBimParameter[]> = {}
+
+  props.availableParentParameters?.forEach((param) => {
+    if (param.metadata?.isNested && param.metadata.parentKey) {
+      if (!map[param.metadata.parentKey]) {
+        map[param.metadata.parentKey] = []
+      }
+      map[param.metadata.parentKey].push({
         ...param,
         showNested: nestedVisibility.value.has(param.id)
       })
     }
   })
 
-  // Second pass: Add nested parameters to their parents
-  parameters.parentParameters.available.bim.value.forEach((param) => {
-    if (param.metadata?.isNested && param.metadata.parentKey) {
-      const group = param.sourceGroup
-      const parentParam = groups
-        .get(group)
-        ?.parameters.find((p) => p.id === param.metadata?.parentKey)
-      if (parentParam) {
-        if (!parentParam.nested) parentParam.nested = []
-        parentParam.nested.push(param)
-      }
-    }
+  // Sort nested parameters
+  Object.values(map).forEach((params) => {
+    params.sort((a, b) => a.name.localeCompare(b.name))
   })
 
-  // Sort parameters within each group
-  groups.forEach((group) => {
-    // Sort main parameters
-    group.parameters.sort((a, b) => a.name.localeCompare(b.name))
-    // Sort nested parameters
-    group.parameters.forEach((param) => {
-      if (param.nested) {
-        param.nested.sort((a, b) => a.name.localeCompare(b.name))
-      }
-    })
-  })
-
-  return Array.from(groups.values())
+  return map
 })
 
 // Get user parameters
-const userParameters = computed(() => parameters.parentParameters.available.user.value)
+const userParameters = computed<AvailableUserParameter[]>(() => []) // We'll handle user parameters later
 
 // Methods
 function isParameterSelected(
   parameter: AvailableBimParameter | AvailableUserParameter
 ): boolean {
-  return parameters.parentParameters.selected.value.some((p) => p.id === parameter.id)
+  return props.selectedParentParameters.some((p) => p.id === parameter.id)
 }
 
 function getParameterVisibility(
   parameter: AvailableBimParameter | AvailableUserParameter
 ): boolean {
-  const selected = parameters.parentParameters.selected.value.find(
-    (p) => p.id === parameter.id
-  )
+  const selected = props.selectedParentParameters.find((p) => p.id === parameter.id)
   return selected?.visible ?? true
 }
 
@@ -296,28 +234,21 @@ function toggleParameterVisibility(
   parameter: AvailableBimParameter | AvailableUserParameter
 ) {
   try {
-    const selected = parameters.parentParameters.selected.value.find(
-      (p) => p.id === parameter.id
-    )
+    const selected = props.selectedParentParameters.find((p) => p.id === parameter.id)
     if (selected) {
-      parameters.updateParameterVisibility(parameter.id, !selected.visible, true)
       emit('parameter-visibility-change', {
         ...selected,
         visible: !selected.visible
       })
     }
-  } catch (error) {
-    if (error instanceof Error) {
-      emit('error', error)
-    } else {
-      emit('error', new Error('Failed to update parameter visibility'))
-    }
+  } catch (err) {
+    const error =
+      err instanceof Error ? err : new Error('Failed to update parameter visibility')
+    emit('error', error)
   }
 }
 
-function toggleNestedVisibility(
-  parameter: AvailableBimParameter & { showNested?: boolean }
-) {
+function toggleNestedVisibility(parameter: ExtendedBimParameter) {
   if (nestedVisibility.value.has(parameter.id)) {
     nestedVisibility.value.delete(parameter.id)
   } else {
@@ -326,9 +257,7 @@ function toggleNestedVisibility(
 }
 
 function editUserParameter(parameter: AvailableUserParameter) {
-  const selected = parameters.parentParameters.selected.value.find(
-    (p) => p.id === parameter.id
-  )
+  const selected = props.selectedParentParameters.find((p) => p.id === parameter.id)
   if (selected) {
     emit('parameter-edit', selected)
   }
@@ -403,16 +332,6 @@ function createParameter() {
 
 .parameter-item.is-selected {
   background: var(--color-background-selected);
-}
-
-.nested-parameters {
-  margin-left: 1.5rem;
-  padding-left: 0.5rem;
-  border-left: 1px solid var(--color-border);
-}
-
-.parameter-item.nested {
-  padding-left: 0.5rem;
 }
 
 .parameter-type {

@@ -25,11 +25,17 @@
             :selected-parent-categories="store.selectedParentCategories.value"
             :selected-child-categories="store.selectedChildCategories.value"
             :available-parent-parameters="
-              parameters.parentParameters.available.bim.value
+              parameterStore.parentAvailableBimParameters.value
             "
-            :available-child-parameters="parameters.childParameters.available.bim.value"
-            :selected-parent-parameters="parameters.parentParameters.selected.value"
-            :selected-child-parameters="parameters.childParameters.selected.value"
+            :available-child-parameters="
+              parameterStore.childAvailableBimParameters.value
+            "
+            :selected-parent-parameters="
+              tableStore.currentTable.value?.selectedParameters?.parent || []
+            "
+            :selected-child-parameters="
+              tableStore.currentTable.value?.selectedParameters?.child || []
+            "
             :can-create-parameters="true"
             @parameter-visibility-change="handleParameterVisibilityChange"
             @parameter-edit="handleParameterEdit"
@@ -97,9 +103,10 @@ import type { ScheduleEmits } from '~/composables/core/types/tables/table-events
 import { useParameters } from '~/composables/core/parameters/useParameters'
 import type {
   SelectedParameter,
-  AvailableParameter
-} from '~/composables/core/types/parameters/parameter-states'
-import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
+  AvailableParameter,
+  RawParameter
+} from '~/composables/core/types'
+import { createSelectedParameter } from '~/composables/core/types'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import ParameterManager from '~/components/core/parameters/next/ParameterManager.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
@@ -120,6 +127,7 @@ import { defaultSelectedParameters } from '~/composables/core/tables/config/defa
 const debug = useDebug()
 const store = useStore()
 const bimElements = useBIMElements()
+const parameterStore = useParameterStore()
 
 // Define props
 const props = defineProps({
@@ -184,6 +192,23 @@ const parameters = useParameters({
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
 })
 
+// Watch for parameter changes
+watch(
+  [
+    () => parameterStore.parentRawParameters.value,
+    () => parameterStore.childRawParameters.value
+  ],
+  async ([newParentParams, newChildParams]) => {
+    if (newParentParams?.length || newChildParams?.length) {
+      debug.log(DebugCategories.PARAMETERS, 'Parameters updated', {
+        parent: newParentParams?.length || 0,
+        child: newChildParams?.length || 0
+      })
+      await tableParameters.initializeTableParameters(true)
+    }
+  }
+)
+
 // Initialize table flow
 const {
   initialize: initializeTable,
@@ -198,11 +223,22 @@ const {
     parentColumns: [],
     childColumns: [],
     categoryFilters: {
-      selectedParentCategories: [],
-      selectedChildCategories: []
+      selectedParentCategories: store.selectedParentCategories.value,
+      selectedChildCategories: store.selectedChildCategories.value
     },
-    selectedParameters: defaultSelectedParameters,
+    selectedParameters: {
+      parent: parameterStore.parentSelectedParameters.value || [],
+      child: parameterStore.childSelectedParameters.value || []
+    },
     lastUpdateTimestamp: Date.now()
+  }
+})
+
+// Watch for table initialization
+watch(isInitialized, async (initialized) => {
+  if (initialized) {
+    debug.log(DebugCategories.INITIALIZATION, 'Table flow initialized')
+    await tableParameters.initializeTableParameters()
   }
 })
 
@@ -283,24 +319,32 @@ function handleColumnVisibilityChange(event: {
 
 function handleParameterSelect(param: AvailableParameter, isParent: boolean) {
   try {
-    // Get parameter store instance
-    const parameterStore = useParameterStore()
+    const currentTable = tableStore.currentTable.value
+    if (!currentTable) {
+      debug.warn(DebugCategories.PARAMETERS, 'No current table found')
+      return
+    }
 
     // Create selected parameter using utility function
     const selectedParam = createSelectedParameter(
       param,
       isParent
-        ? parameterStore.parentSelectedParameters.value.length
-        : parameterStore.childSelectedParameters.value.length
+        ? currentTable.selectedParameters.parent.length
+        : currentTable.selectedParameters.child.length
     )
 
     // Get current selected parameters
-    const currentParams = isParent
-      ? parameterStore.parentSelectedParameters.value
-      : parameterStore.childSelectedParameters.value
+    const selectedParams = {
+      parent: isParent
+        ? [...currentTable.selectedParameters.parent, selectedParam]
+        : currentTable.selectedParameters.parent,
+      child: !isParent
+        ? [...currentTable.selectedParameters.child, selectedParam]
+        : currentTable.selectedParameters.child
+    }
 
-    // Update parameter store with new selection
-    parameterStore.updateSelectedParameters([...currentParams, selectedParam], isParent)
+    // Update table store with new selection
+    tableStore.updateSelectedParameters(selectedParams)
     emit('parameter-select', { parameter: selectedParam })
   } catch (err) {
     handleError(err)
@@ -309,17 +353,24 @@ function handleParameterSelect(param: AvailableParameter, isParent: boolean) {
 
 function handleParameterDeselect(param: AvailableParameter, isParent: boolean) {
   try {
-    // Get parameter store instance
-    const parameterStore = useParameterStore()
-
-    // Get current selected parameters
-    const currentParams = isParent
-      ? parameterStore.parentSelectedParameters.value
-      : parameterStore.childSelectedParameters.value
+    const currentTable = tableStore.currentTable.value
+    if (!currentTable) {
+      debug.warn(DebugCategories.PARAMETERS, 'No current table found')
+      return
+    }
 
     // Remove parameter from selected parameters
-    const selectedParams = currentParams.filter((p) => p.id !== param.id)
-    parameterStore.updateSelectedParameters(selectedParams, isParent)
+    const selectedParams = {
+      parent: isParent
+        ? currentTable.selectedParameters.parent.filter((p) => p.id !== param.id)
+        : currentTable.selectedParameters.parent,
+      child: !isParent
+        ? currentTable.selectedParameters.child.filter((p) => p.id !== param.id)
+        : currentTable.selectedParameters.child
+    }
+
+    // Update table store with new selection
+    tableStore.updateSelectedParameters(selectedParams)
     emit('parameter-deselect', { parameter: param })
   } catch (err) {
     handleError(err)
@@ -431,8 +482,6 @@ const evaluatedData = computed(() => store.evaluatedData.value || [])
 // Initialize on mount
 onMounted(async () => {
   try {
-    const parameterStore = useParameterStore()
-
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedule view')
 
     // First wait for store and world tree to be initialized
@@ -477,15 +526,25 @@ onMounted(async () => {
     debug.log(DebugCategories.INITIALIZATION, 'Core systems initialized')
 
     try {
-      // Initialize parameter store
-      debug.startState(DebugCategories.PARAMETERS, 'Initializing parameter store')
-      await parameterStore.init()
+      // Wait for parameter store to be ready
+      debug.startState(DebugCategories.PARAMETERS, 'Waiting for parameter store')
+      if (!parameterStore.state.value.initialized) {
+        await parameterStore.init()
+      }
 
-      // Initialize table
+      // Process parameters if we have BIM elements
+      if (bimElements.allElements.value?.length) {
+        debug.log(DebugCategories.PARAMETERS, 'Processing BIM elements', {
+          count: bimElements.allElements.value.length
+        })
+        await parameterStore.processParameters(bimElements.allElements.value)
+      }
+
+      // Initialize table with parameters
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
       await initializeTable()
 
-      // Wait for table to be fully initialized
+      // Wait for table to be fully initialized with current data
       if (!props.currentTable) {
         debug.log(DebugCategories.INITIALIZATION, 'Waiting for table data')
         await new Promise<void>((resolve) => {
@@ -500,6 +559,18 @@ onMounted(async () => {
             { immediate: true }
           )
         })
+      }
+
+      // Ensure we have parameters before proceeding
+      if (
+        !parameterStore.parentRawParameters.value?.length &&
+        !parameterStore.childRawParameters.value?.length
+      ) {
+        debug.warn(
+          DebugCategories.PARAMETERS,
+          'No parameters available after initialization'
+        )
+        throw new Error('No parameters available')
       }
 
       debug.log(DebugCategories.INITIALIZATION, 'Table initialized', {
@@ -520,59 +591,66 @@ onMounted(async () => {
     }
 
     // Log parameter state after initialization
-    debug.log(DebugCategories.PARAMETERS, 'Parameter state after initialization', {
-      parentSelected: parameterStore.parentSelectedParameters.value.length,
-      childSelected: parameterStore.childSelectedParameters.value.length
-    })
+    const currentTable = tableStore.currentTable.value
+    if (currentTable) {
+      debug.log(DebugCategories.PARAMETERS, 'Parameter state after initialization', {
+        parentSelected: currentTable.selectedParameters.parent.length,
+        childSelected: currentTable.selectedParameters.child.length
+      })
 
-    // Verify parameters were initialized
-    if (
-      !parameterStore.parentSelectedParameters.value.length &&
-      !parameterStore.childSelectedParameters.value.length
-    ) {
-      debug.warn(
-        DebugCategories.PARAMETERS,
-        'No parameters selected after initialization',
-        {
-          tableId: props.selectedTableId,
-          settings: props.currentTable
-        }
-      )
+      // Verify parameters were initialized
+      if (
+        !currentTable.selectedParameters.parent.length &&
+        !currentTable.selectedParameters.child.length
+      ) {
+        debug.warn(
+          DebugCategories.PARAMETERS,
+          'No parameters selected after initialization',
+          {
+            tableId: props.selectedTableId,
+            settings: props.currentTable
+          }
+        )
 
-      // Use default parameters
-      debug.log(DebugCategories.PARAMETERS, 'Using default parameters')
-      tableStore.updateSelectedParameters(defaultSelectedParameters)
+        // Use default parameters
+        debug.log(DebugCategories.PARAMETERS, 'Using default parameters')
+        tableStore.updateSelectedParameters(defaultSelectedParameters)
+      }
     }
 
     // Log final parameter state
     const parameterState = {
       raw: {
-        parent: parameterStore.parentRawParameters.value?.length || 0,
-        child: parameterStore.childRawParameters.value?.length || 0,
+        parent: unref(parameterStore.parentRawParameters)?.length || 0,
+        child: unref(parameterStore.childRawParameters)?.length || 0,
         parentGroups: Array.from(
           new Set(
-            parameterStore.parentRawParameters.value?.map((p) => p.sourceGroup) || []
+            unref(parameterStore.parentRawParameters)?.map(
+              (p: RawParameter) => p.sourceGroup
+            ) || []
           )
         ),
         childGroups: Array.from(
           new Set(
-            parameterStore.childRawParameters.value?.map((p) => p.sourceGroup) || []
+            unref(parameterStore.childRawParameters)?.map(
+              (p: RawParameter) => p.sourceGroup
+            ) || []
           )
         )
       },
       available: {
         parent: {
-          bim: parameterStore.parentAvailableBimParameters.value?.length || 0,
-          user: parameterStore.parentAvailableUserParameters.value?.length || 0
+          bim: unref(parameterStore.parentAvailableBimParameters)?.length || 0,
+          user: unref(parameterStore.parentAvailableUserParameters)?.length || 0
         },
         child: {
-          bim: parameterStore.childAvailableBimParameters.value?.length || 0,
-          user: parameterStore.childAvailableUserParameters.value?.length || 0
+          bim: unref(parameterStore.childAvailableBimParameters)?.length || 0,
+          user: unref(parameterStore.childAvailableUserParameters)?.length || 0
         }
       },
       selected: {
-        parent: parameterStore.parentSelectedParameters.value?.length || 0,
-        child: parameterStore.childSelectedParameters.value?.length || 0
+        parent: tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
+        child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
       }
     }
 

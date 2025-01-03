@@ -52,8 +52,24 @@ export function convertToParameterValue(value: unknown): ParameterValue {
   if (isPrimitiveValue(value)) return value
   if (isEquationValue(value)) return value
 
+  // Handle numeric strings
+  if (typeof value === 'string') {
+    const num = Number(value)
+    if (!isNaN(num)) return num
+  }
+
   // For objects and arrays, stringify them
   return JSON.stringify(value)
+}
+
+/**
+ * Validate parameter value
+ */
+function validateValue(value: unknown): unknown {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number' && isNaN(value)) return null
+  if (typeof value === 'string' && value.trim() === '') return null
+  return value
 }
 
 /**
@@ -62,7 +78,6 @@ export function convertToParameterValue(value: unknown): ParameterValue {
 export function extractRawParameters(elements: ElementData[]): RawParameter[] {
   const rawParams: RawParameter[] = []
   const stats = initParameterStats()
-  const parameterGroups = new Map<string, Set<string>>()
 
   if (!elements?.length) {
     debug.warn(
@@ -72,7 +87,7 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
     return []
   }
 
-  // First pass: collect all unique parameters and their groups
+  // Process each element
   elements.forEach((element) => {
     if (!element?.parameters) {
       debug.warn(DebugCategories.PARAMETERS, 'Element has no parameters', {
@@ -108,12 +123,6 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
             paramName = key
           }
 
-          // Add to parameter groups
-          if (!parameterGroups.has(group)) {
-            parameterGroups.set(group, new Set())
-          }
-          parameterGroups.get(group)!.add(paramName)
-
           // Check if value is a JSON string
           let parsedValue: unknown = value
           let isJsonString = false
@@ -137,11 +146,21 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
             }
           }
 
+          // Validate value
+          const validatedValue = validateValue(parsedValue)
+          if (validatedValue === null) {
+            debug.warn(DebugCategories.PARAMETERS, 'Skipping invalid parameter value', {
+              id: key,
+              originalValue: parsedValue
+            })
+            return
+          }
+
           // Create raw parameter
-          const rawParam = {
+          const rawParam: RawParameter = {
             id: key,
             name: paramName,
-            value: parsedValue,
+            value: validatedValue,
             sourceGroup: group,
             metadata: {
               category: element.category,
@@ -149,44 +168,54 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
               isSystem: false,
               group,
               elementId: element.id,
-              isJsonString
+              isJsonString,
+              isParent: element.metadata?.isParent || false
             }
           }
 
-          // Add parameter for this element
+          // Add parameter and update stats
           rawParams.push(rawParam)
-          updateParameterStats(stats, key, parsedValue)
+          updateParameterStats(stats, key, validatedValue)
 
-          // If this is a JSON object, also add its properties as nested parameters
-          if (isJsonString && isRecord(parsedValue)) {
-            Object.entries(parsedValue as Record<string, unknown>).forEach(
-              ([nestedKey, nestedValue]) => {
-                const nestedId = `${key}.${nestedKey}`
-                const nestedParam = {
-                  id: nestedId,
-                  name: nestedKey,
-                  value: nestedValue,
-                  sourceGroup: group,
-                  metadata: {
-                    category: element.category,
-                    fullKey: nestedId,
-                    isSystem: false,
-                    group,
-                    elementId: element.id,
-                    isNested: true,
-                    parentKey: key
-                  }
+          debug.log(DebugCategories.PARAMETERS, 'Created raw parameter', {
+            id: key,
+            value: validatedValue,
+            isParent: element.metadata?.isParent || false
+          })
+
+          // Handle nested parameters for JSON objects
+          if (isJsonString && isRecord(validatedValue)) {
+            Object.entries(validatedValue).forEach(([nestedKey, nestedValue]) => {
+              const validatedNestedValue = validateValue(nestedValue)
+              if (validatedNestedValue === null) return
+
+              const nestedId = `${key}.${nestedKey}`
+              const nestedParam: RawParameter = {
+                id: nestedId,
+                name: nestedKey,
+                value: validatedNestedValue,
+                sourceGroup: group,
+                metadata: {
+                  category: element.category,
+                  fullKey: nestedId,
+                  isSystem: false,
+                  group,
+                  elementId: element.id,
+                  isNested: true,
+                  parentKey: key,
+                  isParent: element.metadata?.isParent || false
                 }
-                rawParams.push(nestedParam)
-                updateParameterStats(stats, nestedId, nestedValue)
-                debug.log(DebugCategories.PARAMETERS, 'Added nested parameter', {
-                  id: nestedId,
-                  name: nestedKey,
-                  value: nestedValue,
-                  group
-                })
               }
-            )
+
+              rawParams.push(nestedParam)
+              updateParameterStats(stats, nestedId, validatedNestedValue)
+
+              debug.log(DebugCategories.PARAMETERS, 'Created nested parameter', {
+                id: nestedId,
+                value: validatedNestedValue,
+                isParent: element.metadata?.isParent || false
+              })
+            })
           }
         }
       )
@@ -239,11 +268,6 @@ export function processRawParameters(
     return []
   }
 
-  // debug.log(DebugCategories.PARAMETERS, 'Starting parameter processing', {
-  //   count: rawParams.length,
-  //   sample: rawParams[0]
-  // })
-
   // First group parameters by their ID to handle duplicates
   const parameterGroups = new Map<string, RawParameter[]>()
   rawParams.forEach((param) => {
@@ -260,12 +284,6 @@ export function processRawParameters(
     parameterGroups.set(param.id, [...existing, param])
   })
 
-  // debug.log(DebugCategories.PARAMETERS, 'Grouped raw parameters', {
-  //   totalParams: rawParams.length,
-  //   uniqueIds: parameterGroups.size,
-  //   sample: Array.from(parameterGroups.entries())[0]
-  // })
-
   // Process each unique parameter
   const processed = Array.from(parameterGroups.entries()).flatMap(([_id, params]) => {
     // Skip if no parameters
@@ -275,94 +293,25 @@ export function processRawParameters(
       // Use the first parameter as the base
       const raw = params[0]
 
-      // Special handling for JSON string values
-      let processedValue: unknown = raw.value
-      const nestedParams: RawParameter[] = []
-
-      if (
-        typeof raw.value === 'string' &&
-        raw.value.startsWith('{') &&
-        raw.value.endsWith('}')
-      ) {
-        try {
-          const parsed = JSON.parse(raw.value) as Record<string, unknown>
-          if (isRecord(parsed)) {
-            processedValue = parsed
-            // Extract nested parameters
-            Object.entries(parsed).forEach(([key, value]) => {
-              const nestedId = `${raw.id}.${key}`
-              const parts = nestedId.split('.')
-              const group = parts[0]
-              const paramName = parts.slice(1).join('.')
-
-              nestedParams.push({
-                id: nestedId,
-                name: paramName,
-                value,
-                sourceGroup: group,
-                metadata: {
-                  category: raw.metadata?.category || 'Uncategorized',
-                  fullKey: nestedId,
-                  isSystem: raw.metadata?.isSystem || false,
-                  group,
-                  elementId: raw.metadata?.elementId || raw.id,
-                  isNested: true,
-                  parentKey: raw.id,
-                  isJsonString: false
-                }
-              })
-
-              debug.log(DebugCategories.PARAMETERS, 'Added nested parameter', {
-                id: nestedId,
-                name: paramName,
-                value,
-                group
-              })
-            })
-          }
-        } catch (err) {
-          // If JSON parsing fails, treat as regular string
-          processedValue = raw.value
-        }
-      }
-
       // Convert value to parameter value with proper type inference
-      const finalValue = convertToParameterValue(processedValue)
-
-      // Infer parameter type based on value and context
-      const type = inferParameterType(finalValue, raw)
+      const value = convertToParameterValue(raw.value)
+      const type = inferParameterType(value, raw)
 
       // Determine if this is a BIM or user parameter
       const isBimParameter = isParameterBim(raw)
 
-      // Process nested parameters first
-      const processedNested = nestedParams.map((nested) => {
-        const nestedValue = convertToParameterValue(nested.value)
-        const nestedType = inferParameterType(nestedValue, nested)
-        return isBimParameter
-          ? createAvailableBimParameter(nested, nestedType, nestedValue)
-          : createAvailableUserParameter(
-              nested.id,
-              nested.name,
-              'fixed',
-              nestedValue,
-              nested.sourceGroup
-            )
-      })
-
-      // Create main parameter
-      const mainParam = isBimParameter
-        ? createAvailableBimParameter(raw, type, finalValue)
+      // Create parameter with proper value and type
+      const param = isBimParameter
+        ? createAvailableBimParameter(raw, type, value)
         : createAvailableUserParameter(
             raw.id,
             raw.name,
             'fixed',
-            finalValue,
+            value,
             raw.sourceGroup
           )
 
-      // Return all parameters
-      return [mainParam, ...processedNested]
+      return [param]
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       const param = params[0]
@@ -372,16 +321,18 @@ export function processRawParameters(
         error
       )
 
-      // Create BIM parameter with default values instead of dropping it
-      return [createAvailableBimParameter(param, 'string', String(param.value ?? ''))]
+      // Create BIM parameter with properly converted value
+      const value = convertToParameterValue(param.value)
+      const type = inferParameterType(value, param)
+      return [createAvailableBimParameter(param, type, value)]
     }
   })
 
   // Flatten array and filter out any undefined/null values
   const validProcessed = processed.flat().filter(Boolean)
 
-  // Log processing stats and verify state
-  const _processedStats = {
+  // Log processing stats
+  const processedStats = {
     input: rawParams.length,
     processed: validProcessed.length,
     bim: validProcessed.filter((p): p is AvailableBimParameter => p.kind === 'bim')
@@ -399,38 +350,10 @@ export function processRawParameters(
     }, {} as Record<string, number>)
   }
 
-  // Verify processed parameters
-  const isValid = validProcessed.every((param) => {
-    if (param.kind === 'bim') {
-      return (
-        param.id && param.name && param.type && param.sourceGroup && param.currentGroup
-      )
-    }
-    return param.id && param.name && param.type && param.group
+  debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
+    stats: processedStats,
+    sample: validProcessed[0]
   })
-
-  if (!isValid) {
-    debug.error(DebugCategories.PARAMETERS, 'Invalid processed parameters', {
-      invalidParams: validProcessed.filter((param) => {
-        if (param.kind === 'bim') {
-          return !(
-            param.id &&
-            param.name &&
-            param.type &&
-            param.sourceGroup &&
-            param.currentGroup
-          )
-        }
-        return !(param.id && param.name && param.type && param.group)
-      })
-    })
-    throw new Error('Invalid processed parameters')
-  }
-
-  // debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
-  //   stats: processedStats,
-  //   sample: validProcessed[0]
-  // })
 
   return validProcessed
 }

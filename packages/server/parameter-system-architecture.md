@@ -4,69 +4,116 @@
 
 ```mermaid
 graph TD
-    A[Raw Data] --> B[Parameter Discovery]
-    B --> C[Parameter Processing]
-    C --> D[Table Columns]
-    D --> E[Data Display]
+    A[World Tree] --> B[BIM Elements]
+    B --> C[Parameter Store]
+    C --> D[Parameter Manager]
+    D --> E[Table Store]
+    E --> F[Data Display]
 
-    F[User Parameters] --> C
-    G[BIM Parameters] --> C
-    H[Parameter Mappings] --> D
+    G[Raw Parameters] --> C
+    H[Parameter Processing] --> C
+    I[Parameter Cache] --> C
 ```
 
 ## 2. System Components
 
 ### Data Layer
 
-```
-ElementData
-├── id: string
-├── parameters: Record<string, unknown>
-└── metadata: Record<string, unknown>
+```typescript
+interface ElementData {
+  id: string
+  parameters: Record<string, unknown>
+  metadata: {
+    isParent?: boolean
+    isChild?: boolean
+    category?: string
+    [key: string]: unknown
+  }
+}
+
+interface RawParameter {
+  id: string
+  name: string
+  value: unknown
+  sourceGroup: string
+  metadata: ParameterMetadata
+}
 ```
 
 ### Parameter Types
 
 ```typescript
-interface Parameter {
+interface AvailableBimParameter {
+  kind: 'bim'
   id: string
-  field: string
   name: string
-  type: string
-  header?: string
-  visible?: boolean
-  removable?: boolean
-}
-
-interface BimParameter extends Parameter {
-  sourceValue: unknown
-  fetchedGroup: string
+  type: BimValueType
+  value: ParameterValue
+  sourceGroup: string
   currentGroup: string
+  visible?: boolean
+  isSystem: boolean
+  category?: string
+  description?: string
+  metadata?: ParameterMetadata
 }
 
-interface UserParameter extends Parameter {
-  equation: string
-  category: string
+interface AvailableUserParameter {
+  kind: 'user'
+  id: string
+  name: string
+  type: UserValueType
+  value: ParameterValue
+  group: string
+  visible: boolean
+  equation?: string
+  category?: string
+  description?: string
+  metadata?: ParameterMetadata
+}
+
+interface SelectedParameter {
+  id: string
+  name: string
+  kind: 'bim' | 'user'
+  type: BimValueType | UserValueType
+  value: ParameterValue
+  group: string
+  visible: boolean
+  order: number
+  category?: string
+  description?: string
+  metadata?: ParameterMetadata
 }
 ```
 
-### Table Structure
+### Store Structure
 
 ```typescript
-interface TableConfig {
-  id: string
-  name: string
-  columns: ColumnDef[]
-  parameters: Parameter[]
-}
-
-interface ColumnDef {
-  id: string
-  field: string
-  header: string
-  type: string
-  visible: boolean
-  parameterRef?: string
+interface ParameterStoreState {
+  parent: {
+    raw: RawParameter[]
+    available: {
+      bim: AvailableBimParameter[]
+      user: AvailableUserParameter[]
+    }
+    selected: SelectedParameter[]
+  }
+  child: {
+    raw: RawParameter[]
+    available: {
+      bim: AvailableBimParameter[]
+      user: AvailableUserParameter[]
+    }
+    selected: SelectedParameter[]
+  }
+  processing: {
+    status: 'idle' | 'processing' | 'complete' | 'error'
+    error: Error | null
+    lastAttempt: number | null
+  }
+  lastUpdated: number
+  initialized: boolean
 }
 ```
 
@@ -76,47 +123,75 @@ interface ColumnDef {
 
 ```mermaid
 graph LR
-    A[DataTable] --> B[ColumnManager]
-    B --> C[Parameter System]
-    C --> D[Parameter Mappings]
-    D --> E[GraphQL Layer]
+    A[World Tree] --> B[BIM Elements]
+    B --> C[Parameter Store]
+    C --> D[Parameter Manager]
+    D --> E[Parameter List]
+    E --> F[Table Store]
 ```
 
 ### Parameter Processing Flow
 
 ```mermaid
 graph TD
-    A[Raw Data] --> B[Parameter Discovery]
-    B --> C[Parameter Validation]
-    C --> D[Parameter Processing]
-    D --> E[Column Generation]
-    E --> F[Table Update]
+    A[World Tree] --> B[Get BIM Elements]
+    B --> C[Process Elements]
+    C --> D[Extract Raw Parameters]
+    D --> E[Process Parameters]
+    E --> F[Update Parameter Store]
+    F --> G[Update UI]
 ```
 
 ## 4. State Management
 
-### Parameter State
+### Parameter Store
 
-```typescript
-interface ParameterState {
-  definitions: Record<string, Parameter>
-  mappings: ParameterMappings
-  processed: Record<string, ProcessedParameter>
-}
-```
+The parameter store is the central source of truth for all parameter-related data. It handles:
 
-### Table State
+1. Raw parameter storage
+2. Parameter processing
+3. Parameter categorization (BIM vs User)
+4. Parameter selection state
+5. Parameter visibility state
+6. Nested parameter relationships
 
-```typescript
-interface TableState {
-  columns: ColumnDef[]
-  visibleColumns: ColumnDef[]
-  data: ElementData[]
-  processedData: ElementData[]
-}
-```
+### Table Store
+
+The table store manages:
+
+1. Current table configuration
+2. Column definitions
+3. Selected parameters
+4. Parameter visibility
+5. Parameter ordering
 
 ## 5. Current Organization
+
+### Core Parameter System
+
+```
+frontend-2/
+└── composables/
+    └── core/
+        ├── parameters/
+        │   ├── store/
+        │   │   ├── index.ts       # Parameter store exports
+        │   │   ├── store.ts       # Parameter store implementation
+        │   │   ├── types.ts       # Parameter store types
+        │   │   ├── cache.ts       # Parameter caching
+        │   │   └── recovery.ts    # Error recovery
+        │   ├── parameter-processing.ts  # Parameter processing logic
+        │   └── useParameters.ts         # Parameter composable
+        └── tables/
+            ├── state/
+            │   ├── useElementsData.ts    # Element data management
+            │   ├── useBIMElements.ts     # BIM element handling
+            │   └── useTableFlow.ts       # Table initialization
+            └── store/
+                ├── index.ts              # Table store exports
+                ├── store.ts              # Table store implementation
+                └── types.ts              # Table store types
+```
 
 ### Core Parameter System
 
@@ -140,108 +215,116 @@ frontend-2/
             └── index.ts                  # Table exports
 ```
 
-### Viewer-Specific Components
+### Components
 
 ```
 frontend-2/
-└── composables/
-    └── viewer/
+└── components/
+    └── core/
         └── parameters/
-            ├── useBIMParameters.ts     # BIM parameter handling
-            ├── useParameterMapping.ts  # Parameter mapping
-            └── index.ts               # Viewer exports
+            └── next/
+                ├── ParameterManager.vue  # Main parameter UI
+                └── ParameterList.vue     # Parameter list with nesting
 ```
 
 ## 6. Key Features
 
+### Parameter Processing
+
+1. Raw Parameter Extraction:
+
+   - Extract from BIM elements
+   - Handle nested parameters
+   - Group by source
+
+2. Parameter Processing:
+
+   - Type inference
+   - Value conversion
+   - Metadata handling
+   - Nested relationship mapping
+
+3. Parameter Selection:
+   - Parent/Child separation
+   - BIM/User separation
+   - Visibility tracking
+   - Order management
+
 ### Error Handling
 
-Each module includes dedicated error types:
+Comprehensive error handling at each level:
 
-```typescript
-export class ParameterOperationError extends Error {}
-export class ParameterEvaluationError extends Error {}
-export class ParameterFormError extends Error {}
-export class ParameterGroupError extends Error {}
-export class ParameterUtilsError extends Error {}
-export class TableSelectionError extends Error {}
-```
+1. Element Processing:
 
-### Debug Logging
+   - Invalid element structure
+   - Missing required data
+   - Type mismatches
 
-Comprehensive debug logging using categories:
+2. Parameter Processing:
+
+   - Invalid parameter values
+   - Type conversion errors
+   - Missing metadata
+
+3. Store Operations:
+   - State update failures
+   - Cache errors
+   - Recovery strategies
+
+### Debug Support
+
+Extensive debugging capabilities:
 
 ```typescript
 enum DebugCategories {
+  INITIALIZATION = 'initialization',
   PARAMETERS = 'parameters',
-  PARAMETER_VALIDATION = 'parameter-validation',
-  PARAMETER_UPDATES = 'parameter-updates',
-  TABLE_DATA = 'table-data',
-  TABLE_UPDATES = 'table-updates',
-  TABLE_VALIDATION = 'table-validation'
+  CATEGORY_UPDATES = 'category-updates',
+  DATA_TRANSFORM = 'data-transform',
+  ERROR = 'error'
 }
-```
-
-### Parameter Constants
-
-Fixed parameter definitions:
-
-```typescript
-export const PARAMETER_CATEGORIES = {
-  CLASSIFICATION: 'Classification',
-  DIMENSIONS: 'Dimensions',
-  CUSTOM: 'Custom'
-} as const
-
-export const PARAMETER_TYPES = {
-  STRING: 'string',
-  NUMBER: 'number',
-  BOOLEAN: 'boolean',
-  DATE: 'date',
-  OBJECT: 'object',
-  ARRAY: 'array'
-} as const
 ```
 
 ## 7. Implementation Considerations
 
 1. Performance:
 
-   - Parameter discovery optimized
-   - Processing results cached
-   - State updates batched
-   - Lazy loading where possible
+   - Lazy parameter processing
+   - Efficient nested parameter handling
+   - Optimized store updates
+   - Smart caching strategies
 
 2. Type Safety:
 
    - Strong typing throughout
    - Runtime type validation
-   - Error boundaries defined
-   - Type guards implemented
+   - Proper error boundaries
+   - Type guards for processing
 
 3. Extensibility:
 
-   - Plugin architecture for parameters
-   - Custom parameter types supported
-   - Processing pipeline extensible
-   - State management modular
+   - Modular store design
+   - Pluggable parameter types
+   - Flexible processing pipeline
+   - Customizable UI components
 
 4. Maintainability:
 
    - Clear component boundaries
-   - Documented interfaces
-   - Testable units
+   - Well-defined interfaces
+   - Comprehensive documentation
    - Consistent patterns
 
-5. Error Handling:
+5. Error Recovery:
 
-   - Dedicated error types per module
-   - Consistent error propagation
-   - Error recovery strategies
-   - User-friendly error messages
+   - Graceful degradation
+   - State recovery
+   - User feedback
+   - Debug information
 
-6. Debugging:
-   - Comprehensive debug logging
-   - State tracking
-   - Performance monitoring
-   - Error tracing
+6. Initialization Flow:
+   - World tree loading
+   - BIM element processing
+   - Parameter extraction
+   - Store initialization
+   - UI updates

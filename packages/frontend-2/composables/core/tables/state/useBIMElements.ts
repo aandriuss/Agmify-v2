@@ -7,7 +7,6 @@ import type {
   ViewerNodeRaw,
   WorldTreeRoot
 } from '~/composables/core/types'
-import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
@@ -17,14 +16,12 @@ import {
   isSpeckleReference,
   isViewerNodeRaw
 } from '~/composables/core/types/viewer/viewer-types'
-import {
-  processRawParameters,
-  extractRawParameters,
-  convertToParameterValue
-} from '~/composables/core/parameters/parameter-processing'
+import type { ParameterValue } from '~/composables/core/types/parameters'
+import { convertToParameterValue } from '~/composables/core/parameters/parameter-processing'
 
 interface BIMElementsState {
   worldTree: ViewerTree | null
+  worldTreeRoot: WorldTreeRoot | null
   treeNodes: TreeNode[]
   elements: ElementData[]
   isLoading: boolean
@@ -36,28 +33,11 @@ interface BIMElementsOptions {
 }
 
 /**
- * Extract parameters from node data using the parameter processing utilities
+ * Extract raw parameters from node data with nested property support
  */
-async function extractParameters(
+function extractNodeParameters(
   nodeData: ViewerNodeRaw
-): Promise<Record<string, ParameterValue>> {
-  // Create a temporary element with node data as parameters
-  const tempElement: ElementData = {
-    id: nodeData.id,
-    type: nodeData.type || '',
-    name: nodeData.Name || '',
-    field: nodeData.id,
-    header: nodeData.type || '',
-    visible: true,
-    removable: true,
-    isChild: false,
-    category: nodeData.type || 'Uncategorized',
-    parameters: {},
-    metadata: nodeData.metadata || {},
-    details: [],
-    order: 0
-  }
-
+): Record<string, ParameterValue> {
   // Get core properties that should be excluded
   const coreProperties = new Set([
     'id',
@@ -65,36 +45,67 @@ async function extractParameters(
     'Name',
     'metadata',
     'children',
-    'parameters'
+    'parameters',
+    'elements',
+    'speckle_type',
+    'applicationId',
+    'renderMaterial'
   ])
 
-  // Convert node data to parameters object
-  const paramObj: Record<string, ParameterValue> = {}
-  Object.entries(nodeData)
-    .filter(([key]) => {
-      // Skip core properties and system parameters
-      const isCore = coreProperties.has(key)
-      const isSystem = key.startsWith('__') || key.startsWith('@')
-      return !isCore && !isSystem
-    })
-    .forEach(([key, value]) => {
-      if (value !== null && value !== undefined) {
-        paramObj[key] = convertToParameterValue(value)
-      }
-    })
-
-  // Set parameters on temp element
-  tempElement.parameters = paramObj
-
-  // Use parameter processing utilities to extract and process parameters
-  const rawParams = extractRawParameters([{ ...tempElement, parameters: paramObj }])
-  const processed = await processRawParameters(rawParams)
-
-  // Convert processed parameters back to Record format
+  // Extract all properties except core and system ones
   const parameters: Record<string, ParameterValue> = {}
-  processed.forEach((param) => {
-    parameters[param.id] = param.value
+
+  function processValue(value: unknown, prefix = ''): void {
+    if (value === null || value === undefined) return
+
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      // Process nested object
+      Object.entries(value as Record<string, unknown>).forEach(([key, val]) => {
+        const fullKey = prefix ? `${prefix}.${key}` : key
+
+        // Skip core and system properties
+        const isCore = coreProperties.has(key)
+        const isSystem = key.startsWith('__') || key.startsWith('@')
+
+        if (!isCore && !isSystem) {
+          if (typeof val === 'object' && !Array.isArray(val) && val !== null) {
+            processValue(val, fullKey)
+          } else {
+            const convertedValue = convertToParameterValue(val)
+            if (convertedValue !== null) {
+              parameters[fullKey] = convertedValue
+            }
+          }
+        }
+      })
+    } else {
+      // Convert non-object value
+      const convertedValue = convertToParameterValue(value)
+      if (convertedValue !== null && prefix) {
+        parameters[prefix] = convertedValue
+      }
+    }
+  }
+
+  // Process top-level properties
+  Object.entries(nodeData).forEach(([key, value]) => {
+    const isCore = coreProperties.has(key)
+    const isSystem = key.startsWith('__') || key.startsWith('@')
+
+    if (!isCore && !isSystem) {
+      processValue(value, key)
+    }
   })
+
+  // Log extracted parameters for debugging
+  if (Object.keys(parameters).length > 0) {
+    debug.log(DebugCategories.PARAMETERS, 'Extracted parameters from node', {
+      nodeId: nodeData.id,
+      parameterCount: Object.keys(parameters).length,
+      sampleKeys: Object.keys(parameters).slice(0, 5),
+      sampleValues: Object.values(parameters).slice(0, 5)
+    })
+  }
 
   return parameters
 }
@@ -102,10 +113,10 @@ async function extractParameters(
 /**
  * Convert ViewerNode to ElementData format
  */
-async function convertViewerNodeToElementData(
+function convertViewerNodeToElementData(
   node: ViewerNode,
   childCategories: string[] = []
-): Promise<ElementData> {
+): ElementData {
   const nodeData = node.model?.raw
   if (!nodeData || isSpeckleReference(nodeData)) {
     debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data', {
@@ -158,21 +169,30 @@ async function convertViewerNodeToElementData(
     'Uncategorized'
   const isChild = childCategories.includes(category)
 
-  // debug.log(DebugCategories.DATA_TRANSFORM, 'Converting node', {
-  //   id: nodeData.id,
-  //   category,
-  //   isChild,
-  //   type: nodeData.type
-  // })
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Converting node', {
+    id: nodeData.id,
+    category,
+    isChild,
+    type: nodeData.type
+  })
 
-  // Extract all parameters with proper grouping
-  const parameters = await extractParameters(nodeData)
+  // Extract raw parameters from node data
+  const parameters = extractNodeParameters(nodeData)
 
-  // debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
-  //   nodeId: nodeData.id,
-  //   parameterCount: Object.keys(parameters).length,
-  //   groups: Array.from(new Set(Object.keys(parameters).map((key) => key.split('.')[0])))
-  // })
+  debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
+    nodeId: nodeData.id,
+    parameterCount: Object.keys(parameters).length,
+    groups: Array.from(
+      new Set(Object.keys(parameters).map((key) => key.split('.')[0]))
+    ),
+    sampleParameters: Object.entries(parameters)
+      .slice(0, 3)
+      .map(([key, value]) => ({
+        key,
+        value,
+        type: typeof value
+      }))
+  })
 
   return {
     id: nodeData.id,
@@ -201,7 +221,7 @@ async function traverseNode(
   const elements: ElementData[] = []
 
   // Convert current node
-  elements.push(await convertViewerNodeToElementData(node, childCategories))
+  elements.push(convertViewerNodeToElementData(node, childCategories))
 
   // Get raw data
   const raw = node.model?.raw
@@ -239,11 +259,12 @@ async function traverseNode(
  */
 export function useBIMElements(options: BIMElementsOptions = {}) {
   const store = useStore()
-  const parameterStore = useParameterStore()
+  const _parameterStore = useParameterStore() // Prefix with _ to indicate it's used internally
 
   // State
   const state = ref<BIMElementsState>({
     worldTree: null,
+    worldTreeRoot: null,
     treeNodes: [],
     elements: [],
     isLoading: false,
@@ -270,83 +291,75 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
   /**
    * Initialize BIM elements directly from world tree
    */
-  async function initializeElements(worldTree?: WorldTreeRoot): Promise<void> {
+  async function initializeElements(worldTree: WorldTreeRoot | null): Promise<void> {
     try {
-      debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
+      if (!worldTree || !worldTree._root) {
+        debug.warn(DebugCategories.INITIALIZATION, 'No world tree data available')
+        state.value = {
+          worldTree: null,
+          worldTreeRoot: null,
+          treeNodes: [],
+          elements: [],
+          isLoading: false,
+          error: null
+        }
+        return
+      }
+
       state.value.isLoading = true
       state.value.error = null
 
-      // Get nodes from world tree
-      const tree = worldTree
-      if (!tree?._root?.children?.length) {
-        debug.error(DebugCategories.DATA, 'No world tree data available')
-        throw new Error('No world tree data available')
-      }
+      // Process world tree nodes recursively
+      const elements: ElementData[] = []
+      if (worldTree._root.children?.length) {
+        debug.log(DebugCategories.DATA, 'Processing world tree nodes', {
+          childCount: worldTree._root.children.length
+        })
 
-      debug.log(DebugCategories.DATA, 'World tree data', {
-        hasRoot: !!tree._root,
-        childrenCount: tree._root.children.length,
-        firstChild: tree._root.children[0]
-      })
-
-      // Convert nodes to ElementData format recursively
-      const convertedElements: ElementData[] = []
-      for (const node of tree._root.children) {
-        if (node) {
-          convertedElements.push(...(await traverseNode(node, options.childCategories)))
+        // Process each root child node
+        for (const node of worldTree._root.children) {
+          const nodeElements = await traverseNode(node, options.childCategories || [])
+          elements.push(...nodeElements)
         }
       }
 
-      debug.log(DebugCategories.DATA, 'Converted elements', {
-        count: convertedElements.length,
-        sample: convertedElements[5],
-        childCount: convertedElements.filter((el) => el.isChild).length,
-        parentCount: convertedElements.filter((el) => !el.isChild).length
+      state.value = {
+        worldTree: null,
+        worldTreeRoot: worldTree,
+        treeNodes: [],
+        elements,
+        isLoading: false,
+        error: null
+      }
+
+      debug.log(DebugCategories.DATA, 'BIM elements initialized', {
+        elementCount: elements.length
       })
 
       // Update local state
-      state.value.elements = convertedElements
+      state.value.elements = elements
 
-      // Update stores with element data and parameters
-      await Promise.all([
-        store.lifecycle.update({
-          scheduleData: convertedElements
-        }),
-        // Process parameters for parent and child elements
-        (async () => {
-          const parentElements = convertedElements.filter((el) => !el.isChild)
-          const childElements = convertedElements.filter((el) => el.isChild)
+      // Update store with element data
+      await store.lifecycle.update({
+        scheduleData: elements
+      })
 
-          // Process parent parameters
-          if (parentElements.length > 0) {
-            const parentParams = extractRawParameters(parentElements)
-            if (parentParams.length > 0) {
-              await parameterStore.processRawParameters(parentParams, true)
-            }
-          }
-
-          // Process child parameters
-          if (childElements.length > 0) {
-            const childParams = extractRawParameters(childElements)
-            if (childParams.length > 0) {
-              await parameterStore.processRawParameters(childParams, false)
-            }
-          }
-        })()
-      ])
-
-      debug.completeState(DebugCategories.INITIALIZATION, 'BIM elements initialized', {
-        elementCount: convertedElements.length,
-        hasWorldTree: !!state.value.worldTree,
-        nodeCount: state.value.treeNodes.length
+      debug.log(DebugCategories.DATA, 'BIM elements processed', {
+        totalElements: elements.length,
+        parentElements: elements.filter((el) => !el.isChild).length,
+        childElements: elements.filter((el) => el.isChild).length
       })
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to initialize BIM elements:', err)
-      state.value.error =
-        err instanceof Error ? err : new Error('Failed to initialize BIM elements')
-      throw state.value.error
-    } finally {
-      state.value.isLoading = false
+      state.value = {
+        worldTree: null,
+        worldTreeRoot: null,
+        treeNodes: [],
+        elements: [],
+        isLoading: false,
+        error:
+          err instanceof Error ? err : new Error('Failed to initialize BIM elements')
+      }
     }
   }
 

@@ -89,3 +89,16 @@ export function isSpeckleObject(value: unknown): value is SpeckleObject {
     typeof (value as SpeckleObject).speckle_type === 'string'
   )
 }
+
+/**
+ * Type guard to check if a value is a WorldTreeRoot
+ */
+export function isWorldTreeRoot(value: unknown): value is WorldTreeRoot {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    '_root' in value &&
+    'children' in (value as any)._root &&
+    Array.isArray((value as any)._root.children)
+  )
+}

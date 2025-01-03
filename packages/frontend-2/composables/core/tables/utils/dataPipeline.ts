@@ -1,5 +1,14 @@
-import type { ElementData, TableColumn } from '~/composables/core/types'
-import { createBimColumnDefWithDefaults } from '~/composables/core/types/tables/column-types'
+import type { ElementData } from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types/tables/table-column'
+import type {
+  RawParameter,
+  SelectedParameter
+} from '~/composables/core/types/parameters/parameter-states'
+import {
+  createAvailableBimParameter,
+  createSelectedParameter
+} from '~/composables/core/types/parameters/parameter-states'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 export interface DataPipelineOptions {
@@ -26,13 +35,24 @@ export function processDataPipeline({
   selectedChild
 }: DataPipelineOptions): DataPipelineResult {
   try {
+    // Add validation
+    if (!Array.isArray(allElements)) {
+      throw new Error('allElements must be an array')
+    }
+    if (!Array.isArray(selectedParent)) {
+      throw new Error('selectedParent must be an array')
+    }
+    if (!Array.isArray(selectedChild)) {
+      throw new Error('selectedChild must be an array')
+    }
+
     debug.startState(DebugCategories.DATA_TRANSFORM, 'Starting data pipeline', {
       elementCount: allElements.length,
       selectedParent,
       selectedChild
     })
 
-    // Initialize result
+    // Initialize result with empty arrays
     const result: DataPipelineResult = {
       filteredElements: [],
       processedElements: [],
@@ -48,17 +68,21 @@ export function processDataPipeline({
       selectedParent,
       selectedChild
     )
-    result.filteredElements = filteredElements
+    result.filteredElements = filteredElements || [] // Add fallback
 
-    // Process elements
-    const { processedElements, parentColumns, childColumns } =
-      processElements(filteredElements)
-    result.processedElements = processedElements
-    result.parentColumns = parentColumns
-    result.childColumns = childColumns
+    // Only proceed if we have filtered elements
+    if (filteredElements && filteredElements.length > 0) {
+      // Process elements
+      const { processedElements, parentColumns, childColumns } =
+        processElements(filteredElements)
+      result.processedElements = processedElements || []
+      result.parentColumns = parentColumns || []
+      result.childColumns = childColumns || []
 
-    // Create table data
-    result.tableData = createTableData(processedElements)
+      // Create table data
+      result.tableData = createTableData(processedElements) || []
+    }
+
     result.isProcessingComplete = true
 
     debug.completeState(DebugCategories.DATA_TRANSFORM, 'Data pipeline complete', {
@@ -85,9 +109,15 @@ function filterElementsByCategory(
   childCategories: string[]
 ): ElementData[] {
   try {
+    if (!elements || !Array.isArray(elements)) {
+      return []
+    }
+
     debug.startState(DebugCategories.DATA_TRANSFORM, 'Filtering elements by category')
 
     const filtered = elements.filter((element) => {
+      if (!element) return false
+
       // Check parent category
       const isParentMatch =
         !element.isChild &&
@@ -111,7 +141,7 @@ function filterElementsByCategory(
     return filtered
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error filtering elements:', err)
-    throw err
+    return []
   }
 }
 
@@ -126,17 +156,30 @@ function processElements(elements: ElementData[]): {
   try {
     debug.startState(DebugCategories.DATA_TRANSFORM, 'Processing elements')
 
-    // Extract columns
-    const parentColumns = extractColumns(elements.filter((el) => !el.isChild))
-    const childColumns = extractColumns(elements.filter((el) => el.isChild))
+    if (!Array.isArray(elements)) {
+      debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid elements array')
+      return {
+        processedElements: [],
+        parentColumns: [],
+        childColumns: []
+      }
+    }
+
+    // Extract columns with null checks
+    const parentElements = elements.filter((el) => el && !el.isChild)
+    const childElements = elements.filter((el) => el && el.isChild)
+
+    const parentColumns = extractColumns(parentElements)
+    const childColumns = extractColumns(childElements)
 
     // Process elements with columns
     const processedElements = elements.map((element) => ({
       ...element,
-      details: element.details?.map((detail) => ({
-        ...detail,
-        details: []
-      }))
+      details:
+        element.details?.map((detail) => ({
+          ...detail,
+          details: []
+        })) ?? []
     }))
 
     debug.completeState(DebugCategories.DATA_TRANSFORM, 'Elements processed', {
@@ -152,79 +195,104 @@ function processElements(elements: ElementData[]): {
     }
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error processing elements:', err)
-    throw err
+    return {
+      processedElements: [],
+      parentColumns: [],
+      childColumns: []
+    }
   }
 }
 
 /**
- * Extract columns from elements
+ * Extract columns from elements following the new parameter flow
  */
 function extractColumns(elements: ElementData[]): TableColumn[] {
   try {
-    const columns = new Map<string, TableColumn>()
+    const parameterMap = new Map<string, SelectedParameter>()
+    let order = 0
 
     elements.forEach((element) => {
-      // Process parameters
-      Object.entries(element.parameters).forEach(([key, value]) => {
-        if (!columns.has(key)) {
-          columns.set(
-            key,
-            createBimColumnDefWithDefaults({
+      // Process parameters if they exist
+      if (element.parameters) {
+        Object.entries(element.parameters).forEach(([key, value]) => {
+          if (!parameterMap.has(key)) {
+            // Convert value to ParameterValue
+            const processedValue =
+              typeof value === 'number' ||
+              typeof value === 'boolean' ||
+              typeof value === 'string'
+                ? value
+                : String(value)
+
+            const rawParam: RawParameter = {
               id: key,
               name: key,
-              field: key,
-              header: key,
-              type:
-                typeof value === 'number'
-                  ? 'number'
-                  : typeof value === 'boolean'
-                  ? 'boolean'
-                  : 'string',
-              visible: true,
-              removable: true,
-              source: 'BIM',
-              category: element.category || 'Parameters',
-              sourceValue: String(value),
-              fetchedGroup: 'Default',
-              currentGroup: 'Default'
-            })
-          )
-        }
-      })
+              value: processedValue, // Use processed value
+              sourceGroup: 'Parameters',
+              metadata: {
+                category: element.category || 'Parameters'
+              }
+            }
 
-      // Process metadata
+            // Convert to available parameter
+            const availableParam = createAvailableBimParameter(
+              rawParam,
+              typeof value === 'number'
+                ? 'number'
+                : typeof value === 'boolean'
+                ? 'boolean'
+                : 'string',
+              value,
+              false
+            )
+
+            // Convert to selected parameter
+            const selectedParam = createSelectedParameter(availableParam, order++)
+
+            parameterMap.set(key, selectedParam)
+          }
+        })
+      }
+
+      // Process metadata if it exists
       if (element.metadata) {
         Object.entries(element.metadata).forEach(([key, value]) => {
           const columnKey = `metadata_${key}`
-          if (!columns.has(columnKey)) {
-            columns.set(
-              columnKey,
-              createBimColumnDefWithDefaults({
-                id: columnKey,
-                name: key,
-                field: columnKey,
-                header: key,
-                type:
-                  typeof value === 'number'
-                    ? 'number'
-                    : typeof value === 'boolean'
-                    ? 'boolean'
-                    : 'string',
-                visible: true,
-                removable: true,
-                source: 'BIM',
-                category: 'Metadata',
-                sourceValue: String(value),
-                fetchedGroup: 'Metadata',
-                currentGroup: 'Metadata'
-              })
+          if (!parameterMap.has(columnKey)) {
+            // Create raw parameter for metadata
+            const rawParam: RawParameter = {
+              id: columnKey,
+              name: key,
+              value,
+              sourceGroup: 'Metadata',
+              metadata: {
+                category: 'Metadata'
+              }
+            }
+
+            // Convert to available parameter
+            const availableParam = createAvailableBimParameter(
+              rawParam,
+              typeof value === 'number'
+                ? 'number'
+                : typeof value === 'boolean'
+                ? 'boolean'
+                : 'string',
+              value,
+              false
             )
+
+            // Convert to selected parameter
+            const selectedParam = createSelectedParameter(availableParam, order++)
+
+            parameterMap.set(columnKey, selectedParam)
           }
         })
       }
     })
 
-    return Array.from(columns.values())
+    // Convert selected parameters to table columns
+    return Array.from(parameterMap.values()).map(createTableColumn)
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error extracting columns:', err)
     throw err

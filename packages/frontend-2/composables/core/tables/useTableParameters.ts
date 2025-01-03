@@ -15,8 +15,14 @@
 import { computed } from 'vue'
 import { useTableStore } from './store/store'
 import { useParameterStore } from '../parameters/store/store'
+import { useStore } from '~/composables/core/store'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import type { TableSelectedParameters } from './store/types'
+import type { ElementData, SelectedParameter } from '~/composables/core/types'
+
+interface TableSelectedParameters {
+  parent: SelectedParameter[]
+  child: SelectedParameter[]
+}
 
 /**
  * Composable to handle interaction between table and parameter stores
@@ -55,6 +61,55 @@ export function useTableParameters() {
         await tableStore.loadTable(currentTableId.value)
       }
 
+      // Ensure parameters are processed
+      if (
+        !parameterStore.parentRawParameters.value?.length &&
+        !parameterStore.childRawParameters.value?.length
+      ) {
+        debug.warn(
+          DebugCategories.PARAMETERS,
+          'No parameters available, attempting to process'
+        )
+        const store = useStore()
+        const elements = store.scheduleData.value || []
+        if (elements?.length) {
+          const validElements = elements.filter((el): el is ElementData => {
+            return (
+              el !== null && typeof el === 'object' && 'id' in el && 'parameters' in el
+            )
+          })
+          if (validElements.length) {
+            debug.log(DebugCategories.PARAMETERS, 'Processing elements', {
+              total: elements.length,
+              valid: validElements.length
+            })
+            await parameterStore.processParameters(validElements)
+          } else {
+            debug.warn(
+              DebugCategories.PARAMETERS,
+              'No valid elements found for parameter processing'
+            )
+          }
+        }
+      }
+
+      // Wait for parameters to be processed
+      if (forceInit || !parameterStore.state.value.initialized) {
+        debug.log(DebugCategories.PARAMETERS, 'Waiting for parameter processing')
+        await new Promise<void>((resolve) => {
+          const unwatch = watch(
+            () => parameterStore.state.value.processing.status,
+            (status) => {
+              if (status === 'complete') {
+                unwatch()
+                resolve()
+              }
+            },
+            { immediate: true }
+          )
+        })
+      }
+
       // Log current state
       debug.log(DebugCategories.PARAMETERS, 'Current parameter state', {
         rawParameters: {
@@ -66,6 +121,22 @@ export function useTableParameters() {
           child: selectedParameters.value.child.length
         }
       })
+
+      // Update table with processed parameters if needed
+      if (
+        parameterStore.parentRawParameters.value.length ||
+        parameterStore.childRawParameters.value.length
+      ) {
+        const parentParams = parameterStore.parentSelectedParameters.value
+        const childParams = parameterStore.childSelectedParameters.value
+
+        if (parentParams.length || childParams.length) {
+          await tableStore.updateSelectedParameters({
+            parent: parentParams,
+            child: childParams
+          })
+        }
+      }
 
       debug.log(DebugCategories.PARAMETERS, 'Parameters initialized', {
         parent: selectedParameters.value.parent.length,

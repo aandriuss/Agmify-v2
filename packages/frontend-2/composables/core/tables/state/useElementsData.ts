@@ -9,9 +9,27 @@ import type {
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
+import { useParameterStore } from '~/composables/core/parameters/store'
 import { useBIMElements } from './useBIMElements'
 import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
 import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
+import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
+import { isWorldTreeRoot } from '~/composables/core/types/viewer/viewer-types'
+
+// Helper function to safely log errors
+function logError(category: DebugCategories, message: string, err: unknown): Error {
+  let errorMessage: string
+  if (err instanceof Error) {
+    errorMessage = err.message
+  } else if (typeof err === 'string') {
+    errorMessage = err
+  } else {
+    errorMessage = 'An unknown error occurred'
+  }
+  const error = new Error(errorMessage)
+  debug.error(category, message, errorMessage)
+  return error
+}
 
 interface UseElementsDataOptions {
   selectedParentCategories: Ref<string[]>
@@ -44,6 +62,12 @@ export function useElementsData(
 ): UseElementsDataReturn {
   const store = useStore()
   const tableStore = useTableStore()
+  const parameterStore = useParameterStore()
+  const {
+    viewer: {
+      metadata: { worldTree }
+    }
+  } = useInjectedViewerState()
   const bimElements = useBIMElements({
     childCategories: options.selectedChildCategories.value
   })
@@ -85,20 +109,19 @@ export function useElementsData(
       debug.startState(DebugCategories.INITIALIZATION, 'Extracting parameters')
       processingState.value.isProcessingElements = true
 
-      // Initialize BIM elements to get parameters
-      await bimElements.initializeElements()
-      debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
+      // Process parameters through parameter store
+      await parameterStore.processParameters(bimElements.allElements.value)
+      debug.log(DebugCategories.INITIALIZATION, 'Parameters processed', {
+        parentRaw: parameterStore.parentRawParameters.value?.length || 0,
+        childRaw: parameterStore.childRawParameters.value?.length || 0,
+        parentBim: parameterStore.parentAvailableBimParameters.value?.length || 0,
+        childBim: parameterStore.childAvailableBimParameters.value?.length || 0
+      })
 
       // Initialize table flow with default config
       debug.log(
         DebugCategories.INITIALIZATION,
-        'Initializing table with default parameters',
-        {
-          defaultParameters: {
-            parent: defaultTableConfig.selectedParameters.parent.length,
-            child: defaultTableConfig.selectedParameters.child.length
-          }
-        }
+        'Initializing table with default parameters'
       )
       await initializeTable()
 
@@ -111,11 +134,10 @@ export function useElementsData(
       })
 
       debug.completeState(DebugCategories.INITIALIZATION, 'Parameters extracted')
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Error extracting parameters:', err)
-      processingState.value.error =
-        err instanceof Error ? err : new Error('Failed to extract parameters')
-      throw err
+    } catch (err: unknown) {
+      const error = logError(DebugCategories.ERROR, 'Error extracting parameters:', err)
+      processingState.value.error = error
+      throw error
     } finally {
       processingState.value.isProcessingElements = false
     }
@@ -154,7 +176,9 @@ export function useElementsData(
           processingState.value.isProcessingElements = true
 
           // Update BIM elements with new child categories
-          await bimElements.initializeElements()
+          await bimElements.initializeElements(
+            isWorldTreeRoot(worldTree.value) ? worldTree.value : null
+          )
           debug.log(DebugCategories.CATEGORY_UPDATES, 'BIM elements initialized')
 
           // Extract parameters with new categories
@@ -165,11 +189,14 @@ export function useElementsData(
             DebugCategories.CATEGORY_UPDATES,
             'Category change processed'
           )
-        } catch (err) {
-          debug.error(DebugCategories.ERROR, 'Error processing category change:', err)
-          processingState.value.error =
-            err instanceof Error ? err : new Error('Failed to process category change')
-          throw err
+        } catch (err: unknown) {
+          const error = logError(
+            DebugCategories.ERROR,
+            'Error processing category change:',
+            err
+          )
+          processingState.value.error = error
+          throw error
         } finally {
           processingState.value.isProcessingElements = false
         }
@@ -196,9 +223,41 @@ export function useElementsData(
       return
     }
 
-    // Only extract parameters if elements changed and we're not already processing
+    // Only process if elements changed and we're not already processing
     if (!processingState.value.isProcessingElements && newElements?.length) {
-      await extractParameters()
+      try {
+        processingState.value.isProcessingElements = true
+
+        // Update element metadata with parent/child info
+        const updatedElements = newElements.map((element) => ({
+          ...element,
+          metadata: {
+            ...element.metadata,
+            isParent: options.selectedParentCategories.value.includes(
+              element.category || 'Uncategorized'
+            )
+          }
+        }))
+
+        // Update store with processed elements
+        await store.lifecycle.update({
+          scheduleData: updatedElements
+        })
+
+        // Extract parameters from updated elements
+        await extractParameters()
+
+        debug.log(DebugCategories.DATA_TRANSFORM, 'Elements processed', {
+          total: updatedElements.length,
+          parents: updatedElements.filter((el) => el.metadata?.isParent).length,
+          children: updatedElements.filter((el) => !el.metadata?.isParent).length
+        })
+      } catch (err) {
+        const error = logError(DebugCategories.ERROR, 'Error processing elements:', err)
+        processingState.value.error = error
+      } finally {
+        processingState.value.isProcessingElements = false
+      }
     }
   })
 
@@ -228,7 +287,9 @@ export function useElementsData(
       store.setChildCategories(childCategories)
 
       // Update BIM elements with new child categories
-      await bimElements.initializeElements()
+      await bimElements.initializeElements(
+        isWorldTreeRoot(worldTree.value) ? worldTree.value : null
+      )
       debug.log(DebugCategories.CATEGORY_UPDATES, 'BIM elements initialized')
 
       // Extract parameters with new categories
@@ -236,18 +297,16 @@ export function useElementsData(
       debug.log(DebugCategories.CATEGORY_UPDATES, 'Parameters extracted')
 
       debug.completeState(DebugCategories.CATEGORY_UPDATES, 'Categories updated')
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Error updating categories:', err)
-      processingState.value.error =
-        err instanceof Error ? err : new Error('Failed to update categories')
-      throw err
+    } catch (err: unknown) {
+      const error = logError(DebugCategories.ERROR, 'Error updating categories:', err)
+      processingState.value.error = error
+      throw error
     } finally {
       processingState.value.isProcessingElements = false
     }
   }
 
   const initializeData = async (): Promise<void> => {
-    // Skip if already processing
     if (processingState.value.isProcessingElements) {
       debug.warn(DebugCategories.INITIALIZATION, 'Already processing elements')
       return
@@ -257,20 +316,21 @@ export function useElementsData(
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
       processingState.value.isProcessingElements = true
 
-      // Initialize BIM elements to get parameters
-      await bimElements.initializeElements()
-      debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
+      // Pass world tree directly - it should already be in correct format
+      await bimElements.initializeElements(
+        isWorldTreeRoot(worldTree.value) ? worldTree.value : null
+      )
 
-      // Extract parameters
+      if (!bimElements.allElements.value?.length) {
+        throw new Error('BIM elements initialization failed')
+      }
+
       await extractParameters()
-      debug.log(DebugCategories.INITIALIZATION, 'Parameters extracted')
-
       debug.completeState(DebugCategories.INITIALIZATION, 'Data initialized')
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Error initializing data:', err)
-      processingState.value.error =
-        err instanceof Error ? err : new Error('Failed to initialize data')
-      throw err
+    } catch (err: unknown) {
+      const error = logError(DebugCategories.ERROR, 'Error initializing data:', err)
+      processingState.value.error = error
+      throw error
     } finally {
       processingState.value.isProcessingElements = false
     }

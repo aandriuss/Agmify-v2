@@ -43,7 +43,7 @@
                   <FormButton
                     size="sm"
                     :icon-left="
-                      categories.selectedParentCategories.value.includes(category)
+                      categories.selectedParentCategories.value?.includes(category)
                         ? CheckCircleIcon
                         : CheckCircleIconOutlined
                     "
@@ -66,7 +66,7 @@
                   <FormButton
                     size="sm"
                     :icon-left="
-                      categories.selectedChildCategories.value.includes(category)
+                      categories.selectedChildCategories.value?.includes(category)
                         ? CheckCircleIcon
                         : CheckCircleIconOutlined
                     "
@@ -83,29 +83,29 @@
 
         <div class="schedule-container">
           <ScheduleMainView
-            :selected-table-id="tableStore.currentTable.value?.id || ''"
+            :selected-table-id="tableStore.currentTable?.value?.id || ''"
             :current-table="_currentTable"
             :is-initialized="isInitialized"
-            :table-name="tableStore.currentTable.value?.name || ''"
-            :current-table-id="tableStore.currentTable.value?.id || ''"
-            :table-key="tableStore.lastUpdated.value.toString()"
+            :table-name="tableStore.currentTable?.value?.name || ''"
+            :current-table-id="tableStore.currentTable?.value?.id || ''"
+            :table-key="tableStore.lastUpdated?.toString() || ''"
             :error="error"
             :parent-base-columns="tableStore.currentTable.value?.parentColumns || []"
-            :parent-available-columns="
-              parameterStore.parentAvailableBimParameters.value
+            :parent-available-columns="parameterStore.parentAvailableBimParameters"
+            :parent-visible-columns="
+              tableStore.currentTable?.value?.parentColumns || []
             "
-            :parent-visible-columns="tableStore.currentTable.value?.parentColumns || []"
-            :child-base-columns="tableStore.currentTable.value?.childColumns || []"
-            :child-available-columns="parameterStore.childAvailableBimParameters.value"
-            :child-visible-columns="tableStore.currentTable.value?.childColumns || []"
-            :schedule-data="store.scheduleData.value || []"
-            :evaluated-data="store.evaluatedData.value || []"
-            :table-data="store.tableData.value || []"
+            :child-base-columns="tableStore.currentTable?.value?.childColumns || []"
+            :child-available-columns="parameterStore.childAvailableBimParameters"
+            :child-visible-columns="tableStore.currentTable?.value?.childColumns || []"
+            :schedule-data="store.scheduleData || []"
+            :evaluated-data="store.evaluatedData || []"
+            :table-data="store.tableData || []"
             :is-loading="isLoading"
             :is-loading-additional-data="isUpdating"
-            :has-selected-categories="categories.hasSelectedCategories.value"
-            :selected-parent-categories="categories.selectedParentCategories.value"
-            :selected-child-categories="categories.selectedChildCategories.value"
+            :has-selected-categories="categories.hasSelectedCategories"
+            :selected-parent-categories="categories.selectedParentCategories"
+            :selected-child-categories="categories.selectedChildCategories"
             :show-parameter-manager="_interactions.showParameterManager.value"
             :parent-elements="parentElements"
             :child-elements="childElements"
@@ -169,10 +169,6 @@ function safeArrayFrom<T>(value: T[] | undefined | null): T[] {
   return value ? Array.from(value) : []
 }
 
-function safeArrayIncludes<T>(array: T[] | undefined | null, value: T): boolean {
-  return array ? array.includes(value) : false
-}
-
 // Type-safe error handling utility
 function createSafeError(err: unknown): Error {
   if (err instanceof Error) return err
@@ -204,28 +200,6 @@ const {
     init
   }
 } = useInjectedViewerState()
-
-// Wait for world tree to be populated with retry logic
-async function waitForWorldTree(maxAttempts = 5, delayMs = 1000): Promise<void> {
-  let attempts = 0
-  while (attempts < maxAttempts) {
-    if (hasValidChildren(worldTree.value)) {
-      debug.log(DebugCategories.DATA, 'World tree ready', {
-        exists: !!worldTree.value,
-        hasRoot: !!worldTree.value?._root,
-        childrenCount: worldTree.value?._root?.children?.length || 0
-      })
-      return
-    }
-
-    attempts++
-    if (attempts < maxAttempts) {
-      debug.log(DebugCategories.DATA, `Waiting for world tree (attempt ${attempts})`)
-      await new Promise((resolve) => setTimeout(resolve, delayMs))
-    }
-  }
-  throw new Error('World tree data not available after maximum attempts')
-}
 
 // Type guard to check if children array exists and is non-empty
 function hasValidChildren(
@@ -331,14 +305,20 @@ const _interactions = useTableInteractions({
   handleError: (err) => handleError(createSafeError(err))
 })
 
-// Loading state - only show loading when we have no data
+// Loading state - handle initialization and data loading
 const isLoading = computed(() => {
-  const hasData =
-    (store.scheduleData.value?.length ?? 0) > 0 ||
-    (store.tableData.value?.length ?? 0) > 0
-  return (
-    !hasData || elementsData.state.value.loading || parameterStore.isProcessing.value
-  )
+  // Check initialization states first
+  if (!store.initialized.value || !parameterStore.state.value.initialized) {
+    return true
+  }
+
+  // Check if we're actively loading
+  if (elementsData.state.value?.loading || parameterStore.isProcessing.value) {
+    return true
+  }
+
+  // If initialized but no data, we're not loading
+  return false
 })
 
 const isInitialized = computed(() => store.initialized.value ?? false)
@@ -442,110 +422,168 @@ onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
 
-    try {
-      // 1. Initialize stores first
-      debug.startState(DebugCategories.INITIALIZATION, 'Initializing stores')
-      await Promise.all([store.lifecycle.init(), parameterStore.init()])
-      debug.log(DebugCategories.STATE, 'Stores initialized')
+    // 1. Initialize core store first
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing core store')
+    await store.lifecycle.init()
+    debug.log(DebugCategories.STATE, 'Core store initialized')
 
-      // 2. Wait for viewer initialization first
-      debug.log(DebugCategories.INITIALIZATION, 'Waiting for viewer initialization')
-      await init.promise
-      debug.log(DebugCategories.INITIALIZATION, 'Viewer initialized')
-
-      // 3. Then wait for world tree to be populated with retry logic
-      debug.log(DebugCategories.INITIALIZATION, 'Waiting for world tree')
-      await waitForWorldTree()
-      debug.log(DebugCategories.INITIALIZATION, 'World tree initialized')
-
-      // 4. Verify parameter store initialization
-      if (parameterStore.error.value) {
-        throw new Error('Parameter store failed to initialize')
+    // 2. Wait for world tree data and initialize BIM elements
+    debug.startState(DebugCategories.INITIALIZATION, 'Waiting for world tree data')
+    await new Promise<void>((resolve) => {
+      if (init.ref.value && worldTree.value) {
+        resolve()
+        return
       }
+      const unwatch = watch(
+        () => ({ init: init.ref.value, tree: worldTree.value }),
+        ({ init, tree }) => {
+          if (init && tree) {
+            unwatch()
+            resolve()
+          }
+        },
+        { immediate: true }
+      )
+    })
 
-      // 5. Initialize BIM elements with world tree
-      debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
-      const treeRoot: WorldTreeRoot = {
-        _root: {
-          children: hasValidChildren(worldTree.value)
-            ? worldTree.value._root.children
-            : []
+    if (!worldTree.value) {
+      throw new Error('World tree not available after initialization')
+    }
+
+    // Initialize BIM elements with world tree
+    const treeRoot: WorldTreeRoot = {
+      _root: {
+        children: hasValidChildren(worldTree.value)
+          ? worldTree.value._root.children
+          : []
+      }
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing BIM elements', {
+      hasChildren: hasValidChildren(worldTree.value),
+      childCount: hasValidChildren(worldTree.value)
+        ? worldTree.value._root.children.length
+        : 0
+    })
+
+    await bimElements.initializeElements(treeRoot)
+
+    // Verify BIM elements were loaded
+    if (!bimElements.allElements.value?.length) {
+      throw new Error('No BIM elements available after initialization')
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized', {
+      count: bimElements.allElements.value.length,
+      categories: Array.from(
+        new Set(bimElements.allElements.value.map((el) => el.category))
+      )
+    })
+
+    // 3. Initialize parameter store and process parameters
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing parameter store')
+    await parameterStore.init()
+
+    // Process parameters from BIM elements
+    debug.log(DebugCategories.PARAMETERS, 'Processing BIM elements', {
+      count: bimElements.allElements.value.length,
+      sampleElement: {
+        id: bimElements.allElements.value[0].id,
+        category: bimElements.allElements.value[0].category,
+        parameterCount: Object.keys(bimElements.allElements.value[0].parameters || {})
+          .length
+      }
+    })
+
+    await parameterStore.processParameters(bimElements.allElements.value)
+    await elementsData.initializeData()
+
+    // Verify parameters were processed
+    if (
+      !parameterStore.parentRawParameters.value?.length &&
+      !parameterStore.childRawParameters.value?.length
+    ) {
+      throw new Error('No parameters available after processing')
+    }
+
+    debug.log(DebugCategories.STATE, 'Parameter store initialized', {
+      parameters: {
+        parent: {
+          raw: parameterStore.parentRawParameters.value.length,
+          available: {
+            bim: parameterStore.parentAvailableBimParameters.value.length,
+            user: parameterStore.parentAvailableUserParameters.value.length
+          }
+        },
+        child: {
+          raw: parameterStore.childRawParameters.value.length,
+          available: {
+            bim: parameterStore.childAvailableBimParameters.value.length,
+            user: parameterStore.childAvailableUserParameters.value.length
+          }
         }
       }
-      await bimElements.initializeElements(treeRoot)
-      debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized')
+    })
 
-      // 6. Initialize element data
-      debug.startState(DebugCategories.INITIALIZATION, 'Initializing element data')
-      await elementsData.initializeData()
-      debug.log(DebugCategories.INITIALIZATION, 'Element data initialized')
+    // 3. Load and initialize tables with processed parameters
+    debug.startState(DebugCategories.INITIALIZATION, 'Loading tables')
+    await tablesState.loadTables()
+    const tables = tablesState.state.value?.tables
 
-      // 7. Verify BIM elements are ready
-      if (!bimElements.allElements.value?.length) {
-        debug.error(DebugCategories.INITIALIZATION, 'No BIM elements found')
-        throw new Error('No BIM elements found')
-      }
-
-      // 8. Wait for stores to be updated with processed data
-      await new Promise((resolve) => setTimeout(resolve, 0))
-
-      // 9. Load tables
-      debug.startState(DebugCategories.INITIALIZATION, 'Loading tables')
-      await tablesState.loadTables()
-
-      const tables = tablesState.state.value?.tables
-      if (!tables) {
-        throw new Error('Failed to load tables')
-      }
-
-      // 10. Process tables
-      type TablesType = Record<string, TableSettings>
-      const tableEntries = safeObjectEntries<TablesType>(tables as TablesType)
-      const validTableEntries = tableEntries.filter(
-        (entry): entry is [string, TableSettings] => isValidTable(entry[1])
-      )
-      const filteredEntries = validTableEntries.filter(
-        ([_, table]) => table.id !== 'defaultTable'
-      )
-      const tablesList = filteredEntries.map(([_, table]) => ({
-        id: table.id,
-        name: table.name || 'Unnamed Table'
-      }))
-
-      // 11. Update store with tables
-      await store.lifecycle.update({
-        tablesArray: tablesList
+    // Use default table if no tables loaded
+    if (!tables) {
+      debug.log(DebugCategories.INITIALIZATION, 'Using default table')
+      await initComponent.update({
+        selectedTableId: 'default',
+        tableName: 'Default Table',
+        selectedParentCategories: parentCategories,
+        selectedChildCategories: childCategories
       })
+    } else {
+      // Process existing tables
+      type TablesType = Record<string, TableSettings>
+      const tablesList = safeObjectEntries<TablesType>(tables as TablesType)
+        .filter((entry): entry is [string, TableSettings] => isValidTable(entry[1]))
+        .filter(([_, table]) => table.id !== 'defaultTable')
+        .map(([_, table]) => ({
+          id: table.id,
+          name: table.name || 'Unnamed Table'
+        }))
 
-      // 12. Select table with type safety
-      const lastSelectedId = localStorage.getItem('speckle:lastSelectedTableId')
-      const tableIdToSelect =
-        lastSelectedId &&
-        safeArrayIncludes(
-          tablesList.map((t) => t.id),
-          lastSelectedId
-        )
-          ? lastSelectedId
-          : tablesList.length > 0
-          ? tablesList[0].id
-          : 'default'
+      // Update store with tables
+      await store.lifecycle.update({ tablesArray: tablesList })
 
-      // 13. Initialize table component with processed data
+      // Select table
+      const tableIdToSelect = tablesList.length > 0 ? tablesList[0].id : 'default'
       await initComponent.update({
         selectedTableId: tableIdToSelect,
         tableName: '',
         selectedParentCategories: parentCategories,
         selectedChildCategories: childCategories
       })
-
-      // 14. Initialize table after data is ready
-      await initComponent.initialize()
-
-      debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to initialize:', err)
-      throw err
     }
+
+    // 3. Initialize table component
+    await initComponent.initialize()
+
+    // 4. Update core store with current table data
+    const currentTable = tableStore.currentTable.value
+    if (currentTable) {
+      await store.lifecycle.update({
+        currentTableColumns: currentTable.parentColumns,
+        currentDetailColumns: currentTable.childColumns
+      })
+    }
+
+    debug.log(DebugCategories.STATE, 'Table initialization complete', {
+      currentTable: currentTable?.id,
+      columns: {
+        parent: currentTable?.parentColumns.length || 0,
+        child: currentTable?.childColumns.length || 0
+      }
+    })
+
+    debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to initialize schedules', err)
     updateErrorState(createSafeError(err))

@@ -1,41 +1,11 @@
-import type { TableColumn, BaseColumnDef } from '../../types/tables'
+import type { TableColumn } from '../../types/tables/table-column'
 import { safeString, safeBoolean, safeNumber } from '../../utils/validation'
-import {
-  isColumnDef as isColumnDefTypeGuard,
-  createBaseColumnDef,
-  createBimColumnDefWithDefaults,
-  createUserColumnDefWithDefaults
-} from '../../types/tables/column-types'
-
-/**
- * Type guard for TableColumn - re-export from types
- */
-export { isColumnDefTypeGuard as isColumnDef }
-
-/**
- * Column creation utilities - re-export from types
- */
-export {
-  createBaseColumnDef,
-  createBimColumnDefWithDefaults,
-  createUserColumnDefWithDefaults
-}
-
-/**
- * Get effective group for a column
- */
-export function getColumnGroup(column: TableColumn): string {
-  if ('currentGroup' in column) {
-    return safeString(column.currentGroup, 'Default')
-  }
-  return safeString(column.group, 'Default')
-}
 
 /**
  * Get display name for a column
  */
-export function getColumnDisplayName(column: BaseColumnDef): string {
-  return safeString(column.header || column.name || column.field, 'Unnamed Column')
+export function getColumnDisplayName(column: TableColumn): string {
+  return safeString(column.header || column.field, 'Unnamed Column')
 }
 
 /**
@@ -55,15 +25,8 @@ export function isColumnFilterable(column: TableColumn): boolean {
 /**
  * Check if column is visible
  */
-export function isColumnVisible(column: BaseColumnDef): boolean {
+export function isColumnVisible(column: TableColumn): boolean {
   return safeBoolean(column.visible, true)
-}
-
-/**
- * Check if column is removable
- */
-export function isColumnRemovable(column: BaseColumnDef): boolean {
-  return safeBoolean(column.removable, true)
 }
 
 /**
@@ -76,6 +39,6 @@ export function getColumnWidth(column: TableColumn): number {
 /**
  * Get column order with default
  */
-export function getColumnOrder(column: BaseColumnDef): number {
+export function getColumnOrder(column: TableColumn): number {
   return safeNumber(column.order, 0)
 }

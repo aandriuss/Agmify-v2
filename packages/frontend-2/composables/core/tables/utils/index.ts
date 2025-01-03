@@ -1,15 +1,9 @@
 // Column operations
 export {
-  isColumnDef,
-  createBaseColumnDef,
-  createBimColumnDefWithDefaults,
-  createUserColumnDefWithDefaults,
-  getColumnGroup,
   getColumnDisplayName,
   isColumnSortable,
   isColumnFilterable,
   isColumnVisible,
-  isColumnRemovable,
   getColumnWidth,
   getColumnOrder
 } from './column'
