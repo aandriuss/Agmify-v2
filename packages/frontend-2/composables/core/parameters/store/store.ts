@@ -13,7 +13,6 @@ import { parameterCache } from './cache'
 import {
   processRawParameters as processParams,
   extractRawParameters,
-  createSelectedParameters,
   convertToParameterValue
 } from '../parameter-processing'
 
@@ -27,16 +26,14 @@ function createInitialState(): ParameterStoreState {
       available: {
         bim: [],
         user: []
-      },
-      selected: []
+      }
     },
     child: {
       raw: [],
       available: {
         bim: [],
         user: []
-      },
-      selected: []
+      }
     },
     processing: {
       status: 'idle',
@@ -69,8 +66,6 @@ function createParameterStore(): ParameterStore {
   )
   const childAvailableBimParameters = computed(() => state.value.child.available.bim)
   const childAvailableUserParameters = computed(() => state.value.child.available.user)
-  const parentSelectedParameters = computed(() => state.value.parent.selected)
-  const childSelectedParameters = computed(() => state.value.child.selected)
 
   /**
    * Process parameters from elements
@@ -184,17 +179,6 @@ function createParameterStore(): ParameterStore {
         visible: true
       }))
 
-      // Create selected parameters from both BIM and user parameters
-      const parentSelected = createSelectedParameters(
-        [...parentBimWithValues, ...parentUser],
-        state.value.parent.selected
-      )
-
-      const childSelected = createSelectedParameters(
-        [...childBimWithValues, ...childUser],
-        state.value.child.selected
-      )
-
       // Update state atomically
       state.value = {
         parent: {
@@ -205,8 +189,7 @@ function createParameterStore(): ParameterStore {
           available: {
             bim: parentBimWithValues,
             user: parentUser // Keep existing user parameters
-          },
-          selected: parentSelected
+          }
         },
         child: {
           raw: rawParams.filter((p) => {
@@ -216,8 +199,7 @@ function createParameterStore(): ParameterStore {
           available: {
             bim: childBimWithValues,
             user: childUser // Keep existing user parameters
-          },
-          selected: childSelected
+          }
         },
         processing: {
           status: 'complete',
@@ -233,14 +215,12 @@ function createParameterStore(): ParameterStore {
         parent: {
           raw: state.value.parent.raw.length,
           bim: parentBimWithValues.length,
-          user: parentUser.length,
-          selected: parentSelected.length
+          user: parentUser.length
         },
         child: {
           raw: state.value.child.raw.length,
           bim: childBimWithValues.length,
-          user: childUser.length,
-          selected: childSelected.length
+          user: childUser.length
         }
       }
 
@@ -255,46 +235,6 @@ function createParameterStore(): ParameterStore {
       state.value.processing.error = err instanceof Error ? err : new Error(String(err))
       throw state.value.processing.error
     }
-  }
-
-  /**
-   * Update parameter visibility
-   */
-  function updateParameterVisibility(
-    parameterId: string,
-    visible: boolean,
-    isParent: boolean
-  ): void {
-    const newState = { ...state.value }
-
-    if (isParent) {
-      newState.parent = {
-        ...newState.parent,
-        selected: newState.parent.selected.map((param) =>
-          param.id === parameterId ? { ...param, visible } : param
-        )
-      }
-    } else {
-      newState.child = {
-        ...newState.child,
-        selected: newState.child.selected.map((param) =>
-          param.id === parameterId ? { ...param, visible } : param
-        )
-      }
-    }
-
-    newState.lastUpdated = Date.now()
-    state.value = newState
-
-    debug.log(ParameterDebugCategories.STATE, 'Parameter visibility updated', {
-      parameterId,
-      visible,
-      isParent,
-      selectedCount: {
-        parent: newState.parent.selected.filter((p) => p.visible).length,
-        child: newState.child.selected.filter((p) => p.visible).length
-      }
-    })
   }
 
   /**
@@ -365,14 +305,12 @@ function createParameterStore(): ParameterStore {
         parent: {
           raw: state.value.parent.raw.length,
           bim: state.value.parent.available.bim.length,
-          user: state.value.parent.available.user.length,
-          selected: state.value.parent.selected.length
+          user: state.value.parent.available.user.length
         },
         child: {
           raw: state.value.child.raw.length,
           bim: state.value.child.available.bim.length,
-          user: state.value.child.available.user.length,
-          selected: state.value.child.selected.length
+          user: state.value.child.available.user.length
         }
       }
 
@@ -429,10 +367,6 @@ function createParameterStore(): ParameterStore {
     childAvailableBimParameters,
     childAvailableUserParameters,
 
-    // Selected parameters
-    parentSelectedParameters,
-    childSelectedParameters,
-
     // Status
     isProcessing,
     hasError,
@@ -441,7 +375,6 @@ function createParameterStore(): ParameterStore {
     // Core operations
     init,
     processParameters,
-    updateParameterVisibility,
 
     // Cache operations
     loadFromCache,

@@ -97,6 +97,7 @@ export type {
   AvailableParameter,
   SelectedParameter,
   ParameterCollections,
+  BaseParameterCollections,
 
   // Value Types
   PrimitiveValue,
@@ -220,6 +221,7 @@ export type {
   ErrorPayload
 } from './tables'
 
+export { createTableColumns } from './tables'
 // Table Functions
 export { createTableConfig } from '../tables/utils/'
 

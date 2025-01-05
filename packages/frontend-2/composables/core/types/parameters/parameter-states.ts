@@ -83,9 +83,31 @@ export interface SelectedParameter {
 }
 
 /**
- * Parameter collections with parent/child separation
+ * Base parameter collections without selected parameters
+ * (used by parameter store)
  */
-export interface ParameterCollections {
+export interface BaseParameterCollections {
+  parent: {
+    raw: RawParameter[]
+    available: {
+      bim: AvailableBimParameter[]
+      user: AvailableUserParameter[]
+    }
+  }
+  child: {
+    raw: RawParameter[]
+    available: {
+      bim: AvailableBimParameter[]
+      user: AvailableUserParameter[]
+    }
+  }
+}
+
+/**
+ * Parameter collections with selected parameters
+ * (used by table store)
+ */
+export interface ParameterCollections extends BaseParameterCollections {
   parent: {
     raw: RawParameter[]
     available: {

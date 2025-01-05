@@ -17,7 +17,7 @@ import { useTableStore } from './store/store'
 import { useParameterStore } from '../parameters/store/store'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type { SelectedParameter } from '~/composables/core/types'
-import { createSelectedParameter } from '~/composables/core/types/parameters'
+import { defaultSelectedParameters } from '~/composables/core/tables/config/defaults'
 
 interface TableSelectedParameters {
   parent: SelectedParameter[]
@@ -136,45 +136,37 @@ export function useTableParameters() {
         }
       })
 
-      // Update table with processed parameters
-      const parentParams = parameterStore.parentSelectedParameters.value
-      const childParams = parameterStore.childSelectedParameters.value
+      // Get current selected parameters
+      const currentParams = currentTable.value?.selectedParameters
 
-      // If no parameters are selected, select all available BIM parameters by default
-      if (!parentParams.length && !childParams.length) {
+      // If no parameters or empty arrays, use default selected parameters
+      if (!currentParams?.parent?.length && !currentParams?.child?.length) {
         debug.log(DebugCategories.PARAMETERS, 'No parameters selected, using defaults')
 
-        // Convert available parameters to selected parameters
-        const defaultParams = {
-          parent: parameterStore.parentAvailableBimParameters.value.map(
-            (param, index) => createSelectedParameter(param, index)
-          ),
-          child: parameterStore.childAvailableBimParameters.value.map((param, index) =>
-            createSelectedParameter(param, index)
-          )
-        }
-
         debug.log(DebugCategories.PARAMETERS, 'Default parameters selected', {
-          parent: defaultParams.parent.length,
-          child: defaultParams.child.length,
-          sample: defaultParams.parent[0]
+          parent: defaultSelectedParameters.parent.length,
+          child: defaultSelectedParameters.child.length,
+          sample: defaultSelectedParameters.parent[0]
             ? {
-                id: defaultParams.parent[0].id,
-                kind: defaultParams.parent[0].kind,
-                type: defaultParams.parent[0].type,
-                group: defaultParams.parent[0].group,
-                order: defaultParams.parent[0].order
+                id: defaultSelectedParameters.parent[0].id,
+                kind: defaultSelectedParameters.parent[0].kind,
+                type: defaultSelectedParameters.parent[0].type,
+                group: defaultSelectedParameters.parent[0].group,
+                order: defaultSelectedParameters.parent[0].order
               }
             : null
         })
 
-        await tableStore.updateSelectedParameters(defaultParams)
-      } else {
+        await tableStore.updateSelectedParameters({
+          parent: [...defaultSelectedParameters.parent],
+          child: [...defaultSelectedParameters.child]
+        } satisfies TableSelectedParameters)
+      } else if (currentParams) {
         // Update with existing selected parameters
         await tableStore.updateSelectedParameters({
-          parent: parentParams,
-          child: childParams
-        })
+          parent: currentParams.parent,
+          child: currentParams.child
+        } satisfies TableSelectedParameters)
       }
 
       debug.log(DebugCategories.PARAMETERS, 'Parameters initialized', {
@@ -227,8 +219,8 @@ export function useTableParameters() {
       debug.completeState(DebugCategories.PARAMETERS, 'Parameter selection saved', {
         tableId: currentTableId.value,
         selectedParameters: {
-          parentCount: parameterStore.parentSelectedParameters.value.length,
-          childCount: parameterStore.childSelectedParameters.value.length
+          parentCount: currentTable.value?.selectedParameters?.parent.length || 0,
+          childCount: currentTable.value?.selectedParameters?.child.length || 0
         }
       })
     } catch (err) {

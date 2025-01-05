@@ -111,6 +111,7 @@ import type {
   RawParameter
 } from '~/composables/core/types'
 import { createSelectedParameter } from '~/composables/core/types'
+import { createTableColumns } from '~/composables/core/types/tables/table-column'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import ParameterManager from '~/components/core/parameters/next/ParameterManager.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
@@ -224,16 +225,13 @@ const {
     id: props.selectedTableId,
     name: props.tableName,
     displayName: props.tableName,
-    parentColumns: [],
-    childColumns: [],
+    parentColumns: createTableColumns(defaultSelectedParameters.parent),
+    childColumns: createTableColumns(defaultSelectedParameters.child),
     categoryFilters: {
       selectedParentCategories: store.selectedParentCategories.value,
       selectedChildCategories: store.selectedChildCategories.value
     },
-    selectedParameters: {
-      parent: parameterStore.parentSelectedParameters.value || [],
-      child: parameterStore.childSelectedParameters.value || []
-    },
+    selectedParameters: defaultSelectedParameters,
     lastUpdateTimestamp: Date.now()
   }
 })

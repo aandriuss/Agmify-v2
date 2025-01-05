@@ -1,11 +1,11 @@
 import type {
+  ElementData,
   RawParameter,
   AvailableBimParameter,
   AvailableUserParameter,
   SelectedParameter,
-  ElementData
+  BaseParameterCollections
 } from '~/composables/core/types'
-import type { ParameterCollections } from '~/composables/core/types/parameters/parameter-states'
 
 // Re-export types from centralized location
 export type {
@@ -60,7 +60,7 @@ export type ParameterDebugCategory =
 /**
  * Parameter store state
  */
-export interface ParameterStoreState extends ParameterCollections {
+export interface ParameterStoreState extends BaseParameterCollections {
   processing: {
     status: 'idle' | 'processing' | 'complete' | 'error'
     error: Error | null
@@ -87,10 +87,6 @@ export interface ParameterStore {
   childAvailableBimParameters: ComputedRef<AvailableBimParameter[]>
   childAvailableUserParameters: ComputedRef<AvailableUserParameter[]>
 
-  // Selected parameters
-  parentSelectedParameters: ComputedRef<SelectedParameter[]>
-  childSelectedParameters: ComputedRef<SelectedParameter[]>
-
   // Status
   isProcessing: ComputedRef<boolean>
   hasError: ComputedRef<boolean>
@@ -99,11 +95,6 @@ export interface ParameterStore {
   // Core operations
   init(): Promise<void>
   processParameters(elements: ElementData[]): Promise<void>
-  updateParameterVisibility(
-    parameterId: string,
-    visible: boolean,
-    isParent: boolean
-  ): void
 
   // Cache operations
   loadFromCache(): Promise<void>

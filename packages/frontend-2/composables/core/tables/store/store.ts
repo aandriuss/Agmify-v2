@@ -13,7 +13,7 @@ import type {
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
 import { useTableService } from '../services/tableService'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { defaultSelectedParameters } from '../config/defaults'
+import { defaultSelectedParameters, defaultTableConfig } from '../config/defaults'
 import { createTableColumns } from '~/composables/core/types/tables/table-column'
 
 /**
@@ -63,17 +63,11 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   const defaultParentColumns = createTableColumns(defaultSelectedParameters.parent)
   const defaultChildColumns = createTableColumns(defaultSelectedParameters.child)
 
+  // Use consistent default table config
   const defaultTable: TableSettings = {
-    id: 'default',
-    name: 'Default Table',
-    displayName: 'Default Table',
+    ...defaultTableConfig,
     parentColumns: defaultParentColumns,
     childColumns: defaultChildColumns,
-    categoryFilters: {
-      selectedParentCategories: [],
-      selectedChildCategories: []
-    },
-    selectedParameters: defaultSelectedParameters,
     lastUpdateTimestamp: Date.now()
   }
 
@@ -555,17 +549,11 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     const defaultParentColumns = createTableColumns(defaultSelectedParameters.parent)
     const defaultChildColumns = createTableColumns(defaultSelectedParameters.child)
 
+    // Use consistent default table config
     const defaultTable: TableSettings = {
-      id: 'default',
-      name: 'Default Table',
-      displayName: 'Default Table',
+      ...defaultTableConfig,
       parentColumns: defaultParentColumns,
       childColumns: defaultChildColumns,
-      categoryFilters: {
-        selectedParentCategories: [],
-        selectedChildCategories: []
-      },
-      selectedParameters: defaultSelectedParameters,
       lastUpdateTimestamp: Date.now()
     }
 
