@@ -109,96 +109,112 @@ export function useSelectedElementsData(
         child: []
       }
 
-      // Process elements in chunks
+      // Process elements in parallel chunks
       const elements = options.elements.value
-      const chunkSize = 100
-      const chunks = []
-      for (let i = 0; i < elements.length; i += chunkSize) {
-        chunks.push(elements.slice(i, i + chunkSize))
-      }
-
-      let processedCount = 0
+      const chunkSize = 250 // Increased chunk size for better performance
       const totalCount = elements.length
+      let processedCount = 0
 
-      for (const [index, chunk] of chunks.entries()) {
-        // Process chunk
-        for (const element of chunk) {
-          const category = element.category || 'Uncategorized'
-          const mark = element.mark || `Element-${element.id}`
+      // Pre-allocate arrays for better memory usage
+      const processedParents: ElementData[] = []
+      const processedChildren: ElementData[] = []
 
-          // Check if element matches category filters
-          const isParentCategory =
-            options.selectedParentCategories.value.length === 0 ||
-            options.selectedParentCategories.value.includes(category)
-          const isChildCategory =
-            options.selectedChildCategories.value.length === 0 ||
-            options.selectedChildCategories.value.includes(category)
+      // Process elements in chunks
+      for (let i = 0; i < elements.length; i += chunkSize) {
+        const chunk = elements.slice(i, Math.min(i + chunkSize, elements.length))
+        const chunkIndex = Math.floor(i / chunkSize)
 
-          // Skip elements that don't match category filters
-          if (
-            (element.isChild && !isChildCategory) ||
-            (!element.isChild && !isParentCategory)
-          ) {
-            continue
-          }
+        // Process chunk elements in parallel with type safety
+        const processedElements = await Promise.all(
+          chunk.map(async (element) => {
+            try {
+              // Ensure required fields
+              const id = element.id
+              const mark = element.mark || `Element-${id}`
+              const category = element.category || 'Uncategorized'
 
-          // Get only selected parameter values
-          const relevantParams = element.isChild
-            ? selectedParams.child
-            : selectedParams.parent
-          const processedParams: Record<string, ParameterValue> = {}
+              // Always process all elements, category filtering happens in state computation
 
-          // Only process selected parameters if element has parameters
-          if (hasParameters(element)) {
-            for (const param of relevantParams) {
-              let paramValue = null
-              // Try to find parameter in any group
-              for (const [paramKey, value] of Object.entries(element.parameters)) {
-                // Check if this parameter matches the selected one (ignoring group)
-                const paramName = paramKey.includes('.')
-                  ? paramKey.split('.').pop()!
-                  : paramKey
-                if (paramName === param.name) {
-                  paramValue = convertToParameterValue(value)
-                  break
+              // Get only selected parameter values
+              const relevantParams = element.isChild
+                ? selectedParams.child
+                : selectedParams.parent
+              const processedParams: Record<string, ParameterValue> = {}
+
+              // Only process selected parameters if element has parameters
+              if (hasParameters(element)) {
+                // Create parameter map for faster lookup
+                const paramMap = new Map(
+                  Object.entries(element.parameters).map(([key, value]) => [
+                    key.includes('.') ? key.split('.').pop()! : key,
+                    value
+                  ])
+                )
+
+                // Process parameters using map lookup
+                for (const param of relevantParams) {
+                  const paramValue = paramMap.get(param.name)
+                  processedParams[param.id] = paramValue
+                    ? await convertToParameterValue(paramValue)
+                    : null
                 }
               }
-              // Store parameter value (null if not found)
-              processedParams[param.id] = paramValue
+
+              // Create element with all required fields
+              const processedElement: ElementData = {
+                // Required BaseTableRow fields
+                id,
+                name: element.name || mark,
+                field: id,
+                header: element.name || mark,
+                visible: true,
+                order: 0,
+                removable: true,
+
+                // Required ElementData fields
+                type: element.type || 'unknown',
+                parameters: processedParams,
+
+                // Optional ElementData fields
+                mark, // Guaranteed to be string
+                category,
+                isChild: element.isChild || false,
+                host: element.host,
+                metadata: element.metadata,
+                details: element.details,
+                _visible: element._visible,
+                _raw: element._raw
+              }
+
+              return processedElement
+            } catch (err) {
+              debug.error(DebugCategories.ERROR, 'Error processing element:', {
+                element,
+                error: err
+              })
+              return null
             }
-          }
+          })
+        )
 
-          // Create element with all required fields
-          const processedElement: ElementData = {
-            // Required BaseTableRow fields
-            id: element.id,
-            name: element.name || mark,
-            field: element.id,
-            header: element.name || mark,
-            visible: true,
-            order: 0,
-            removable: true,
-
-            // Required ElementData fields
-            type: element.type || 'unknown',
-            parameters: processedParams,
-
-            // Optional ElementData fields
-            mark,
-            category,
-            isChild: element.isChild || false,
-            host: element.host,
-            metadata: element.metadata,
-            details: element.details,
-            _visible: element._visible,
-            _raw: element._raw
-          }
-
-          // Store element in appropriate collection
-          if (processedElement.isChild) {
-            childElementsList.value.push(processedElement)
-          } else {
-            elementsMap.value.set(mark, processedElement)
+        // Filter out null elements and sort into parents/children using metadata
+        for (const element of processedElements) {
+          if (element) {
+            if (element.metadata?.isParent) {
+              processedParents.push(element)
+            } else if (element.isChild) {
+              processedChildren.push(element)
+            } else {
+              debug.warn(
+                DebugCategories.DATA_TRANSFORM,
+                'Element has no parent/child status',
+                {
+                  id: element.id,
+                  category: element.category,
+                  metadata: element.metadata
+                }
+              )
+            }
           }
         }
 
@@ -207,18 +223,26 @@ export function useSelectedElementsData(
         const progress = Math.round((processedCount / totalCount) * 100)
 
         debug.log(DebugCategories.DATA_TRANSFORM, 'Chunk processed', {
-          chunkIndex: index + 1,
-          totalChunks: chunks.length,
+          chunkIndex: chunkIndex + 1,
+          totalChunks: Math.ceil(elements.length / chunkSize),
           processedCount,
           totalCount,
           progress: `${progress}%`,
-          currentParentCount: elementsMap.value.size,
-          currentChildCount: childElementsList.value.length
+          currentParentCount: processedParents.length,
+          currentChildCount: processedChildren.length
         })
 
         // Allow other tasks to run between chunks
         await new Promise((resolve) => setTimeout(resolve, 0))
       }
+
+      // Update collections with type safety
+      const validParents = processedParents.filter(
+        (parent): parent is ElementData & { mark: string } =>
+          typeof parent.mark === 'string'
+      )
+      elementsMap.value = new Map(validParents.map((parent) => [parent.mark, parent]))
+      childElementsList.value = processedChildren
 
       // Create final schedule data structure
       const scheduleData = Array.from(elementsMap.value.values()).map((parent) => ({
@@ -288,42 +312,15 @@ export function useSelectedElementsData(
     }
   }
 
-  // Watch for parameter changes
-  watch(
-    () => tableStore.currentTable.value?.selectedParameters,
-    async (newParams, oldParams) => {
-      if (JSON.stringify(newParams) !== JSON.stringify(oldParams)) {
-        debug.log(DebugCategories.PARAMETERS, 'Selected parameters changed', {
-          oldParams,
-          newParams
-        })
-        await processElements()
-      }
-    },
-    { deep: true }
-  )
-
-  // Watch for element changes
-  watch(
-    () => options.elements.value,
-    async (newElements, oldElements) => {
-      if (newElements?.length !== oldElements?.length) {
-        debug.log(DebugCategories.DATA_TRANSFORM, 'Elements changed', {
-          oldCount: oldElements?.length,
-          newCount: newElements?.length
-        })
-        await processElements()
-      }
-    }
-  )
-
-  // Process elements immediately when we have both elements and parameters
+  // Single watcher for all data changes
   watch(
     [
       () => options.elements.value,
-      () => tableStore.currentTable.value?.selectedParameters
+      () => tableStore.currentTable.value?.selectedParameters,
+      () => options.selectedParentCategories.value,
+      () => options.selectedChildCategories.value
     ],
-    async ([elements, params]) => {
+    async ([elements, params, parentCategories, childCategories], oldValues) => {
       // Skip if already processing
       if (processingState.value.isProcessingElements) {
         debug.warn(DebugCategories.DATA_TRANSFORM, 'Already processing elements')
@@ -335,19 +332,54 @@ export function useSelectedElementsData(
       const hasParams =
         params && (Array.isArray(params.parent) || Array.isArray(params.child))
 
-      if (hasElements && hasParams && params) {
-        debug.log(DebugCategories.DATA_TRANSFORM, 'Initial data ready', {
-          elements: elements.length,
+      // Check if data has actually changed
+      const [oldElements, oldParams, oldParentCats, oldChildCats] = oldValues || []
+      const hasChanged =
+        elements?.length !== oldElements?.length ||
+        JSON.stringify(params) !== JSON.stringify(oldParams) ||
+        JSON.stringify(parentCategories) !== JSON.stringify(oldParentCats) ||
+        JSON.stringify(childCategories) !== JSON.stringify(oldChildCats)
+
+      if (hasElements && hasParams && params && hasChanged) {
+        debug.log(DebugCategories.DATA_TRANSFORM, 'Data changed', {
+          elements: {
+            count: elements.length,
+            changed: elements?.length !== oldElements?.length
+          },
           parameters: {
             parent: Array.isArray(params.parent) ? params.parent.length : 0,
-            child: Array.isArray(params.child) ? params.child.length : 0
+            child: Array.isArray(params.child) ? params.child.length : 0,
+            changed: JSON.stringify(params) !== JSON.stringify(oldParams)
+          },
+          categories: {
+            parent: parentCategories.length,
+            child: childCategories.length,
+            changed:
+              JSON.stringify(parentCategories) !== JSON.stringify(oldParentCats) ||
+              JSON.stringify(childCategories) !== JSON.stringify(oldChildCats)
           }
         })
+
+        // Wait for next tick to ensure all data is ready
+        await new Promise((resolve) => setTimeout(resolve, 0))
 
         // Process elements and update state
         processingState.value.isProcessingElements = true
         try {
           await processElements()
+
+          // Log processed data
+          debug.log(DebugCategories.DATA_TRANSFORM, 'Data processed', {
+            elements: tableData.value.length,
+            parameters: {
+              parent: params.parent.length,
+              child: params.child.length
+            },
+            state: {
+              parentElements: state.value?.parentElements.length || 0,
+              childElements: state.value?.childElements.length || 0
+            }
+          })
         } finally {
           processingState.value.isProcessingElements = false
         }
@@ -355,6 +387,7 @@ export function useSelectedElementsData(
         debug.log(DebugCategories.DATA_TRANSFORM, 'Waiting for data', {
           hasElements,
           hasParams,
+          hasChanged,
           elements: elements?.length || 0,
           parameters: {
             parent: params && Array.isArray(params.parent) ? params.parent.length : 0,
@@ -363,30 +396,7 @@ export function useSelectedElementsData(
         })
       }
     },
-    { immediate: true }
-  )
-
-  // Watch for category changes
-  watch(
-    [
-      () => options.selectedParentCategories.value,
-      () => options.selectedChildCategories.value
-    ],
-    async ([newParent, newChild], [oldParent, oldChild]) => {
-      if (
-        JSON.stringify(newParent) !== JSON.stringify(oldParent) ||
-        JSON.stringify(newChild) !== JSON.stringify(oldChild)
-      ) {
-        debug.log(DebugCategories.CATEGORY_UPDATES, 'Categories changed', {
-          oldParent,
-          newParent,
-          oldChild,
-          newChild
-        })
-        await processElements()
-      }
-    },
-    { deep: true }
+    { immediate: true, deep: true }
   )
 
   // Direct reference to store data to avoid redundant transformations
@@ -396,20 +406,107 @@ export function useSelectedElementsData(
   const isLoading = computed(() => processingState.value.isProcessingElements)
   const hasError = computed(() => !!processingState.value.error)
 
-  const state = computed<DataState>(() => ({
-    rawElements: scheduleData.value,
-    parentElements: scheduleData.value.filter((el) => !el.isChild),
-    childElements: scheduleData.value.filter((el) => el.isChild),
-    matchedElements: scheduleData.value.filter(
-      (el) => el.isChild && el.host && el.host !== 'No Host'
-    ),
-    orphanedElements: scheduleData.value.filter(
-      (el) => el.isChild && (!el.host || el.host === 'No Host')
-    ),
-    processingState: processingState.value,
-    loading: isLoading.value,
-    error: processingState.value.error
-  }))
+  const state = computed<DataState>(() => {
+    const hasParentCategories = options.selectedParentCategories.value.length > 0
+    const hasChildCategories = options.selectedChildCategories.value.length > 0
+
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Starting element filtering', {
+      totalElements: scheduleData.value.length,
+      categories: {
+        parent: {
+          selected: hasParentCategories,
+          categories: options.selectedParentCategories.value
+        },
+        child: {
+          selected: hasChildCategories,
+          categories: options.selectedChildCategories.value
+        }
+      }
+    })
+
+    // First filter by categories
+    const filteredElements = scheduleData.value.filter((el) => {
+      const category = el.category || 'Uncategorized'
+      let include = false
+
+      // If no categories selected, include all elements
+      if (!hasParentCategories && !hasChildCategories) {
+        include = true
+      }
+      // For parent elements (including Uncategorized)
+      else if (el.metadata?.isParent) {
+        // If no parent categories selected, include all parent elements
+        if (!hasParentCategories) {
+          include = true
+        }
+        // Otherwise check if category matches selected parent categories
+        else {
+          include = options.selectedParentCategories.value.includes(category)
+        }
+      }
+      // For child elements
+      else if (el.isChild) {
+        // If no child categories selected, include all child elements
+        if (!hasChildCategories) {
+          include = true
+        }
+        // Otherwise check if category matches selected child categories
+        else {
+          include = options.selectedChildCategories.value.includes(category)
+        }
+      }
+
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Element filtering', {
+        id: el.id,
+        category,
+        isChild: el.isChild,
+        included: include,
+        reason: include
+          ? el.isChild
+            ? hasChildCategories
+              ? 'Matched child category'
+              : 'All child categories included'
+            : hasParentCategories
+            ? 'Matched parent category'
+            : 'All parent categories included'
+          : 'Category not selected'
+      })
+
+      return include
+    })
+
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Element filtering complete', {
+      totalElements: scheduleData.value.length,
+      filteredElements: filteredElements.length,
+      categories: {
+        parent: {
+          selected: hasParentCategories,
+          categories: options.selectedParentCategories.value,
+          matchedElements: filteredElements.filter((el) => el.metadata?.isParent).length
+        },
+        child: {
+          selected: hasChildCategories,
+          categories: options.selectedChildCategories.value,
+          matchedElements: filteredElements.filter((el) => el.isChild).length
+        }
+      }
+    })
+
+    // Then split into parent/child elements using metadata
+    const parentElements = filteredElements.filter((el) => el.metadata?.isParent)
+    const childElements = filteredElements.filter((el) => el.isChild)
+
+    return {
+      rawElements: filteredElements,
+      parentElements,
+      childElements,
+      matchedElements: childElements.filter((el) => el.host && el.host !== 'No Host'),
+      orphanedElements: childElements.filter((el) => !el.host || el.host === 'No Host'),
+      processingState: processingState.value,
+      loading: isLoading.value,
+      error: processingState.value.error
+    }
+  })
 
   return {
     scheduleData,

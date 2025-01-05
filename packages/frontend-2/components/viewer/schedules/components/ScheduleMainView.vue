@@ -64,7 +64,7 @@
           />
 
           <DebugPanel
-            v-if="isTestMode"
+            v-if="debug.isEnabled.value"
             :schedule-data="scheduleData"
             :evaluated-data="evaluatedData"
             :table-data="tableData"
@@ -72,7 +72,6 @@
             :child-elements="childElements"
             :parent-columns="tableStore.currentTable.value?.parentColumns || []"
             :child-columns="tableStore.currentTable.value?.childColumns || []"
-            :is-test-mode="isTestMode"
             :show-parameter-stats="true"
             :show-bim-data="true"
             :show-parameter-categories="true"
@@ -140,10 +139,6 @@ const props = defineProps({
     default: ''
   },
   showParameterManager: {
-    type: Boolean,
-    default: false
-  },
-  isTestMode: {
     type: Boolean,
     default: false
   },

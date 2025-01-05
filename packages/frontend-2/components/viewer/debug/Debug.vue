@@ -24,15 +24,13 @@
         :child-parameter-columns="tableStore.currentTable?.value?.childColumns || []"
         :available-parent-headers="store.availableHeaders.value.parent"
         :available-child-headers="store.availableHeaders.value.child"
-        :is-test-mode="isTestMode"
-        @update:is-test-mode="updateTestMode"
       />
     </div>
   </ViewerLayoutPanel>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type { ElementData } from '~/composables/core/types'
@@ -42,7 +40,6 @@ defineEmits(['close'])
 
 const store = useStore()
 const tableStore = useTableStore()
-const isTestMode = ref(false)
 
 // Computed properties for relationship data
 const parentElements = computed<ElementData[]>(() => {
@@ -54,10 +51,6 @@ const childElements = computed<ElementData[]>(() => {
   const data = store.scheduleData.value || []
   return data.filter((el) => el.isChild)
 })
-
-function updateTestMode(value: boolean) {
-  isTestMode.value = value
-}
 </script>
 
 <style scoped>

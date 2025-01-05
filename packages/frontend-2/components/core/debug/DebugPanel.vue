@@ -13,14 +13,6 @@
         </div>
 
         <div class="debug-content">
-          <!-- Test Mode Toggle -->
-          <div v-if="showTestMode" class="debug-section">
-            <h4>Test Mode</h4>
-            <FormButton text size="sm" color="subtle" @click="toggleTestMode">
-              {{ isTestMode ? 'Show Real Data' : 'Show Test Data' }}
-            </FormButton>
-          </div>
-
           <!-- Categories -->
           <div class="debug-section">
             <h4>Categories</h4>
@@ -147,6 +139,68 @@
               <button @click="debug.enableAllCategories">Enable All</button>
               <button @click="debug.disableAllCategories">Disable All</button>
               <button @click="debug.clearLogs">Clear Logs</button>
+            </div>
+          </div>
+
+          <!-- Schedule Data -->
+          <div class="debug-section">
+            <h4>Schedule Data</h4>
+            <div class="schedule-stats">
+              <div class="stat-group">
+                <h5>Processed Data</h5>
+                <div class="stat-item">
+                  <span>Total Elements:</span>
+                  <span>{{ tableData?.length || 0 }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>Parent Elements:</span>
+                  <span>
+                    {{ tableData?.filter((el) => el.metadata?.isParent).length || 0 }}
+                  </span>
+                </div>
+                <div class="stat-item">
+                  <span>Child Elements:</span>
+                  <span>{{ tableData?.filter((el) => el.isChild).length || 0 }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>With Parameters:</span>
+                  <span>{{ elementsWithParameters }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>Parent Columns:</span>
+                  <span>{{ parentParameterColumns?.length || 0 }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>Child Columns:</span>
+                  <span>{{ childParameterColumns?.length || 0 }}</span>
+                </div>
+                <div class="stat-item">
+                  <span>Matched Children:</span>
+                  <span>
+                    {{
+                      tableData?.filter(
+                        (el) => el.isChild && el.host && el.host !== 'No Host'
+                      ).length || 0
+                    }}
+                  </span>
+                </div>
+                <div class="stat-item">
+                  <span>Orphaned Children:</span>
+                  <span>
+                    {{
+                      tableData?.filter(
+                        (el) => el.isChild && (!el.host || el.host === 'No Host')
+                      ).length || 0
+                    }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Sample Data -->
+              <div v-if="tableData?.length" class="stat-group">
+                <h5>Sample Row</h5>
+                <pre>{{ formatData(tableData[0]) }}</pre>
+              </div>
             </div>
           </div>
 
@@ -390,7 +444,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import type { TableRow, ElementData, TableColumn } from '~/composables/core/types'
+import type { DebugPanelProps } from '~/composables/core/types/debug-panel'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
@@ -399,31 +453,7 @@ import type {
   SelectedParameter
 } from '~/composables/core/types/parameters/parameter-states'
 
-interface Props {
-  // Core props
-  showTestMode?: boolean
-  showTableCategories?: boolean
-  showParameterCategories?: boolean
-  showBimData?: boolean
-  showParameterStats?: boolean
-  showDataStructure?: boolean
-  isTestMode?: boolean
-
-  // Data props (optional, only needed for specific sections)
-  scheduleData?: ElementData[]
-  evaluatedData?: ElementData[]
-  tableData?: TableRow[]
-  parentElements?: ElementData[]
-  childElements?: ElementData[]
-  parentParameterColumns?: TableColumn[]
-  childParameterColumns?: TableColumn[]
-  availableParentHeaders?: TableColumn[]
-  availableChildHeaders?: TableColumn[]
-}
-
-const emit = defineEmits<{
-  'update:isTestMode': [value: boolean]
-}>()
+type Props = DebugPanelProps
 
 const props = withDefaults(defineProps<Props>(), {
   showTestMode: false,
@@ -432,7 +462,6 @@ const props = withDefaults(defineProps<Props>(), {
   showBimData: false,
   showParameterStats: false,
   showDataStructure: false,
-  isTestMode: false,
   scheduleData: () => [],
   evaluatedData: () => [],
   tableData: () => [],
@@ -838,20 +867,6 @@ function formatData(data: unknown): string {
   } catch {
     return String(data)
   }
-}
-
-// Helper function to check if a group is hidden
-// function isGroupHidden(groupName: string): boolean {
-//   return (
-//     debug.categoryGroups[groupName] !== undefined &&
-//     debug.filteredLogs.value.every(
-//       (log) => !debug.categoryGroups[groupName].includes(log.category)
-//     )
-//   )
-// }
-
-function toggleTestMode() {
-  emit('update:isTestMode', !props.isTestMode)
 }
 </script>
 

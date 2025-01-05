@@ -115,31 +115,44 @@ function extractNodeParameters(
 /**
  * Convert ViewerNode to ElementData format
  */
-async function convertViewerNodeToElementData(
+function convertViewerNodeToElementData(
   node: ViewerNode,
   childCategories: string[] = []
-): Promise<ElementData> {
+): ElementData {
   const nodeData = node.model?.raw
-  if (!nodeData || isSpeckleReference(nodeData)) {
-    debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data', {
+  const defaultElement: ElementData = {
+    id: node.id,
+    type: '',
+    name: '',
+    field: node.id,
+    header: '',
+    visible: true,
+    removable: true,
+    isChild: false,
+    category: 'Uncategorized',
+    parameters: {},
+    metadata: {},
+    details: [],
+    order: 0
+  }
+
+  if (!nodeData) {
+    debug.warn(DebugCategories.DATA_TRANSFORM, 'Missing node data', {
+      id: node.id
+    })
+    return defaultElement
+  }
+
+  if (isSpeckleReference(nodeData)) {
+    debug.warn(DebugCategories.DATA_TRANSFORM, 'Node is a SpeckleReference', {
       id: node.id,
-      hasRaw: !!nodeData,
-      isReference: isSpeckleReference(nodeData)
+      referencedId: nodeData.referencedId
     })
     return {
-      id: node.id,
-      type: '',
-      name: '',
-      field: node.id,
-      header: '',
-      visible: true,
-      removable: true,
-      isChild: false,
-      category: 'Uncategorized',
-      parameters: {},
-      metadata: {},
-      details: [],
-      order: 0
+      ...defaultElement,
+      metadata: {
+        referencedId: nodeData.referencedId
+      }
     }
   }
 
@@ -255,14 +268,19 @@ async function traverseNode(
 
   // Check for elements array
   if ('elements' in raw && Array.isArray(raw.elements)) {
-    const elementPromises = raw.elements.filter(isViewerNodeRaw).map((element) => {
-      const elementNode: ViewerNode = {
-        id: element.id,
-        model: {
-          raw: element
-        }
+    // Process SpeckleReference elements
+    const elementPromises = raw.elements.map((element) => {
+      if (!isSpeckleReference(element)) {
+        debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid element type', {
+          type: typeof element
+        })
+        return Promise.resolve([] as ElementData[])
       }
-      return traverseNode(elementNode, childCategories)
+
+      debug.log(DebugCategories.DATA_TRANSFORM, 'Skipping SpeckleReference element', {
+        referencedId: element.referencedId
+      })
+      return Promise.resolve([] as ElementData[])
     })
 
     const elementResults = await Promise.all(elementPromises)
@@ -271,9 +289,21 @@ async function traverseNode(
 
   // Check for children array
   if (node.children && Array.isArray(node.children)) {
-    const childPromises = node.children.map((child) =>
-      traverseNode(child, childCategories)
-    )
+    // Process each child node, filtering out SpeckleReferences
+    const childPromises = node.children
+      .filter((child) => {
+        const raw = child.model?.raw
+        if (!raw) return false
+        if (isSpeckleReference(raw)) {
+          debug.log(DebugCategories.DATA_TRANSFORM, 'Skipping SpeckleReference child', {
+            id: child.id
+          })
+          return false
+        }
+        return true
+      })
+      .map((child) => traverseNode(child, childCategories))
+
     const childResults = await Promise.all(childPromises)
     elements.push(...childResults.flat())
   }
@@ -398,7 +428,7 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
       // Log final stats
       const stats = {
         totalElements: elements.length,
-        parentElements: elements.filter((el) => !el.isChild).length,
+        parentElements: elements.filter((el) => el.metadata?.isParent).length,
         childElements: elements.filter((el) => el.isChild).length,
         parameters: {
           total: elements.reduce(
@@ -424,7 +454,11 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
         elements: [],
         isLoading: false,
         error:
-          err instanceof Error ? err : new Error('Failed to initialize BIM elements')
+          err instanceof Error
+            ? err
+            : new Error(
+                typeof err === 'string' ? err : 'Failed to initialize BIM elements'
+              )
       }
     }
   }
