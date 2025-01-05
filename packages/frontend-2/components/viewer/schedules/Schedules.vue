@@ -124,13 +124,15 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
+import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
+import { useAuthManager } from '~/lib/auth/composables/auth'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useTableInteractions } from '~/composables/core/tables/interactions/useTableInteractions'
 import { useTableInitialization } from '~/composables/core/tables/initialization/useTableInitialization'
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import type { ElementData } from '~/composables/core/types'
+import type { ElementData, DataState } from '~/composables/core/types'
 import type { TableSettings } from '~/composables/core/tables/store/types'
 import type { ColumnVisibilityPayload } from '~/composables/core/types/tables/table-events'
 import { useTablesState } from '~/composables/settings/tables/useTablesState'
@@ -149,6 +151,12 @@ import type {
   ViewerNode,
   WorldTreeRoot
 } from '~/composables/core/types/viewer/viewer-types'
+import {
+  isValidStoreState,
+  isValidParameterState
+} from '~/composables/core/types/state'
+import { isValidTableState } from '~/composables/core/types/tables/table-state'
+import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
 
 // Available categories
 const parentCategories = ['Walls', 'Floors', 'Roofs']
@@ -247,15 +255,23 @@ const elementsData = useElementsData({
   selectedChildCategories: categories.selectedChildCategories
 })
 
-// Safe computed properties from state
+// Type guard for DataState
+function isValidDataState(state: unknown): state is DataState {
+  if (!state || typeof state !== 'object') return false
+  return 'parentElements' in state && 'childElements' in state
+}
+
+// Safe computed properties from state with proper type checking
 const parentElements = computed<ElementData[]>(() => {
-  if (!elementsData.state.value) return []
-  return safeArrayFrom(elementsData.state.value.parentElements)
+  const state = elementsData.state.value
+  if (!isValidDataState(state)) return []
+  return safeArrayFrom(state.parentElements)
 })
 
 const childElements = computed<ElementData[]>(() => {
-  if (!elementsData.state.value) return []
-  return safeArrayFrom(elementsData.state.value.childElements)
+  const state = elementsData.state.value
+  if (!isValidDataState(state)) return []
+  return safeArrayFrom(state.childElements)
 })
 
 // Convert TableSettings to TableSettings
@@ -282,16 +298,6 @@ defineExpose({
   handleColumnVisibilityChange
 })
 
-// Initialize table state
-onMounted(async () => {
-  await initComponent.update({
-    selectedTableId: '',
-    tableName: '',
-    selectedParentCategories: parentCategories,
-    selectedChildCategories: childCategories
-  })
-})
-
 const _interactions = useTableInteractions({
   store,
   state: {
@@ -305,15 +311,26 @@ const _interactions = useTableInteractions({
   handleError: (err) => handleError(createSafeError(err))
 })
 
-// Loading state - handle initialization and data loading
+// Loading state - handle initialization and data loading with proper type checking
 const isLoading = computed(() => {
+  const storeState = store.initialized
+  const paramState = parameterStore.state.value
+  const elementState = elementsData.state.value
+
   // Check initialization states first
-  if (!store.initialized.value || !parameterStore.state.value.initialized) {
+  if (
+    !isValidStoreState(storeState) ||
+    !isValidParameterState(paramState) ||
+    !paramState.initialized
+  ) {
     return true
   }
 
   // Check if we're actively loading
-  if (elementsData.state.value?.loading || parameterStore.isProcessing.value) {
+  if (
+    (isValidDataState(elementState) && elementState.loading) ||
+    paramState.isProcessing
+  ) {
     return true
   }
 
@@ -321,9 +338,15 @@ const isLoading = computed(() => {
   return false
 })
 
-const isInitialized = computed(() => store.initialized.value ?? false)
+const isInitialized = computed(() => {
+  const storeState = store.initialized
+  return isValidStoreState(storeState) && storeState.value
+})
 
-const isUpdating = computed(() => elementsData.state.value.loading)
+const isUpdating = computed(() => {
+  const state = elementsData.state.value
+  return isValidDataState(state) && state.loading
+})
 
 // Category toggle handlers with type safety
 const toggleParentCategory = async (category: string) => {
@@ -395,22 +418,22 @@ async function handleColumnVisibilityChange(
   }
 }
 
-// Type-safe error handling
+// Type-safe error handling with proper type guards
 function updateErrorState(newError: Error | null): void {
   const currentError = error.value
-  const shouldUpdate =
-    !currentError || !newError || currentError.message !== newError.message
+  const shouldUpdate = currentError?.message !== newError?.message
 
   if (shouldUpdate) {
     error.value = newError
   }
 
-  if (newError) {
-    debug.error(DebugCategories.ERROR, 'Schedule error:', {
+  if (newError instanceof Error) {
+    const errorDetails = {
       name: newError.name,
       message: newError.message,
       stack: newError.stack
-    })
+    }
+    debug.error(DebugCategories.ERROR, 'Schedule error:', errorDetails)
   }
 }
 
@@ -418,39 +441,83 @@ function handleError(err: unknown): void {
   updateErrorState(createSafeError(err))
 }
 
+// Track initialization state
+const isInitializing = ref(false)
+const initializationComplete = ref(false)
+
+// Helper to wait for world tree with timeout
+const waitForWorldTree = async (timeoutMs = 5000): Promise<void> => {
+  if (init.ref.value && worldTree.value) return
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('World tree initialization timed out'))
+    }, timeoutMs)
+
+    const unwatch = watch(
+      () => ({ init: init.ref.value, tree: worldTree.value }),
+      ({ init, tree }) => {
+        if (init && tree) {
+          clearTimeout(timeout)
+          unwatch()
+          resolve()
+        }
+      },
+      { immediate: true }
+    )
+  })
+}
+
 onMounted(async () => {
+  // Guard against multiple initialization attempts
+  if (isInitializing.value || initializationComplete.value) {
+    debug.warn(
+      DebugCategories.INITIALIZATION,
+      'Initialization already in progress or completed'
+    )
+    return
+  }
+
   try {
+    isInitializing.value = true
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedules')
 
-    // 1. Initialize core store first
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing core store')
-    await store.lifecycle.init()
-    debug.log(DebugCategories.STATE, 'Core store initialized')
+    // 1. Initialize Apollo client
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing Apollo client')
+    const { client: apolloClient } = useApolloClient()
+    if (!apolloClient) {
+      throw new Error('Apollo client not initialized')
+    }
+    provideApolloClient(apolloClient)
+    debug.log(DebugCategories.INITIALIZATION, 'Apollo client ready')
 
-    // 2. Wait for world tree data and initialize BIM elements
-    debug.startState(DebugCategories.INITIALIZATION, 'Waiting for world tree data')
-    await new Promise<void>((resolve) => {
-      if (init.ref.value && worldTree.value) {
-        resolve()
-        return
-      }
-      const unwatch = watch(
-        () => ({ init: init.ref.value, tree: worldTree.value }),
-        ({ init, tree }) => {
-          if (init && tree) {
-            unwatch()
-            resolve()
-          }
-        },
-        { immediate: true }
+    // 2. Initialize core store
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing core systems')
+    await store.lifecycle.init()
+    debug.log(DebugCategories.INITIALIZATION, 'Core store initialized')
+
+    // 3. Wait for auth to be ready
+    debug.startState(DebugCategories.INITIALIZATION, 'Waiting for auth')
+    const waitForUser = useWaitForActiveUser()
+    const userResult = await waitForUser()
+    if (!userResult?.data?.activeUser) {
+      throw new Error('Authentication required')
+    }
+    debug.log(DebugCategories.INITIALIZATION, 'Auth ready')
+    await waitForWorldTree().catch((err) => {
+      debug.error(
+        DebugCategories.INITIALIZATION,
+        'World tree initialization failed',
+        err
       )
+      throw err
     })
 
     if (!worldTree.value) {
       throw new Error('World tree not available after initialization')
     }
 
-    // Initialize BIM elements with world tree
+    // 3. Initialize BIM elements
     const treeRoot: WorldTreeRoot = {
       _root: {
         children: hasValidChildren(worldTree.value)
@@ -459,136 +526,116 @@ onMounted(async () => {
       }
     }
 
-    debug.log(DebugCategories.INITIALIZATION, 'Initializing BIM elements', {
-      hasChildren: hasValidChildren(worldTree.value),
-      childCount: hasValidChildren(worldTree.value)
-        ? worldTree.value._root.children.length
-        : 0
-    })
-
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
     await bimElements.initializeElements(treeRoot)
 
-    // Verify BIM elements were loaded
     if (!bimElements.allElements.value?.length) {
       throw new Error('No BIM elements available after initialization')
     }
 
-    debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized', {
-      count: bimElements.allElements.value.length,
-      categories: Array.from(
-        new Set(bimElements.allElements.value.map((el) => el.category))
+    // 4. Initialize parameter store and process parameters
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing parameters')
+    await parameterStore.init()
+
+    // Verify BIM elements have parameters before processing
+    const elementsWithParams = bimElements.allElements.value.filter(
+      (el) => el.parameters && Object.keys(el.parameters).length > 0
+    )
+
+    debug.log(DebugCategories.INITIALIZATION, 'Processing parameters', {
+      totalElements: bimElements.allElements.value.length,
+      elementsWithParams: elementsWithParams.length,
+      parameterCount: elementsWithParams.reduce(
+        (acc, el) => acc + Object.keys(el.parameters || {}).length,
+        0
       )
     })
 
-    // 3. Initialize parameter store and process parameters
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing parameter store')
-    await parameterStore.init()
+    if (elementsWithParams.length === 0) {
+      throw new Error('No parameters found in BIM elements')
+    }
 
-    // Process parameters from BIM elements
-    debug.log(DebugCategories.PARAMETERS, 'Processing BIM elements', {
-      count: bimElements.allElements.value.length,
-      sampleElement: {
-        id: bimElements.allElements.value[0].id,
-        category: bimElements.allElements.value[0].category,
-        parameterCount: Object.keys(bimElements.allElements.value[0].parameters || {})
-          .length
-      }
-    })
-
-    await parameterStore.processParameters(bimElements.allElements.value)
-    await elementsData.initializeData()
+    await parameterStore.processParameters(elementsWithParams)
 
     // Verify parameters were processed
-    if (
-      !parameterStore.parentRawParameters.value?.length &&
-      !parameterStore.childRawParameters.value?.length
-    ) {
+    const paramCounts = {
+      parentRaw: parameterStore.parentRawParameters.value?.length || 0,
+      childRaw: parameterStore.childRawParameters.value?.length || 0,
+      parentBim: parameterStore.parentAvailableBimParameters.value?.length || 0,
+      childBim: parameterStore.childAvailableBimParameters.value?.length || 0
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'Parameters processed', paramCounts)
+
+    if (paramCounts.parentBim === 0 && paramCounts.childBim === 0) {
       throw new Error('No parameters available after processing')
     }
 
-    debug.log(DebugCategories.STATE, 'Parameter store initialized', {
-      parameters: {
-        parent: {
-          raw: parameterStore.parentRawParameters.value.length,
-          available: {
-            bim: parameterStore.parentAvailableBimParameters.value.length,
-            user: parameterStore.parentAvailableUserParameters.value.length
-          }
-        },
-        child: {
-          raw: parameterStore.childRawParameters.value.length,
-          available: {
-            bim: parameterStore.childAvailableBimParameters.value.length,
-            user: parameterStore.childAvailableUserParameters.value.length
-          }
-        }
-      }
+    // 5. Load and initialize tables
+    debug.startState(DebugCategories.INITIALIZATION, 'Loading tables')
+    const tablesResponse = await tablesState.loadTables()
+    const tablesList = isValidTableState(tablesResponse)
+      ? processTablesList(tablesResponse.state.value.tables)
+      : []
+
+    // 6. Initialize data with processed parameters
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
+    await elementsData.initializeData()
+
+    // 7. Update store state
+    debug.startState(DebugCategories.STATE, 'Updating store state')
+    await store.lifecycle.update({
+      tablesArray: tablesList,
+      selectedTableId: tablesList.length > 0 ? tablesList[0].id : 'default',
+      tableName: tablesList.length > 0 ? tablesList[0].name : 'Default Table',
+      selectedParentCategories: parentCategories,
+      selectedChildCategories: childCategories
     })
 
-    // 3. Load and initialize tables with processed parameters
-    debug.startState(DebugCategories.INITIALIZATION, 'Loading tables')
-    await tablesState.loadTables()
-    const tables = tablesState.state.value?.tables
-
-    // Use default table if no tables loaded
-    if (!tables) {
-      debug.log(DebugCategories.INITIALIZATION, 'Using default table')
-      await initComponent.update({
-        selectedTableId: 'default',
-        tableName: 'Default Table',
-        selectedParentCategories: parentCategories,
-        selectedChildCategories: childCategories
-      })
-    } else {
-      // Process existing tables
-      type TablesType = Record<string, TableSettings>
-      const tablesList = safeObjectEntries<TablesType>(tables as TablesType)
-        .filter((entry): entry is [string, TableSettings] => isValidTable(entry[1]))
-        .filter(([_, table]) => table.id !== 'defaultTable')
-        .map(([_, table]) => ({
-          id: table.id,
-          name: table.name || 'Unnamed Table'
-        }))
-
-      // Update store with tables
-      await store.lifecycle.update({ tablesArray: tablesList })
-
-      // Select table
-      const tableIdToSelect = tablesList.length > 0 ? tablesList[0].id : 'default'
-      await initComponent.update({
-        selectedTableId: tableIdToSelect,
-        tableName: '',
-        selectedParentCategories: parentCategories,
-        selectedChildCategories: childCategories
-      })
-    }
-
-    // 3. Initialize table component
+    // 8. Initialize table component
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing table component')
     await initComponent.initialize()
 
-    // 4. Update core store with current table data
-    const currentTable = tableStore.currentTable.value
-    if (currentTable) {
-      await store.lifecycle.update({
-        currentTableColumns: currentTable.parentColumns,
-        currentDetailColumns: currentTable.childColumns
-      })
-    }
-
-    debug.log(DebugCategories.STATE, 'Table initialization complete', {
-      currentTable: currentTable?.id,
-      columns: {
-        parent: currentTable?.parentColumns.length || 0,
-        child: currentTable?.childColumns.length || 0
-      }
-    })
-
     debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
+    initializationComplete.value = true
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to initialize schedules', err)
-    updateErrorState(createSafeError(err))
+    const safeError = createSafeError(err)
+
+    // Handle auth errors specifically
+    const errorMessage = safeError.message.toLowerCase()
+    const isAuthError =
+      errorMessage.includes('authentication required') ||
+      errorMessage.includes('auth token')
+
+    if (isAuthError) {
+      debug.error(DebugCategories.ERROR, 'Authentication error - redirecting to login')
+      const { logout } = useAuthManager({
+        deferredApollo: () => undefined // No need for Apollo client during logout
+      })
+      await logout({ skipToast: true })
+      return
+    }
+
+    updateErrorState(safeError)
+  } finally {
+    isInitializing.value = false
   }
 })
+
+// Helper to process tables list
+function processTablesList(tables: unknown) {
+  if (!tables) return []
+
+  type TablesType = Record<string, TableSettings>
+  return safeObjectEntries<TablesType>(tables as TablesType)
+    .filter((entry): entry is [string, TableSettings] => isValidTable(entry[1]))
+    .filter(([_, table]) => table.id !== 'defaultTable')
+    .map(([_, table]) => ({
+      id: table.id,
+      name: table.name || 'Unnamed Table'
+    }))
+}
 </script>
 
 <style scoped>

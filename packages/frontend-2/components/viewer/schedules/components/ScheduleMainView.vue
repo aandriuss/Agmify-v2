@@ -82,6 +82,10 @@
             :parent-columns="tableStore.currentTable.value?.parentColumns || []"
             :child-columns="tableStore.currentTable.value?.childColumns || []"
             :is-test-mode="isTestMode"
+            :show-parameter-stats="true"
+            :show-bim-data="true"
+            :show-parameter-categories="true"
+            :show-table-categories="true"
             @update:is-test-mode="(value: boolean) => events.handleTestModeUpdate({ value })"
           />
         </template>
@@ -484,27 +488,28 @@ onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedule view')
 
-    // First wait for store and world tree to be initialized
-    debug.log(DebugCategories.INITIALIZATION, 'Waiting for initialization')
-    await Promise.all([
-      // Wait for store initialization
-      new Promise<void>((resolve) => {
-        if (store.initialized.value) {
-          resolve()
-          return
-        }
-        const unwatch = watch(
-          () => store.initialized.value,
-          (initialized) => {
-            if (initialized) {
-              unwatch()
-              resolve()
-            }
-          },
-          { immediate: true }
-        )
-      }),
-      // Wait for BIM elements to be ready
+    // First wait for store initialization
+    debug.log(DebugCategories.INITIALIZATION, 'Waiting for store initialization')
+    await new Promise<void>((resolve) => {
+      if (store.initialized.value) {
+        resolve()
+        return
+      }
+      const unwatch = watch(
+        () => store.initialized.value,
+        (initialized) => {
+          if (initialized) {
+            unwatch()
+            resolve()
+          }
+        },
+        { immediate: true }
+      )
+    })
+
+    // Then wait for BIM elements with timeout
+    debug.log(DebugCategories.INITIALIZATION, 'Waiting for BIM elements')
+    await Promise.race([
       new Promise<void>((resolve) => {
         if (bimElements.allElements.value?.length) {
           resolve()
@@ -514,6 +519,68 @@ onMounted(async () => {
           () => bimElements.allElements.value,
           (elements) => {
             if (elements?.length) {
+              debug.log(DebugCategories.INITIALIZATION, 'BIM elements loaded', {
+                count: elements.length,
+                sample: elements[0]
+                  ? {
+                      id: elements[0].id,
+                      category: elements[0].category,
+                      parameterCount: Object.keys(elements[0].parameters || {}).length
+                    }
+                  : null
+              })
+              unwatch()
+              resolve()
+            }
+          },
+          { immediate: true }
+        )
+      }),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('BIM elements load timeout')), 10000)
+      )
+    ])
+
+    debug.log(DebugCategories.INITIALIZATION, 'Core systems initialized', {
+      store: {
+        initialized: store.initialized.value,
+        scheduleData: store.scheduleData.value?.length || 0
+      },
+      bimElements: {
+        count: bimElements.allElements.value?.length || 0,
+        loading: bimElements.isLoading.value,
+        error: bimElements.hasError.value
+      }
+    })
+
+    try {
+      // Initialize table first to get default parameters
+      debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
+      await initializeTable()
+
+      // Then wait for parameter store to be ready and parameters to be processed
+      debug.startState(DebugCategories.PARAMETERS, 'Waiting for parameter store')
+      await new Promise<void>((resolve) => {
+        if (
+          parameterStore.state.value.initialized &&
+          (parameterStore.parentAvailableBimParameters.value?.length ||
+            parameterStore.childAvailableBimParameters.value?.length)
+        ) {
+          resolve()
+          return
+        }
+        const unwatch = watch(
+          [
+            () => parameterStore.state.value.initialized,
+            () => parameterStore.parentAvailableBimParameters.value,
+            () => parameterStore.childAvailableBimParameters.value
+          ],
+          ([initialized, parentBim, childBim]) => {
+            if (initialized && (parentBim?.length || childBim?.length)) {
+              debug.log(DebugCategories.PARAMETERS, 'Parameter store ready', {
+                parentBim: parentBim?.length || 0,
+                childBim: childBim?.length || 0
+              })
               unwatch()
               resolve()
             }
@@ -521,44 +588,54 @@ onMounted(async () => {
           { immediate: true }
         )
       })
-    ])
 
-    debug.log(DebugCategories.INITIALIZATION, 'Core systems initialized')
-
-    try {
-      // Wait for parameter store to be ready
-      debug.startState(DebugCategories.PARAMETERS, 'Waiting for parameter store')
-      if (!parameterStore.state.value.initialized) {
-        await parameterStore.init()
+      // Verify parameters were processed
+      const paramState = {
+        raw: {
+          parent: parameterStore.parentRawParameters.value?.length || 0,
+          child: parameterStore.childRawParameters.value?.length || 0
+        },
+        available: {
+          parentBim: parameterStore.parentAvailableBimParameters.value?.length || 0,
+          parentUser: parameterStore.parentAvailableUserParameters.value?.length || 0,
+          childBim: parameterStore.childAvailableBimParameters.value?.length || 0,
+          childUser: parameterStore.childAvailableUserParameters.value?.length || 0
+        }
       }
 
-      // Process parameters if we have BIM elements
-      if (bimElements.allElements.value?.length) {
-        debug.log(DebugCategories.PARAMETERS, 'Processing BIM elements', {
-          count: bimElements.allElements.value.length
-        })
-        await parameterStore.processParameters(bimElements.allElements.value)
-      }
+      debug.log(DebugCategories.PARAMETERS, 'Parameters processed', paramState)
 
-      // Initialize table with parameters
-      debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
-      await initializeTable()
+      if (!paramState.raw.parent && !paramState.raw.child) {
+        throw new Error('No parameters extracted from BIM elements')
+      }
 
       // Wait for table to be fully initialized with current data
       if (!props.currentTable) {
         debug.log(DebugCategories.INITIALIZATION, 'Waiting for table data')
-        await new Promise<void>((resolve) => {
-          const unwatch = watch(
-            () => props.currentTable,
-            (table) => {
-              if (table) {
-                unwatch()
-                resolve()
-              }
-            },
-            { immediate: true }
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            const unwatch = watch(
+              () => props.currentTable,
+              (table) => {
+                if (table) {
+                  debug.log(DebugCategories.INITIALIZATION, 'Table data received', {
+                    id: table.id,
+                    parameters: {
+                      parent: table.selectedParameters?.parent?.length || 0,
+                      child: table.selectedParameters?.child?.length || 0
+                    }
+                  })
+                  unwatch()
+                  resolve()
+                }
+              },
+              { immediate: true }
+            )
+          }),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error('Table initialization timeout')), 5000)
           )
-        })
+        ])
       }
 
       // Ensure we have parameters before proceeding

@@ -1,40 +1,25 @@
 /**
  * Viewer-specific parameter functionality
- * Handles BIM parameter discovery, mapping, and integration with core parameter system
+ * Handles BIM parameter discovery and integration with core parameter system
+ *
+ * Flow:
+ * 1. Raw BIM parameters (from viewer)
+ * 2. Available BIM parameters (processed)
+ * 3. Selected parameters (user choice)
+ * 4. Table columns (for display)
  */
 
 // BIM parameter handling
 export { useBIMParameters } from './useBIMParameters'
-export { useParameterMapping, ParameterMappingError } from './useParameterMapping'
 
-// Re-export core parameter functionality for convenience
-export {
-  useParametersState,
-  useParameterOperations,
-  useParameterEvaluation,
-  parameterToColumnDef,
-  columnDefToParameter,
-  cloneColumnDefs,
-  createColumnDef,
-  ParameterOperationError,
-  ParameterEvaluationError,
-  ParameterConversionError
-} from '~/composables/core/parameters'
+// Re-export core parameter types
+export type { ParameterValue } from '~/composables/core/types'
 
-// Re-export parameter types
 export type {
-  Parameter,
-  BimParameter,
-  UserParameter,
-  ParameterValue,
-  ParameterState,
-  EvaluatedParameter,
-  CreateParameterInput
-} from '~/composables/core/types'
+  AvailableBimParameter,
+  AvailableUserParameter,
+  SelectedParameter
+} from '~/composables/core/types/parameters/parameter-states'
 
 // Re-export viewer types
-export type {
-  BIMNodeRaw,
-  BIMNode,
-  ProcessedHeader
-} from '~/composables/core/types/viewer/viewer-base'
+export type { BIMNodeRaw, BIMNode } from '~/composables/core/types/viewer/viewer-base'

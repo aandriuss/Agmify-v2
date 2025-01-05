@@ -190,11 +190,11 @@
                 </div>
                 <div class="stat-item">
                   <span>Parent Parameters:</span>
-                  <span>{{ parameters.parentRawParameters.value?.length || 0 }}</span>
+                  <span>{{ parameterStoreCounts.parent.raw }}</span>
                 </div>
                 <div class="stat-item">
                   <span>Child Parameters:</span>
-                  <span>{{ parameters.childRawParameters.value?.length || 0 }}</span>
+                  <span>{{ parameterStoreCounts.child.raw }}</span>
                 </div>
               </div>
             </div>
@@ -202,7 +202,7 @@
             <!-- Raw Data Sample -->
             <div v-if="scheduleData?.length" class="raw-data-sample">
               <h5>Sample Element</h5>
-              <pre>{{ formatData(scheduleData[5]) }}</pre>
+              <pre>{{ formatData(scheduleData[8]) }}</pre>
             </div>
           </div>
 
@@ -216,19 +216,15 @@
                 <div class="parameter-counts">
                   <div class="count-item">
                     <span>Raw:</span>
-                    <span>{{ parameters.parentRawParameters.value?.length || 0 }}</span>
+                    <span>{{ parameterStoreCounts.parent.raw }}</span>
                   </div>
                   <div class="count-item">
                     <span>Available BIM:</span>
-                    <span>
-                      {{ parameters.parentAvailableBimParameters.value?.length || 0 }}
-                    </span>
+                    <span>{{ parameterStoreCounts.parent.availableBim }}</span>
                   </div>
                   <div class="count-item">
                     <span>Available User:</span>
-                    <span>
-                      {{ parameters.parentAvailableUserParameters.value?.length || 0 }}
-                    </span>
+                    <span>{{ parameterStoreCounts.parent.availableUser }}</span>
                   </div>
                   <div class="count-item">
                     <span>Selected:</span>
@@ -269,19 +265,15 @@
                 <div class="parameter-counts">
                   <div class="count-item">
                     <span>Raw:</span>
-                    <span>{{ parameters.childRawParameters.value?.length || 0 }}</span>
+                    <span>{{ parameterStoreCounts.child.raw }}</span>
                   </div>
                   <div class="count-item">
                     <span>Available BIM:</span>
-                    <span>
-                      {{ parameters.childAvailableBimParameters.value?.length || 0 }}
-                    </span>
+                    <span>{{ parameterStoreCounts.child.availableBim }}</span>
                   </div>
                   <div class="count-item">
                     <span>Available User:</span>
-                    <span>
-                      {{ parameters.childAvailableUserParameters.value?.length || 0 }}
-                    </span>
+                    <span>{{ parameterStoreCounts.child.availableUser }}</span>
                   </div>
                   <div class="count-item">
                     <span>Selected:</span>
@@ -324,14 +316,14 @@
                   <div class="count-item">
                     <span>Parameter Store Last Updated:</span>
                     <span>
-                      {{ formatTime(parameters.lastUpdated.value || Date.now()) }}
+                      {{ formatTime(metadata.lastUpdated) }}
                     </span>
                   </div>
                   <div class="count-item">
                     <span>Parameter Store Processing:</span>
-                    <span>{{ parameters.isProcessing.value || false }}</span>
+                    <span>{{ metadata.isProcessing }}</span>
                   </div>
-                  <div v-if="parameters.hasError.value" class="count-item error">
+                  <div v-if="metadata.hasError" class="count-item error">
                     <span>Parameter Store Error:</span>
                     <span>Error state detected</span>
                   </div>
@@ -367,8 +359,8 @@
             <h4>Logs</h4>
             <div class="log-entries">
               <div
-                v-for="log in displayedLogs"
-                :key="log.timestamp"
+                v-for="(log, index) in displayedLogs"
+                :key="`${log.timestamp}-${index}`"
                 class="log-entry"
                 :class="log.level"
               >
@@ -452,19 +444,61 @@ const props = withDefaults(defineProps<Props>(), {
   availableChildHeaders: () => []
 })
 
-// Parameter counts from parameter store
-const parameterStoreCounts = computed(() => ({
-  parent: {
-    raw: safeLength(safeValue(parameters.parentRawParameters)),
-    availableBim: safeLength(safeValue(parameters.parentAvailableBimParameters)),
-    availableUser: safeLength(safeValue(parameters.parentAvailableUserParameters))
-  },
-  child: {
-    raw: safeLength(safeValue(parameters.childRawParameters)),
-    availableBim: safeLength(safeValue(parameters.childAvailableBimParameters)),
-    availableUser: safeLength(safeValue(parameters.childAvailableUserParameters))
+// Use stores with safe access
+const parameters = useParameterStore()
+const tableStore = useTableStore()
+
+// Store state checks
+const isProcessingComplete = computed(
+  () => parameters?.state?.value?.processing?.status === 'complete'
+)
+
+// Parameter counts from parameter store with processing check
+const parameterStoreCounts = computed(() => {
+  const state = parameters?.state?.value
+  const counts = {
+    parent: {
+      raw: parameters.parentRawParameters.value?.length || 0,
+      availableBim: isProcessingComplete.value
+        ? parameters.parentAvailableBimParameters.value?.length || 0
+        : 0,
+      availableUser: isProcessingComplete.value
+        ? parameters.parentAvailableUserParameters.value?.length || 0
+        : 0
+    },
+    child: {
+      raw: parameters.childRawParameters.value?.length || 0,
+      availableBim: isProcessingComplete.value
+        ? parameters.childAvailableBimParameters.value?.length || 0
+        : 0,
+      availableUser: isProcessingComplete.value
+        ? parameters.childAvailableUserParameters.value?.length || 0
+        : 0
+    }
   }
-}))
+
+  // Log counts with state
+  debug.log(DebugCategories.STATE, 'Debug panel parameter counts', {
+    ...counts,
+    initialized: state?.initialized,
+    processing: state?.processing?.status
+  })
+
+  return counts
+})
+
+// Watch for processing completion
+watch(
+  isProcessingComplete,
+  (complete) => {
+    if (complete) {
+      debug.log(DebugCategories.STATE, 'Parameter processing complete', {
+        counts: parameterStoreCounts.value
+      })
+    }
+  },
+  { immediate: true }
+)
 
 // Selected parameters and columns from table store
 const tableStoreCounts = computed(() => {
@@ -501,10 +535,6 @@ const uniqueChildCategories = computed(() =>
   )
 )
 
-// Use stores with safe access
-const parameters = useParameterStore()
-const tableStore = useTableStore()
-
 // Type guard for selected parameters
 const isSelectedParameters = (
   value: unknown
@@ -514,21 +544,48 @@ const isSelectedParameters = (
   )
 }
 
-// Safe parameter access helpers
-const safeLength = (value: unknown[] | undefined | null) => value?.length || 0
+// Safe parameter access helper
 const safeValue = <T>(value: { value?: T | null } | undefined | null) => value?.value
 
-// Combined counts for backward compatibility
-const parameterCounts = computed(() => ({
+interface ParameterCounts {
   parent: {
-    ...parameterStoreCounts.value.parent,
-    ...tableStoreCounts.value.parent
-  },
-  child: {
-    ...parameterStoreCounts.value.child,
-    ...tableStoreCounts.value.child
+    raw: number
+    availableBim: number
+    availableUser: number
+    selected: number
+    columns: number
   }
-}))
+  child: {
+    raw: number
+    availableBim: number
+    availableUser: number
+    selected: number
+    columns: number
+  }
+}
+
+// Combined counts for backward compatibility
+const parameterCounts = computed<ParameterCounts>(() => {
+  const storeCounts = parameterStoreCounts.value
+  const tableCounts = tableStoreCounts.value
+
+  return {
+    parent: {
+      raw: storeCounts.parent.raw,
+      availableBim: storeCounts.parent.availableBim,
+      availableUser: storeCounts.parent.availableUser,
+      selected: tableCounts.parent.selected,
+      columns: tableCounts.parent.columns
+    },
+    child: {
+      raw: storeCounts.child.raw,
+      availableBim: storeCounts.child.availableBim,
+      availableUser: storeCounts.child.availableUser,
+      selected: tableCounts.child.selected,
+      columns: tableCounts.child.columns
+    }
+  }
+})
 
 // Limit displayed logs for performance
 const MAX_DISPLAYED_LOGS = 200
@@ -575,8 +632,15 @@ const elementsWithParameters = computed(
       .length || 0
 )
 
-// Parameter groups with type safety
+// Parameter groups with type safety and processing check
 const parameterGroups = computed(() => {
+  if (!isProcessingComplete.value) {
+    return {
+      parent: {},
+      child: {}
+    }
+  }
+
   const currentTable = tableStore.currentTable.value
   const selectedParams = currentTable?.selectedParameters
   const hasSelectedParams = isSelectedParameters(selectedParams)
@@ -687,7 +751,43 @@ function getParameterGroups(
 }
 
 // Data structure
-const dataStructure = computed(() => ({
+const dataStructure = computed<{
+  tableState: {
+    rowCount: number
+    columnCount: number
+    parentColumns: number
+    childColumns: number
+  }
+  parameters: {
+    parent: {
+      raw: number
+      available: {
+        bim: number
+        user: number
+      }
+      selected: number
+      columns: number
+      groups: ParameterGroups
+    }
+    child: {
+      raw: number
+      available: {
+        bim: number
+        user: number
+      }
+      selected: number
+      columns: number
+      groups: ParameterGroups
+    }
+    metadata: {
+      lastUpdated: number
+      isProcessing: boolean
+      hasError: boolean
+      error?: boolean // Added to match the type we're using
+    }
+  }
+  sample: unknown | null
+}>(() => ({
   tableState: {
     rowCount: props.tableData?.length || 0,
     columnCount:
@@ -720,7 +820,7 @@ const dataStructure = computed(() => ({
     metadata: {
       lastUpdated: metadata.value.lastUpdated,
       isProcessing: metadata.value.isProcessing,
-      error: metadata.value.hasError
+      hasError: metadata.value.hasError
     }
   },
   sample: props.tableData?.[5] || null

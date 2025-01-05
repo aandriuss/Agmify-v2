@@ -7,6 +7,8 @@ import type {
   ViewerNodeRaw,
   WorldTreeRoot
 } from '~/composables/core/types'
+import { parentCategories } from '~/composables/core/config/categories'
+import { getMostSpecificCategory } from '~/composables/core/config/categoryMapping'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
@@ -113,10 +115,10 @@ function extractNodeParameters(
 /**
  * Convert ViewerNode to ElementData format
  */
-function convertViewerNodeToElementData(
+async function convertViewerNodeToElementData(
   node: ViewerNode,
   childCategories: string[] = []
-): ElementData {
+): Promise<ElementData> {
   const nodeData = node.model?.raw
   if (!nodeData || isSpeckleReference(nodeData)) {
     debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data', {
@@ -162,18 +164,37 @@ function convertViewerNodeToElementData(
     }
   }
 
-  const category =
+  // Get raw type from node data
+  const rawType = (
     (nodeData.Other as { Category?: string })?.Category ||
     nodeData.speckle_type ||
     nodeData.type ||
     'Uncategorized'
-  const isChild = childCategories.includes(category)
+  ).toString()
+
+  // Map category using existing mapping system
+  const category = getMostSpecificCategory(rawType)
+
+  // Check if this is a parent element based on mapped category
+  const isParent = parentCategories.includes(category)
+  const isChild = !isParent && childCategories.includes(category)
+
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Category mapping', {
+    rawType,
+    mappedCategory: category,
+    isParent,
+    isChild,
+    parentCategories,
+    childCategories
+  })
 
   debug.log(DebugCategories.DATA_TRANSFORM, 'Converting node', {
     id: nodeData.id,
     category,
+    isParent,
     isChild,
-    type: nodeData.type
+    type: nodeData.type,
+    metadata: nodeData.metadata || {}
   })
 
   // Extract raw parameters from node data
@@ -205,7 +226,11 @@ function convertViewerNodeToElementData(
     isChild,
     category,
     parameters,
-    metadata: nodeData.metadata || {},
+    metadata: {
+      ...nodeData.metadata,
+      isParent,
+      category
+    },
     details: [],
     order: 0
   }
@@ -221,7 +246,8 @@ async function traverseNode(
   const elements: ElementData[] = []
 
   // Convert current node
-  elements.push(convertViewerNodeToElementData(node, childCategories))
+  const convertedNode = await convertViewerNodeToElementData(node, childCategories)
+  elements.push(convertedNode)
 
   // Get raw data
   const raw = node.model?.raw
@@ -229,25 +255,27 @@ async function traverseNode(
 
   // Check for elements array
   if ('elements' in raw && Array.isArray(raw.elements)) {
-    for (const element of raw.elements) {
-      if (isViewerNodeRaw(element)) {
-        // Convert element to ViewerNode format
-        const elementNode: ViewerNode = {
-          id: element.id,
-          model: {
-            raw: element
-          }
+    const elementPromises = raw.elements.filter(isViewerNodeRaw).map((element) => {
+      const elementNode: ViewerNode = {
+        id: element.id,
+        model: {
+          raw: element
         }
-        elements.push(...(await traverseNode(elementNode, childCategories)))
       }
-    }
+      return traverseNode(elementNode, childCategories)
+    })
+
+    const elementResults = await Promise.all(elementPromises)
+    elements.push(...elementResults.flat())
   }
 
   // Check for children array
   if (node.children && Array.isArray(node.children)) {
-    for (const child of node.children) {
-      elements.push(...(await traverseNode(child, childCategories)))
-    }
+    const childPromises = node.children.map((child) =>
+      traverseNode(child, childCategories)
+    )
+    const childResults = await Promise.all(childPromises)
+    elements.push(...childResults.flat())
   }
 
   return elements
@@ -289,7 +317,7 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
   const hasError = computed(() => !!state.value.error)
 
   /**
-   * Initialize BIM elements directly from world tree
+   * Initialize BIM elements and process parameters
    */
   async function initializeElements(worldTree: WorldTreeRoot | null): Promise<void> {
     try {
@@ -306,6 +334,7 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
         return
       }
 
+      debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
       state.value.isLoading = true
       state.value.error = null
 
@@ -321,8 +350,37 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
           const nodeElements = await traverseNode(node, options.childCategories || [])
           elements.push(...nodeElements)
         }
+
+        // Log element stats
+        const elementStats = {
+          total: elements.length,
+          withParameters: elements.filter(
+            (el) => el.parameters && Object.keys(el.parameters).length > 0
+          ).length,
+          categories: Array.from(new Set(elements.map((el) => el.category))),
+          parameterGroups: Array.from(
+            new Set(
+              elements.flatMap((el) =>
+                Object.keys(el.parameters || {}).map((key) => key.split('.')[0])
+              )
+            )
+          )
+        }
+
+        debug.log(DebugCategories.DATA, 'Elements extracted', elementStats)
       }
 
+      // Verify elements have parameters
+      const elementsWithParams = elements.filter(
+        (el) => el.parameters && Object.keys(el.parameters).length > 0
+      )
+
+      if (elementsWithParams.length === 0) {
+        debug.warn(DebugCategories.DATA, 'No elements with parameters found')
+        return
+      }
+
+      // Update local state
       state.value = {
         worldTree: null,
         worldTreeRoot: worldTree,
@@ -332,23 +390,31 @@ export function useBIMElements(options: BIMElementsOptions = {}) {
         error: null
       }
 
-      debug.log(DebugCategories.DATA, 'BIM elements initialized', {
-        elementCount: elements.length
-      })
-
-      // Update local state
-      state.value.elements = elements
-
       // Update store with element data
       await store.lifecycle.update({
         scheduleData: elements
       })
 
-      debug.log(DebugCategories.DATA, 'BIM elements processed', {
+      // Log final stats
+      const stats = {
         totalElements: elements.length,
         parentElements: elements.filter((el) => !el.isChild).length,
-        childElements: elements.filter((el) => el.isChild).length
-      })
+        childElements: elements.filter((el) => el.isChild).length,
+        parameters: {
+          total: elements.reduce(
+            (acc, el) => acc + Object.keys(el.parameters || {}).length,
+            0
+          ),
+          unique: new Set(elements.flatMap((el) => Object.keys(el.parameters || {})))
+            .size
+        }
+      }
+
+      debug.completeState(
+        DebugCategories.INITIALIZATION,
+        'BIM elements initialized',
+        stats
+      )
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to initialize BIM elements:', err)
       state.value = {

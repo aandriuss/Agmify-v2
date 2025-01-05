@@ -4,7 +4,9 @@ import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
 import { createTableColumns } from '~/composables/core/types/tables/table-column'
+import { defaultSelectedParameters } from '../config/defaults'
 import type { TableSettings } from '../store/types'
+import type { TableSelectedParameters } from '~/composables/core/types/tables/table-config'
 
 export interface UseTableFlowOptions {
   currentTable: ComputedRef<TableSettings | null>
@@ -60,12 +62,21 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
       if (!store.initialized.value) {
         await store.lifecycle.init()
       }
+      if (!parameterStore.state.value.initialized) {
+        await parameterStore.init()
+      }
 
-      // Initialize stores
-      await store.lifecycle.init()
-      await parameterStore.init()
+      // Get config with default parameters if needed
+      const selectedParams: TableSelectedParameters =
+        tableConfig.value.selectedParameters.parent.length ||
+        tableConfig.value.selectedParameters.child.length
+          ? tableConfig.value.selectedParameters
+          : defaultSelectedParameters
 
-      const config = tableConfig.value
+      const config = {
+        ...tableConfig.value,
+        selectedParameters: selectedParams
+      }
 
       // Update table store
       await tableStore.updateTable(config)

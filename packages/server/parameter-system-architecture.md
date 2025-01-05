@@ -193,7 +193,7 @@ frontend-2/
                 └── types.ts              # Table store types
 ```
 
-### Core Parameter System
+### Core Parameter System (should be merged into one above)
 
 ```
 frontend-2/

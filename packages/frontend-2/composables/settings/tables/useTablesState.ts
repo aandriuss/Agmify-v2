@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTablesGraphQL } from './useTablesGraphQL'
 import { useUpdateQueue } from '../useUpdateQueue'
@@ -68,9 +68,58 @@ export function useTablesState() {
   )
   const originalTables = ref<Record<string, TableSettings>>({})
 
-  // Initialize GraphQL operations
-  const { result, queryLoading, fetchTables, updateTables } = useTablesGraphQL()
+  // Initialize state management
   const { queueUpdate } = useUpdateQueue()
+  type GraphQLOps = Awaited<ReturnType<typeof useTablesGraphQL>>
+  let graphqlOps: GraphQLOps | null = null
+
+  // Type guard for tables data
+  function isValidTablesData(data: unknown): data is Record<string, RawTable> {
+    if (!data || typeof data !== 'object') return false
+    return Object.values(data).every(
+      (table): table is RawTable =>
+        table &&
+        typeof table === 'object' &&
+        'id' in table &&
+        'name' in table &&
+        typeof table.id === 'string' &&
+        typeof table.name === 'string'
+    )
+  }
+
+  // Initialize GraphQL operations
+  async function initGraphQL() {
+    try {
+      debug.startState(
+        DebugCategories.INITIALIZATION,
+        'Initializing GraphQL operations'
+      )
+      graphqlOps = await useTablesGraphQL()
+
+      // Watch for tables changes only after GraphQL is ready
+      watch(
+        () => {
+          const tables = graphqlOps?.result.value?.activeUser?.tables
+          return isValidTablesData(tables) ? tables : undefined
+        },
+        handleTablesUpdate,
+        {
+          deep: true
+        }
+      )
+
+      debug.completeState(
+        DebugCategories.INITIALIZATION,
+        'GraphQL operations initialized'
+      )
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to initialize GraphQL', err)
+      const error =
+        err instanceof Error ? err : new Error('Failed to initialize GraphQL')
+      state.value.error = error
+      throw error
+    }
+  }
 
   function formatTableKey(table: TableSettings): string {
     const sanitizedName = table.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
@@ -111,16 +160,19 @@ export function useTablesState() {
     // Get existing categories or use defaults
     const categoryFilters: TableCategoryFilters = {
       selectedParentCategories:
-        rawTable.categoryFilters?.selectedParentCategories?.length > 0
-          ? rawTable.categoryFilters.selectedParentCategories
-          : DEFAULT_PARENT_CATEGORIES,
+        Array.isArray(rawTable.categoryFilters?.selectedParentCategories) &&
+        rawTable.categoryFilters.selectedParentCategories.length > 0
+          ? [...rawTable.categoryFilters.selectedParentCategories]
+          : [...DEFAULT_PARENT_CATEGORIES],
       selectedChildCategories:
-        rawTable.categoryFilters?.selectedChildCategories?.length > 0
-          ? rawTable.categoryFilters.selectedChildCategories
-          : DEFAULT_CHILD_CATEGORIES
+        Array.isArray(rawTable.categoryFilters?.selectedChildCategories) &&
+        rawTable.categoryFilters.selectedChildCategories.length > 0
+          ? [...rawTable.categoryFilters.selectedChildCategories]
+          : [...DEFAULT_CHILD_CATEGORIES]
     }
 
-    return {
+    // Create a safe copy of the table settings
+    const safeTable: TableSettings = {
       id: rawTable.id,
       name: rawTable.name,
       displayName: rawTable.displayName || rawTable.name,
@@ -131,92 +183,98 @@ export function useTablesState() {
         ? validateColumnDefs(rawTable.childColumns)
         : [],
       categoryFilters,
-      selectedParameters:
-        rawTable.selectedParameters || defaultTableConfig.selectedParameters,
+      selectedParameters: rawTable.selectedParameters
+        ? {
+            parent: Array.isArray(rawTable.selectedParameters.parent)
+              ? [...rawTable.selectedParameters.parent]
+              : [],
+            child: Array.isArray(rawTable.selectedParameters.child)
+              ? [...rawTable.selectedParameters.child]
+              : []
+          }
+        : { ...defaultTableConfig.selectedParameters },
       lastUpdateTimestamp: Date.now()
     }
+
+    return safeTable
   }
 
-  // Watch for tables changes
-  watch(
-    () => result.value?.activeUser?.tables,
-    (newTables) => {
-      const timeSinceLastUpdate = Date.now() - lastUpdateTime.value
-      if (isUpdating.value || timeSinceLastUpdate < 500) {
-        debug.log(
-          DebugCategories.INITIALIZATION,
-          'Skipping tables update during local change',
-          { isUpdating: isUpdating.value, timeSinceLastUpdate }
-        )
-        return
-      }
+  // Handle tables updates
+  function handleTablesUpdate(newTables: Record<string, RawTable> | undefined): void {
+    const timeSinceLastUpdate = Date.now() - lastUpdateTime.value
+    if (isUpdating.value || timeSinceLastUpdate < 500) {
+      debug.log(
+        DebugCategories.INITIALIZATION,
+        'Skipping tables update during local change',
+        { isUpdating: isUpdating.value, timeSinceLastUpdate }
+      )
+      return
+    }
 
-      debug.log(DebugCategories.INITIALIZATION, 'Raw tables received', {
-        hasTables: !!newTables,
-        tableCount: newTables ? Object.keys(newTables).length : 0
-      })
+    debug.log(DebugCategories.INITIALIZATION, 'Raw tables received', {
+      hasTables: !!newTables,
+      tableCount: newTables ? Object.keys(newTables).length : 0
+    })
 
-      try {
-        // Process tables from the response
-        if (newTables && Object.keys(newTables).length > 0) {
-          const processedTables: Record<string, TableSettings> = {}
+    try {
+      // Process tables from the response
+      if (newTables && Object.keys(newTables).length > 0) {
+        const processedTables: Record<string, TableSettings> = {}
 
-          Object.entries(newTables).forEach(([_, tableData]) => {
-            if (
-              tableData &&
-              typeof tableData === 'object' &&
-              'id' in tableData &&
-              'name' in tableData
-            ) {
-              const rawTable = tableData as RawTable
-              const validatedTable = validateAndTransformTable(rawTable)
-              const key = formatTableKey(validatedTable)
-              processedTables[key] = validatedTable
+        Object.entries(newTables).forEach(([_, tableData]) => {
+          if (
+            tableData &&
+            typeof tableData === 'object' &&
+            'id' in tableData &&
+            'name' in tableData
+          ) {
+            const rawTable = tableData as RawTable
+            const validatedTable = validateAndTransformTable(rawTable)
+            const key = formatTableKey(validatedTable)
+            processedTables[key] = validatedTable
 
-              // Re-select table if it was previously selected
-              if (validatedTable.id === selectedTableId.value) {
-                selectTable(validatedTable.id)
-              }
-            }
-          })
-
-          state.value = {
-            ...state.value,
-            tables: processedTables,
-            error: null
-          }
-        } else {
-          // Only use default table if no tables exist
-          state.value = {
-            ...state.value,
-            tables: { defaultTableConfig },
-            error: null
-          }
-        }
-
-        // Store original state for change detection
-        originalTables.value = deepClone(state.value.tables)
-
-        // Handle table selection
-        if (!selectedTableId.value) {
-          const storedId = localStorage.getItem(LAST_SELECTED_TABLE_KEY)
-          if (storedId) {
-            const tableExists = Object.values(state.value.tables).some(
-              (table) => table.id === storedId
-            )
-            if (tableExists) {
-              selectTable(storedId)
+            // Re-select table if it was previously selected
+            if (validatedTable.id === selectedTableId.value) {
+              selectTable(validatedTable.id)
             }
           }
+        })
+
+        state.value = {
+          ...state.value,
+          tables: processedTables,
+          error: null
         }
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error('Failed to process tables')
-        debug.error(DebugCategories.ERROR, 'Failed to process tables', error)
-        state.value.error = error
+      } else {
+        // Only use default table if no tables exist
+        state.value = {
+          ...state.value,
+          tables: { defaultTableConfig },
+          error: null
+        }
       }
-    },
-    { deep: true }
-  )
+
+      // Store original state for change detection
+      originalTables.value = deepClone(state.value.tables)
+
+      // Handle table selection
+      if (!selectedTableId.value) {
+        const storedId = localStorage.getItem(LAST_SELECTED_TABLE_KEY)
+        if (storedId) {
+          const tableExists = Object.values(state.value.tables).some(
+            (table) => table.id === storedId
+          )
+          if (tableExists) {
+            selectTable(storedId)
+          }
+        }
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to process tables')
+      debug.error(DebugCategories.ERROR, 'Failed to process tables', error)
+      state.value.error = error
+    }
+  }
 
   async function loadTables(): Promise<void> {
     try {
@@ -224,7 +282,16 @@ export function useTablesState() {
       state.value.loading = true
       state.value.error = null
 
-      const tables = await fetchTables()
+      // Initialize GraphQL if not already done
+      if (!graphqlOps) {
+        await initGraphQL()
+      }
+
+      if (!graphqlOps) {
+        throw new Error('GraphQL operations not initialized')
+      }
+
+      const tables = await graphqlOps.fetchTables()
       const currentSelectedId = selectedTableId.value
 
       // Only use default table if no tables exist
@@ -318,7 +385,10 @@ export function useTablesState() {
           )
         }
 
-        const success = await updateTables(mergedTables)
+        if (!graphqlOps) {
+          throw new Error('GraphQL operations not initialized')
+        }
+        const success = await graphqlOps.updateTables(mergedTables)
         if (success) {
           state.value.tables = mergedTables
 
@@ -406,7 +476,7 @@ export function useTablesState() {
 
   return {
     state,
-    loading: state.value.loading || queryLoading.value,
+    loading: computed(() => state.value.loading || !!graphqlOps?.queryLoading.value),
     error: state.value.error,
     isUpdating,
     lastUpdateTime,

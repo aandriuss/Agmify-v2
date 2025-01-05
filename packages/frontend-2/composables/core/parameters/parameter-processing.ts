@@ -1,7 +1,8 @@
 import type { ElementData } from '~/composables/core/types'
-import type { ParameterValue, BimValueType } from '~/composables/core/types/parameters'
+import type { ParameterValue } from '~/composables/core/types/parameters'
 import { isEquationValue, isPrimitiveValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
+import { parentCategories } from '~/composables/core/config/categories'
 import type {
   RawParameter,
   AvailableBimParameter,
@@ -10,7 +11,6 @@ import type {
 } from '~/composables/core/parameters/store/types'
 import {
   createAvailableBimParameter,
-  createAvailableUserParameter,
   createSelectedParameter
 } from '~/composables/core/parameters/store/types'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
@@ -156,7 +156,12 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
             return
           }
 
-          // Create raw parameter
+          // Determine if parameter is parent based on element metadata or category
+          const isParent =
+            element.metadata?.isParent ||
+            (element.category && parentCategories.includes(element.category))
+
+          // Create raw parameter with parent/child info
           const rawParam: RawParameter = {
             id: key,
             name: paramName,
@@ -169,9 +174,16 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
               group,
               elementId: element.id,
               isJsonString,
-              isParent: element.metadata?.isParent || false
+              isParent
             }
           }
+
+          debug.log(DebugCategories.PARAMETERS, 'Parameter categorization', {
+            id: key,
+            category: element.category,
+            isParent,
+            value: validatedValue
+          })
 
           // Add parameter and update stats
           rawParams.push(rawParam)
@@ -259,172 +271,86 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
 
 /**
  * Process raw parameters into available parameters
+ * All parameters from world tree are BIM parameters
+ * User parameters come from PostgreSQL or user creation
  */
 export function processRawParameters(
   rawParams: RawParameter[]
-): (AvailableBimParameter | AvailableUserParameter)[] {
+): AvailableBimParameter[] {
   if (!rawParams?.length) {
     debug.warn(DebugCategories.PARAMETERS, 'No raw parameters provided for processing')
     return []
   }
 
-  // First group parameters by their ID to handle duplicates
-  const parameterGroups = new Map<string, RawParameter[]>()
-  rawParams.forEach((param) => {
-    if (!param.id || !param.name) {
-      debug.warn(
-        DebugCategories.PARAMETERS,
-        'Invalid parameter: missing id or name',
-        param
-      )
-      return
-    }
-
-    const existing = parameterGroups.get(param.id) || []
-    parameterGroups.set(param.id, [...existing, param])
+  // Log input parameters
+  debug.log(DebugCategories.PARAMETERS, 'Processing raw parameters', {
+    count: rawParams.length,
+    categories: Array.from(
+      new Set(rawParams.map((p) => p.metadata?.category || 'Uncategorized'))
+    )
   })
 
-  // Process each unique parameter
-  const processed = Array.from(parameterGroups.entries()).flatMap(([_id, params]) => {
-    // Skip if no parameters
-    if (!params.length) return []
+  // Process each parameter from world tree as BIM parameter
+  const processed = rawParams
+    .map((param) => {
+      try {
+        // Convert value
+        const value = convertToParameterValue(param.value)
 
-    try {
-      // Use the first parameter as the base
-      const raw = params[0]
+        // Ensure metadata is properly set
+        param.metadata = {
+          ...param.metadata,
+          category: param.metadata?.category || 'Uncategorized',
+          isParent:
+            param.metadata?.isParent ||
+            parentCategories.includes(param.metadata?.category || '')
+        }
 
-      // Convert value to parameter value with proper type inference
-      const value = convertToParameterValue(raw.value)
-      const type = inferParameterType(value, raw)
+        // Create BIM parameter
+        const bimParam = createAvailableBimParameter(
+          param,
+          'string', // Default to string type for simplicity
+          value,
+          false
+        )
 
-      // Determine if this is a BIM or user parameter
-      const isBimParameter = isParameterBim(raw)
+        debug.log(DebugCategories.PARAMETERS, 'BIM parameter created', {
+          id: param.id,
+          category: param.metadata?.category,
+          isParent: param.metadata?.isParent
+        })
 
-      // Create parameter with proper value and type
-      const param = isBimParameter
-        ? createAvailableBimParameter(raw, type, value)
-        : createAvailableUserParameter(
-            raw.id,
-            raw.name,
-            'fixed',
-            value,
-            raw.sourceGroup
-          )
-
-      return [param]
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      const param = params[0]
-      debug.warn(
-        DebugCategories.PARAMETERS,
-        `Failed to process parameter ${param.id}:`,
-        error
-      )
-
-      // Create BIM parameter with properly converted value
-      const value = convertToParameterValue(param.value)
-      const type = inferParameterType(value, param)
-      return [createAvailableBimParameter(param, type, value)]
-    }
-  })
-
-  // Flatten array and filter out any undefined/null values
-  const validProcessed = processed.flat().filter(Boolean)
+        return bimParam
+      } catch (err) {
+        debug.warn(
+          DebugCategories.PARAMETERS,
+          `Failed to process parameter ${param.id}:`,
+          err
+        )
+        return null
+      }
+    })
+    .filter((param): param is AvailableBimParameter => param !== null)
 
   // Log processing stats
   const processedStats = {
     input: rawParams.length,
-    processed: validProcessed.length,
-    bim: validProcessed.filter((p): p is AvailableBimParameter => p.kind === 'bim')
-      .length,
-    user: validProcessed.filter((p): p is AvailableUserParameter => p.kind === 'user')
-      .length,
-    byType: validProcessed.reduce((acc, param) => {
-      acc[param.type] = (acc[param.type] || 0) + 1
-      return acc
-    }, {} as Record<string, number>),
-    byGroup: validProcessed.reduce((acc, param) => {
-      const group = 'sourceGroup' in param ? param.sourceGroup : param.group
-      acc[group] = (acc[group] || 0) + 1
+    processed: processed.length,
+    byGroup: processed.reduce((acc, param) => {
+      acc[param.sourceGroup] = (acc[param.sourceGroup] || 0) + 1
       return acc
     }, {} as Record<string, number>)
   }
 
   debug.log(DebugCategories.PARAMETERS, 'Parameter processing complete', {
-    stats: processedStats,
-    sample: validProcessed[0]
+    stats: processedStats
   })
 
-  return validProcessed
+  return processed
 }
 
-// Helper to determine if a parameter is BIM or user
-function isParameterBim(raw: RawParameter): boolean {
-  // Consider parameters BIM if they:
-  // 1. Are part of standard IFC property sets
-  if (raw.sourceGroup.startsWith('Pset_')) return true
-
-  // 2. Are part of standard Revit categories and custom BIM groups
-  const revitGroups = new Set([
-    'Base',
-    'Constraints',
-    'Dimensions',
-    'Identity Data',
-    'Phasing',
-    'Structural',
-    'Other',
-    'Graphics',
-    'Materials',
-    'Construction',
-    'Analytical Properties',
-    'Forces',
-    'Parameters', // Standard parameters group
-    'Framing', // Custom framing parameters
-    'FM' // Facility management parameters
-  ])
-  if (revitGroups.has(raw.sourceGroup)) return true
-
-  // 3. Have specific metadata indicating BIM origin
-  if (raw.metadata?.isSystem) return true
-
-  // 4. Are part of standard parameter groups
-  if (raw.sourceGroup === 'Parameters' || raw.id.startsWith('Parameters.')) return true
-
-  // 5. Check for common BIM parameter patterns
-  const bimPatterns = [
-    /^IFCBUILDING/i,
-    /^IFCWALL/i,
-    /^IFCSLAB/i,
-    /^IFCWINDOW/i,
-    /^IFCDOOR/i,
-    /^IFC/i,
-    /\.Type$/,
-    /\.Category$/,
-    /\.Family$/,
-    /\.Material$/,
-    /^FM_/i, // Facility management prefix
-    /^CNC_/i, // CNC parameters
-    /^Framing/i, // Framing parameters
-    /Mark$/, // Mark parameters
-    /Number$/, // Number parameters
-    /Position$/, // Position parameters
-    /Configuration$/ // Configuration parameters
-  ]
-  if (bimPatterns.some((pattern) => pattern.test(raw.id))) return true
-
-  // 6. Check for nested parameters
-  if (raw.metadata?.isNested && raw.metadata.parentKey) {
-    // If parent parameter is BIM, consider this BIM too
-    const parentId = raw.metadata.parentKey
-    const parentGroup = parentId.split('.')[0]
-    if (revitGroups.has(parentGroup) || parentGroup.startsWith('Pset_')) {
-      return true
-    }
-  }
-
-  // Otherwise consider it a user parameter
-  return false
-}
+// All parameters from world tree are BIM parameters
+// User parameters are only created through the parameter manager
 
 /**
  * Create selected parameters from available parameters
@@ -524,26 +450,5 @@ function updateParameterStats(
   stats.groups.get(group)!.add(paramName)
   if (!key.startsWith('__')) {
     stats.activeGroups.get(group)!.add(paramName)
-  }
-}
-
-function inferParameterType(value: ParameterValue, raw: RawParameter): BimValueType {
-  // Check for special cases first
-  if (raw.id.includes('GlobalId') || raw.id.includes('Id')) return 'string'
-  if (raw.id.includes('Type') || raw.id.includes('Category')) return 'string'
-  if (raw.sourceGroup === 'Identity Data') return 'string'
-
-  // Infer from value
-  if (value === null) return 'string'
-  if (isEquationValue(value)) return value.resultType
-  switch (typeof value) {
-    case 'number':
-      return 'number'
-    case 'boolean':
-      return 'boolean'
-    case 'object':
-      return Array.isArray(value) ? 'array' : 'object'
-    default:
-      return 'string'
   }
 }

@@ -1,19 +1,20 @@
 import { ref, computed } from 'vue'
 import { debug } from '~/composables/core/utils/debug'
+import { parentCategories } from '~/composables/core/config/categories'
 import { ParameterDebugCategories } from '~/composables/core/utils/debug-categories'
-import type { ElementData } from '~/composables/core/types'
+import type { ElementData, ParameterValue } from '~/composables/core/types'
 import type {
   ParameterStore,
   ParameterStoreState,
-  RawParameter,
   AvailableBimParameter,
-  AvailableUserParameter
+  RawParameter
 } from './types'
 import { parameterCache } from './cache'
 import {
   processRawParameters as processParams,
   extractRawParameters,
-  createSelectedParameters
+  createSelectedParameters,
+  convertToParameterValue
 } from '../parameter-processing'
 
 /**
@@ -76,6 +77,7 @@ function createParameterStore(): ParameterStore {
    */
   async function processParameters(elements: ElementData[]): Promise<void> {
     try {
+      debug.startState(ParameterDebugCategories.STATE, 'Processing parameters')
       state.value.processing.status = 'processing'
       state.value.processing.lastAttempt = Date.now()
 
@@ -83,180 +85,170 @@ function createParameterStore(): ParameterStore {
       const validElements = elements.filter(
         (el) => el.parameters && Object.keys(el.parameters).length > 0
       )
-      if (validElements.length === 0) {
-        debug.warn(
-          ParameterDebugCategories.STATE,
-          'No elements with parameters found',
-          {
-            totalElements: elements.length
-          }
-        )
-        return
-      }
 
-      // Extract and process parameters
-      const rawParams = extractRawParameters(validElements)
-      debug.log(ParameterDebugCategories.STATE, 'Raw parameters extracted', {
-        count: rawParams.length,
-        elementCount: validElements.length,
-        sampleElement: validElements[0].id,
-        sampleParameters: Object.keys(validElements[0].parameters || {}).length
-      })
-
-      const processed = await processParams(rawParams)
-      debug.log(ParameterDebugCategories.STATE, 'Parameters processed', {
-        rawCount: rawParams.length,
-        processedCount: processed.length,
-        elementCount: validElements.length,
-        sampleParameter: processed[0]
+      debug.log(ParameterDebugCategories.STATE, 'Elements with parameters', {
+        total: elements.length,
+        valid: validElements.length,
+        sample: validElements[0]
           ? {
-              id: processed[0].id,
-              value: processed[0].value,
-              kind: processed[0].kind
+              id: validElements[0].id,
+              parameterCount: Object.keys(validElements[0].parameters || {}).length
             }
           : null
       })
 
-      // Split into parent/child and categorize
+      if (validElements.length === 0) {
+        debug.warn(ParameterDebugCategories.STATE, 'No elements with parameters found')
+        return
+      }
+
+      // Extract raw parameters
+      const rawParams = extractRawParameters(validElements)
+      debug.log(ParameterDebugCategories.STATE, 'Raw parameters extracted', {
+        count: rawParams.length,
+        elementCount: validElements.length,
+        sample: rawParams[0]
+          ? {
+              id: rawParams[0].id,
+              category: rawParams[0].metadata?.category,
+              isParent: rawParams[0].metadata?.isParent
+            }
+          : null
+      })
+
+      // Process raw parameters into available parameters
+      const available = await processParams(rawParams)
+      debug.log(ParameterDebugCategories.STATE, 'Parameters processed', {
+        rawCount: rawParams.length,
+        processedCount: available.length,
+        sample: available[0]
+          ? {
+              id: available[0].id,
+              kind: available[0].kind,
+              category: available[0].metadata?.category
+            }
+          : null
+      })
+
+      // Split into parent/child (all world tree parameters are BIM)
       const parentBim: AvailableBimParameter[] = []
-      const parentUser: AvailableUserParameter[] = []
       const childBim: AvailableBimParameter[] = []
-      const childUser: AvailableUserParameter[] = []
 
-      processed.forEach((param) => {
-        const isParent = param.metadata?.isParent
-        const isBim = param.kind === 'bim'
+      // Keep existing user parameters
+      const parentUser = state.value.parent.available.user
+      const childUser = state.value.child.available.user
 
-        if (isParent) {
-          isBim
-            ? parentBim.push(param as AvailableBimParameter)
-            : parentUser.push(param as AvailableUserParameter)
-        } else {
-          isBim
-            ? childBim.push(param as AvailableBimParameter)
-            : childUser.push(param as AvailableUserParameter)
+      // Categorize BIM parameters by parent/child
+      available.forEach((param) => {
+        const category = param.metadata?.category || 'Uncategorized'
+        const isParent = param.metadata?.isParent || parentCategories.includes(category)
+
+        // Set required properties
+        if (!param.sourceGroup) param.sourceGroup = category
+        if (!param.currentGroup) param.currentGroup = param.sourceGroup
+
+        // Add to appropriate array
+        if (isParent) parentBim.push(param)
+        else childBim.push(param)
+      })
+
+      // Log categorization results
+      debug.log(ParameterDebugCategories.STATE, 'Parameters categorized', {
+        total: available.length,
+        parent: {
+          bim: parentBim.length,
+          user: parentUser.length,
+          categories: Array.from(new Set(parentBim.map((p) => p.metadata?.category)))
+        },
+        child: {
+          bim: childBim.length,
+          user: childUser.length,
+          categories: Array.from(new Set(childBim.map((p) => p.metadata?.category)))
         }
       })
 
-      // Preserve existing parameter values
-      const preserveBimValues = (
-        params: AvailableBimParameter[],
-        existingParams: AvailableBimParameter[]
-      ): AvailableBimParameter[] => {
-        return params.map((param) => {
-          const existing = existingParams.find((e) => e.id === param.id)
-          if (existing) {
-            return {
-              ...param,
-              value: existing.value,
-              visible: existing.visible || false
-            }
-          }
-          return {
-            ...param,
-            visible: true // Default visibility for new parameters
-          }
-        })
-      }
+      // Preserve existing values for BIM parameters
+      const parentBimWithValues = parentBim.map((param) => ({
+        ...param,
+        value:
+          state.value.parent.available.bim.find((p) => p.id === param.id)?.value ||
+          param.value,
+        visible: true
+      }))
 
-      const preserveUserValues = (
-        params: AvailableUserParameter[],
-        existingParams: AvailableUserParameter[]
-      ): AvailableUserParameter[] => {
-        return params.map((param) => {
-          const existing = existingParams.find((e) => e.id === param.id)
-          if (existing) {
-            return {
-              ...param,
-              value: existing.value,
-              visible: existing.visible || false
-            }
-          }
-          return {
-            ...param,
-            visible: true // Default visibility for new parameters
-          }
-        })
-      }
+      const childBimWithValues = childBim.map((param) => ({
+        ...param,
+        value:
+          state.value.child.available.bim.find((p) => p.id === param.id)?.value ||
+          param.value,
+        visible: true
+      }))
 
-      // Preserve values in available parameters
-      const parentBimWithValues = preserveBimValues(
-        parentBim,
-        state.value.parent.available.bim
-      )
-      const parentUserWithValues = preserveUserValues(
-        parentUser,
-        state.value.parent.available.user
-      )
-      const childBimWithValues = preserveBimValues(
-        childBim,
-        state.value.child.available.bim
-      )
-      const childUserWithValues = preserveUserValues(
-        childUser,
-        state.value.child.available.user
-      )
-
-      // Create selected parameters from available ones with preserved values
+      // Create selected parameters from both BIM and user parameters
       const parentSelected = createSelectedParameters(
-        [...parentBimWithValues, ...parentUserWithValues],
+        [...parentBimWithValues, ...parentUser],
         state.value.parent.selected
       )
+
       const childSelected = createSelectedParameters(
-        [...childBimWithValues, ...childUserWithValues],
+        [...childBimWithValues, ...childUser],
         state.value.child.selected
       )
 
-      // Update state with preserved values
-      state.value.parent = {
-        raw: rawParams.filter((p: RawParameter) => p.metadata?.isParent),
-        available: {
-          bim: parentBimWithValues,
-          user: parentUserWithValues
-        },
-        selected: parentSelected
-      }
-
-      state.value.child = {
-        raw: rawParams.filter((p: RawParameter) => !p.metadata?.isParent),
-        available: {
-          bim: childBimWithValues,
-          user: childUserWithValues
-        },
-        selected: childSelected
-      }
-
-      debug.log(ParameterDebugCategories.STATE, 'Parameter values preserved', {
+      // Update state atomically
+      state.value = {
         parent: {
-          bim: parentBimWithValues.length,
-          user: parentUserWithValues.length,
-          selected: parentSelected.length
+          raw: rawParams.filter((p) => {
+            const category = p.metadata?.category || 'Uncategorized'
+            return p.metadata?.isParent || parentCategories.includes(category)
+          }),
+          available: {
+            bim: parentBimWithValues,
+            user: parentUser // Keep existing user parameters
+          },
+          selected: parentSelected
         },
         child: {
-          bim: childBimWithValues.length,
-          user: childUserWithValues.length,
-          selected: childSelected.length
-        }
-      })
+          raw: rawParams.filter((p) => {
+            const category = p.metadata?.category || 'Uncategorized'
+            return !(p.metadata?.isParent || parentCategories.includes(category))
+          }),
+          available: {
+            bim: childBimWithValues,
+            user: childUser // Keep existing user parameters
+          },
+          selected: childSelected
+        },
+        processing: {
+          status: 'complete',
+          error: null,
+          lastAttempt: Date.now()
+        },
+        lastUpdated: Date.now(),
+        initialized: true
+      }
 
-      debug.log(ParameterDebugCategories.STATE, 'Parameters updated', {
+      // Log final state
+      const finalCounts = {
         parent: {
           raw: state.value.parent.raw.length,
-          bim: parentBim.length,
+          bim: parentBimWithValues.length,
           user: parentUser.length,
           selected: parentSelected.length
         },
         child: {
           raw: state.value.child.raw.length,
-          bim: childBim.length,
+          bim: childBimWithValues.length,
           user: childUser.length,
           selected: childSelected.length
         }
-      })
+      }
 
-      state.value.processing.status = 'complete'
-      state.value.processing.error = null
-      state.value.lastUpdated = Date.now()
+      debug.completeState(
+        ParameterDebugCategories.STATE,
+        'Parameters processed',
+        finalCounts
+      )
     } catch (err) {
       debug.error(ParameterDebugCategories.STATE, 'Failed to process parameters:', err)
       state.value.processing.status = 'error'
@@ -273,54 +265,124 @@ function createParameterStore(): ParameterStore {
     visible: boolean,
     isParent: boolean
   ): void {
-    const target = isParent ? state.value.parent : state.value.child
-    const param = [...target.available.bim, ...target.available.user].find(
-      (p) => p.id === parameterId
-    )
+    const newState = { ...state.value }
 
-    if (param) {
-      param.visible = visible
-      state.value.lastUpdated = Date.now()
+    if (isParent) {
+      newState.parent = {
+        ...newState.parent,
+        selected: newState.parent.selected.map((param) =>
+          param.id === parameterId ? { ...param, visible } : param
+        )
+      }
+    } else {
+      newState.child = {
+        ...newState.child,
+        selected: newState.child.selected.map((param) =>
+          param.id === parameterId ? { ...param, visible } : param
+        )
+      }
     }
+
+    newState.lastUpdated = Date.now()
+    state.value = newState
+
+    debug.log(ParameterDebugCategories.STATE, 'Parameter visibility updated', {
+      parameterId,
+      visible,
+      isParent,
+      selectedCount: {
+        parent: newState.parent.selected.filter((p) => p.visible).length,
+        child: newState.child.selected.filter((p) => p.visible).length
+      }
+    })
   }
 
   /**
-   * Core operations
+   * Initialize parameter store
    */
   async function init(): Promise<void> {
     try {
-      debug.log(ParameterDebugCategories.STATE, 'Initializing parameter store')
+      debug.startState(ParameterDebugCategories.STATE, 'Initializing parameter store')
       state.value.processing.status = 'processing'
 
-      // Initialize with empty collections
-      state.value.parent = {
-        raw: [],
-        available: {
-          bim: [],
-          user: []
-        },
-        selected: []
-      }
-      state.value.child = {
-        raw: [],
-        available: {
-          bim: [],
-          user: []
-        },
-        selected: []
-      }
+      // Reset state to ensure clean initialization
+      state.value = createInitialState()
 
-      // Wait for any cached data
-      const cached = await parameterCache.loadFromCache()
+      // Wait for any cached data and convert to ElementData format
+      const cached: RawParameter[] | null = await parameterCache.loadFromCache()
       if (cached?.length) {
         debug.log(ParameterDebugCategories.STATE, 'Found cached parameters', {
-          count: cached.length
+          count: cached.length,
+          sample: cached[0]
+            ? {
+                id: cached[0].id,
+                category: cached[0].metadata?.category,
+                isParent: cached[0].metadata?.isParent
+              }
+            : null
         })
+
+        // Convert cached parameters to ElementData format with proper value conversion
+        let convertedElements: ElementData[] = []
+        try {
+          convertedElements = cached.map((param: RawParameter) => {
+            const paramValue = convertToParameterValue(param.value)
+            const parameters: Record<string, ParameterValue> = {
+              [param.id]: paramValue
+            }
+
+            return {
+              id: param.id,
+              type: param.metadata?.category || 'Uncategorized',
+              name: param.name,
+              field: param.id,
+              header: param.name,
+              visible: true,
+              removable: true,
+              isChild: !param.metadata?.isParent,
+              category: param.metadata?.category || 'Uncategorized',
+              parameters,
+              metadata: param.metadata,
+              details: [],
+              order: 0
+            }
+          })
+
+          // Process converted elements
+          await processParameters(convertedElements)
+        } catch (conversionError) {
+          debug.error(
+            ParameterDebugCategories.STATE,
+            'Failed to convert cached parameters:',
+            conversionError
+          )
+          throw new Error('Failed to convert cached parameters')
+        }
+      }
+
+      // Verify store state
+      const counts = {
+        parent: {
+          raw: state.value.parent.raw.length,
+          bim: state.value.parent.available.bim.length,
+          user: state.value.parent.available.user.length,
+          selected: state.value.parent.selected.length
+        },
+        child: {
+          raw: state.value.child.raw.length,
+          bim: state.value.child.available.bim.length,
+          user: state.value.child.available.user.length,
+          selected: state.value.child.selected.length
+        }
       }
 
       state.value.initialized = true
       state.value.processing.status = 'complete'
-      debug.log(ParameterDebugCategories.STATE, 'Parameter store initialized')
+      debug.completeState(
+        ParameterDebugCategories.STATE,
+        'Parameter store initialized',
+        counts
+      )
     } catch (err) {
       debug.error(ParameterDebugCategories.STATE, 'Failed to initialize store:', err)
       state.value.processing.status = 'error'
@@ -329,13 +391,16 @@ function createParameterStore(): ParameterStore {
     }
   }
 
+  /**
+   * Reset store state
+   */
   function reset(): void {
     state.value = createInitialState()
     debug.log(ParameterDebugCategories.STATE, 'Parameter store reset')
   }
 
   /**
-   * Cache operations - only store raw parameters, let initialization flow handle processing
+   * Cache operations
    */
   async function loadFromCache(): Promise<void> {
     await parameterCache.loadFromCache()

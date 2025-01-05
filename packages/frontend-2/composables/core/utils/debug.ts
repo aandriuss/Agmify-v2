@@ -56,6 +56,12 @@ interface DebugLog {
   }
 }
 
+interface LogCounter {
+  count: number
+  lastTimestamp: number
+  suppressionMessage?: DebugLog
+}
+
 interface DebugState {
   isEnabled: boolean
   isPanelVisible: boolean
@@ -63,6 +69,7 @@ interface DebugState {
   hiddenGroups: Set<string> // Groups hidden in UI
   logs: DebugLog[]
   maxLogs: number
+  logCounters: Map<string, LogCounter> // Track log patterns
 }
 
 // Create a non-reactive state to prevent circular updates
@@ -149,7 +156,8 @@ class Debug {
     enabledCategories: new Set(Object.values(DebugCategories)),
     hiddenGroups: new Set<string>(),
     logs: [],
-    maxLogs: 1000
+    maxLogs: 1000,
+    logCounters: new Map()
   })
 
   private flushTimeout: ReturnType<typeof setTimeout> | null = null
@@ -372,6 +380,50 @@ class Debug {
       return
     }
 
+    // Get pattern key based on log type
+    const getPatternKey = (log: Omit<DebugLog, 'timestamp'>): string => {
+      if (log.message === 'Parameter created') {
+        return `${log.category}:parameter-creation`
+      }
+      return `${log.category}:${log.message}`
+    }
+
+    const patternKey = getPatternKey(log)
+    const counter = this.state.value.logCounters.get(patternKey) || {
+      count: 0,
+      lastTimestamp: Date.now()
+    }
+
+    // Reset counter if more than 5 seconds have passed
+    if (Date.now() - counter.lastTimestamp > 5000) {
+      counter.count = 0
+      counter.suppressionMessage = undefined
+    }
+
+    // Check if we should suppress this log
+    if (counter.count >= 6) {
+      // Add suppression message if we haven't already
+      if (!counter.suppressionMessage) {
+        const suppressionLog = {
+          category: log.category,
+          level: 'warn' as const,
+          message: `Additional logs of type "${log.message}" suppressed (limit: 6)`,
+          data: { category: log.category },
+          timestamp: new Date().toISOString()
+        }
+        counter.suppressionMessage = suppressionLog
+        logBuffer.push(suppressionLog)
+      }
+      counter.count++
+      this.state.value.logCounters.set(patternKey, counter)
+      return
+    }
+
+    // Update counter
+    counter.count++
+    counter.lastTimestamp = Date.now()
+    this.state.value.logCounters.set(patternKey, counter)
+
     const newLog = {
       ...log,
       timestamp: new Date().toISOString()
@@ -424,6 +476,14 @@ class Debug {
         this.state.value.maxLogs
       )
       logBuffer = []
+
+      // Clean up old counters
+      const now = Date.now()
+      for (const [key, counter] of this.state.value.logCounters.entries()) {
+        if (now - counter.lastTimestamp > 5000) {
+          this.state.value.logCounters.delete(key)
+        }
+      }
     }
     this.flushTimeout = null
   }

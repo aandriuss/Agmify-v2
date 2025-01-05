@@ -25,6 +25,8 @@ import type {
   TableColumn
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
+import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
+import { isValidColumn, isValidElement } from './types'
 
 const initialState: StoreState = {
   projectId: null,
@@ -55,11 +57,17 @@ const initialState: StoreState = {
 export class CoreStore implements Store {
   private internalState = ref<StoreState>(initialState)
 
-  public readonly state = computed<StoreState>(() => this.internalState.value)
+  public readonly state = computed<StoreState>(() => ({ ...this.internalState.value }))
   public readonly projectId = computed(() => this.internalState.value.projectId)
-  public readonly scheduleData = computed(() => this.internalState.value.scheduleData)
-  public readonly evaluatedData = computed(() => this.internalState.value.evaluatedData)
-  public readonly tableData = computed(() => this.internalState.value.tableData)
+  public readonly scheduleData = computed<ElementData[]>(() => [
+    ...this.internalState.value.scheduleData
+  ])
+  public readonly evaluatedData = computed<ElementData[]>(() => [
+    ...this.internalState.value.evaluatedData
+  ])
+  public readonly tableData = computed<TableRow[]>(() => [
+    ...this.internalState.value.tableData
+  ])
 
   // Current view columns
   public readonly currentTableColumns = computed(
@@ -101,44 +109,115 @@ export class CoreStore implements Store {
   public readonly loading = computed(() => this.internalState.value.loading)
   public readonly error = computed(() => this.internalState.value.error)
 
+  // Transaction manager
+  private transactionQueue: Array<Partial<StoreState>> = []
+  private transactionTimeout: ReturnType<typeof setTimeout> | null = null
+  private readonly TRANSACTION_DELAY = 50 // ms
+
+  private async flushTransaction() {
+    if (this.transactionQueue.length === 0) return
+
+    // Split updates into parameter updates and other updates
+    const parameterUpdates = this.transactionQueue.filter((update) =>
+      Object.keys(update).some((key) => key.includes('parameter'))
+    )
+    const otherUpdates = this.transactionQueue.filter(
+      (update) => !Object.keys(update).some((key) => key.includes('parameter'))
+    )
+
+    this.transactionQueue = []
+    this.transactionTimeout = null
+
+    // Wait for any pending operations
+    await Promise.resolve()
+
+    try {
+      this.internalState.value.loading = true
+
+      // Process parameter updates first
+      if (parameterUpdates.length > 0) {
+        const mergedParams = parameterUpdates.reduce(
+          (acc, update) => ({ ...acc, ...update }),
+          {} as Partial<StoreState>
+        )
+        debug.startState(DebugCategories.SAVED_PARAMETERS, 'Updating parameters', {
+          updatedFields: Object.keys(mergedParams)
+        })
+        this.internalState.value = {
+          ...this.internalState.value,
+          ...mergedParams
+        }
+        debug.completeState(DebugCategories.SAVED_PARAMETERS, 'Parameters updated')
+      }
+
+      // Process other updates
+      if (otherUpdates.length > 0) {
+        const mergedOthers = otherUpdates.reduce(
+          (acc, update) => ({ ...acc, ...update }),
+          {} as Partial<StoreState>
+        )
+        const category = Object.keys(mergedOthers).some((key) => key.includes('data'))
+          ? DebugCategories.DATA_TRANSFORM
+          : DebugCategories.STATE
+
+        debug.startState(category, 'Updating store state', {
+          updatedFields: Object.keys(mergedOthers)
+        })
+        this.internalState.value = {
+          ...this.internalState.value,
+          ...mergedOthers
+        }
+        debug.completeState(category, 'Store state updated')
+      }
+    } finally {
+      this.internalState.value.loading = false
+    }
+  }
+
   // Lifecycle
   public readonly lifecycle = {
     init: async () => {
-      debug.log(DebugCategories.INITIALIZATION, 'Initializing core store')
+      debug.startState(DebugCategories.INITIALIZATION, 'Initializing core store')
       try {
         this.internalState.value.loading = true
-        await Promise.resolve() // Make async
+        this.internalState.value.error = null
+
+        // Wait for auth to be ready
+        const waitForUser = useWaitForActiveUser()
+        const userResult = await waitForUser()
+        if (!userResult?.data?.activeUser) {
+          const error = new Error('Authentication required')
+          debug.error(DebugCategories.INITIALIZATION, error.message)
+          this.internalState.value.error = error
+          throw error
+        }
+        debug.log(DebugCategories.INITIALIZATION, 'Auth ready')
+
+        // Mark store as initialized
         this.internalState.value.initialized = true
+        debug.completeState(DebugCategories.INITIALIZATION, 'Core store initialized')
+      } catch (err) {
+        debug.error(DebugCategories.ERROR, 'Failed to initialize core store', err)
+        const error =
+          err instanceof Error ? err : new Error('Failed to initialize store')
+        this.internalState.value.error = error
+        throw error
       } finally {
         this.internalState.value.loading = false
       }
     },
     update: async (state: Partial<StoreState>) => {
-      // Determine the most specific category based on what's being updated
-      const category = Object.keys(state).some((key) => key.includes('parameter'))
-        ? DebugCategories.SAVED_PARAMETERS
-        : Object.keys(state).some((key) => key.includes('data'))
-        ? DebugCategories.DATA_TRANSFORM
-        : DebugCategories.STATE
+      // Queue the update
+      this.transactionQueue.push(state)
 
-      debug.startState(category, 'Updating core store state', {
-        updatedFields: Object.keys(state),
-        type: category
-      })
-      try {
-        this.internalState.value.loading = true
-        await Promise.resolve() // Make async
-        this.internalState.value = {
-          ...this.internalState.value,
-          ...state
-        }
-        debug.completeState(DebugCategories.STATE, 'Core store state updated', {
-          updatedFields: Object.keys(state),
-          updates: state,
-          type: category
+      // Schedule flush if not already scheduled
+      if (!this.transactionTimeout) {
+        return new Promise<void>((resolve) => {
+          this.transactionTimeout = setTimeout(async () => {
+            await this.flushTransaction()
+            resolve()
+          }, this.TRANSACTION_DELAY)
         })
-      } finally {
-        this.internalState.value.loading = false
       }
     },
     cleanup: () => {
@@ -147,7 +226,7 @@ export class CoreStore implements Store {
     }
   }
 
-  // Core mutations
+  // Core mutations with optimized updates
   public setProjectId = (id: string | null) => this.lifecycle.update({ projectId: id })
   public setScheduleData = (data: ElementData[]) =>
     this.lifecycle.update({ scheduleData: data })
@@ -161,56 +240,80 @@ export class CoreStore implements Store {
       currentTableColumns: table,
       currentDetailColumns: detail
     })
+
   public setColumnVisibility = (columnId: string, visible: boolean) => {
-    const columns = [...this.internalState.value.currentTableColumns]
-    const column = columns.find((c) => c.id === columnId)
-    if (column) {
-      column.visible = visible
-      return this.lifecycle.update({ currentTableColumns: columns })
-    }
+    const currentColumns = this.internalState.value.currentTableColumns
+    if (!Array.isArray(currentColumns)) return
+
+    const validColumns = currentColumns.filter(isValidColumn)
+    const columns = validColumns.map((col): TableColumn => ({ ...col }))
+
+    const targetColumn = columns.find((c) => c.id === columnId)
+    if (!targetColumn) return
+
+    const updatedColumns = columns.map(
+      (col): TableColumn => (col.id === columnId ? { ...col, visible } : col)
+    )
+
+    return this.lifecycle.update({ currentTableColumns: updatedColumns })
   }
+
   public setColumnOrder = (columnId: string, newIndex: number) => {
-    const columns = [...this.internalState.value.currentTableColumns]
-    const oldIndex = columns.findIndex((c) => c.id === columnId)
-    if (oldIndex !== -1) {
-      const [column] = columns.splice(oldIndex, 1)
-      columns.splice(newIndex, 0, column)
-      return this.lifecycle.update({ currentTableColumns: columns })
-    }
+    const currentColumns = this.internalState.value.currentTableColumns
+    if (!Array.isArray(currentColumns)) return
+
+    const validColumns = currentColumns.filter(isValidColumn)
+    const columns = validColumns.map((col): TableColumn => ({ ...col }))
+
+    const targetColumn = columns.find((c) => c.id === columnId)
+    if (!targetColumn) return
+
+    const updatedColumns = columns.filter((c) => c.id !== columnId)
+    updatedColumns.splice(newIndex, 0, targetColumn)
+
+    return this.lifecycle.update({ currentTableColumns: updatedColumns })
   }
 
   // Header mutations
   public setAvailableHeaders = (headers: TableHeaders) =>
-    this.lifecycle.update({ availableHeaders: headers })
+    this.lifecycle.update({ availableHeaders: { ...headers } })
 
   // Category mutations
   public setSelectedCategories = (categories: Set<string>) =>
-    this.lifecycle.update({ selectedCategories: categories })
+    this.lifecycle.update({ selectedCategories: new Set(categories) })
   public setParentCategories = (categories: string[]) =>
-    this.lifecycle.update({ selectedParentCategories: categories })
+    this.lifecycle.update({ selectedParentCategories: [...categories] })
   public setChildCategories = (categories: string[]) =>
-    this.lifecycle.update({ selectedChildCategories: categories })
+    this.lifecycle.update({ selectedChildCategories: [...categories] })
 
   // Table mutations
   public setTablesArray = (tables: TableInfo[]) =>
-    this.lifecycle.update({ tablesArray: tables })
+    this.lifecycle.update({ tablesArray: [...tables] })
   public setTableInfo = (info: TableInfoUpdatePayload) => {
     const update: Partial<StoreState> = {}
-    if (info.selectedTableId) update.selectedTableId = info.selectedTableId
-    if (info.tableName) update.tableName = info.tableName
-    if (info.currentTableId) update.currentTableId = info.currentTableId
-    if (info.tableKey) update.tableKey = info.tableKey
+    if (info.selectedTableId) update.selectedTableId = String(info.selectedTableId)
+    if (info.tableName) update.tableName = String(info.tableName)
+    if (info.currentTableId) update.currentTableId = String(info.currentTableId)
+    if (info.tableKey) update.tableKey = String(info.tableKey)
     return this.lifecycle.update(update)
   }
 
   // Element mutations
   public setElementVisibility = (elementId: string, visible: boolean) => {
-    const data = [...this.internalState.value.scheduleData]
-    const element = data.find((e) => e.id === elementId)
-    if (element) {
-      element.visible = visible
-      return this.lifecycle.update({ scheduleData: data })
-    }
+    const currentData = this.internalState.value.scheduleData
+    if (!Array.isArray(currentData)) return
+
+    const validData = currentData.filter(isValidElement)
+    const data = validData.map((el): ElementData => ({ ...el }))
+
+    const targetElement = data.find((e) => e.id === elementId)
+    if (!targetElement) return
+
+    const updatedData = data.map(
+      (el): ElementData => (el.id === elementId ? { ...el, visible } : el)
+    )
+
+    return this.lifecycle.update({ scheduleData: updatedData })
   }
 
   // Status mutations

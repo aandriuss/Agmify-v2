@@ -5,6 +5,7 @@ import type {
   TableSettings,
   TableStoreOptions
 } from './types'
+import type { SelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import type {
   TableCategoryFilters,
   TableSelectedParameters
@@ -341,14 +342,71 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       return
     }
 
-    // Ensure all parameters have required properties
-    const isValid =
-      parameters.parent.every((p) => p.id && p.name && p.kind && p.type) &&
-      parameters.child.every((p) => p.id && p.name && p.kind && p.type)
-    if (!isValid) {
+    // Log parameter details for debugging
+    debug.log(DebugCategories.STATE, 'Validating parameters', {
+      parent: parameters.parent.map((p) => ({
+        id: p.id,
+        name: p.name,
+        kind: p.kind,
+        type: p.type,
+        value: p.value
+      })),
+      child: parameters.child.map((p) => ({
+        id: p.id,
+        name: p.name,
+        kind: p.kind,
+        type: p.type,
+        value: p.value
+      }))
+    })
+
+    // Ensure all parameters have required properties and valid values
+    const validateParameter = (param: unknown): param is SelectedParameter => {
+      const p = param as Partial<SelectedParameter>
+      const isValid = !!(
+        p.id &&
+        p.name &&
+        p.kind &&
+        p.type &&
+        (p.kind === 'bim' || p.kind === 'user') &&
+        typeof p.value !== 'undefined'
+      )
+
+      if (!isValid) {
+        debug.warn(DebugCategories.STATE, 'Invalid parameter', {
+          parameter: {
+            id: p.id || 'missing',
+            name: p.name || 'missing',
+            kind: p.kind || 'missing',
+            type: p.type || 'missing',
+            value: typeof p.value === 'undefined' ? 'missing' : p.value
+          },
+          missing: {
+            id: !p.id,
+            name: !p.name,
+            kind: !p.kind,
+            type: !p.type,
+            value: typeof p.value === 'undefined'
+          }
+        })
+      }
+
+      return isValid
+    }
+
+    const validParent = parameters.parent.every(validateParameter)
+    const validChild = parameters.child.every(validateParameter)
+
+    if (!validParent || !validChild) {
       debug.error(
         DebugCategories.ERROR,
-        'Invalid parameters: Missing required properties'
+        'Invalid parameters: Missing required properties',
+        {
+          validParent,
+          validChild,
+          parentCount: parameters.parent.length,
+          childCount: parameters.child.length
+        }
       )
       return
     }
@@ -356,6 +414,39 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     // Convert parameters to columns using createTableColumns
     const parentColumns = createTableColumns(parameters.parent)
     const childColumns = createTableColumns(parameters.child)
+
+    debug.log(DebugCategories.STATE, 'Created columns from parameters', {
+      parent: {
+        parameters: parameters.parent.length,
+        columns: parentColumns.length,
+        sample: parentColumns[0]
+          ? {
+              id: parentColumns[0].id,
+              field: parentColumns[0].field,
+              header: parentColumns[0].header,
+              parameter: {
+                id: parentColumns[0].parameter.id,
+                value: parentColumns[0].parameter.value
+              }
+            }
+          : null
+      },
+      child: {
+        parameters: parameters.child.length,
+        columns: childColumns.length,
+        sample: childColumns[0]
+          ? {
+              id: childColumns[0].id,
+              field: childColumns[0].field,
+              header: childColumns[0].header,
+              parameter: {
+                id: childColumns[0].parameter.id,
+                value: childColumns[0].parameter.value
+              }
+            }
+          : null
+      }
+    })
 
     // Update table with new parameters and columns
     updateTable({
