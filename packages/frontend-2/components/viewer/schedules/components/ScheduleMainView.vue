@@ -46,31 +46,22 @@
           />
 
           <!-- Data Table -->
-          <template v-if="hasParameters">
-            <BaseDataTable
-              :table-id="selectedTableId"
-              :table-name="tableName"
-              :data="tableData as ViewerTableRow[]"
-              :columns="tableStore.currentTable.value?.parentColumns || []"
-              :detail-columns="tableStore.currentTable.value?.childColumns || []"
-              :loading="isLoading"
-              :error="error"
-              @row-expand="events.handleRowExpand"
-              @row-collapse="events.handleRowCollapse"
-              @column-visibility-change="handleColumnVisibilityChange"
-              @column-reorder="handleColumnReorder"
-              @column-resize="handleColumnResize"
-              @error="events.handleError"
-              @retry="() => events.handleRetry({ timestamp: Date.now() })"
-            />
-          </template>
-          <template v-else>
-            <div class="p-4 text-center text-gray-500">
-              <div class="flex flex-col items-center gap-2">
-                <span>Loading parameters...</span>
-              </div>
-            </div>
-          </template>
+          <BaseDataTable
+            :table-id="selectedTableId"
+            :table-name="tableName"
+            :data="tableData as ViewerTableRow[]"
+            :columns="tableStore.currentTable.value?.parentColumns || []"
+            :detail-columns="tableStore.currentTable.value?.childColumns || []"
+            :loading="unref(isComponentLoading)"
+            :error="error"
+            @row-expand="events.handleRowExpand"
+            @row-collapse="events.handleRowCollapse"
+            @column-visibility-change="handleColumnVisibilityChange"
+            @column-reorder="handleColumnReorder"
+            @column-resize="handleColumnResize"
+            @error="events.handleError"
+            @retry="() => events.handleRetry({ timestamp: Date.now() })"
+          />
 
           <DebugPanel
             v-if="isTestMode"
@@ -170,7 +161,7 @@ const tableStore = useTableStore()
 const tableParameters = useTableParameters()
 
 // Initialize parameter extraction
-const { allElements, isLoading: isLoadingElements } = useElementsData({
+const { allElements, isLoading: _isLoadingElements } = useElementsData({
   selectedParentCategories: computed(() => store.selectedParentCategories.value),
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
 })
@@ -179,17 +170,13 @@ const { allElements, isLoading: isLoadingElements } = useElementsData({
 const {
   scheduleData,
   tableData,
-  processElements,
-  isLoading: isLoadingSelected,
+  isLoading: _isLoadingSelected,
   state
 } = useSelectedElementsData({
   elements: allElements,
   selectedParentCategories: computed(() => store.selectedParentCategories.value),
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
 })
-
-// Combined loading state
-const isLoading = computed(() => isLoadingElements.value || isLoadingSelected.value)
 
 // Initialize parameter system for UI interactions
 const parameters = useParameters({
@@ -250,21 +237,17 @@ const events = useScheduleEvents({
   onRetry: () => emit('retry', { timestamp: Date.now() })
 })
 
-// Computed states
-const hasParameters = computed(() => {
-  const parentParams = tableStore.currentTable.value?.parentColumns?.length ?? 0
-  const childParams = tableStore.currentTable.value?.childColumns?.length ?? 0
-  return parentParams > 0 || childParams > 0
-})
-
 const isComponentLoading = computed(() => {
-  return (
-    isLoading.value ||
-    parameters.isProcessing.value ||
-    !isInitialized.value ||
-    bimElements.isLoading.value ||
-    !hasParameters.value
-  )
+  const currentTable = tableStore.currentTable.value
+  const hasTableData = tableData.value?.length > 0
+  const hasParameters =
+    currentTable?.selectedParameters?.parent?.length ||
+    currentTable?.selectedParameters?.child?.length
+  const isProcessing = state.value?.processingState.isProcessingElements
+  const isInitializingParameters = tableParameters.isInitializing.value
+
+  // Show loading while initializing parameters or processing data
+  return isInitializingParameters || isProcessing || (!hasTableData && !hasParameters)
 })
 
 // Error state
@@ -278,6 +261,10 @@ const error = computed(() => {
   if (parameters.hasError.value) {
     debug.error(DebugCategories.ERROR, 'Parameters error')
     return new Error('Failed to process parameters')
+  }
+  if (tableParameters.hasError.value) {
+    debug.error(DebugCategories.ERROR, 'Parameter initialization error')
+    return tableParameters.error.value || new Error('Failed to initialize parameters')
   }
   return null
 })
@@ -657,9 +644,7 @@ onMounted(async () => {
       debug.startState(DebugCategories.PARAMETERS, 'Initializing table parameters')
       await tableParameters.initializeTableParameters()
 
-      // Process data with parameters
-      debug.startState(DebugCategories.PARAMETERS, 'Processing data')
-      await processElements()
+      // Data will be processed by useTableParameters after parameters are initialized
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to initialize component:', err)
       throw err

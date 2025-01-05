@@ -12,12 +12,15 @@
  * 3. Table store manages selected parameters and columns
  */
 
-import { computed, watch } from 'vue'
+import { computed, watch, ref } from 'vue'
+import { useStore } from '~/composables/core/store'
 import { useTableStore } from './store/store'
 import { useParameterStore } from '../parameters/store/store'
+import { useSelectedElementsData } from './state/useSelectedElementsData'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import type { SelectedParameter } from '~/composables/core/types'
+import type { SelectedParameter, ElementData } from '~/composables/core/types'
 import { defaultSelectedParameters } from '~/composables/core/tables/config/defaults'
+import { isValidStoreState } from '~/composables/core/types/state'
 
 interface TableSelectedParameters {
   parent: SelectedParameter[]
@@ -28,8 +31,36 @@ interface TableSelectedParameters {
  * Composable to handle interaction between table and parameter stores
  */
 export function useTableParameters() {
+  const coreStore = useStore()
   const tableStore = useTableStore()
   const parameterStore = useParameterStore()
+
+  // Loading state
+  const isInitializing = ref(false)
+  const hasError = ref(false)
+  const error = ref<Error | null>(null)
+
+  // Type-safe store access
+  const scheduleData = computed<ElementData[]>(() => {
+    if (!isValidStoreState(coreStore.initialized)) return []
+    return coreStore.scheduleData.value || []
+  })
+
+  const selectedParentCategories = computed<string[]>(() => {
+    if (!isValidStoreState(coreStore.initialized)) return []
+    return coreStore.selectedParentCategories.value
+  })
+
+  const selectedChildCategories = computed<string[]>(() => {
+    if (!isValidStoreState(coreStore.initialized)) return []
+    return coreStore.selectedChildCategories.value
+  })
+
+  const { processElements } = useSelectedElementsData({
+    elements: scheduleData,
+    selectedParentCategories,
+    selectedChildCategories
+  })
 
   // Computed
   const currentTableId = computed(() => tableStore.state.value.currentTableId)
@@ -51,6 +82,10 @@ export function useTableParameters() {
       table: currentTable.value,
       force: forceInit
     })
+
+    isInitializing.value = true
+    hasError.value = false
+    error.value = null
 
     try {
       debug.startState(DebugCategories.PARAMETERS, 'Initializing table parameters')
@@ -139,35 +174,20 @@ export function useTableParameters() {
       // Get current selected parameters
       const currentParams = currentTable.value?.selectedParameters
 
-      // If no parameters or empty arrays, use default selected parameters
-      if (!currentParams?.parent?.length && !currentParams?.child?.length) {
-        debug.log(DebugCategories.PARAMETERS, 'No parameters selected, using defaults')
+      // Get selected parameters (default or existing)
+      const selectedParams =
+        !currentParams?.parent?.length && !currentParams?.child?.length
+          ? defaultSelectedParameters
+          : currentParams || defaultSelectedParameters
 
-        debug.log(DebugCategories.PARAMETERS, 'Default parameters selected', {
-          parent: defaultSelectedParameters.parent.length,
-          child: defaultSelectedParameters.child.length,
-          sample: defaultSelectedParameters.parent[0]
-            ? {
-                id: defaultSelectedParameters.parent[0].id,
-                kind: defaultSelectedParameters.parent[0].kind,
-                type: defaultSelectedParameters.parent[0].type,
-                group: defaultSelectedParameters.parent[0].group,
-                order: defaultSelectedParameters.parent[0].order
-              }
-            : null
-        })
+      // Update table with selected parameters
+      await tableStore.updateSelectedParameters({
+        parent: [...selectedParams.parent],
+        child: [...selectedParams.child]
+      } satisfies TableSelectedParameters)
 
-        await tableStore.updateSelectedParameters({
-          parent: [...defaultSelectedParameters.parent],
-          child: [...defaultSelectedParameters.child]
-        } satisfies TableSelectedParameters)
-      } else if (currentParams) {
-        // Update with existing selected parameters
-        await tableStore.updateSelectedParameters({
-          parent: currentParams.parent,
-          child: currentParams.child
-        } satisfies TableSelectedParameters)
-      }
+      // Process elements with selected parameters
+      await processElements()
 
       debug.log(DebugCategories.PARAMETERS, 'Parameters initialized', {
         parent: selectedParameters.value.parent.length,
@@ -183,13 +203,17 @@ export function useTableParameters() {
         }
       })
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
+      const errorObj = err instanceof Error ? err : new Error(String(err))
       debug.error(
         DebugCategories.PARAMETERS,
         'Failed to initialize table parameters:',
-        error
+        errorObj
       )
-      throw error
+      hasError.value = true
+      error.value = errorObj
+      throw errorObj
+    } finally {
+      isInitializing.value = false
     }
   }
 
@@ -224,13 +248,13 @@ export function useTableParameters() {
         }
       })
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
+      const errorObj = err instanceof Error ? err : new Error(String(err))
       debug.error(
         DebugCategories.PARAMETERS,
         'Failed to save parameter selection:',
-        error
+        errorObj
       )
-      throw error
+      throw errorObj
     }
   }
 
@@ -239,6 +263,9 @@ export function useTableParameters() {
     currentTableId,
     currentTable,
     selectedParameters,
+    isInitializing: computed(() => isInitializing.value),
+    hasError: computed(() => hasError.value),
+    error: computed(() => error.value),
 
     // Methods
     initializeTableParameters,

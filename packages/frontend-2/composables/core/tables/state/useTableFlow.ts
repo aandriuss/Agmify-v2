@@ -6,7 +6,6 @@ import { useParameterStore } from '~/composables/core/parameters/store'
 import { createTableColumns } from '~/composables/core/types/tables/table-column'
 import { defaultSelectedParameters } from '../config/defaults'
 import type { TableSettings } from '../store/types'
-import type { TableSelectedParameters } from '~/composables/core/types/tables/table-config'
 
 export interface UseTableFlowOptions {
   currentTable: ComputedRef<TableSettings | null>
@@ -66,16 +65,10 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
         await parameterStore.init()
       }
 
-      // Get config with default parameters if needed
-      const selectedParams: TableSelectedParameters =
-        tableConfig.value.selectedParameters.parent.length ||
-        tableConfig.value.selectedParameters.child.length
-          ? tableConfig.value.selectedParameters
-          : defaultSelectedParameters
-
+      // Always start with default parameters to ensure consistent initialization
       const config = {
         ...tableConfig.value,
-        selectedParameters: selectedParams
+        selectedParameters: defaultSelectedParameters
       }
 
       // Update table store

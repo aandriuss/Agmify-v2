@@ -2,8 +2,10 @@ import { ref, computed, watch } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
 import type {
   ElementData,
-  ViewerTableRow
-} from '~/composables/core/types/elements/elements-base'
+  ViewerTableRow,
+  TableRow,
+  Store
+} from '~/composables/core/types'
 import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
@@ -56,7 +58,11 @@ function hasParameters(
 export function useSelectedElementsData(
   options: UseSelectedElementsDataOptions
 ): UseSelectedElementsDataReturn {
-  const store = useStore()
+  const store = useStore() as Store & {
+    setScheduleData: (data: ElementData[]) => void
+    setEvaluatedData: (data: ElementData[]) => void
+    setTableData: (data: TableRow[]) => void
+  }
   const tableStore = useTableStore()
 
   const elementsMap = ref<Map<string, ElementData>>(new Map())
@@ -243,11 +249,16 @@ export function useSelectedElementsData(
         parameters: element.parameters || {} // Ensure parameters is present
       }))
 
-      // Update store with final data
-      await store.lifecycle.update({
-        scheduleData: viewerData,
-        tableData: viewerData
-      })
+      // Update local and store data with proper typing
+      const typedViewerData = viewerData as ViewerTableRow[]
+      tableData.value = typedViewerData
+
+      // Update store data using individual methods
+      await Promise.all([
+        store.setScheduleData(typedViewerData),
+        store.setTableData(typedViewerData),
+        store.setEvaluatedData(typedViewerData)
+      ])
 
       debug.log(DebugCategories.DATA_TRANSFORM, 'Elements processed', {
         totalElements: elements.length,
@@ -255,7 +266,15 @@ export function useSelectedElementsData(
         parentElements: elementsMap.value.size,
         childElements: childElementsList.value.length,
         unattachedChildren: unattachedChildren.length,
-        processingTime: `${Date.now() - performance.now()}ms`
+        processingTime: `${Date.now() - performance.now()}ms`,
+        tableData: {
+          rows: typedViewerData.length,
+          columns: tableStore.currentTable.value?.parentColumns?.length || 0,
+          parameters: tableStore.currentTable.value?.selectedParameters || {
+            parent: [],
+            child: []
+          }
+        }
       })
 
       debug.completeState(DebugCategories.INITIALIZATION, 'Elements processed')
@@ -296,6 +315,55 @@ export function useSelectedElementsData(
         await processElements()
       }
     }
+  )
+
+  // Process elements immediately when we have both elements and parameters
+  watch(
+    [
+      () => options.elements.value,
+      () => tableStore.currentTable.value?.selectedParameters
+    ],
+    async ([elements, params]) => {
+      // Skip if already processing
+      if (processingState.value.isProcessingElements) {
+        debug.warn(DebugCategories.DATA_TRANSFORM, 'Already processing elements')
+        return
+      }
+
+      // Check if we have both elements and parameters
+      const hasElements = elements?.length > 0
+      const hasParams =
+        params && (Array.isArray(params.parent) || Array.isArray(params.child))
+
+      if (hasElements && hasParams && params) {
+        debug.log(DebugCategories.DATA_TRANSFORM, 'Initial data ready', {
+          elements: elements.length,
+          parameters: {
+            parent: Array.isArray(params.parent) ? params.parent.length : 0,
+            child: Array.isArray(params.child) ? params.child.length : 0
+          }
+        })
+
+        // Process elements and update state
+        processingState.value.isProcessingElements = true
+        try {
+          await processElements()
+        } finally {
+          processingState.value.isProcessingElements = false
+        }
+      } else {
+        debug.log(DebugCategories.DATA_TRANSFORM, 'Waiting for data', {
+          hasElements,
+          hasParams,
+          elements: elements?.length || 0,
+          parameters: {
+            parent: params && Array.isArray(params.parent) ? params.parent.length : 0,
+            child: params && Array.isArray(params.child) ? params.child.length : 0
+          }
+        })
+      }
+    },
+    { immediate: true }
   )
 
   // Watch for category changes
