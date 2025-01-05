@@ -3,6 +3,7 @@ import type { ParameterValue } from '~/composables/core/types/parameters'
 import { isEquationValue, isPrimitiveValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { parentCategories } from '~/composables/core/config/categories'
+import { getMostSpecificCategory } from '~/composables/core/config/categoryMapping'
 import type {
   RawParameter,
   AvailableBimParameter,
@@ -104,24 +105,11 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
           // Skip system parameters
           if (key.startsWith('__')) return
 
-          // Handle dot notation parameters
+          // Keep original parameter structure
           const parts = key.split('.')
-          let group: string
-          let paramName: string
-
-          if (key.startsWith('Parameters.')) {
-            // Handle Parameters.* format
-            group = 'Parameters'
-            paramName = parts.slice(1).join('.')
-          } else if (parts.length > 1) {
-            // Handle dot notation (e.g. "Model Properties.Slope_Angle_End_T")
-            group = parts[0]
-            paramName = parts.slice(1).join('.')
-          } else {
-            // Default case
-            group = 'Parameters'
-            paramName = key
-          }
+          const group = parts.length > 1 ? parts[0] : 'Parameters'
+          const paramName = parts.length > 1 ? parts.slice(1).join('.') : key
+          const paramId = key // Keep original key as ID
 
           // Check if value is a JSON string
           let parsedValue: unknown = value
@@ -161,14 +149,17 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
             element.metadata?.isParent ||
             (element.category && parentCategories.includes(element.category))
 
-          // Create raw parameter with parent/child info
+          // Create raw parameter preserving original structure
           const rawParam: RawParameter = {
-            id: key,
+            id: paramId,
             name: paramName,
             value: validatedValue,
             sourceGroup: group,
             metadata: {
-              category: element.category,
+              category: element.category || 'Uncategorized', // Keep original IFC category
+              mappedCategory: element.category
+                ? getMostSpecificCategory(element.category)
+                : 'Uncategorized', // Add mapped category
               fullKey: key,
               isSystem: false,
               group,

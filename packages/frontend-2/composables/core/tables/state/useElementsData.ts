@@ -397,9 +397,21 @@ export function useElementsData(
           }
         })
 
-        // Update store and local data with processed elements
+        // Update store with processed elements
         await store.lifecycle.update({
-          scheduleData: updatedElements
+          scheduleData: updatedElements,
+          tableData: updatedElements,
+          evaluatedData: updatedElements
+        })
+
+        debug.log(DebugCategories.DATA_TRANSFORM, 'Store updated with elements', {
+          total: updatedElements.length,
+          parents: updatedElements.filter((el) => el.metadata?.isParent).length,
+          children: updatedElements.filter((el) => el.isChild).length,
+          parameters: updatedElements.reduce(
+            (acc, el) => acc + Object.keys(el.parameters || {}).length,
+            0
+          )
         })
 
         // Transform elements into table rows with all parameters
@@ -571,17 +583,87 @@ export function useElementsData(
       const parentElements = updatedElements.filter((el) => el.metadata?.isParent)
       const childElements = updatedElements.filter((el) => el.isChild)
 
-      // Update store and local data with proper typing
+      // Transform elements with parameters
+      const transformedElements = updatedElements.map((el) => {
+        const parameters = { ...el.parameters }
+
+        // Ensure all selected parameters exist
+        const table = tableStore.currentTable.value
+        if (table?.selectedParameters) {
+          const { parent: parentParams, child: childParams } = table.selectedParameters
+
+          // Add missing parent parameters
+          parentParams.forEach((param: SelectedParameter) => {
+            if (!parameters[param.id]) {
+              const availableParam = createAvailableBimParameter(
+                {
+                  id: param.id,
+                  name: param.name,
+                  value: null,
+                  sourceGroup: param.group,
+                  metadata: param.metadata || {}
+                },
+                param.type as BimValueType,
+                null
+              )
+              parameters[param.id] = availableParam.value
+            }
+          })
+
+          // Add missing child parameters
+          childParams.forEach((param: SelectedParameter) => {
+            if (!parameters[param.id]) {
+              const availableParam = createAvailableBimParameter(
+                {
+                  id: param.id,
+                  name: param.name,
+                  value: null,
+                  sourceGroup: param.group,
+                  metadata: param.metadata || {}
+                },
+                param.type as BimValueType,
+                null
+              )
+              parameters[param.id] = availableParam.value
+            }
+          })
+        }
+
+        return {
+          ...el,
+          parameters
+        }
+      })
+
+      // Update store with transformed elements
       await store.lifecycle.update({
-        scheduleData: updatedElements
+        scheduleData: transformedElements,
+        tableData: transformedElements,
+        evaluatedData: transformedElements
+      })
+
+      debug.log(DebugCategories.INITIALIZATION, 'Store updated with elements', {
+        total: transformedElements.length,
+        parents: parentElements.length,
+        children: childElements.length,
+        parameters: transformedElements.reduce(
+          (acc, el) => acc + Object.keys(el.parameters || {}).length,
+          0
+        )
       })
 
       // Update local data structures
-      tableData.value = updatedElements
+      tableData.value = transformedElements
       childElementsList.value = childElements
       elementsMap.value = new Map(
         parentElements.map((parent) => [parent.mark || parent.id, parent])
       )
+
+      debug.log(DebugCategories.INITIALIZATION, 'Local data structures updated', {
+        tableData: tableData.value.length,
+        childElements: childElementsList.value.length,
+        parentElements: elementsMap.value.size
+      })
 
       debug.log(DebugCategories.INITIALIZATION, 'Data structures updated', {
         total: updatedElements.length,

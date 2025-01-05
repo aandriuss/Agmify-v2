@@ -8,6 +8,7 @@ import type {
 } from '~/composables/core/types'
 import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
+import { getMostSpecificCategory } from '~/composables/core/config/categoryMapping'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { convertToParameterValue } from '~/composables/core/parameters/parameter-processing'
@@ -426,7 +427,9 @@ export function useSelectedElementsData(
 
     // First filter by categories
     const filteredElements = scheduleData.value.filter((el) => {
-      const category = el.category || 'Uncategorized'
+      // Get original and mapped categories
+      const originalCategory = el.category || 'Uncategorized'
+      const mappedCategory = getMostSpecificCategory(originalCategory)
       let include = false
 
       // If no categories selected, include all elements
@@ -439,9 +442,9 @@ export function useSelectedElementsData(
         if (!hasParentCategories) {
           include = true
         }
-        // Otherwise check if category matches selected parent categories
+        // Otherwise check if mapped category matches selected parent categories
         else {
-          include = options.selectedParentCategories.value.includes(category)
+          include = options.selectedParentCategories.value.includes(mappedCategory)
         }
       }
       // For child elements
@@ -450,15 +453,16 @@ export function useSelectedElementsData(
         if (!hasChildCategories) {
           include = true
         }
-        // Otherwise check if category matches selected child categories
+        // Otherwise check if mapped category matches selected child categories
         else {
-          include = options.selectedChildCategories.value.includes(category)
+          include = options.selectedChildCategories.value.includes(mappedCategory)
         }
       }
 
       debug.log(DebugCategories.DATA_TRANSFORM, 'Element filtering', {
         id: el.id,
-        category,
+        originalCategory,
+        mappedCategory,
         isChild: el.isChild,
         included: include,
         reason: include

@@ -15,9 +15,9 @@
         :show-bim-data="true"
         :show-parameter-stats="true"
         :show-data-structure="true"
-        :schedule-data="store.scheduleData.value"
-        :evaluated-data="store.evaluatedData.value"
-        :table-data="store.tableData.value"
+        :schedule-data="store.scheduleData.value || []"
+        :evaluated-data="store.evaluatedData.value || []"
+        :table-data="store.tableData.value || []"
         :parent-elements="parentElements"
         :child-elements="childElements"
         :parent-parameter-columns="tableStore.currentTable?.value?.parentColumns || []"
@@ -43,13 +43,11 @@ const tableStore = useTableStore()
 
 // Computed properties for relationship data
 const parentElements = computed<ElementData[]>(() => {
-  const data = store.scheduleData.value || []
-  return data.filter((el) => !el.isChild)
+  return (store.scheduleData.value || []).filter((el) => el.metadata?.isParent)
 })
 
 const childElements = computed<ElementData[]>(() => {
-  const data = store.scheduleData.value || []
-  return data.filter((el) => el.isChild)
+  return (store.scheduleData.value || []).filter((el) => el.isChild)
 })
 </script>
 

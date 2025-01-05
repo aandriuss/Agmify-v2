@@ -393,24 +393,33 @@ async function handleColumnVisibilityChange(
       visible: payload.visible
     })
 
-    // Update parameter visibility in both stores
-    await Promise.all([
-      parameterStore.updateParameterVisibility(
-        payload.column.parameter.id,
-        payload.visible,
-        payload.column.parameter.kind === 'bim'
-      ),
-      tableStore.updateColumns(
-        tableStore.currentTable.value?.parentColumns.map((col) => ({
-          ...col,
-          visible: col.id === payload.column.id ? payload.visible : col.visible
-        })) || [],
-        tableStore.currentTable.value?.childColumns.map((col) => ({
-          ...col,
-          visible: col.id === payload.column.id ? payload.visible : col.visible
-        })) || []
-      )
-    ])
+    // Update column visibility in table store
+    await tableStore.updateColumns(
+      tableStore.currentTable.value?.parentColumns.map((col) => ({
+        ...col,
+        visible: col.id === payload.column.id ? payload.visible : col.visible,
+        parameter: {
+          ...col.parameter,
+          visible:
+            col.id === payload.column.id ? payload.visible : col.parameter.visible
+        }
+      })) || [],
+      tableStore.currentTable.value?.childColumns.map((col) => ({
+        ...col,
+        visible: col.id === payload.column.id ? payload.visible : col.visible,
+        parameter: {
+          ...col.parameter,
+          visible:
+            col.id === payload.column.id ? payload.visible : col.parameter.visible
+        }
+      })) || []
+    )
+
+    debug.log(DebugCategories.COLUMNS, 'Column visibility updated', {
+      columnId: payload.column.id,
+      visible: payload.visible,
+      type: payload.column.parameter.kind
+    })
 
     debug.log(DebugCategories.COLUMNS, 'Column visibility updated in stores')
   } catch (err) {

@@ -24,7 +24,6 @@ import type {
   TableSettings
 } from '~/composables/core/types'
 import { isValidStoreState } from '~/composables/core/types/state'
-import { defaultSelectedParameters } from '~/composables/core/tables/config/defaults'
 
 interface TableSelectedParameters {
   parent: SelectedParameter[]
@@ -290,17 +289,45 @@ export function useTableParameters() {
       // Get current selected parameters
       const currentParams = currentTable.value?.selectedParameters
 
-      // Get selected parameters (default or existing)
-      const selectedParams =
-        !currentParams?.parent?.length && !currentParams?.child?.length
-          ? defaultSelectedParameters
-          : currentParams || defaultSelectedParameters
+      // Get available parameters from parameter store
+      const availableParams = {
+        parent: [
+          ...parameterStore.parentAvailableBimParameters.value,
+          ...parameterStore.parentAvailableUserParameters.value
+        ],
+        child: [
+          ...parameterStore.childAvailableBimParameters.value,
+          ...parameterStore.childAvailableUserParameters.value
+        ]
+      }
 
-      // Update table with selected parameters
-      await tableStore.updateSelectedParameters({
-        parent: [...selectedParams.parent],
-        child: [...selectedParams.child]
-      } satisfies TableSelectedParameters)
+      // Use existing selected parameters or none
+      const selectedParams = currentParams || {
+        parent: [],
+        child: []
+      }
+
+      debug.log(DebugCategories.PARAMETERS, 'Parameter availability', {
+        available: {
+          parent: {
+            bim: parameterStore.parentAvailableBimParameters.value.length,
+            user: parameterStore.parentAvailableUserParameters.value.length,
+            total: availableParams.parent.length
+          },
+          child: {
+            bim: parameterStore.childAvailableBimParameters.value.length,
+            user: parameterStore.childAvailableUserParameters.value.length,
+            total: availableParams.child.length
+          }
+        },
+        selected: {
+          parent: selectedParams.parent.length,
+          child: selectedParams.child.length
+        }
+      })
+
+      // Update table with selected parameters (or none if new table)
+      await tableStore.updateSelectedParameters(selectedParams)
 
       // Process elements with selected parameters
       await processElements()
