@@ -100,9 +100,10 @@ import type {
   SelectedParameter,
   AvailableParameter,
   TableColumn,
-  BaseItem
+  BaseItem,
+  ParameterValue
 } from '~/composables/core/types'
-import { createSelectedParameter } from '~/composables/core/types'
+import { createSelectedParameter, isEquationValue } from '~/composables/core/types'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import ParameterManager from '~/components/core/parameters/next/ParameterManager.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
@@ -179,14 +180,35 @@ const tableData = computed(() => {
 
   // Group children by matching mark/host parameters
   childElements.value.forEach((child) => {
-    const hostValue = child.parameters?.['host']?.value
+    const hostParam = child.parameters?.['host'] as ParameterValue | undefined
+    let hostValue: string | undefined
+
+    if (hostParam) {
+      if (isEquationValue(hostParam)) {
+        // For equation values, use the computed result
+        hostValue =
+          hostParam.computed !== undefined ? String(hostParam.computed) : undefined
+      } else {
+        // For primitive values, convert directly to string
+        hostValue = String(hostParam)
+      }
+    }
+
     let matched = false
 
     if (hostValue) {
       // Try to find parent with matching mark parameter
-      const matchingParent = parentData.find(
-        (parent) => parent.parameters?.['mark']?.value === hostValue
-      )
+      const matchingParent = parentData.find((parent) => {
+        const markParam = parent.parameters?.['mark'] as ParameterValue | undefined
+        if (!markParam) return false
+
+        if (isEquationValue(markParam)) {
+          return markParam.computed !== undefined
+            ? String(markParam.computed) === hostValue
+            : false
+        }
+        return String(markParam) === hostValue
+      })
 
       if (matchingParent && typeof matchingParent.id === 'string') {
         const children = childrenByParent.get(matchingParent.id) || []
@@ -203,19 +225,39 @@ const tableData = computed(() => {
   })
 
   // Create result with both matched and ungrouped children
-  const result = parentData.map((parent) => ({
-    ...parent,
-    details: typeof parent.id === 'string' ? childrenByParent.get(parent.id) || [] : []
-  }))
+  const result = parentData.map((parent) => {
+    // Extract all properties except details to avoid spreading undefined
+    const { details: _, ...parentWithoutDetails } = parent
+    return {
+      ...parentWithoutDetails,
+      details:
+        typeof parent.id === 'string' ? childrenByParent.get(parent.id) || [] : []
+    }
+  })
 
   // Add ungrouped section if there are any ungrouped children
   if (ungroupedChildren.length > 0) {
-    result.push({
+    // Create a constant for the ungrouped section to ensure type safety
+    const ungroupedSection = {
+      details: ungroupedChildren,
+      type: 'ungrouped',
+      mark: 'Ungrouped',
+      category: 'Ungrouped',
+      parameters: {
+        mark: 'Ungrouped'
+      } as Record<string, ParameterValue>,
+      metadata: { isParent: true } as Record<string, unknown>,
+      _visible: true,
       id: 'ungrouped',
-      metadata: { isParent: true },
-      parameters: { mark: { value: 'Ungrouped' } },
-      details: ungroupedChildren
-    } as ElementData)
+      name: 'Ungrouped',
+      field: 'ungrouped',
+      header: 'Ungrouped',
+      visible: true,
+      order: result.length,
+      removable: false,
+      description: 'Elements without matching parent'
+    }
+    result.push(ungroupedSection)
   }
 
   return result
