@@ -3,44 +3,24 @@
  *
  * Purpose:
  * 1. Table Management
- *    - Load/save tables from/to PostgreSQL
+ *    - Load/save tables via GraphQL
  *    - Manage current table state
+ *    - Handle table operations (create, update, delete)
  *
- * 2. Selected Parameters
- *    - Own selected parameters (both parent and child)
- *    - Manage parameter visibility and order
- *
- * 3. Column Management
+ * 2. Column Management
  *    - Own table columns using TableColumn type
  *    - Manage column visibility and order
  *
  * Does NOT handle:
- * - Raw parameters (managed by Parameter Store)
- * - Available parameters (managed by Parameter Store)
+ * - Parameters (managed by Parameter Store)
+ * - Categories (managed by Core Store)
  * - UI state (managed by Core Store)
  */
 
 import type { Ref } from 'vue'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
 
-import type {
-  BaseTableConfig,
-  TableCategoryFilters,
-  TableSelectedParameters
-} from '~/composables/core/types/tables/table-config'
-
-/**
- * Table settings stored in PostgreSQL
- * Extends base config with display-specific properties
- */
-export interface TableSettings extends BaseTableConfig {
-  id: string
-  name: string
-  displayName: string
-  childColumns: TableColumn[]
-  parentColumns: TableColumn[]
-  lastUpdateTimestamp: number
-}
+import type { BaseTableConfig } from '~/composables/core/types'
 
 /**
  * Table store state
@@ -55,6 +35,19 @@ export interface TableStoreState {
   loading: boolean
   error: Error | null
   lastUpdated: number
+}
+
+/**
+ * Table settings stored in PostgreSQL
+ * Extends base config with display-specific properties
+ */
+export interface TableSettings extends BaseTableConfig {
+  id: string
+  name: string
+  displayName: string
+  childColumns: TableColumn[]
+  parentColumns: TableColumn[]
+  lastUpdateTimestamp: number
 }
 
 /**
@@ -79,12 +72,6 @@ export interface TableStore {
   saveTable(settings: TableSettings): Promise<void>
   updateTable(updates: Partial<TableSettings>): void
   deleteTable(tableId: string): Promise<void>
-
-  // Parameter management
-  updateSelectedParameters(parameters: TableSelectedParameters): void
-
-  // Category management
-  updateCategoryFilters(filters: TableCategoryFilters): void
 
   // Column management
   updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]): void

@@ -44,28 +44,21 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
       try {
         debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
 
-        // Get selected parameters from current table if available
-        const currentParams = store.currentTable.value?.selectedParameters
+        // Get current table columns or use defaults
+        const currentTable = store.currentTable.value
+        const parentColumns =
+          currentTable?.parentColumns || defaultTableConfig.parentColumns
+        const childColumns =
+          currentTable?.childColumns || defaultTableConfig.childColumns
 
-        // If we have current parameters, use them
-        if (currentParams?.parent?.length && currentParams?.child?.length) {
-          debug.log(DebugCategories.INITIALIZATION, 'Using existing parameters', {
-            parent: currentParams.parent.length,
-            child: currentParams.child.length
-          })
+        debug.log(DebugCategories.INITIALIZATION, 'Initializing table columns', {
+          parent: parentColumns.length,
+          child: childColumns.length,
+          source: currentTable ? 'current' : 'default'
+        })
 
-          await Promise.resolve(store.updateSelectedParameters(currentParams))
-        } else {
-          // Otherwise use defaults
-          const defaultParams = defaultTableConfig.selectedParameters
-
-          debug.log(DebugCategories.INITIALIZATION, 'Using default parameters', {
-            parent: defaultParams.parent.length,
-            child: defaultParams.child.length
-          })
-
-          await Promise.resolve(store.updateSelectedParameters(defaultParams))
-        }
+        // Update columns first
+        await store.updateColumns(parentColumns, childColumns)
 
         // Update other table settings
         await Promise.resolve(
@@ -97,9 +90,10 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
         // Reset state to defaults
         state.value = { ...defaultState }
 
-        // Update selected parameters first to ensure columns are created
-        await Promise.resolve(
-          store.updateSelectedParameters(defaultTableConfig.selectedParameters)
+        // Update columns with defaults
+        await store.updateColumns(
+          defaultTableConfig.parentColumns,
+          defaultTableConfig.childColumns
         )
 
         // Update other table settings

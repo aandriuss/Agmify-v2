@@ -7,7 +7,8 @@ import type {
   ParameterStore,
   ParameterStoreState,
   AvailableBimParameter,
-  RawParameter
+  RawParameter,
+  SelectedParameter
 } from './types'
 import { parameterCache } from './cache'
 import {
@@ -34,6 +35,10 @@ function createInitialState(): ParameterStoreState {
         bim: [],
         user: []
       }
+    },
+    selectedParameters: {
+      parent: [],
+      child: []
     },
     processing: {
       status: 'idle',
@@ -201,6 +206,10 @@ function createParameterStore(): ParameterStore {
             user: childUser // Keep existing user parameters
           }
         },
+        selectedParameters: {
+          parent: state.value.selectedParameters.parent,
+          child: state.value.selectedParameters.child
+        },
         processing: {
           status: 'complete',
           error: null,
@@ -324,6 +333,110 @@ function createParameterStore(): ParameterStore {
     await parameterCache.clearCache()
   }
 
+  // Available parameters with base visibility
+  const selectedParentParameters = computed(() => {
+    return state.value.parent.available.bim.map((param) => ({
+      id: param.id,
+      name: param.name,
+      visible: param.visible ?? true, // Default to true if undefined
+      metadata: param.metadata ?? {}, // Default to empty object if undefined
+      kind: param.kind || 'bim', // Default to 'bim' if undefined
+      type: param.type || 'string', // Default to 'string' if undefined
+      value: param.value ?? null, // Default to null if undefined
+      group: param.currentGroup || 'Uncategorized', // Default to 'Uncategorized' if undefined
+      order: 0 // Always 0 for now
+    }))
+  })
+
+  const selectedChildParameters = computed(() => {
+    return state.value.child.available.bim.map((param) => ({
+      id: param.id,
+      name: param.name,
+      visible: param.visible ?? true, // Default to true if undefined
+      metadata: param.metadata ?? {}, // Default to empty object if undefined
+      kind: param.kind || 'bim', // Default to 'bim' if undefined
+      type: param.type || 'string', // Default to 'string' if undefined
+      value: param.value ?? null, // Default to null if undefined
+      group: param.currentGroup || 'Uncategorized', // Default to 'Uncategorized' if undefined
+      order: 0 // Always 0 for now
+    }))
+  })
+
+  /**
+   * Update base parameter visibility
+   */
+  function updateParameterVisibility(parameterId: string, visible: boolean): void {
+    debug.startState(ParameterDebugCategories.STATE, 'Updating parameter visibility')
+
+    // Update base visibility in available parameters
+    const parentParam = state.value.parent.available.bim.find(
+      (p) => p.id === parameterId
+    )
+    if (parentParam) {
+      parentParam.visible = visible
+    }
+
+    const childParam = state.value.child.available.bim.find((p) => p.id === parameterId)
+    if (childParam) {
+      childParam.visible = visible
+    }
+
+    state.value.lastUpdated = Date.now()
+
+    debug.completeState(
+      ParameterDebugCategories.STATE,
+      'Parameter base visibility updated',
+      {
+        parameterId,
+        visible
+      }
+    )
+  }
+
+  /**
+   * Update selected parameters and their visibility
+   */
+  function updateSelectedParameters(params: {
+    parent?: SelectedParameter[]
+    child?: SelectedParameter[]
+  }): void {
+    debug.startState(ParameterDebugCategories.STATE, 'Updating selected parameters')
+
+    // Update base visibility for each parameter
+    if (params.parent) {
+      params.parent.forEach((param) => {
+        const availableParam = state.value.parent.available.bim.find(
+          (p) => p.id === param.id
+        )
+        if (availableParam) {
+          availableParam.visible = param.visible
+        }
+      })
+    }
+
+    if (params.child) {
+      params.child.forEach((param) => {
+        const availableParam = state.value.child.available.bim.find(
+          (p) => p.id === param.id
+        )
+        if (availableParam) {
+          availableParam.visible = param.visible
+        }
+      })
+    }
+
+    state.value.lastUpdated = Date.now()
+
+    debug.completeState(
+      ParameterDebugCategories.STATE,
+      'Selected parameters and visibility updated',
+      {
+        parent: params.parent?.length ?? 0,
+        child: params.child?.length ?? 0
+      }
+    )
+  }
+
   return {
     // State
     state: computed(() => state.value),
@@ -338,6 +451,10 @@ function createParameterStore(): ParameterStore {
     childAvailableBimParameters,
     childAvailableUserParameters,
 
+    // Selected parameters
+    selectedParentParameters,
+    selectedChildParameters,
+
     // Status
     isProcessing,
     hasError,
@@ -346,6 +463,8 @@ function createParameterStore(): ParameterStore {
     // Core operations
     init,
     processParameters,
+    updateSelectedParameters,
+    updateParameterVisibility,
 
     // Cache operations
     loadFromCache,

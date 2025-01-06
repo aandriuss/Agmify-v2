@@ -61,11 +61,20 @@ export type ParameterDebugCategory =
  * Parameter store state
  */
 export interface ParameterStoreState extends BaseParameterCollections {
+  // Processing state
   processing: {
     status: 'idle' | 'processing' | 'complete' | 'error'
     error: Error | null
     lastAttempt: number | null
   }
+
+  // Selected parameters
+  selectedParameters: {
+    parent: SelectedParameter[]
+    child: SelectedParameter[]
+  }
+
+  // Store state
   lastUpdated: number
   initialized: boolean
 }
@@ -87,6 +96,10 @@ export interface ParameterStore {
   childAvailableBimParameters: ComputedRef<AvailableBimParameter[]>
   childAvailableUserParameters: ComputedRef<AvailableUserParameter[]>
 
+  // Selected parameters
+  selectedParentParameters: ComputedRef<SelectedParameter[]>
+  selectedChildParameters: ComputedRef<SelectedParameter[]>
+
   // Status
   isProcessing: ComputedRef<boolean>
   hasError: ComputedRef<boolean>
@@ -95,6 +108,13 @@ export interface ParameterStore {
   // Core operations
   init(): Promise<void>
   processParameters(elements: ElementData[]): Promise<void>
+
+  // Parameter operations
+  updateSelectedParameters(params: {
+    parent?: SelectedParameter[]
+    child?: SelectedParameter[]
+  }): void
+  updateParameterVisibility(parameterId: string, visible: boolean): void
 
   // Cache operations
   loadFromCache(): Promise<void>

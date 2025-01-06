@@ -1,39 +1,29 @@
 import { ref, computed } from 'vue'
-import type {
-  TableStore,
-  TableStoreState,
-  TableSettings,
-  TableStoreOptions
-} from './types'
-import type {
-  TableCategoryFilters,
-  TableSelectedParameters
-} from '~/composables/core/types/tables/table-config'
+import type { TableStore, TableStoreState, TableSettings } from './types'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
 import { useTableService } from '../services/tableService'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { defaultSelectedParameters, defaultTableConfig } from '../config/defaults'
+import { defaultTableConfig } from '../config/defaults'
+import { useParameterStore } from '~/composables/core/parameters/store'
 import { createTableColumns } from '~/composables/core/types/tables/table-column'
+import type { useApolloClient } from '@vue/apollo-composable'
 
 /**
  * Table Store
  *
  * Responsibilities:
  * 1. Table Management
- *    - Load/save tables from/to PostgreSQL
+ *    - Load/save tables via GraphQL
  *    - Manage current table state
+ *    - Handle table operations (create, update, delete)
  *
- * 2. Selected Parameters
- *    - Owns selected parameters (both parent and child)
- *    - Manages parameter visibility and order
- *
- * 3. Column Management
- *    - Owns table columns (using TableColumn type)
- *    - Manages column visibility and order
+ * 2. Column Management
+ *    - Own table columns using TableColumn type
+ *    - Manage column visibility and order
  *
  * Does NOT handle:
- * - Raw parameters (managed by Parameter Store)
- * - Available parameters (managed by Parameter Store)
+ * - Parameters (managed by Parameter Store)
+ * - Categories (managed by Core Store)
  * - UI state (managed by Core Store)
  */
 
@@ -53,20 +43,26 @@ function createInitialState(): TableStoreState {
 /**
  * Create table store
  */
+export interface TableStoreOptions {
+  initialTables?: TableSettings[]
+  apolloClient?: ReturnType<typeof useApolloClient>['client']
+}
+
 function createTableStore(options: TableStoreOptions = {}): TableStore {
   // Initialize state
   const state = ref<TableStoreState>(createInitialState())
-  const tableService = useTableService()
+  const tableService = useTableService({
+    apolloClient: options.apolloClient
+  })
 
-  // Create default table with columns created from default parameters
-  const defaultParentColumns = createTableColumns(defaultSelectedParameters.parent)
-  const defaultChildColumns = createTableColumns(defaultSelectedParameters.child)
+  // Initialize stores
+  const parameterStore = useParameterStore()
 
-  // Use consistent default table config
+  // Create default table
   const defaultTable: TableSettings = {
     ...defaultTableConfig,
-    parentColumns: defaultParentColumns,
-    childColumns: defaultChildColumns,
+    parentColumns: [],
+    childColumns: [],
     lastUpdateTimestamp: Date.now()
   }
 
@@ -74,16 +70,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   state.value.tables.set(defaultTable.id, defaultTable)
   state.value.currentTableId = defaultTable.id
 
-  debug.log(DebugCategories.STATE, 'Default table created', {
-    selectedParameters: {
-      parent: defaultSelectedParameters.parent.length,
-      child: defaultSelectedParameters.child.length
-    },
-    columns: {
-      parent: defaultParentColumns.length,
-      child: defaultChildColumns.length
-    }
-  })
+  debug.log(DebugCategories.STATE, 'Default table created')
 
   // Add initial tables if provided
   if (options.initialTables) {
@@ -114,25 +101,40 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       // Fetch table from PostgreSQL
       const table = await tableService.fetchTable(tableId)
 
-      // Create columns from selected parameters
-      const parentColumns = createTableColumns(table.selectedParameters.parent)
-      const childColumns = createTableColumns(table.selectedParameters.child)
+      // Create columns from parameter store
+      const parentColumns = createTableColumns(
+        parameterStore.selectedParentParameters.value
+      )
+      const childColumns = createTableColumns(
+        parameterStore.selectedChildParameters.value
+      )
+
+      // Preserve existing visibility settings from loaded table
+      const updatedParentColumns = parentColumns.map((col) => ({
+        ...col,
+        visible:
+          table.parentColumns.find((c) => c.id === col.id)?.visible ??
+          col.parameter.visible
+      }))
+
+      const updatedChildColumns = childColumns.map((col) => ({
+        ...col,
+        visible:
+          table.childColumns.find((c) => c.id === col.id)?.visible ??
+          col.parameter.visible
+      }))
 
       // Update store with table and generated columns
       state.value.tables.set(tableId, {
         ...table,
-        parentColumns,
-        childColumns
+        parentColumns: updatedParentColumns,
+        childColumns: updatedChildColumns
       })
       state.value.currentTableId = tableId
       state.value.lastUpdated = Date.now()
 
       debug.log(DebugCategories.STATE, 'Table loaded with columns', {
         tableId,
-        selectedParameters: {
-          parent: table.selectedParameters.parent.length,
-          child: table.selectedParameters.child.length
-        },
         columns: {
           parent: parentColumns.length,
           child: childColumns.length
@@ -164,27 +166,52 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     state.value.loading = true
 
     try {
-      // Save to PostgreSQL
-      const savedTable = await tableService.saveTable(settings)
+      // Save table with current visibility settings
+      const savedTable = await tableService.saveTable({
+        ...settings,
+        parentColumns: settings.parentColumns.map((col) => ({
+          ...col,
+          visible: col.visible // Keep visibility override
+        })),
+        childColumns: settings.childColumns.map((col) => ({
+          ...col,
+          visible: col.visible // Keep visibility override
+        }))
+      })
 
-      // Create columns from selected parameters
-      const parentColumns = createTableColumns(savedTable.selectedParameters.parent)
-      const childColumns = createTableColumns(savedTable.selectedParameters.child)
+      // Create columns from parameter store with saved visibility
+      const parentColumns = createTableColumns(
+        parameterStore.selectedParentParameters.value
+      )
+      const childColumns = createTableColumns(
+        parameterStore.selectedChildParameters.value
+      )
+
+      // Preserve saved visibility settings
+      const updatedParentColumns = parentColumns.map((col) => ({
+        ...col,
+        visible:
+          savedTable.parentColumns.find((c) => c.id === col.id)?.visible ??
+          col.parameter.visible
+      }))
+
+      const updatedChildColumns = childColumns.map((col) => ({
+        ...col,
+        visible:
+          savedTable.childColumns.find((c) => c.id === col.id)?.visible ??
+          col.parameter.visible
+      }))
 
       // Update store with table and generated columns
       state.value.tables.set(savedTable.id, {
         ...savedTable,
-        parentColumns,
-        childColumns
+        parentColumns: updatedParentColumns,
+        childColumns: updatedChildColumns
       })
       state.value.lastUpdated = Date.now()
 
       debug.log(DebugCategories.STATE, 'Table saved with columns', {
         tableId: savedTable.id,
-        selectedParameters: {
-          parent: savedTable.selectedParameters.parent.length,
-          child: savedTable.selectedParameters.child.length
-        },
         columns: {
           parent: parentColumns.length,
           child: childColumns.length
@@ -239,29 +266,8 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       return
     }
 
-    // If selected parameters are being updated, ensure columns are created
-    let updated = { ...current, ...updates }
-    if (updates.selectedParameters) {
-      const parentColumns = createTableColumns(updates.selectedParameters.parent)
-      const childColumns = createTableColumns(updates.selectedParameters.child)
-      updated = {
-        ...updated,
-        parentColumns,
-        childColumns
-      }
-
-      debug.log(DebugCategories.STATE, 'Table updated with new columns', {
-        tableId: current.id,
-        selectedParameters: {
-          parent: updates.selectedParameters.parent.length,
-          child: updates.selectedParameters.child.length
-        },
-        columns: {
-          parent: parentColumns.length,
-          child: childColumns.length
-        }
-      })
-    }
+    // Update table with current state
+    const updated = { ...current, ...updates }
 
     state.value.tables.set(current.id, updated)
     state.value.lastUpdated = Date.now()
@@ -274,22 +280,21 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   }
 
   /**
-   * Delete table from PostgreSQL
+   * Delete table and save changes
    */
   async function deleteTable(tableId: string) {
     debug.startState(DebugCategories.STATE, 'Deleting table', { tableId })
     state.value.loading = true
 
     try {
-      // Delete from PostgreSQL
-      await tableService.deleteTable(tableId)
-
-      // Update store
+      // Remove from local state
       state.value.tables.delete(tableId)
       if (state.value.currentTableId === tableId) {
         state.value.currentTableId = null
       }
-      state.value.lastUpdated = Date.now()
+
+      // Delete from PostgreSQL
+      await tableService.deleteTable(tableId)
 
       debug.log(DebugCategories.STATE, 'Table deleted', { tableId })
     } catch (err) {
@@ -303,66 +308,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   }
 
   /**
-   * Update selected parameters and corresponding columns
-   */
-  function updateSelectedParameters(parameters: TableSelectedParameters) {
-    if (!state.value.currentTableId) {
-      debug.error(
-        DebugCategories.ERROR,
-        'Cannot update parameters: No current table selected'
-      )
-      return
-    }
-
-    debug.startState(DebugCategories.STATE, 'Updating selected parameters')
-
-    // Create columns directly from parameters
-    const parentColumns = createTableColumns(parameters.parent)
-    const childColumns = createTableColumns(parameters.child)
-
-    // Update state immediately
-    const currentId = state.value.currentTableId
-    const current = state.value.tables.get(currentId)
-    if (current) {
-      state.value.tables.set(currentId, {
-        ...current,
-        selectedParameters: parameters,
-        parentColumns,
-        childColumns,
-        lastUpdateTimestamp: Date.now()
-      })
-      state.value.lastUpdated = Date.now()
-    }
-
-    debug.completeState(DebugCategories.STATE, 'Parameters and columns updated', {
-      parameters: {
-        parent: parameters.parent.length,
-        child: parameters.child.length
-      },
-      columns: {
-        parent: parentColumns.length,
-        child: childColumns.length
-      }
-    })
-  }
-
-  /**
-   * Update category filters
-   */
-  function updateCategoryFilters(filters: TableCategoryFilters) {
-    if (!state.value.currentTableId) {
-      debug.error(
-        DebugCategories.ERROR,
-        'Cannot update filters: No current table selected'
-      )
-      return
-    }
-
-    updateTable({ categoryFilters: filters })
-  }
-
-  /**
-   * Update columns
+   * Update columns with visibility
    */
   function updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]) {
     if (!state.value.currentTableId) {
@@ -394,19 +340,51 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       return
     }
 
-    // Update table with new columns
-    updateTable({ parentColumns, childColumns })
+    // Get current table
+    const current = state.value.tables.get(state.value.currentTableId)
+    if (!current) {
+      debug.error(
+        DebugCategories.ERROR,
+        'Cannot update columns: Current table not found'
+      )
+      return
+    }
 
-    debug.completeState(DebugCategories.STATE, 'Columns updated', {
+    // Preserve existing visibility settings
+    const updatedParentColumns = parentColumns.map((col) => {
+      const existingCol = current.parentColumns.find((c) => c.id === col.id)
+      return {
+        ...col,
+        visible: existingCol?.visible ?? col.parameter.visible // Use existing visibility or fall back to parameter visibility
+      }
+    })
+
+    const updatedChildColumns = childColumns.map((col) => {
+      const existingCol = current.childColumns.find((c) => c.id === col.id)
+      return {
+        ...col,
+        visible: existingCol?.visible ?? col.parameter.visible // Use existing visibility or fall back to parameter visibility
+      }
+    })
+
+    // Update table with new columns
+    updateTable({
+      parentColumns: updatedParentColumns,
+      childColumns: updatedChildColumns
+    })
+
+    debug.completeState(DebugCategories.STATE, 'Columns updated with visibility', {
       tableId: state.value.currentTableId,
       columns: {
         parent: {
-          count: parentColumns.length,
-          ids: parentColumns.map((col) => col.id)
+          count: updatedParentColumns.length,
+          ids: updatedParentColumns.map((col) => col.id),
+          visible: updatedParentColumns.filter((col) => col.visible).length
         },
         child: {
-          count: childColumns.length,
-          ids: childColumns.map((col) => col.id)
+          count: updatedChildColumns.length,
+          ids: updatedChildColumns.map((col) => col.id),
+          visible: updatedChildColumns.filter((col) => col.visible).length
         }
       }
     })
@@ -419,15 +397,11 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     // Create initial state
     const initialState = createInitialState()
 
-    // Create default table with columns created from default parameters
-    const defaultParentColumns = createTableColumns(defaultSelectedParameters.parent)
-    const defaultChildColumns = createTableColumns(defaultSelectedParameters.child)
-
-    // Use consistent default table config
+    // Create default table
     const defaultTable: TableSettings = {
       ...defaultTableConfig,
-      parentColumns: defaultParentColumns,
-      childColumns: defaultChildColumns,
+      parentColumns: [],
+      childColumns: [],
       lastUpdateTimestamp: Date.now()
     }
 
@@ -435,26 +409,13 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     initialState.tables.set(defaultTable.id, defaultTable)
     initialState.currentTableId = defaultTable.id
 
-    debug.log(DebugCategories.STATE, 'Default table reset with columns', {
-      selectedParameters: {
-        parent: defaultSelectedParameters.parent.length,
-        child: defaultSelectedParameters.child.length
-      },
-      columns: {
-        parent: defaultParentColumns.length,
-        child: defaultChildColumns.length
-      }
-    })
+    debug.log(DebugCategories.STATE, 'Default table reset')
 
     // Update state
     state.value = initialState
 
     debug.log(DebugCategories.STATE, 'Table store reset with defaults', {
-      tableId: defaultTable.id,
-      selectedParameters: {
-        parent: defaultSelectedParameters.parent.length,
-        child: defaultSelectedParameters.child.length
-      }
+      tableId: defaultTable.id
     })
   }
 
@@ -491,12 +452,6 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     updateTable,
     deleteTable,
 
-    // Parameter management
-    updateSelectedParameters,
-
-    // Category management
-    updateCategoryFilters,
-
     // Column management
     updateColumns,
 
@@ -506,13 +461,21 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   }
 }
 
-// Global store instance
-const store = createTableStore()
+// Store factory
+let storeInstance: TableStore | null = null
 
 /**
  * Table store composable
- * Provides access to the global table store instance
+ * Creates or returns the global table store instance
  */
-export function useTableStore() {
-  return store
+export function useTableStore(options: TableStoreOptions = {}) {
+  if (!storeInstance || options.apolloClient) {
+    storeInstance = createTableStore(options)
+  }
+  return storeInstance
+}
+
+// Reset store (useful for testing)
+export function resetTableStore() {
+  storeInstance = null
 }

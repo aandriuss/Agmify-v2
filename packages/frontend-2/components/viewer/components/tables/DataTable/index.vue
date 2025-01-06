@@ -91,7 +91,7 @@ import type {
   DataTableExpandedRows
 } from 'primevue/datatable'
 import { useTableConfigs } from '~/composables/useTableConfigs'
-import { useParameterStore } from '~/composables/core/parameters/store'
+import { useTableStore } from '~/composables/core/tables/store/store'
 
 interface Props {
   tableId: string
@@ -392,22 +392,19 @@ async function handleApplyColumns(): Promise<void> {
     localParentColumns.value = safeJSONClone(tempParentColumns.value)
     localChildColumns.value = safeJSONClone(tempChildColumns.value)
 
-    // Convert columns to selected parameters
-    const parameterStore = useParameterStore()
+    // Update table columns with visibility
+    const tableStore = useTableStore()
+    if (!tableStore) {
+      throw new Error('Table store not initialized')
+    }
 
-    // Update parent parameters
-    const parentSelectedParameters = localParentColumns.value.map(
-      (column) => column.parameter
+    // Update columns in table store
+    await tableStore.updateColumns(
+      safeJSONClone(localParentColumns.value),
+      safeJSONClone(localChildColumns.value)
     )
-    parameterStore.updateSelectedParameters(parentSelectedParameters, true)
 
-    // Update child parameters
-    const childSelectedParameters = localChildColumns.value.map(
-      (column) => column.parameter
-    )
-    parameterStore.updateSelectedParameters(childSelectedParameters, false)
-
-    // Update table configs
+    // Update table configs if needed
     if (props.tableId) {
       await tableConfigs.updateTableColumns(
         props.tableId,

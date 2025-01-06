@@ -75,13 +75,7 @@
 
       <!-- Actions -->
       <div class="parameter-actions">
-        <FormButton
-          v-if="canCreateParameters"
-          primary
-          size="sm"
-          :icon-left="PlusIcon"
-          @click="createParameter"
-        >
+        <FormButton primary size="sm" :icon-left="PlusIcon" @click="createParameter">
           Add Parameter
         </FormButton>
       </div>
@@ -91,7 +85,6 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { PropType } from 'vue'
 import { CheckCircleIcon, PlusIcon, PencilIcon } from '@heroicons/vue/24/solid'
 import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/outline'
 import type {
@@ -101,6 +94,7 @@ import type {
 } from '~/composables/core/types/parameters/parameter-states'
 import LoadingState from '~/components/core/LoadingState.vue'
 import ParameterList from './ParameterList.vue'
+import { useParameterStore } from '~/composables/core/parameters/store'
 
 interface ExtendedBimParameter extends AvailableBimParameter {
   showNested?: boolean
@@ -111,37 +105,8 @@ interface ParameterGroup {
   parameters: ExtendedBimParameter[]
 }
 
-// Props
-const props = defineProps({
-  selectedParentCategories: {
-    type: Array as PropType<string[]>,
-    required: true
-  },
-  selectedChildCategories: {
-    type: Array as PropType<string[]>,
-    required: true
-  },
-  availableParentParameters: {
-    type: Array as PropType<AvailableBimParameter[]>,
-    required: true
-  },
-  availableChildParameters: {
-    type: Array as PropType<AvailableBimParameter[]>,
-    required: true
-  },
-  selectedParentParameters: {
-    type: Array as PropType<SelectedParameter[]>,
-    required: true
-  },
-  selectedChildParameters: {
-    type: Array as PropType<SelectedParameter[]>,
-    required: true
-  },
-  canCreateParameters: {
-    type: Boolean,
-    default: false
-  }
-})
+// Initialize stores
+const parameterStore = useParameterStore()
 
 // Emits
 const emit = defineEmits<{
@@ -163,23 +128,21 @@ const parameterGroups = computed<ParameterGroup[]>(() => {
   const groups = new Map<string, ParameterGroup>()
 
   // First pass: Group parent BIM parameters
-  const parentParams = props.availableParentParameters
-  if (parentParams) {
-    parentParams.forEach((param) => {
-      const group = param.sourceGroup
-      if (!groups.has(group)) {
-        groups.set(group, { name: group, parameters: [] })
-      }
+  const parentParams = parameterStore.parentAvailableBimParameters.value
+  parentParams.forEach((param) => {
+    const group = param.sourceGroup
+    if (!groups.has(group)) {
+      groups.set(group, { name: group, parameters: [] })
+    }
 
-      // Skip nested parameters in first pass
-      if (!param.metadata?.isNested) {
-        groups.get(group)!.parameters.push({
-          ...param,
-          showNested: nestedVisibility.value.has(param.id)
-        })
-      }
-    })
-  }
+    // Skip nested parameters in first pass
+    if (!param.metadata?.isNested) {
+      groups.get(group)!.parameters.push({
+        ...param,
+        showNested: nestedVisibility.value.has(param.id)
+      })
+    }
+  })
 
   // Sort parameters within each group
   groups.forEach((group) => {
@@ -193,7 +156,7 @@ const parameterGroups = computed<ParameterGroup[]>(() => {
 const nestedParametersMap = computed(() => {
   const map: Record<string, ExtendedBimParameter[]> = {}
 
-  props.availableParentParameters?.forEach((param) => {
+  parameterStore.parentAvailableBimParameters.value.forEach((param) => {
     if (param.metadata?.isNested && param.metadata.parentKey) {
       if (!map[param.metadata.parentKey]) {
         map[param.metadata.parentKey] = []
@@ -220,13 +183,17 @@ const userParameters = computed<AvailableUserParameter[]>(() => []) // We'll han
 function isParameterSelected(
   parameter: AvailableBimParameter | AvailableUserParameter
 ): boolean {
-  return props.selectedParentParameters.some((p) => p.id === parameter.id)
+  return parameterStore.selectedParentParameters.value.some(
+    (p) => p.id === parameter.id
+  )
 }
 
 function getParameterVisibility(
   parameter: AvailableBimParameter | AvailableUserParameter
 ): boolean {
-  const selected = props.selectedParentParameters.find((p) => p.id === parameter.id)
+  const selected = parameterStore.selectedParentParameters.value.find(
+    (p) => p.id === parameter.id
+  )
   return selected?.visible ?? true
 }
 
@@ -234,13 +201,10 @@ function toggleParameterVisibility(
   parameter: AvailableBimParameter | AvailableUserParameter
 ) {
   try {
-    const selected = props.selectedParentParameters.find((p) => p.id === parameter.id)
-    if (selected) {
-      emit('parameter-visibility-change', {
-        ...selected,
-        visible: !selected.visible
-      })
-    }
+    parameterStore.updateParameterVisibility(
+      parameter.id,
+      !getParameterVisibility(parameter)
+    )
   } catch (err) {
     const error =
       err instanceof Error ? err : new Error('Failed to update parameter visibility')
@@ -257,7 +221,9 @@ function toggleNestedVisibility(parameter: ExtendedBimParameter) {
 }
 
 function editUserParameter(parameter: AvailableUserParameter) {
-  const selected = props.selectedParentParameters.find((p) => p.id === parameter.id)
+  const selected = parameterStore.selectedParentParameters.value.find(
+    (p) => p.id === parameter.id
+  )
   if (selected) {
     emit('parameter-edit', selected)
   }
