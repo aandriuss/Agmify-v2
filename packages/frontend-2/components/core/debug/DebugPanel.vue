@@ -199,7 +199,7 @@
               <!-- Sample Data -->
               <div v-if="tableData?.length" class="stat-group">
                 <h5>Sample Row</h5>
-                <pre>{{ formatData(tableData[0]) }}</pre>
+                <pre>{{ formatData(tableData[15]) }}</pre>
               </div>
             </div>
           </div>
@@ -483,50 +483,47 @@ const isProcessingComplete = computed(
 )
 
 // Parameter counts from parameter store with processing check
-const parameterStoreCounts = computed(() => {
-  const state = parameters?.state?.value
-  const counts = {
-    parent: {
-      raw: parameters.parentRawParameters.value?.length || 0,
-      availableBim: isProcessingComplete.value
-        ? parameters.parentAvailableBimParameters.value?.length || 0
-        : 0,
-      availableUser: isProcessingComplete.value
-        ? parameters.parentAvailableUserParameters.value?.length || 0
-        : 0
-    },
-    child: {
-      raw: parameters.childRawParameters.value?.length || 0,
-      availableBim: isProcessingComplete.value
-        ? parameters.childAvailableBimParameters.value?.length || 0
-        : 0,
-      availableUser: isProcessingComplete.value
-        ? parameters.childAvailableUserParameters.value?.length || 0
-        : 0
-    }
+const parameterStoreCounts = computed(() => ({
+  parent: {
+    raw: parameters.parentRawParameters.value?.length || 0,
+    availableBim: isProcessingComplete.value
+      ? parameters.parentAvailableBimParameters.value?.length || 0
+      : 0,
+    availableUser: isProcessingComplete.value
+      ? parameters.parentAvailableUserParameters.value?.length || 0
+      : 0
+  },
+  child: {
+    raw: parameters.childRawParameters.value?.length || 0,
+    availableBim: isProcessingComplete.value
+      ? parameters.childAvailableBimParameters.value?.length || 0
+      : 0,
+    availableUser: isProcessingComplete.value
+      ? parameters.childAvailableUserParameters.value?.length || 0
+      : 0
   }
+}))
 
-  // Log counts with state
-  debug.log(DebugCategories.STATE, 'Debug panel parameter counts', {
-    ...counts,
-    initialized: state?.initialized,
-    processing: state?.processing?.status
-  })
-
-  return counts
-})
-
-// Watch for processing completion
+// Watch for processing completion but avoid recursive logging
 watch(
   isProcessingComplete,
   (complete) => {
     if (complete) {
-      debug.log(DebugCategories.STATE, 'Parameter processing complete', {
-        counts: parameterStoreCounts.value
-      })
+      // Only log if we have actual parameters
+      const counts = parameterStoreCounts.value
+      if (
+        counts.parent.raw > 0 ||
+        counts.child.raw > 0 ||
+        counts.parent.availableBim > 0 ||
+        counts.child.availableBim > 0
+      ) {
+        debug.log(DebugCategories.STATE, 'Parameter processing complete', {
+          counts
+        })
+      }
     }
   },
-  { immediate: true }
+  { immediate: false } // Don't trigger immediately to avoid initial recursion
 )
 
 // Selected parameters and columns from table store

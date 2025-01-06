@@ -9,36 +9,6 @@ export const defaultSelectedParameters: {
 } = {
   parent: [
     {
-      id: 'Identity Data.Id',
-      name: 'Id',
-      kind: 'bim' as const,
-      type: 'string',
-      value: null,
-      group: 'Identity Data',
-      visible: true,
-      order: 0
-    },
-    {
-      id: 'mark',
-      name: 'Mark',
-      kind: 'bim' as const,
-      type: 'string',
-      value: null,
-      group: 'Identity Data',
-      visible: true,
-      order: 1
-    },
-    {
-      id: 'category',
-      name: 'Category',
-      kind: 'bim' as const,
-      type: 'string',
-      value: null,
-      group: 'Identity Data',
-      visible: true,
-      order: 2
-    },
-    {
       id: 'Dimensions.Width',
       name: 'Width',
       kind: 'bim' as const,
@@ -80,36 +50,6 @@ export const defaultSelectedParameters: {
     }
   ],
   child: [
-    {
-      id: 'Identity Data.Id',
-      name: 'Id',
-      kind: 'bim' as const,
-      type: 'string',
-      value: null,
-      group: 'Identity Data',
-      visible: true,
-      order: 0
-    },
-    {
-      id: 'mark',
-      name: 'Mark',
-      kind: 'bim' as const,
-      type: 'string',
-      value: null,
-      group: 'Identity Data',
-      visible: true,
-      order: 1
-    },
-    {
-      id: 'category',
-      name: 'Category',
-      kind: 'bim' as const,
-      type: 'string',
-      value: null,
-      group: 'Identity Data',
-      visible: true,
-      order: 2
-    },
     {
       id: 'Dimensions.Width',
       name: 'Width',

@@ -5,7 +5,6 @@ import type {
   TableSettings,
   TableStoreOptions
 } from './types'
-import type { SelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import type {
   TableCategoryFilters,
   TableSelectedParameters
@@ -315,161 +314,36 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       return
     }
 
-    debug.startState(DebugCategories.STATE, 'Updating selected parameters', {
-      tableId: state.value.currentTableId,
-      currentState: {
-        parent: currentTable.value?.selectedParameters?.parent?.length || 0,
-        child: currentTable.value?.selectedParameters?.child?.length || 0
-      },
-      newState: {
-        parent: parameters.parent.length,
-        child: parameters.child.length
-      }
-    })
+    debug.startState(DebugCategories.STATE, 'Updating selected parameters')
 
-    // Validate parameters
-    if (!parameters.parent || !parameters.child) {
-      debug.error(
-        DebugCategories.ERROR,
-        'Invalid parameters: Missing parent or child parameters'
-      )
-      return
-    }
-
-    // Log parameter details for debugging
-    debug.log(DebugCategories.STATE, 'Validating parameters', {
-      parent: parameters.parent.map((p) => ({
-        id: p.id,
-        name: p.name,
-        kind: p.kind,
-        type: p.type,
-        value: p.value
-      })),
-      child: parameters.child.map((p) => ({
-        id: p.id,
-        name: p.name,
-        kind: p.kind,
-        type: p.type,
-        value: p.value
-      }))
-    })
-
-    // Ensure all parameters have required properties and valid values
-    const validateParameter = (param: unknown): param is SelectedParameter => {
-      const p = param as Partial<SelectedParameter>
-      const isValid = !!(
-        p.id &&
-        p.name &&
-        p.kind &&
-        p.type &&
-        (p.kind === 'bim' || p.kind === 'user') &&
-        typeof p.value !== 'undefined'
-      )
-
-      if (!isValid) {
-        debug.warn(DebugCategories.STATE, 'Invalid parameter', {
-          parameter: {
-            id: p.id || 'missing',
-            name: p.name || 'missing',
-            kind: p.kind || 'missing',
-            type: p.type || 'missing',
-            value: typeof p.value === 'undefined' ? 'missing' : p.value
-          },
-          missing: {
-            id: !p.id,
-            name: !p.name,
-            kind: !p.kind,
-            type: !p.type,
-            value: typeof p.value === 'undefined'
-          }
-        })
-      }
-
-      return isValid
-    }
-
-    const validParent = parameters.parent.every(validateParameter)
-    const validChild = parameters.child.every(validateParameter)
-
-    if (!validParent || !validChild) {
-      debug.error(
-        DebugCategories.ERROR,
-        'Invalid parameters: Missing required properties',
-        {
-          validParent,
-          validChild,
-          parentCount: parameters.parent.length,
-          childCount: parameters.child.length
-        }
-      )
-      return
-    }
-
-    // Convert parameters to columns using createTableColumns
+    // Create columns directly from parameters
     const parentColumns = createTableColumns(parameters.parent)
     const childColumns = createTableColumns(parameters.child)
 
-    debug.log(DebugCategories.STATE, 'Created columns from parameters', {
-      parent: {
-        parameters: parameters.parent.length,
-        columns: parentColumns.length,
-        sample: parentColumns[0]
-          ? {
-              id: parentColumns[0].id,
-              field: parentColumns[0].field,
-              header: parentColumns[0].header,
-              parameter: {
-                id: parentColumns[0].parameter.id,
-                value: parentColumns[0].parameter.value
-              }
-            }
-          : null
+    // Update state immediately
+    const currentId = state.value.currentTableId
+    const current = state.value.tables.get(currentId)
+    if (current) {
+      state.value.tables.set(currentId, {
+        ...current,
+        selectedParameters: parameters,
+        parentColumns,
+        childColumns,
+        lastUpdateTimestamp: Date.now()
+      })
+      state.value.lastUpdated = Date.now()
+    }
+
+    debug.completeState(DebugCategories.STATE, 'Parameters and columns updated', {
+      parameters: {
+        parent: parameters.parent.length,
+        child: parameters.child.length
       },
-      child: {
-        parameters: parameters.child.length,
-        columns: childColumns.length,
-        sample: childColumns[0]
-          ? {
-              id: childColumns[0].id,
-              field: childColumns[0].field,
-              header: childColumns[0].header,
-              parameter: {
-                id: childColumns[0].parameter.id,
-                value: childColumns[0].parameter.value
-              }
-            }
-          : null
+      columns: {
+        parent: parentColumns.length,
+        child: childColumns.length
       }
     })
-
-    // Update table with new parameters and columns
-    updateTable({
-      selectedParameters: parameters,
-      parentColumns,
-      childColumns
-    })
-
-    debug.completeState(
-      DebugCategories.STATE,
-      'Selected parameters and columns updated',
-      {
-        tableId: state.value.currentTableId,
-        parameters: {
-          parent: {
-            count: parameters.parent.length,
-            ids: parameters.parent.map((p) => p.id)
-          },
-          child: {
-            count: parameters.child.length,
-            ids: parameters.child.map((p) => p.id)
-          }
-        },
-        columns: {
-          parent: parentColumns.length,
-          child: childColumns.length
-        }
-      }
-    )
   }
 
   /**
@@ -584,6 +458,24 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     })
   }
 
+  /**
+   * Initialize store
+   */
+  async function initialize(): Promise<void> {
+    debug.startState(DebugCategories.STATE, 'Initializing table store')
+    try {
+      // Initialize state synchronously but return promise
+      reset()
+      debug.log(DebugCategories.STATE, 'Table store initialized')
+      return Promise.resolve()
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      debug.error(DebugCategories.ERROR, 'Failed to initialize store:', error)
+      state.value.error = error
+      throw error
+    }
+  }
+
   return {
     // State
     state: computed(() => state.value),
@@ -609,6 +501,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     updateColumns,
 
     // Store management
+    initialize,
     reset
   }
 }

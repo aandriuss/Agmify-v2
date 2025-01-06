@@ -112,10 +112,13 @@ export class CoreStore implements Store {
   // Transaction manager
   private transactionQueue: Array<Partial<StoreState>> = []
   private transactionTimeout: ReturnType<typeof setTimeout> | null = null
-  private readonly TRANSACTION_DELAY = 50 // ms
+  private readonly TRANSACTION_DELAY = 100 // ms
 
   private async flushTransaction() {
     if (this.transactionQueue.length === 0) return
+
+    // Set loading state before processing
+    this.internalState.value.loading = true
 
     // Split updates into parameter updates and other updates
     const parameterUpdates = this.transactionQueue.filter((update) =>
@@ -128,8 +131,8 @@ export class CoreStore implements Store {
     this.transactionQueue = []
     this.transactionTimeout = null
 
-    // Wait for any pending operations
-    await Promise.resolve()
+    // Wait for any pending operations and give time for parameters to settle
+    await new Promise((resolve) => setTimeout(resolve, 50))
 
     try {
       this.internalState.value.loading = true
@@ -182,7 +185,7 @@ export class CoreStore implements Store {
         this.internalState.value.loading = true
         this.internalState.value.error = null
 
-        // Wait for auth to be ready
+        // Check auth synchronously
         const waitForUser = useWaitForActiveUser()
         const userResult = await waitForUser()
         if (!userResult?.data?.activeUser) {
@@ -191,10 +194,23 @@ export class CoreStore implements Store {
           this.internalState.value.error = error
           throw error
         }
-        debug.log(DebugCategories.INITIALIZATION, 'Auth ready')
 
-        // Mark store as initialized
-        this.internalState.value.initialized = true
+        // Initialize state immediately
+        this.internalState.value = {
+          ...this.internalState.value,
+          scheduleData: [],
+          evaluatedData: [],
+          tableData: [],
+          currentTableColumns: [],
+          currentDetailColumns: [],
+          availableHeaders: { parent: [], child: [] },
+          selectedCategories: new Set(),
+          selectedParentCategories: [],
+          selectedChildCategories: [],
+          tablesArray: [],
+          initialized: true
+        }
+
         debug.completeState(DebugCategories.INITIALIZATION, 'Core store initialized')
       } catch (err) {
         debug.error(DebugCategories.ERROR, 'Failed to initialize core store', err)
@@ -207,7 +223,16 @@ export class CoreStore implements Store {
       }
     },
     update: async (state: Partial<StoreState>) => {
-      // Queue the update
+      // For initialization only, apply immediately
+      if (state.initialized !== undefined) {
+        this.internalState.value = {
+          ...this.internalState.value,
+          ...state
+        }
+        return
+      }
+
+      // Queue all other updates including scheduleData
       this.transactionQueue.push(state)
 
       // Schedule flush if not already scheduled

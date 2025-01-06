@@ -25,7 +25,7 @@
       <LoadingState
         :is-loading="isLoading"
         :error="error"
-        loading-message="Loading schedule data..."
+        :loading-message="loadingMessage"
       >
         <!-- Category Options Section -->
         <div
@@ -98,17 +98,17 @@
             :child-base-columns="tableStore.currentTable?.value?.childColumns || []"
             :child-available-columns="parameterStore.childAvailableBimParameters"
             :child-visible-columns="tableStore.currentTable?.value?.childColumns || []"
-            :schedule-data="store.scheduleData || []"
-            :evaluated-data="store.evaluatedData || []"
-            :table-data="store.tableData || []"
+            :schedule-data="unref(store.scheduleData) || []"
+            :evaluated-data="unref(store.evaluatedData) || []"
+            :table-data="unref(store.tableData) || []"
             :is-loading="isLoading"
             :is-loading-additional-data="isUpdating"
             :has-selected-categories="categories.hasSelectedCategories"
-            :selected-parent-categories="categories.selectedParentCategories"
-            :selected-child-categories="categories.selectedChildCategories"
+            :selected-parent-categories="unref(categories.selectedParentCategories)"
+            :selected-child-categories="unref(categories.selectedChildCategories)"
             :show-parameter-manager="_interactions.showParameterManager.value"
-            :parent-elements="parentElements"
-            :child-elements="childElements"
+            :parent-elements="unref(parentElements)"
+            :child-elements="unref(childElements)"
             :is-test-mode="false"
             @error="handleError"
             @table-updated="handleTableDataUpdate"
@@ -132,7 +132,7 @@ import { useTableInitialization } from '~/composables/core/tables/initialization
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import type { ElementData, DataState } from '~/composables/core/types'
+import type { ElementData } from '~/composables/core/types'
 import type { TableSettings } from '~/composables/core/tables/store/types'
 import type { ColumnVisibilityPayload } from '~/composables/core/types/tables/table-events'
 import { useTablesState } from '~/composables/settings/tables/useTablesState'
@@ -151,11 +151,9 @@ import type {
   ViewerNode,
   WorldTreeRoot
 } from '~/composables/core/types/viewer/viewer-types'
-import {
-  isValidStoreState,
-  isValidParameterState
-} from '~/composables/core/types/state'
+import { isValidDataState } from '~/composables/core/types/state'
 import { isValidTableState } from '~/composables/core/types/tables/table-state'
+import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
 import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
 
 // Available categories
@@ -255,12 +253,6 @@ const elementsData = useElementsData({
   selectedChildCategories: categories.selectedChildCategories
 })
 
-// Type guard for DataState
-function isValidDataState(state: unknown): state is DataState {
-  if (!state || typeof state !== 'object') return false
-  return 'parentElements' in state && 'childElements' in state
-}
-
 // Safe computed properties from state with proper type checking
 const parentElements = computed<ElementData[]>(() => {
   const state = elementsData.state.value
@@ -311,41 +303,28 @@ const _interactions = useTableInteractions({
   handleError: (err) => handleError(createSafeError(err))
 })
 
-// Loading state - handle initialization and data loading with proper type checking
-const isLoading = computed(() => {
-  const storeState = store.initialized
-  const paramState = parameterStore.state.value
-  const elementState = elementsData.state.value
-
-  // Check initialization states first
-  if (
-    !isValidStoreState(storeState) ||
-    !isValidParameterState(paramState) ||
-    !paramState.initialized
-  ) {
-    return true
-  }
-
-  // Check if we're actively loading
-  if (
-    (isValidDataState(elementState) && elementState.loading) ||
-    paramState.isProcessing
-  ) {
-    return true
-  }
-
-  // If initialized but no data, we're not loading
-  return false
-})
+// Loading state
+const { loadingMessage, isLoading } = useLoadingState()
 
 const isInitialized = computed(() => {
-  const storeState = store.initialized
-  return isValidStoreState(storeState) && storeState.value
+  const hasScheduleData = store.scheduleData.value?.length > 0
+  const hasParameters = parameterStore.parentRawParameters.value?.length > 0
+  const storesReady =
+    store.state.value.initialized &&
+    parameterStore.state.value.initialized &&
+    !!tableStore.currentTable.value
+
+  return (
+    storesReady && (hasScheduleData || hasParameters) && initializationComplete.value
+  )
 })
 
 const isUpdating = computed(() => {
-  const state = elementsData.state.value
-  return isValidDataState(state) && state.loading
+  return (
+    isInitializing.value ||
+    parameterStore.state.value.processing.status === 'processing' ||
+    (isValidDataState(elementsData.state.value) && elementsData.state.value.loading)
+  )
 })
 
 // Category toggle handlers with type safety
@@ -437,17 +416,51 @@ function updateErrorState(newError: Error | null): void {
   }
 
   if (newError instanceof Error) {
-    const errorDetails = {
+    const errorDetails: {
+      name: string
+      message: string
+      stack?: string
+      cause?: unknown
+    } = {
       name: newError.name,
       message: newError.message,
-      stack: newError.stack
+      stack: newError.stack,
+      cause: newError.cause
     }
     debug.error(DebugCategories.ERROR, 'Schedule error:', errorDetails)
+    debug.error(DebugCategories.ERROR, 'Error in schedule view:', {
+      error: errorDetails,
+      state: {
+        isInitializing: isInitializing.value,
+        isInitialized: isInitialized.value,
+        isLoading: isLoading.value,
+        hasElements: bimElements.allElements.value?.length || 0,
+        hasParameters: parameterStore.parentRawParameters.value?.length || 0,
+        hasTable: !!tableStore.currentTable.value
+      }
+    })
   }
 }
 
 function handleError(err: unknown): void {
-  updateErrorState(createSafeError(err))
+  const error = createSafeError(err)
+  debug.error(DebugCategories.ERROR, 'Failed to load initial data:', {
+    error: {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause as unknown
+    },
+    state: {
+      isInitializing: isInitializing.value,
+      isInitialized: isInitialized.value,
+      isLoading: isLoading.value,
+      hasElements: bimElements.allElements.value?.length || 0,
+      hasParameters: parameterStore.parentRawParameters.value?.length || 0,
+      hasTable: !!tableStore.currentTable.value
+    }
+  })
+  updateErrorState(error)
 }
 
 // Track initialization state
@@ -500,10 +513,71 @@ onMounted(async () => {
     provideApolloClient(apolloClient)
     debug.log(DebugCategories.INITIALIZATION, 'Apollo client ready')
 
-    // 2. Initialize core store
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing core systems')
-    await store.lifecycle.init()
-    debug.log(DebugCategories.INITIALIZATION, 'Core store initialized')
+    // 2. Initialize stores in correct order with proper timeouts
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing stores')
+
+    // Initialize core store first
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing core store')
+    await Promise.race([
+      store.lifecycle.init(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Core store initialization timeout')), 8000)
+      )
+    ])
+
+    // Verify core store initialization
+    if (!store.initialized.value) {
+      throw new Error('Core store failed to initialize')
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'Core store initialized', {
+      initialized: store.initialized.value,
+      scheduleData: store.scheduleData.value?.length || 0
+    })
+
+    // Initialize parameter store next
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing parameter store')
+    await Promise.race([
+      parameterStore.init(),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Parameter store initialization timeout')),
+          8000
+        )
+      )
+    ])
+
+    // Verify parameter store initialization
+    if (!parameterStore.state.value.initialized) {
+      throw new Error('Parameter store failed to initialize')
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'Parameter store initialized', {
+      parentParams: parameterStore.parentRawParameters.value?.length || 0,
+      childParams: parameterStore.childRawParameters.value?.length || 0
+    })
+
+    // Initialize table store last
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing table store')
+    await Promise.race([
+      initComponent.initialize(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Table store initialization timeout')), 8000)
+      )
+    ])
+
+    // Verify table store initialization
+    if (!tableStore.currentTable.value) {
+      throw new Error('Table store failed to initialize')
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'Table store initialized', {
+      tableId: tableStore.currentTable.value.id,
+      parameters: {
+        parent: tableStore.currentTable.value.selectedParameters?.parent?.length || 0,
+        child: tableStore.currentTable.value.selectedParameters?.child?.length || 0
+      }
+    })
 
     // 3. Wait for auth to be ready
     debug.startState(DebugCategories.INITIALIZATION, 'Waiting for auth')
@@ -513,6 +587,9 @@ onMounted(async () => {
       throw new Error('Authentication required')
     }
     debug.log(DebugCategories.INITIALIZATION, 'Auth ready')
+
+    // 4. Initialize world tree
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing world tree')
     await waitForWorldTree().catch((err) => {
       debug.error(
         DebugCategories.INITIALIZATION,
@@ -526,7 +603,8 @@ onMounted(async () => {
       throw new Error('World tree not available after initialization')
     }
 
-    // 3. Initialize BIM elements
+    // 5. Initialize BIM elements with world tree
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
     const treeRoot: WorldTreeRoot = {
       _root: {
         children: hasValidChildren(worldTree.value)
@@ -535,30 +613,23 @@ onMounted(async () => {
       }
     }
 
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing BIM elements')
     await bimElements.initializeElements(treeRoot)
 
     if (!bimElements.allElements.value?.length) {
-      throw new Error('No BIM elements available after initialization')
+      throw new Error('No BIM elements found after initialization')
     }
 
-    // 4. Initialize parameter store and process parameters
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing parameters')
-    await parameterStore.init()
+    debug.log(DebugCategories.INITIALIZATION, 'BIM elements initialized', {
+      total: bimElements.allElements.value.length,
+      withParams: bimElements.allElements.value.filter(
+        (el) => el.parameters && Object.keys(el.parameters).length > 0
+      ).length
+    })
 
-    // Verify BIM elements have parameters before processing
+    // Process parameters from BIM elements
     const elementsWithParams = bimElements.allElements.value.filter(
       (el) => el.parameters && Object.keys(el.parameters).length > 0
     )
-
-    debug.log(DebugCategories.INITIALIZATION, 'Processing parameters', {
-      totalElements: bimElements.allElements.value.length,
-      elementsWithParams: elementsWithParams.length,
-      parameterCount: elementsWithParams.reduce(
-        (acc, el) => acc + Object.keys(el.parameters || {}).length,
-        0
-      )
-    })
 
     if (elementsWithParams.length === 0) {
       throw new Error('No parameters found in BIM elements')
@@ -566,7 +637,7 @@ onMounted(async () => {
 
     await parameterStore.processParameters(elementsWithParams)
 
-    // Verify parameters were processed
+    // Verify parameter processing
     const paramCounts = {
       parentRaw: parameterStore.parentRawParameters.value?.length || 0,
       childRaw: parameterStore.childRawParameters.value?.length || 0,
@@ -574,38 +645,137 @@ onMounted(async () => {
       childBim: parameterStore.childAvailableBimParameters.value?.length || 0
     }
 
-    debug.log(DebugCategories.INITIALIZATION, 'Parameters processed', paramCounts)
-
     if (paramCounts.parentBim === 0 && paramCounts.childBim === 0) {
-      throw new Error('No parameters available after processing')
+      throw new Error('Parameter processing failed - no parameters available')
     }
 
-    // 5. Load and initialize tables
+    debug.log(DebugCategories.INITIALIZATION, 'Parameters processed', paramCounts)
+
+    // 6. Load tables from PostgreSQL
     debug.startState(DebugCategories.INITIALIZATION, 'Loading tables')
     const tablesResponse = await tablesState.loadTables()
     const tablesList = isValidTableState(tablesResponse)
       ? processTablesList(tablesResponse.state.value.tables)
       : []
 
-    // 6. Initialize data with processed parameters
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing data')
+    // 7. Initialize element data
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing element data')
     await elementsData.initializeData()
 
-    // 7. Update store state
+    // Verify element data initialization
+    if (!elementsData.state.value || elementsData.hasError.value) {
+      throw new Error('Failed to initialize element data')
+    }
+
+    debug.log(DebugCategories.INITIALIZATION, 'Element data initialized', {
+      total: elementsData.allElements.value?.length || 0,
+      parents: elementsData.state.value.parentElements?.length || 0,
+      children: elementsData.state.value.childElements?.length || 0
+    })
+
+    // 8. Update and verify store state
     debug.startState(DebugCategories.STATE, 'Updating store state')
     await store.lifecycle.update({
       tablesArray: tablesList,
-      selectedTableId: tablesList.length > 0 ? tablesList[0].id : 'default',
-      tableName: tablesList.length > 0 ? tablesList[0].name : 'Default Table',
+      selectedTableId:
+        tablesList.length > 0
+          ? tablesList[0].id
+          : tableStore.currentTable.value?.id || 'default',
+      tableName:
+        tablesList.length > 0
+          ? tablesList[0].name
+          : tableStore.currentTable.value?.name || 'Default Table',
       selectedParentCategories: parentCategories,
       selectedChildCategories: childCategories
     })
 
-    // 8. Initialize table component
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing table component')
-    await initComponent.initialize()
+    // Verify final state
+    const finalState = {
+      storeInitialized: store.initialized.value,
+      hasParameters: parameterStore.state.value.initialized,
+      hasTable: !!tableStore.currentTable.value,
+      hasElements: elementsData.allElements.value?.length || 0,
+      parameters: {
+        parent: parameterStore.parentRawParameters.value?.length || 0,
+        child: parameterStore.childRawParameters.value?.length || 0
+      },
+      table: {
+        id: tableStore.currentTable.value?.id,
+        parameters: {
+          parent:
+            tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
+          child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
+        }
+      }
+    }
 
-    debug.completeState(DebugCategories.INITIALIZATION, 'Schedules initialized')
+    debug.log(DebugCategories.STATE, 'Final state verification', finalState)
+
+    // Wait for all required states to be ready
+    debug.startState(DebugCategories.STATE, 'Waiting for stores to be ready')
+    await new Promise<void>((resolve, reject) => {
+      let watcherCleanup: (() => void) | undefined = undefined
+
+      const timeout = setTimeout(() => {
+        if (watcherCleanup) watcherCleanup()
+        reject(new Error('Store initialization timeout'))
+      }, 5000)
+
+      const sources = [
+        () => store.state.value.initialized,
+        () => parameterStore.state.value.initialized,
+        () => !!tableStore.currentTable.value,
+        () => store.scheduleData.value?.length > 0,
+        () => parameterStore.parentRawParameters.value?.length > 0
+      ]
+
+      watcherCleanup = watch(
+        sources,
+        (values) => {
+          const [storeInit, paramInit, tableInit, hasSchedule, hasParams] = values
+          if (storeInit && paramInit && tableInit && hasSchedule && hasParams) {
+            clearTimeout(timeout)
+            watcherCleanup?.()
+            resolve()
+          }
+        },
+        { immediate: true }
+      )
+    })
+
+    // Wait for data to be fully ready
+    debug.startState(DebugCategories.STATE, 'Waiting for data to be ready')
+    await new Promise<void>((resolve, reject) => {
+      let watcherCleanup: (() => void) | undefined = undefined
+
+      const timeout = setTimeout(() => {
+        if (watcherCleanup) watcherCleanup()
+        reject(new Error('Data initialization timeout'))
+      }, 5000)
+
+      const sources = [
+        () => store.scheduleData.value?.length > 0,
+        () => store.tableData.value?.length > 0,
+        () => store.evaluatedData.value?.length > 0,
+        () => parameterStore.parentRawParameters.value?.length > 0,
+        () => (tableStore.currentTable.value?.parentColumns?.length ?? 0) > 0
+      ]
+
+      watcherCleanup = watch(
+        sources,
+        (values) => {
+          const [hasSchedule, hasTable, hasEvaluated, hasParams, hasColumns] = values
+          if (hasSchedule && hasTable && hasEvaluated && hasParams && hasColumns) {
+            clearTimeout(timeout)
+            watcherCleanup?.()
+            resolve()
+          }
+        },
+        { immediate: true }
+      )
+    })
+
+    debug.completeState(DebugCategories.INITIALIZATION, 'All data ready')
     initializationComplete.value = true
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to initialize schedules', err)

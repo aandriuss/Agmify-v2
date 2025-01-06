@@ -2,7 +2,7 @@ import { ref, computed } from 'vue'
 import { debug } from '~/composables/core/utils/debug'
 import { parentCategories } from '~/composables/core/config/categories'
 import { ParameterDebugCategories } from '~/composables/core/utils/debug-categories'
-import type { ElementData, ParameterValue } from '~/composables/core/types'
+import type { ElementData } from '~/composables/core/types'
 import type {
   ParameterStore,
   ParameterStoreState,
@@ -241,86 +241,57 @@ function createParameterStore(): ParameterStore {
    * Initialize parameter store
    */
   async function init(): Promise<void> {
+    debug.startState(ParameterDebugCategories.STATE, 'Initializing parameter store')
     try {
-      debug.startState(ParameterDebugCategories.STATE, 'Initializing parameter store')
-      state.value.processing.status = 'processing'
+      // Initialize state immediately
+      state.value = {
+        ...createInitialState(),
+        initialized: true,
+        processing: {
+          status: 'complete',
+          error: null,
+          lastAttempt: Date.now()
+        }
+      }
 
-      // Reset state to ensure clean initialization
-      state.value = createInitialState()
+      debug.completeState(ParameterDebugCategories.STATE, 'Parameter store initialized')
 
-      // Wait for any cached data and convert to ElementData format
-      const cached: RawParameter[] | null = await parameterCache.loadFromCache()
-      if (cached?.length) {
-        debug.log(ParameterDebugCategories.STATE, 'Found cached parameters', {
-          count: cached.length,
-          sample: cached[0]
-            ? {
-                id: cached[0].id,
-                category: cached[0].metadata?.category,
-                isParent: cached[0].metadata?.isParent
+      // Load cache in background but await its completion
+      await parameterCache
+        .loadFromCache()
+        .then((cached: RawParameter[] | null) => {
+          if (cached?.length) {
+            debug.log(ParameterDebugCategories.STATE, 'Processing cached parameters')
+            const convertedElements = cached.map((param: RawParameter) => {
+              const paramValue = convertToParameterValue(param.value)
+              return {
+                id: param.id,
+                type: param.metadata?.category || 'Uncategorized',
+                name: param.name,
+                field: param.id,
+                header: param.name,
+                visible: true,
+                removable: true,
+                isChild: !param.metadata?.isParent,
+                category: param.metadata?.category || 'Uncategorized',
+                parameters: { [param.id]: paramValue },
+                metadata: param.metadata,
+                details: [],
+                order: 0
               }
-            : null
+            })
+            processParameters(convertedElements).catch((err) => {
+              debug.error(
+                ParameterDebugCategories.STATE,
+                'Failed to process cached parameters:',
+                err
+              )
+            })
+          }
         })
-
-        // Convert cached parameters to ElementData format with proper value conversion
-        let convertedElements: ElementData[] = []
-        try {
-          convertedElements = cached.map((param: RawParameter) => {
-            const paramValue = convertToParameterValue(param.value)
-            const parameters: Record<string, ParameterValue> = {
-              [param.id]: paramValue
-            }
-
-            return {
-              id: param.id,
-              type: param.metadata?.category || 'Uncategorized',
-              name: param.name,
-              field: param.id,
-              header: param.name,
-              visible: true,
-              removable: true,
-              isChild: !param.metadata?.isParent,
-              category: param.metadata?.category || 'Uncategorized',
-              parameters,
-              metadata: param.metadata,
-              details: [],
-              order: 0
-            }
-          })
-
-          // Process converted elements
-          await processParameters(convertedElements)
-        } catch (conversionError) {
-          debug.error(
-            ParameterDebugCategories.STATE,
-            'Failed to convert cached parameters:',
-            conversionError
-          )
-          throw new Error('Failed to convert cached parameters')
-        }
-      }
-
-      // Verify store state
-      const counts = {
-        parent: {
-          raw: state.value.parent.raw.length,
-          bim: state.value.parent.available.bim.length,
-          user: state.value.parent.available.user.length
-        },
-        child: {
-          raw: state.value.child.raw.length,
-          bim: state.value.child.available.bim.length,
-          user: state.value.child.available.user.length
-        }
-      }
-
-      state.value.initialized = true
-      state.value.processing.status = 'complete'
-      debug.completeState(
-        ParameterDebugCategories.STATE,
-        'Parameter store initialized',
-        counts
-      )
+        .catch((err) => {
+          debug.error(ParameterDebugCategories.STATE, 'Failed to load cache:', err)
+        })
     } catch (err) {
       debug.error(ParameterDebugCategories.STATE, 'Failed to initialize store:', err)
       state.value.processing.status = 'error'

@@ -4,6 +4,7 @@ import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
 import { createTableColumns } from '~/composables/core/types/tables/table-column'
+import { defaultSelectedParameters } from '../config/defaults'
 import type { TableSettings } from '../store/types'
 
 export interface UseTableFlowOptions {
@@ -37,79 +38,74 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
     const table = currentTable.value || defaultConfig
     const selectedParams = table.selectedParameters
 
-    // Create columns from selected parameters
-    const parentColumns = createTableColumns(selectedParams.parent)
-    const childColumns = createTableColumns(selectedParams.child)
+    // Create columns from selected parameters if they don't exist
+    const parentColumns = table.parentColumns?.length
+      ? table.parentColumns
+      : createTableColumns(selectedParams.parent)
+    const childColumns = table.childColumns?.length
+      ? table.childColumns
+      : createTableColumns(selectedParams.child)
+
+    // Only update timestamp if columns changed
+    const timestamp = table.lastUpdateTimestamp || Date.now()
 
     return {
       ...table,
       parentColumns,
       childColumns,
-      lastUpdateTimestamp: Date.now()
+      lastUpdateTimestamp: timestamp
     }
   })
 
   /**
-   * Initialize store with base configuration
+   * Initialize stores and load data
    */
   async function initializeStore() {
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing store')
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing stores')
 
     try {
-      // Initialize stores if needed
+      // Initialize core store if needed
       if (!store.initialized.value) {
+        debug.log(DebugCategories.INITIALIZATION, 'Initializing core store')
         await store.lifecycle.init()
       }
+
+      // Initialize parameter store if needed
       if (!parameterStore.state.value.initialized) {
+        debug.log(DebugCategories.INITIALIZATION, 'Initializing parameter store')
         await parameterStore.init()
       }
 
-      // Use table's existing parameters or empty selection
+      // Get parameters from PostgreSQL or defaults
       const config = {
         ...tableConfig.value,
-        selectedParameters: tableConfig.value.selectedParameters || {
-          parent: [],
-          child: []
-        }
+        selectedParameters:
+          tableConfig.value.selectedParameters || defaultSelectedParameters
       }
 
-      debug.log(DebugCategories.INITIALIZATION, 'Using parameters', {
-        source: tableConfig.value.selectedParameters ? 'existing' : 'empty',
-        parameters: {
-          parent: config.selectedParameters.parent.length,
-          child: config.selectedParameters.child.length
-        }
-      })
+      // Only update if needed
+      const currentConfig = tableStore.currentTable.value
+      const needsUpdate =
+        !currentConfig ||
+        currentConfig.id !== config.id ||
+        currentConfig.parentColumns.length !== config.parentColumns.length ||
+        currentConfig.childColumns.length !== config.childColumns.length
 
-      // Update table store
-      await tableStore.updateTable(config)
+      if (needsUpdate) {
+        debug.log(DebugCategories.INITIALIZATION, 'Updating table store')
+        await tableStore.updateTable(config)
 
-      // Update core store
-      // Update core store with table info
-      await store.lifecycle.update({
-        selectedTableId: config.id,
-        currentTableId: config.id,
-        tableName: config.name
-      })
+        // Update core store with table info
+        await store.lifecycle.update({
+          selectedTableId: config.id,
+          currentTableId: config.id,
+          tableName: config.name
+        })
+      } else {
+        debug.log(DebugCategories.INITIALIZATION, 'Table store up to date')
+      }
 
-      // Update category filters using dedicated methods
-      store.setParentCategories(config.categoryFilters.selectedParentCategories)
-      store.setChildCategories(config.categoryFilters.selectedChildCategories)
-
-      // Update current view
-      await store.setCurrentColumns(config.parentColumns, config.childColumns)
-
-      debug.log(DebugCategories.INITIALIZATION, 'Store initialized', {
-        tableId: config.id,
-        parameters: {
-          parent: config.selectedParameters.parent.length,
-          child: config.selectedParameters.child.length
-        },
-        columns: {
-          parent: config.parentColumns.length,
-          child: config.childColumns.length
-        }
-      })
+      debug.log(DebugCategories.INITIALIZATION, 'Stores initialized')
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to initialize store:', err)
       throw err

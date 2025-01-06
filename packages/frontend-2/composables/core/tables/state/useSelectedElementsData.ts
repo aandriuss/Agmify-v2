@@ -161,9 +161,13 @@ export function useSelectedElementsData(
                 }
               }
 
-              // Create element with all required fields
-              const processedElement: ElementData = {
-                // Required BaseTableRow fields
+              // Get column configuration
+              const relevantColumns = element.isChild
+                ? tableStore.currentTable.value?.childColumns || []
+                : tableStore.currentTable.value?.parentColumns || []
+
+              // Create base element fields
+              const baseFields = {
                 id,
                 name: element.name || mark,
                 field: id,
@@ -171,12 +175,7 @@ export function useSelectedElementsData(
                 visible: true,
                 order: 0,
                 removable: true,
-
-                // Required ElementData fields
                 type: element.type || 'unknown',
-                parameters: processedParams,
-
-                // Optional ElementData fields
                 mark, // Guaranteed to be string
                 category,
                 isChild: element.isChild || false,
@@ -185,6 +184,22 @@ export function useSelectedElementsData(
                 details: element.details,
                 _visible: element._visible,
                 _raw: element._raw
+              }
+
+              // Create field mappings based on columns
+              const fieldMappings: Record<string, ParameterValue | null> = {}
+              for (const column of relevantColumns) {
+                if (column.parameter) {
+                  fieldMappings[column.field] =
+                    processedParams[column.parameter.id] ?? null
+                }
+              }
+
+              // Create element with all required fields
+              const processedElement: ElementData = {
+                ...baseFields,
+                ...fieldMappings,
+                parameters: processedParams // Keep original parameters for reference
               }
 
               return processedElement
@@ -403,114 +418,106 @@ export function useSelectedElementsData(
   // Direct reference to store data to avoid redundant transformations
   const scheduleData = computed<ElementData[]>(() => store.scheduleData.value || [])
 
+  // State refs to avoid computed property churn
+  const stateRef = ref<DataState>({
+    rawElements: [],
+    parentElements: [],
+    childElements: [],
+    matchedElements: [],
+    orphanedElements: [],
+    processingState: processingState.value,
+    loading: true,
+    error: undefined
+  })
+
   // Computed properties for state
   const isLoading = computed(() => processingState.value.isProcessingElements)
   const hasError = computed(() => !!processingState.value.error)
 
-  const state = computed<DataState>(() => {
+  // Function to filter elements - only called when necessary
+  function filterElements() {
     const hasParentCategories = options.selectedParentCategories.value.length > 0
     const hasChildCategories = options.selectedChildCategories.value.length > 0
+    const elements = scheduleData.value
 
     debug.log(DebugCategories.DATA_TRANSFORM, 'Starting element filtering', {
-      totalElements: scheduleData.value.length,
+      totalElements: elements.length,
       categories: {
-        parent: {
-          selected: hasParentCategories,
-          categories: options.selectedParentCategories.value
-        },
-        child: {
-          selected: hasChildCategories,
-          categories: options.selectedChildCategories.value
-        }
+        parent: hasParentCategories ? options.selectedParentCategories.value : [],
+        child: hasChildCategories ? options.selectedChildCategories.value : []
       }
     })
 
-    // First filter by categories
-    const filteredElements = scheduleData.value.filter((el) => {
-      // Get original and mapped categories
+    // Filter elements by category
+    const filteredElements = elements.filter((el) => {
       const originalCategory = el.category || 'Uncategorized'
       const mappedCategory = getMostSpecificCategory(originalCategory)
-      let include = false
 
-      // If no categories selected, include all elements
-      if (!hasParentCategories && !hasChildCategories) {
-        include = true
+      if (!hasParentCategories && !hasChildCategories) return true
+      if (el.metadata?.isParent) {
+        return (
+          !hasParentCategories ||
+          options.selectedParentCategories.value.includes(mappedCategory)
+        )
       }
-      // For parent elements (including Uncategorized)
-      else if (el.metadata?.isParent) {
-        // If no parent categories selected, include all parent elements
-        if (!hasParentCategories) {
-          include = true
-        }
-        // Otherwise check if mapped category matches selected parent categories
-        else {
-          include = options.selectedParentCategories.value.includes(mappedCategory)
-        }
+      if (el.isChild) {
+        return (
+          !hasChildCategories ||
+          options.selectedChildCategories.value.includes(mappedCategory)
+        )
       }
-      // For child elements
-      else if (el.isChild) {
-        // If no child categories selected, include all child elements
-        if (!hasChildCategories) {
-          include = true
-        }
-        // Otherwise check if mapped category matches selected child categories
-        else {
-          include = options.selectedChildCategories.value.includes(mappedCategory)
-        }
-      }
-
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Element filtering', {
-        id: el.id,
-        originalCategory,
-        mappedCategory,
-        isChild: el.isChild,
-        included: include,
-        reason: include
-          ? el.isChild
-            ? hasChildCategories
-              ? 'Matched child category'
-              : 'All child categories included'
-            : hasParentCategories
-            ? 'Matched parent category'
-            : 'All parent categories included'
-          : 'Category not selected'
-      })
-
-      return include
+      return false
     })
 
-    debug.log(DebugCategories.DATA_TRANSFORM, 'Element filtering complete', {
-      totalElements: scheduleData.value.length,
-      filteredElements: filteredElements.length,
-      categories: {
-        parent: {
-          selected: hasParentCategories,
-          categories: options.selectedParentCategories.value,
-          matchedElements: filteredElements.filter((el) => el.metadata?.isParent).length
-        },
-        child: {
-          selected: hasChildCategories,
-          categories: options.selectedChildCategories.value,
-          matchedElements: filteredElements.filter((el) => el.isChild).length
-        }
-      }
-    })
-
-    // Then split into parent/child elements using metadata
+    // Split elements
     const parentElements = filteredElements.filter((el) => el.metadata?.isParent)
     const childElements = filteredElements.filter((el) => el.isChild)
+    const matchedChildren = childElements.filter(
+      (el) => el.host && el.host !== 'No Host'
+    )
+    const orphanedChildren = childElements.filter(
+      (el) => !el.host || el.host === 'No Host'
+    )
 
-    return {
+    // Update state
+    stateRef.value = {
       rawElements: filteredElements,
       parentElements,
       childElements,
-      matchedElements: childElements.filter((el) => el.host && el.host !== 'No Host'),
-      orphanedElements: childElements.filter((el) => !el.host || el.host === 'No Host'),
+      matchedElements: matchedChildren,
+      orphanedElements: orphanedChildren,
       processingState: processingState.value,
       loading: isLoading.value,
       error: processingState.value.error
     }
-  })
+
+    debug.log(DebugCategories.DATA_TRANSFORM, 'Element filtering complete', {
+      totalElements: elements.length,
+      filteredElements: filteredElements.length,
+      parents: parentElements.length,
+      children: childElements.length,
+      matched: matchedChildren.length,
+      orphaned: orphanedChildren.length
+    })
+  }
+
+  // Watch for changes that should trigger filtering
+  watch(
+    [
+      scheduleData,
+      () => options.selectedParentCategories.value,
+      () => options.selectedChildCategories.value
+    ],
+    () => {
+      if (!processingState.value.isProcessingElements) {
+        filterElements()
+      }
+    },
+    { immediate: true }
+  )
+
+  // Expose state as computed to maintain reactivity
+  const state = computed<DataState>(() => stateRef.value)
 
   return {
     scheduleData,

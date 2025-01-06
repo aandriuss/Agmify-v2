@@ -3,8 +3,7 @@ import type { Ref } from 'vue'
 import type {
   ElementData,
   ViewerTableRow,
-  DataTableState,
-  DataTableStateOptions
+  DataTableState
 } from '~/composables/core/types'
 import { TableStateError } from '~/composables/core/types/errors'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
@@ -12,8 +11,13 @@ import { useDataTableState } from './useDataTableState'
 import { useBIMElements } from './useBIMElements'
 import { toViewerTableRow } from '~/composables/core/types/elements/elements-base'
 
-export interface ViewerTableStateOptions extends DataTableStateOptions {
+export interface ViewerTableStateOptions {
+  tableId: string
+  initialState?: Record<string, unknown>
   activeParameters?: string[]
+  childCategories?: string[]
+  onError?: (error: Error) => void
+  onUpdate?: () => void
 }
 
 export interface ViewerTableState extends DataTableState {
@@ -39,6 +43,7 @@ export function useViewerTableState({
   tableId,
   initialState = {},
   activeParameters = [],
+  childCategories = [],
   onError,
   onUpdate
 }: ViewerTableStateOptions): ViewerTableState {
@@ -46,8 +51,8 @@ export function useViewerTableState({
   const dataTableState = useDataTableState({
     tableId,
     initialState,
-    onError,
-    onUpdate
+    onError: (error: Error) => onError?.(error),
+    onUpdate: () => onUpdate?.()
   })
 
   // Initialize BIM elements
@@ -57,7 +62,7 @@ export function useViewerTableState({
     hasError: bimHasError,
     initializeElements: initializeBIMElements,
     stopWorldTreeWatch
-  } = useBIMElements()
+  } = useBIMElements({ childCategories })
 
   // Additional state
   const elements = ref<ElementData[]>([])
@@ -67,17 +72,18 @@ export function useViewerTableState({
   // Computed state
   const isInitialized = computed(() => _isInitialized.value)
   const hasError = computed(() => _hasError.value || bimHasError.value)
-  const rows = computed(() => elements.value.map(toViewerTableRow))
+  const rows = computed(() => elements.value.map((el) => toViewerTableRow(el)))
 
   // Initialize elements
   async function initializeElements(): Promise<void> {
     try {
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing viewer table', {
         tableId,
-        activeParameters
+        activeParameters,
+        childCategories
       })
 
-      await initializeBIMElements()
+      await initializeBIMElements(null) // Pass null since we don't have world tree yet
       elements.value = [...allElements.value]
       _isInitialized.value = true
 
@@ -85,11 +91,11 @@ export function useViewerTableState({
         elementCount: elements.value.length
       })
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to initialize viewer table:', err)
+      const error =
+        err instanceof Error ? err : new Error('Failed to initialize viewer table')
+      debug.error(DebugCategories.ERROR, 'Failed to initialize viewer table:', error)
       _hasError.value = true
-      throw err instanceof Error
-        ? new TableStateError(err.message, err)
-        : new TableStateError('Failed to initialize viewer table')
+      throw new TableStateError(error.message, error)
     }
   }
 
@@ -106,11 +112,11 @@ export function useViewerTableState({
 
       debug.completeState(DebugCategories.TABLE_UPDATES, 'Viewer elements updated')
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to update viewer elements:', err)
+      const error =
+        err instanceof Error ? err : new Error('Failed to update viewer elements')
+      debug.error(DebugCategories.ERROR, 'Failed to update viewer elements:', error)
       _hasError.value = true
-      throw err instanceof Error
-        ? new TableStateError(err.message, err)
-        : new TableStateError('Failed to update viewer elements')
+      throw new TableStateError(error.message, error)
     }
   }
 
@@ -130,11 +136,11 @@ export function useViewerTableState({
         totalCount: elements.value.length
       })
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to filter viewer elements:', err)
+      const error =
+        err instanceof Error ? err : new Error('Failed to filter viewer elements')
+      debug.error(DebugCategories.ERROR, 'Failed to filter viewer elements:', error)
       _hasError.value = true
-      throw err instanceof Error
-        ? new TableStateError(err.message, err)
-        : new TableStateError('Failed to filter viewer elements')
+      throw new TableStateError(error.message, error)
     }
   }
 

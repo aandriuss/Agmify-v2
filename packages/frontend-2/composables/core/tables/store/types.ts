@@ -90,6 +90,7 @@ export interface TableStore {
   updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]): void
 
   // Store management
+  initialize(): Promise<void>
   reset(): void
 }
 

@@ -15,7 +15,7 @@
     <LoadingState
       :is-loading="unref(isComponentLoading)"
       :error="errorState"
-      loading-message="Loading schedule data..."
+      :loading-message="loadingMessage"
     >
       <div class="schedule-table-container">
         <template>
@@ -46,30 +46,46 @@
           />
 
           <!-- Data Table -->
-          <BaseDataTable
-            :table-id="selectedTableId"
-            :table-name="tableName"
-            :data="tableData as ViewerTableRow[]"
-            :columns="tableStore.currentTable.value?.parentColumns || []"
-            :detail-columns="tableStore.currentTable.value?.childColumns || []"
-            :loading="unref(isComponentLoading)"
-            :error="error"
-            @row-expand="events.handleRowExpand"
-            @row-collapse="events.handleRowCollapse"
-            @column-visibility-change="handleColumnVisibilityChange"
-            @column-reorder="handleColumnReorder"
-            @column-resize="handleColumnResize"
-            @error="events.handleError"
-            @retry="() => events.handleRetry({ timestamp: Date.now() })"
-          />
+          <template>
+            <div v-if="debug.isEnabled.value" class="mb-2 p-2 bg-gray-100">
+              <pre class="text-xs">{{
+                {
+                  tableId: selectedTableId,
+                  tableName,
+                  dataLength: unref(tableData)?.length || 0,
+                  columnsLength: tableColumns?.length || 0,
+                  detailColumnsLength: detailColumns?.length || 0,
+                  isTableReady,
+                  error: error?.message
+                }
+              }}</pre>
+            </div>
+            <BaseDataTable
+              :table-id="selectedTableId"
+              :table-name="tableName"
+              :data="unref(tableData)"
+              :columns="tableColumns"
+              :detail-columns="detailColumns"
+              :loading="!isTableReady"
+              :error="error"
+              @row-expand="events.handleRowExpand"
+              @row-collapse="events.handleRowCollapse"
+              @column-visibility-change="handleColumnVisibilityChange"
+              @column-reorder="handleColumnReorder"
+              @column-resize="handleColumnResize"
+              @error="events.handleError"
+              @retry="() => events.handleRetry({ timestamp: Date.now() })"
+            />
+          </template>
 
+          <!-- Debug Panel -->
           <DebugPanel
             v-if="debug.isEnabled.value"
-            :schedule-data="scheduleData"
-            :evaluated-data="evaluatedData"
-            :table-data="tableData"
-            :parent-elements="parentElements"
-            :child-elements="childElements"
+            :schedule-data="store.scheduleData.value"
+            :evaluated-data="store.evaluatedData.value"
+            :table-data="store.tableData.value"
+            :parent-elements="unref(parentElements)"
+            :child-elements="unref(childElements)"
             :parent-columns="tableStore.currentTable.value?.parentColumns || []"
             :child-columns="tableStore.currentTable.value?.childColumns || []"
             :show-parameter-stats="true"
@@ -86,11 +102,8 @@
 
 <script setup lang="ts">
 import { computed, watch, onMounted, unref } from 'vue'
-import type { PropType } from 'vue'
-import type {
-  ElementData,
-  ViewerTableRow
-} from '~/composables/core/types/elements/elements-base'
+import type { ElementData } from '~/composables/core/types/elements/elements-base'
+import { toViewerTableRow } from '~/composables/core/types/elements/elements-base'
 import type { TableSettings } from '~/composables/core/tables/store/types'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
 import type { ScheduleEmits } from '~/composables/core/types/tables/table-events'
@@ -98,7 +111,7 @@ import { useParameters } from '~/composables/core/parameters/useParameters'
 import type {
   SelectedParameter,
   AvailableParameter,
-  RawParameter
+  ViewerTableRow
 } from '~/composables/core/types'
 import { createSelectedParameter } from '~/composables/core/types'
 import { createTableColumns } from '~/composables/core/types/tables/table-column'
@@ -109,8 +122,6 @@ import TableLayout from '~/components/core/tables/TableLayout.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useTableStore } from '~/composables/core/tables/store/store'
-import { useElementsData } from '~/composables/core/tables/state/useElementsData'
-import { useSelectedElementsData } from '~/composables/core/tables/state/useSelectedElementsData'
 import { useScheduleEvents } from '~/composables/core/tables/events/useScheduleEvents'
 import { useTableFlow } from '~/composables/core/tables/state/useTableFlow'
 import { useStore } from '~/composables/core/store'
@@ -124,30 +135,6 @@ const store = useStore()
 const bimElements = useBIMElements()
 const parameterStore = useParameterStore()
 
-// Define props
-const props = defineProps({
-  selectedTableId: {
-    type: String,
-    required: true
-  },
-  currentTable: {
-    type: Object as PropType<TableSettings | null>,
-    default: null
-  },
-  tableName: {
-    type: String,
-    default: ''
-  },
-  showParameterManager: {
-    type: Boolean,
-    default: false
-  },
-  isLoadingAdditionalData: {
-    type: Boolean,
-    default: false
-  }
-})
-
 // Define emit types with generic row type
 const emit = defineEmits<ScheduleEmits<ElementData>>()
 
@@ -155,22 +142,141 @@ const emit = defineEmits<ScheduleEmits<ElementData>>()
 const tableStore = useTableStore()
 const tableParameters = useTableParameters()
 
-// Initialize parameter extraction
-const { allElements, isLoading: _isLoadingElements } = useElementsData({
-  selectedParentCategories: computed(() => store.selectedParentCategories.value),
-  selectedChildCategories: computed(() => store.selectedChildCategories.value)
+// Define props for data passed from parent
+const props = withDefaults(
+  defineProps<{
+    selectedTableId: string
+    currentTable: TableSettings | null
+    tableName: string
+    showParameterManager: boolean
+    isLoadingAdditionalData: boolean
+  }>(),
+  {}
+)
+
+// Computed properties for table data
+const tableColumns = computed(() => tableStore.currentTable.value?.parentColumns || [])
+const detailColumns = computed(() => tableStore.currentTable.value?.childColumns || [])
+
+// Cache for transformed data
+const transformedData = ref<ViewerTableRow[]>([])
+
+// Transform elements to table rows
+function transformElements(
+  elements: ElementData[],
+  columns: TableColumn[]
+): ViewerTableRow[] {
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Starting data transformation', {
+    elementCount: elements.length,
+    sampleElement: elements[0],
+    columns: columns.map((c) => ({ id: c.id, field: c.field }))
+  })
+
+  const rows = elements
+    .map((element) => {
+      // Skip invalid elements
+      if (!element?.id) {
+        debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid element', { element })
+        return null
+      }
+
+      // Ensure base properties exist
+      const baseElement: ElementData = {
+        ...element,
+        id: element.id,
+        name: element.name || element.mark || element.id,
+        type: element.type || 'Unknown',
+        category: element.category || 'Uncategorized',
+        parameters: element.parameters || {},
+        field: element.field || element.id,
+        header: element.header || element.name || '',
+        visible: element.visible ?? true,
+        order: element.order ?? 0,
+        removable: element.removable ?? true
+      }
+
+      return toViewerTableRow(baseElement)
+    })
+    .filter((row): row is ViewerTableRow => row !== null)
+
+  debug.log(DebugCategories.DATA_TRANSFORM, 'Data transformation complete', {
+    inputCount: elements.length,
+    outputCount: rows.length,
+    sampleRow: rows[0]
+  })
+
+  return rows
+}
+
+// Watch for data or column changes
+watch(
+  [() => store.evaluatedData.value, tableColumns],
+  ([newData, columns]) => {
+    if (!newData?.length) {
+      debug.log(DebugCategories.DATA_TRANSFORM, 'No data to transform')
+      transformedData.value = []
+      return
+    }
+
+    transformedData.value = transformElements(newData, columns)
+  },
+  { immediate: true }
+)
+
+// Computed property for table data
+const tableData = computed(() => transformedData.value)
+
+// Table readiness state
+const isTableReady = computed(() => {
+  if (!tableData.value || !tableColumns.value || !detailColumns.value) return false
+  return (
+    tableData.value.length > 0 &&
+    (tableColumns.value.length > 0 || detailColumns.value.length > 0)
+  )
 })
 
-// Initialize selected elements processing
-const {
-  scheduleData,
-  tableData,
-  isLoading: _isLoadingSelected,
-  state
-} = useSelectedElementsData({
-  elements: allElements,
-  selectedParentCategories: computed(() => store.selectedParentCategories.value),
-  selectedChildCategories: computed(() => store.selectedChildCategories.value)
+// Setup watchers after initialization
+onMounted(() => {
+  // Watch column changes for logging
+  watch(
+    [tableColumns, detailColumns],
+    ([parent, child], _) => {
+      // Skip if not initialized
+      if (!parent || !child) return
+
+      // Only log if columns actually changed
+      debug.log(DebugCategories.COLUMNS, 'Column configuration:', {
+        parent: {
+          count: parent.length,
+          columns: parent.map((c) => ({ id: c.id, field: c.field, visible: c.visible }))
+        },
+        child: {
+          count: child.length,
+          columns: child.map((c) => ({ id: c.id, field: c.field, visible: c.visible }))
+        }
+      })
+    },
+    { deep: true }
+  )
+
+  // Watch table readiness for logging
+  watch(
+    [() => tableData.value?.length, tableColumns, detailColumns],
+    ([dataCount, parent, child], _) => {
+      // Skip if not initialized
+      if (!parent || !child) return
+
+      debug.log(DebugCategories.STATE, 'Table readiness:', {
+        hasData: (dataCount || 0) > 0,
+        hasColumns: parent.length > 0 || child.length > 0,
+        dataCount: dataCount || 0,
+        columnCounts: {
+          parent: parent.length,
+          child: child.length
+        }
+      })
+    }
+  )
 })
 
 // Initialize parameter system for UI interactions
@@ -179,29 +285,8 @@ const parameters = useParameters({
   selectedChildCategories: computed(() => store.selectedChildCategories.value)
 })
 
-// Watch for parameter changes
-watch(
-  [
-    () => parameterStore.parentRawParameters.value,
-    () => parameterStore.childRawParameters.value
-  ],
-  async ([newParentParams, newChildParams]) => {
-    if (newParentParams?.length || newChildParams?.length) {
-      debug.log(DebugCategories.PARAMETERS, 'Parameters updated', {
-        parent: newParentParams?.length || 0,
-        child: newChildParams?.length || 0
-      })
-      await tableParameters.initializeTableParameters(true)
-    }
-  }
-)
-
 // Initialize table flow
-const {
-  initialize: initializeTable,
-  isInitialized,
-  error: tableError
-} = useTableFlow({
+const { initialize: initializeTable, error: tableError } = useTableFlow({
   currentTable: computed(() => props.currentTable),
   defaultConfig: {
     id: props.selectedTableId,
@@ -218,37 +303,77 @@ const {
   }
 })
 
-// Watch for table initialization
-watch(isInitialized, async (initialized) => {
-  if (initialized) {
-    debug.log(DebugCategories.INITIALIZATION, 'Table flow initialized')
-    await tableParameters.initializeTableParameters()
-  }
-})
-
 // Initialize events
 const events = useScheduleEvents({
   onError: (error) => emit('error', { error }),
   onRetry: () => emit('retry', { timestamp: Date.now() })
 })
 
-const isComponentLoading = computed(() => {
-  const currentTable = tableStore.currentTable.value
-  const hasTableData = tableData.value?.length > 0
-  const hasParameters =
-    currentTable?.selectedParameters?.parent?.length ||
-    currentTable?.selectedParameters?.child?.length
-  const isProcessing = state.value?.processingState.isProcessingElements
-  const isInitializingParameters = tableParameters.isInitializing.value
+// Loading message based on current state
+const loadingMessage = computed(() => {
+  // Check store initialization
+  const isStoreInitialized = store.initialized.value
+  const isParameterStoreInitialized = parameterStore.state.value.initialized
+  const isTableInitialized = tableStore.currentTable.value !== null
 
-  // Show loading while initializing parameters or processing data
-  return isInitializingParameters || isProcessing || (!hasTableData && !hasParameters)
+  // Check data presence
+  const hasScheduleData = store.scheduleData.value?.length > 0
+  const hasParameters =
+    parameterStore.parentRawParameters.value?.length > 0 ||
+    parameterStore.childRawParameters.value?.length > 0
+  const hasTableData = store.tableData.value?.length > 0
+
+  // Check processing states
+  const isProcessing = parameterStore.state.value.processing.status === 'processing'
+  const isTableLoading = props.isLoadingAdditionalData
+
+  // Return appropriate message based on state
+  if (!isStoreInitialized) return 'Initializing core store...'
+  if (!isParameterStoreInitialized) return 'Initializing parameter store...'
+  if (!isTableInitialized) return 'Initializing table...'
+  if (isProcessing) return 'Processing parameters...'
+  if (isTableLoading) return 'Loading additional data...'
+  if (!hasScheduleData) return 'Loading BIM elements...'
+  if (!hasParameters) return 'Loading parameters...'
+  if (!hasTableData) return 'Preparing table data...'
+
+  return 'Loading...'
 })
 
-// Error state
-const error = computed(() => {
+// Loading state based on minimum required conditions
+const isComponentLoading = computed(() => {
+  // Only check essential conditions for table display
+  const hasTable = tableStore.currentTable.value !== null
+  const hasData = tableData.value?.length > 0
+  const hasColumns = tableColumns.value.length > 0 || detailColumns.value.length > 0
+  const isProcessing = parameterStore.state.value.processing.status === 'processing'
+
+  // Debug state for troubleshooting
+  debug.log(DebugCategories.STATE, 'Component loading state:', {
+    hasTable,
+    hasData,
+    hasColumns,
+    isProcessing,
+    tableData: {
+      length: tableData.value?.length || 0,
+      sample: tableData.value?.[0],
+      storeLength: store.tableData.value?.length || 0
+    },
+    columns: {
+      parent: tableColumns.value.length,
+      child: detailColumns.value.length,
+      visibleParent: tableColumns.value.filter((c) => c.visible).length,
+      visibleChild: detailColumns.value.filter((c) => c.visible).length
+    }
+  })
+
+  // Only require table and visible columns to be ready
+  return !hasTable || !hasColumns || isProcessing
+})
+
+// Error state with type safety
+const error = computed<Error | null>(() => {
   if (tableError.value) return tableError.value
-  if (state.value?.error) return state.value.error
   if (bimElements.hasError.value) {
     debug.error(DebugCategories.ERROR, 'BIM elements error')
     return new Error('Failed to load BIM elements')
@@ -261,16 +386,20 @@ const error = computed(() => {
     debug.error(DebugCategories.ERROR, 'Parameter initialization error')
     return tableParameters.error.value || new Error('Failed to initialize parameters')
   }
+  if (parameterStore.state.value.processing.error) {
+    debug.error(DebugCategories.ERROR, 'Parameter processing error')
+    return parameterStore.state.value.processing.error
+  }
   return null
 })
 
-// Error state for LoadingState component
+// Error state for LoadingState component with type safety
 const errorState = computed(() => {
   const currentError = error.value
   if (!currentError) return null
   return {
-    message: currentError.message,
-    name: currentError.name,
+    message: currentError.message || 'Unknown error',
+    name: currentError.name || 'Error',
     stack: currentError.stack
   }
 })
@@ -450,291 +579,44 @@ function handleError(err: unknown): void {
   emit('error', { error })
 }
 
-// Safe computed properties from state
+// Safe computed properties for elements
 const parentElements = computed<ElementData[]>(() => {
-  if (!state.value) return []
-  return state.value.parentElements || []
+  return (store.scheduleData.value || []).filter((el) => el.metadata?.isParent)
 })
 
 const childElements = computed<ElementData[]>(() => {
-  if (!state.value) return []
-  return state.value.childElements || []
+  return (store.scheduleData.value || []).filter((el) => el.isChild)
 })
 
-const evaluatedData = computed(() => store.evaluatedData.value || [])
+// Initialize stores synchronously
+onMounted(() => {
+  debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedule view')
 
-// Initialize on mount
-onMounted(async () => {
-  try {
-    debug.startState(DebugCategories.INITIALIZATION, 'Initializing schedule view')
-
-    // First wait for store initialization
-    debug.log(DebugCategories.INITIALIZATION, 'Waiting for store initialization')
-    await new Promise<void>((resolve) => {
-      if (store.initialized.value) {
-        resolve()
-        return
-      }
-      const unwatch = watch(
-        () => store.initialized.value,
-        (initialized) => {
-          if (initialized) {
-            unwatch()
-            resolve()
-          }
-        },
-        { immediate: true }
-      )
-    })
-
-    // Then wait for BIM elements with timeout
-    debug.log(DebugCategories.INITIALIZATION, 'Waiting for BIM elements')
-    await Promise.race([
-      new Promise<void>((resolve) => {
-        if (bimElements.allElements.value?.length) {
-          resolve()
-          return
-        }
-        const unwatch = watch(
-          () => bimElements.allElements.value,
-          (elements) => {
-            if (elements?.length) {
-              debug.log(DebugCategories.INITIALIZATION, 'BIM elements loaded', {
-                count: elements.length,
-                sample: elements[0]
-                  ? {
-                      id: elements[0].id,
-                      category: elements[0].category,
-                      parameterCount: Object.keys(elements[0].parameters || {}).length
-                    }
-                  : null
-              })
-              unwatch()
-              resolve()
-            }
-          },
-          { immediate: true }
-        )
-      }),
-      new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error('BIM elements load timeout')), 10000)
-      )
-    ])
-
-    debug.log(DebugCategories.INITIALIZATION, 'Core systems initialized', {
-      store: {
-        initialized: store.initialized.value,
-        scheduleData: store.scheduleData.value?.length || 0
-      },
-      bimElements: {
-        count: bimElements.allElements.value?.length || 0,
-        loading: bimElements.isLoading.value,
-        error: bimElements.hasError.value
-      }
-    })
-
-    try {
-      // Initialize table first to get default parameters
-      debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
-      await initializeTable()
-
-      // Then wait for parameter store to be ready and parameters to be processed
-      debug.startState(DebugCategories.PARAMETERS, 'Waiting for parameter store')
-      await new Promise<void>((resolve) => {
-        if (
-          parameterStore.state.value.initialized &&
-          (parameterStore.parentAvailableBimParameters.value?.length ||
-            parameterStore.childAvailableBimParameters.value?.length)
-        ) {
-          resolve()
-          return
-        }
-        const unwatch = watch(
-          [
-            () => parameterStore.state.value.initialized,
-            () => parameterStore.parentAvailableBimParameters.value,
-            () => parameterStore.childAvailableBimParameters.value
-          ],
-          ([initialized, parentBim, childBim]) => {
-            if (initialized && (parentBim?.length || childBim?.length)) {
-              debug.log(DebugCategories.PARAMETERS, 'Parameter store ready', {
-                parentBim: parentBim?.length || 0,
-                childBim: childBim?.length || 0
-              })
-              unwatch()
-              resolve()
-            }
-          },
-          { immediate: true }
-        )
-      })
-
-      // Verify parameters were processed
-      const paramState = {
-        raw: {
-          parent: parameterStore.parentRawParameters.value?.length || 0,
-          child: parameterStore.childRawParameters.value?.length || 0
-        },
-        available: {
-          parentBim: parameterStore.parentAvailableBimParameters.value?.length || 0,
-          parentUser: parameterStore.parentAvailableUserParameters.value?.length || 0,
-          childBim: parameterStore.childAvailableBimParameters.value?.length || 0,
-          childUser: parameterStore.childAvailableUserParameters.value?.length || 0
-        }
-      }
-
-      debug.log(DebugCategories.PARAMETERS, 'Parameters processed', paramState)
-
-      if (!paramState.raw.parent && !paramState.raw.child) {
-        throw new Error('No parameters extracted from BIM elements')
-      }
-
-      // Wait for table to be fully initialized with current data
-      if (!props.currentTable) {
-        debug.log(DebugCategories.INITIALIZATION, 'Waiting for table data')
-        await Promise.race([
-          new Promise<void>((resolve) => {
-            const unwatch = watch(
-              () => props.currentTable,
-              (table) => {
-                if (table) {
-                  debug.log(DebugCategories.INITIALIZATION, 'Table data received', {
-                    id: table.id,
-                    parameters: {
-                      parent: table.selectedParameters?.parent?.length || 0,
-                      child: table.selectedParameters?.child?.length || 0
-                    }
-                  })
-                  unwatch()
-                  resolve()
-                }
-              },
-              { immediate: true }
-            )
-          }),
-          new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error('Table initialization timeout')), 5000)
-          )
-        ])
-      }
-
-      // Ensure we have parameters before proceeding
-      if (
-        !parameterStore.parentRawParameters.value?.length &&
-        !parameterStore.childRawParameters.value?.length
-      ) {
-        debug.warn(
-          DebugCategories.PARAMETERS,
-          'No parameters available after initialization'
-        )
-        throw new Error('No parameters available')
-      }
-
-      debug.log(DebugCategories.INITIALIZATION, 'Table initialized', {
-        tableId: props.selectedTableId,
-        settings: props.currentTable
-      })
-
-      // Initialize table parameters
-      debug.startState(DebugCategories.PARAMETERS, 'Initializing table parameters')
-      await tableParameters.initializeTableParameters()
-
-      // Data will be processed by useTableParameters after parameters are initialized
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to initialize component:', err)
-      throw err
-    }
-
-    // Log parameter state after initialization
-    const currentTable = tableStore.currentTable.value
-    if (currentTable) {
-      debug.log(DebugCategories.PARAMETERS, 'Parameter state after initialization', {
-        parentSelected: currentTable.selectedParameters.parent.length,
-        childSelected: currentTable.selectedParameters.child.length
-      })
-
-      // Verify parameters were initialized
-      if (
-        !currentTable.selectedParameters.parent.length &&
-        !currentTable.selectedParameters.child.length
-      ) {
-        debug.warn(
-          DebugCategories.PARAMETERS,
-          'No parameters selected after initialization',
-          {
-            tableId: props.selectedTableId,
-            settings: props.currentTable
-          }
-        )
-
-        // Use default parameters
-        debug.log(DebugCategories.PARAMETERS, 'Using default parameters')
-        tableStore.updateSelectedParameters(defaultSelectedParameters)
-      }
-    }
-
-    // Log final parameter state
-    const parameterState = {
-      raw: {
-        parent: unref(parameterStore.parentRawParameters)?.length || 0,
-        child: unref(parameterStore.childRawParameters)?.length || 0,
-        parentGroups: Array.from(
-          new Set(
-            unref(parameterStore.parentRawParameters)?.map(
-              (p: RawParameter) => p.sourceGroup
-            ) || []
-          )
-        ),
-        childGroups: Array.from(
-          new Set(
-            unref(parameterStore.childRawParameters)?.map(
-              (p: RawParameter) => p.sourceGroup
-            ) || []
-          )
-        )
-      },
-      available: {
-        parent: {
-          bim: unref(parameterStore.parentAvailableBimParameters)?.length || 0,
-          user: unref(parameterStore.parentAvailableUserParameters)?.length || 0
-        },
-        child: {
-          bim: unref(parameterStore.childAvailableBimParameters)?.length || 0,
-          user: unref(parameterStore.childAvailableUserParameters)?.length || 0
-        }
-      },
-      selected: {
-        parent: tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
-        child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
-      }
-    }
-
-    debug.log(DebugCategories.PARAMETERS, 'Parameters processed', parameterState)
-
-    // Wait for Vue to update the DOM
-    await new Promise((resolve) => requestAnimationFrame(resolve))
-
-    debug.completeState(DebugCategories.INITIALIZATION, 'Schedule view initialized')
-  } catch (err) {
-    handleError(err)
+  // Initialize stores if needed
+  if (!store.initialized.value) {
+    store.lifecycle.init().catch(handleError)
   }
+  if (!parameterStore.state.value.initialized) {
+    parameterStore.init().catch(handleError)
+  }
+
+  // Initialize table
+  initializeTable().catch(handleError)
+
+  debug.completeState(DebugCategories.INITIALIZATION, 'Schedule view initialized')
 })
 
-// Watch for table changes
+// Watch for table changes and reinitialize parameters only if needed
 watch(
   () => props.selectedTableId,
-  async (newTableId) => {
-    if (newTableId) {
-      try {
-        debug.startState(
-          DebugCategories.PARAMETERS,
-          'Table changed, reinitializing parameters'
-        )
-        await tableParameters.initializeTableParameters()
-        debug.completeState(DebugCategories.PARAMETERS, 'Parameters reinitialized')
-      } catch (err) {
-        handleError(err)
-      }
+  (newTableId, oldTableId) => {
+    if (
+      newTableId &&
+      newTableId !== oldTableId &&
+      parameterStore.state.value.initialized
+    ) {
+      debug.log(DebugCategories.PARAMETERS, 'Table changed, reinitializing parameters')
+      tableParameters.initializeTableParameters().catch(handleError)
     }
   }
 )
@@ -755,5 +637,7 @@ defineExpose({
 
 .schedule-table-container {
   display: block;
+  min-height: 400px;
+  width: 100%;
 }
 </style>

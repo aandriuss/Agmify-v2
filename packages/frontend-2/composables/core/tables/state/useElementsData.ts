@@ -19,6 +19,26 @@ import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import { isWorldTreeRoot } from '~/composables/core/types/viewer/viewer-types'
 
+// Type guard for element parameters
+function hasParameters(
+  element: ElementData
+): element is ElementData & { parameters: Record<string, unknown> } {
+  return element.parameters !== undefined && typeof element.parameters === 'object'
+}
+
+// Helper to ensure element has parameters
+function ensureParameters(
+  element: ElementData
+): ElementData & { parameters: Record<string, unknown> } {
+  if (!hasParameters(element)) {
+    return {
+      ...element,
+      parameters: {}
+    }
+  }
+  return element
+}
+
 interface AppError extends Error {
   code?: string
   details?: unknown
@@ -117,7 +137,19 @@ export function useElementsData(
   /**
    * Extract and process parameters from elements
    */
-  async function extractParameters() {
+  async function extractParameters(forceProcess = false) {
+    // Skip if already processing
+    if (processingState.value.isProcessingElements && !forceProcess) {
+      debug.warn(DebugCategories.DATA, 'Parameter extraction already in progress')
+      return
+    }
+
+    // Skip if parameter store not initialized
+    if (!parameterStore.state.value.initialized) {
+      debug.warn(DebugCategories.DATA, 'Parameter store not initialized')
+      return
+    }
+
     if (!bimElements.allElements.value?.length) {
       debug.warn(DebugCategories.DATA, 'No BIM elements available')
       return
@@ -128,18 +160,20 @@ export function useElementsData(
       processingState.value.isProcessingElements = true
 
       // Get all elements and ensure they have a parameters object
-      const elements = bimElements.allElements.value.map((el) => ({
-        ...el,
-        parameters: el.parameters || {}
-      }))
+      const elements = bimElements.allElements.value.map(ensureParameters)
 
       if (!elements.length) {
         debug.warn(DebugCategories.DATA, 'No elements found')
         return
       }
 
-      // Process parameters through parameter store
-      await parameterStore.processParameters(elements)
+      // Only process parameters if forced or not already processed
+      if (forceProcess || !parameterStore.lastUpdated.value) {
+        debug.log(DebugCategories.INITIALIZATION, 'Processing parameters through store')
+        await parameterStore.processParameters(elements)
+      } else {
+        debug.log(DebugCategories.INITIALIZATION, 'Using cached parameters')
+      }
 
       // Get selected parameters from table store
       const currentTable = tableStore.currentTable.value
@@ -149,8 +183,6 @@ export function useElementsData(
 
         // Ensure all elements have entries for selected parameters
         elements.forEach((el) => {
-          if (!el.parameters) el.parameters = {}
-
           // Add parent parameters
           parentParams.forEach((param: SelectedParameter) => {
             if (!el.parameters[param.id]) {
@@ -285,18 +317,67 @@ export function useElementsData(
         // Extract parameters with new categories
         await extractParameters()
 
-        debug.completeState(
-          DebugCategories.CATEGORY_UPDATES,
-          'Category change processed'
-        )
+        // Ensure all elements have selected parameters
+        const currentTable = tableStore.currentTable.value
+        if (currentTable?.selectedParameters) {
+          const { parent: parentParams, child: childParams } =
+            currentTable.selectedParameters
+
+          // Add missing parameters to all elements
+          bimElements.allElements.value?.forEach((el) => {
+            const element = ensureParameters(el)
+
+            // Add parent parameters
+            parentParams.forEach((param) => {
+              if (!element.parameters[param.id]) {
+                const availableParam = createAvailableBimParameter(
+                  {
+                    id: param.id,
+                    name: param.name,
+                    value: null,
+                    sourceGroup: param.group,
+                    metadata: param.metadata || {}
+                  },
+                  param.type as BimValueType,
+                  null
+                )
+                element.parameters[param.id] = availableParam.value
+              }
+            })
+
+            // Add child parameters
+            childParams.forEach((param) => {
+              if (!element.parameters[param.id]) {
+                const availableParam = createAvailableBimParameter(
+                  {
+                    id: param.id,
+                    name: param.name,
+                    value: null,
+                    sourceGroup: param.group,
+                    metadata: param.metadata || {}
+                  },
+                  param.type as BimValueType,
+                  null
+                )
+                element.parameters[param.id] = availableParam.value
+              }
+            })
+          })
+        }
+
+        debug.log(DebugCategories.CATEGORY_UPDATES, 'Parameters extracted and added', {
+          elements: bimElements.allElements.value?.length || 0,
+          parameters: {
+            parent: currentTable?.selectedParameters?.parent?.length || 0,
+            child: currentTable?.selectedParameters?.child?.length || 0
+          }
+        })
+
+        debug.completeState(DebugCategories.CATEGORY_UPDATES, 'Categories updated')
       } catch (err: unknown) {
-        const processedError = logError(
-          DebugCategories.ERROR,
-          'Error processing category change:',
-          err
-        )
-        processingState.value.error = processedError
-        throw processedError
+        const error = logError(DebugCategories.ERROR, 'Error updating categories:', err)
+        processingState.value.error = error
+        throw error
       } finally {
         processingState.value.isProcessingElements = false
       }
@@ -329,173 +410,202 @@ export function useElementsData(
     { deep: true }
   )
 
-  // Watch for BIM elements changes
-  watch(bimElements.allElements, async (newElements, oldElements) => {
-    debug.log(DebugCategories.DATA_TRANSFORM, 'BIM elements changed', {
-      newCount: newElements?.length,
-      oldCount: oldElements?.length,
-      processing: processingState.value.isProcessingElements,
-      categories: {
-        parent: options.selectedParentCategories.value,
-        child: options.selectedChildCategories.value
+  // Watch for BIM elements changes with debouncing
+  const debouncedElementsWatch = debounce(
+    async (
+      newElements: ElementData[] | undefined,
+      oldElements: ElementData[] | undefined
+    ) => {
+      debug.log(DebugCategories.DATA_TRANSFORM, 'BIM elements changed', {
+        newCount: newElements?.length,
+        oldCount: oldElements?.length,
+        processing: processingState.value.isProcessingElements,
+        categories: {
+          parent: options.selectedParentCategories.value,
+          child: options.selectedChildCategories.value
+        }
+      })
+
+      // Skip if no elements or already processing
+      if (!newElements?.length || processingState.value.isProcessingElements) {
+        return
       }
-    })
 
-    // Skip initial watch trigger to avoid race conditions
-    if (oldElements === undefined) {
-      debug.log(DebugCategories.DATA_TRANSFORM, 'Skipping initial watch trigger')
-      return
-    }
+      // Only process if elements actually changed
+      const elementsChanged =
+        !oldElements ||
+        newElements.length !== oldElements.length ||
+        newElements.some((el, idx) => el.id !== oldElements[idx]?.id)
 
-    // Only process if elements changed, we're not already processing, and this isn't the initial load
-    if (
-      !processingState.value.isProcessingElements &&
-      newElements?.length &&
-      oldElements?.length
-    ) {
-      try {
-        processingState.value.isProcessingElements = true
+      if (elementsChanged) {
+        try {
+          processingState.value.isProcessingElements = true
 
-        // Update element metadata with parent/child info
-        const updatedElements = newElements.map((element) => {
-          const category = element.category || 'Uncategorized'
-          const isParent = options.selectedParentCategories.value.includes(category)
-          const isChild = options.selectedChildCategories.value.includes(category)
+          // Update element metadata with parent/child info
+          const updatedElements = newElements.map((element) => {
+            const category = element.category || 'Uncategorized'
+            const isParent = options.selectedParentCategories.value.includes(category)
+            const isChild = options.selectedChildCategories.value.includes(category)
 
-          debug.log(DebugCategories.DATA_TRANSFORM, 'Processing element', {
-            id: element.id,
-            category,
-            isParent,
-            isChild,
-            parameterCount: Object.keys(element.parameters || {}).length
+            // Get host from parameters if available and convert to string
+            const rawHost = element.parameters?.['host'] || element.host
+            const host = rawHost ? String(rawHost) : undefined
+
+            debug.log(DebugCategories.DATA_TRANSFORM, 'Processing element', {
+              id: element.id,
+              category,
+              isParent,
+              isChild,
+              rawHost,
+              host,
+              parameterCount: Object.keys(element.parameters || {}).length
+            })
+
+            return {
+              ...element,
+              isChild,
+              host,
+              metadata: {
+                ...element.metadata,
+                isParent,
+                category
+              }
+            }
           })
 
-          return {
-            ...element,
-            isChild,
-            metadata: {
-              ...element.metadata,
-              isParent,
-              category
+          // Group elements by selected categories
+          const parentElements = updatedElements.filter((el) => el.metadata?.isParent)
+          const childElements = updatedElements.filter((el) => el.isChild)
+
+          debug.log(DebugCategories.DATA_TRANSFORM, 'Elements categorized', {
+            total: updatedElements.length,
+            parents: {
+              count: parentElements.length,
+              categories: Array.from(new Set(parentElements.map((el) => el.category)))
+            },
+            children: {
+              count: childElements.length,
+              categories: Array.from(new Set(childElements.map((el) => el.category)))
             }
-          }
-        })
+          })
 
-        // Group elements by selected categories
-        const parentElements = updatedElements.filter((el) => el.metadata?.isParent)
-        const childElements = updatedElements.filter((el) => el.isChild)
+          // Update store with processed elements
+          await store.lifecycle.update({
+            scheduleData: updatedElements,
+            tableData: updatedElements,
+            evaluatedData: updatedElements
+          })
 
-        debug.log(DebugCategories.DATA_TRANSFORM, 'Elements categorized', {
-          total: updatedElements.length,
-          parents: {
-            count: parentElements.length,
-            categories: Array.from(new Set(parentElements.map((el) => el.category)))
-          },
-          children: {
-            count: childElements.length,
-            categories: Array.from(new Set(childElements.map((el) => el.category)))
-          }
-        })
+          debug.log(DebugCategories.DATA_TRANSFORM, 'Store updated with elements', {
+            total: updatedElements.length,
+            parents: updatedElements.filter((el) => el.metadata?.isParent).length,
+            children: updatedElements.filter((el) => el.isChild).length,
+            parameters: updatedElements.reduce(
+              (acc, el: ElementData) => acc + Object.keys(el.parameters || {}).length,
+              0
+            )
+          })
 
-        // Update store with processed elements
-        await store.lifecycle.update({
-          scheduleData: updatedElements,
-          tableData: updatedElements,
-          evaluatedData: updatedElements
-        })
+          // Transform elements into table rows with all parameters
+          const transformedElements = updatedElements.map((el) => {
+            const element = ensureParameters(el)
+            const parameters = { ...element.parameters }
 
-        debug.log(DebugCategories.DATA_TRANSFORM, 'Store updated with elements', {
-          total: updatedElements.length,
-          parents: updatedElements.filter((el) => el.metadata?.isParent).length,
-          children: updatedElements.filter((el) => el.isChild).length,
-          parameters: updatedElements.reduce(
-            (acc, el) => acc + Object.keys(el.parameters || {}).length,
-            0
+            // Ensure all selected parameters exist
+            const table = tableStore.currentTable.value
+            if (table?.selectedParameters) {
+              const { parent: parentParams, child: childParams } =
+                table.selectedParameters
+
+              // Add missing parent parameters
+              parentParams.forEach((param: SelectedParameter) => {
+                if (!parameters[param.id]) {
+                  const availableParam = createAvailableBimParameter(
+                    {
+                      id: param.id,
+                      name: param.name,
+                      value: null,
+                      sourceGroup: param.group,
+                      metadata: param.metadata || {}
+                    },
+                    param.type as BimValueType,
+                    null
+                  )
+                  parameters[param.id] = availableParam.value
+                }
+              })
+
+              // Add missing child parameters
+              childParams.forEach((param: SelectedParameter) => {
+                if (!parameters[param.id]) {
+                  const availableParam = createAvailableBimParameter(
+                    {
+                      id: param.id,
+                      name: param.name,
+                      value: null,
+                      sourceGroup: param.group,
+                      metadata: param.metadata || {}
+                    },
+                    param.type as BimValueType,
+                    null
+                  )
+                  parameters[param.id] = availableParam.value
+                }
+              })
+            }
+
+            return {
+              ...element,
+              parameters
+            }
+          })
+
+          // Update local data structures
+          tableData.value = transformedElements
+          childElementsList.value = childElements
+          elementsMap.value = new Map(
+            parentElements.map((parent) => [parent.mark || parent.id, parent])
           )
-        })
 
-        // Transform elements into table rows with all parameters
-        const transformedElements = updatedElements.map((el) => {
-          const parameters = { ...el.parameters }
+          // Extract parameters from updated elements
+          await extractParameters()
 
-          // Ensure all selected parameters exist
-          const table = tableStore.currentTable.value
-          if (table?.selectedParameters) {
-            const { parent: parentParams, child: childParams } =
-              table.selectedParameters
+          debug.log(DebugCategories.DATA_TRANSFORM, 'Local data updated', {
+            tableData: tableData.value.length,
+            childElements: childElementsList.value.length,
+            parentElements: elementsMap.value.size
+          })
 
-            // Add missing parent parameters
-            parentParams.forEach((param: SelectedParameter) => {
-              if (!parameters[param.id]) {
-                const availableParam = createAvailableBimParameter(
-                  {
-                    id: param.id,
-                    name: param.name,
-                    value: null,
-                    sourceGroup: param.group,
-                    metadata: param.metadata || {}
-                  },
-                  param.type as BimValueType,
-                  null
-                )
-                parameters[param.id] = availableParam.value
-              }
-            })
-
-            // Add missing child parameters
-            childParams.forEach((param: SelectedParameter) => {
-              if (!parameters[param.id]) {
-                const availableParam = createAvailableBimParameter(
-                  {
-                    id: param.id,
-                    name: param.name,
-                    value: null,
-                    sourceGroup: param.group,
-                    metadata: param.metadata || {}
-                  },
-                  param.type as BimValueType,
-                  null
-                )
-                parameters[param.id] = availableParam.value
-              }
-            })
-          }
-
-          return {
-            ...el,
-            parameters
-          }
-        })
-
-        // Update local data structures
-        tableData.value = transformedElements
-        childElementsList.value = childElements
-        elementsMap.value = new Map(
-          parentElements.map((parent) => [parent.mark || parent.id, parent])
-        )
-
-        // Extract parameters from updated elements
-        await extractParameters()
-
-        debug.log(DebugCategories.DATA_TRANSFORM, 'Local data updated', {
-          tableData: tableData.value.length,
-          childElements: childElementsList.value.length,
-          parentElements: elementsMap.value.size
-        })
-
-        debug.log(DebugCategories.DATA_TRANSFORM, 'Elements processed', {
-          total: updatedElements.length,
-          parents: updatedElements.filter((el) => el.metadata?.isParent).length,
-          children: updatedElements.filter((el) => el.isChild).length
-        })
-      } catch (err) {
-        const error = logError(DebugCategories.ERROR, 'Error processing elements:', err)
-        processingState.value.error = error
-      } finally {
-        processingState.value.isProcessingElements = false
+          debug.log(DebugCategories.DATA_TRANSFORM, 'Elements processed', {
+            total: updatedElements.length,
+            parents: updatedElements.filter((el) => el.metadata?.isParent).length,
+            children: updatedElements.filter((el) => el.isChild).length
+          })
+        } catch (err) {
+          const error = logError(
+            DebugCategories.ERROR,
+            'Error processing elements:',
+            err
+          )
+          processingState.value.error = error
+        } finally {
+          processingState.value.isProcessingElements = false
+        }
       }
-    }
-  })
+    },
+    300 // 300ms debounce
+  )
+
+  // Watch BIM elements with debounced handler
+  watch(
+    () => bimElements.allElements.value,
+    (newElements, oldElements) => {
+      debouncedElementsWatch(newElements, oldElements).catch((err) => {
+        debug.error(DebugCategories.ERROR, 'Error in debounced elements watch:', err)
+      })
+    },
+    { deep: true }
+  )
 
   const updateCategories = async (
     parentCategories: string[],
@@ -530,7 +640,62 @@ export function useElementsData(
 
       // Extract parameters with new categories
       await extractParameters()
-      debug.log(DebugCategories.CATEGORY_UPDATES, 'Parameters extracted')
+
+      // Ensure all elements have selected parameters
+      const currentTable = tableStore.currentTable.value
+      if (currentTable?.selectedParameters) {
+        const { parent: parentParams, child: childParams } =
+          currentTable.selectedParameters
+
+        // Add missing parameters to all elements
+        bimElements.allElements.value?.forEach((el) => {
+          const element = ensureParameters(el)
+
+          // Add parent parameters
+          parentParams.forEach((param) => {
+            if (!element.parameters[param.id]) {
+              const availableParam = createAvailableBimParameter(
+                {
+                  id: param.id,
+                  name: param.name,
+                  value: null,
+                  sourceGroup: param.group,
+                  metadata: param.metadata || {}
+                },
+                param.type as BimValueType,
+                null
+              )
+              element.parameters[param.id] = availableParam.value
+            }
+          })
+
+          // Add child parameters
+          childParams.forEach((param) => {
+            if (!element.parameters[param.id]) {
+              const availableParam = createAvailableBimParameter(
+                {
+                  id: param.id,
+                  name: param.name,
+                  value: null,
+                  sourceGroup: param.group,
+                  metadata: param.metadata || {}
+                },
+                param.type as BimValueType,
+                null
+              )
+              element.parameters[param.id] = availableParam.value
+            }
+          })
+        })
+      }
+
+      debug.log(DebugCategories.CATEGORY_UPDATES, 'Parameters extracted and added', {
+        elements: bimElements.allElements.value?.length || 0,
+        parameters: {
+          parent: currentTable?.selectedParameters?.parent?.length || 0,
+          child: currentTable?.selectedParameters?.child?.length || 0
+        }
+      })
 
       debug.completeState(DebugCategories.CATEGORY_UPDATES, 'Categories updated')
     } catch (err: unknown) {
@@ -568,9 +733,24 @@ export function useElementsData(
         const isParent = options.selectedParentCategories.value.includes(category)
         const isChild = options.selectedChildCategories.value.includes(category)
 
+        // Get host from parameters if available and convert to string
+        const rawHost = element.parameters?.['host'] || element.host
+        const host = rawHost ? String(rawHost) : undefined
+
+        debug.log(DebugCategories.INITIALIZATION, 'Processing element', {
+          id: element.id,
+          category,
+          isParent,
+          isChild,
+          rawHost,
+          host,
+          parameterCount: Object.keys(element.parameters || {}).length
+        })
+
         return {
           ...element,
           isChild,
+          host,
           metadata: {
             ...element.metadata,
             isParent,
@@ -585,7 +765,8 @@ export function useElementsData(
 
       // Transform elements with parameters
       const transformedElements = updatedElements.map((el) => {
-        const parameters = { ...el.parameters }
+        const element = ensureParameters(el)
+        const parameters = { ...element.parameters }
 
         // Ensure all selected parameters exist
         const table = tableStore.currentTable.value
@@ -630,7 +811,7 @@ export function useElementsData(
         }
 
         return {
-          ...el,
+          ...element,
           parameters
         }
       })

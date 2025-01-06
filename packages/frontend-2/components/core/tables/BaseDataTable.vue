@@ -1,7 +1,7 @@
 <template>
   <div class="base-table">
     <!-- Loading State -->
-    <div v-if="loading || tableStore.isLoading.value" class="table-state">
+    <div v-if="loading" class="table-state">
       <slot name="loading">
         <div class="p-4 text-center text-gray-500">
           <div class="flex flex-col items-center gap-2">
@@ -12,7 +12,7 @@
     </div>
 
     <!-- Error State -->
-    <div v-else-if="error || tableStore.hasError.value" class="table-state">
+    <div v-else-if="error" class="table-state">
       <slot name="error" :error="errorState">
         <div class="p-4 text-center text-red-500">
           <div class="flex flex-col items-center gap-2">
@@ -29,7 +29,7 @@
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="!data?.length" class="table-state">
+    <div v-else-if="!data?.length || !visibleTableColumns.length" class="table-state">
       <slot name="empty">
         <div class="p-4 text-center text-gray-500">
           <div class="flex flex-col items-center gap-2">

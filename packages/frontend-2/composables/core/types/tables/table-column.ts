@@ -23,6 +23,39 @@ export interface TableColumn {
 }
 
 /**
+ * Create a base column without parameter
+ */
+export function createBaseColumn(
+  id: string,
+  header: string,
+  order: number
+): TableColumn {
+  return {
+    id,
+    field: id,
+    header,
+    visible: true,
+    sortable: true,
+    filterable: true,
+    order,
+    parameter: {
+      id,
+      name: header,
+      kind: 'bim',
+      type: 'string',
+      value: '',
+      group: 'Base Properties',
+      visible: true,
+      order,
+      category: 'Base',
+      metadata: {
+        isSystem: true
+      }
+    }
+  }
+}
+
+/**
  * Convert a SelectedParameter to a TableColumn
  */
 export function createTableColumn(param: SelectedParameter): TableColumn {
@@ -42,5 +75,21 @@ export function createTableColumn(param: SelectedParameter): TableColumn {
  * Convert an array of SelectedParameters to TableColumns
  */
 export function createTableColumns(params: SelectedParameter[]): TableColumn[] {
-  return params.map(createTableColumn)
+  // Create base columns first
+  const baseColumns = [
+    createBaseColumn('id', 'ID', 0),
+    createBaseColumn('name', 'Name', 1),
+    createBaseColumn('type', 'Type', 2),
+    createBaseColumn('category', 'Category', 3)
+  ]
+
+  // Add parameter columns after base columns
+  const paramColumns = params.map((param, index) =>
+    createTableColumn({
+      ...param,
+      order: index + baseColumns.length // Adjust order to start after base columns
+    })
+  )
+
+  return [...baseColumns, ...paramColumns]
 }

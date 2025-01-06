@@ -6,11 +6,30 @@ import type { RawParameter, ParameterCache } from './types'
 const CACHE = 'cache' as DebugCategories
 
 const CACHE_KEY = 'parameter-store-cache'
-const CACHE_TTL = 1000 * 60 * 60 // 1 hour
+const CACHE_TTL = 1000 * 60 * 5 // 5 minutes
+const CACHE_VERSION = '1.0.0'
+const MAX_CACHE_SIZE = 5 * 1024 * 1024 // 5MB
 
 interface CacheEntry {
   data: RawParameter[]
   timestamp: number
+  version: string
+  size: number
+}
+
+/**
+ * Check if cache entry is valid
+ */
+function isValidCacheEntry(entry: unknown): entry is CacheEntry {
+  if (!entry || typeof entry !== 'object') return false
+
+  const cacheEntry = entry as CacheEntry
+  return (
+    Array.isArray(cacheEntry.data) &&
+    typeof cacheEntry.timestamp === 'number' &&
+    typeof cacheEntry.version === 'string' &&
+    typeof cacheEntry.size === 'number'
+  )
 }
 
 /**
@@ -25,11 +44,35 @@ export const parameterCache: ParameterCache = {
       const cached = await Promise.resolve(localStorage.getItem(CACHE_KEY))
       if (!cached) return null
 
-      const entry = JSON.parse(cached) as CacheEntry
+      let entry: unknown
+      try {
+        entry = JSON.parse(cached)
+      } catch {
+        debug.warn(CACHE, 'Failed to parse cache entry')
+        return null
+      }
 
-      // Check if cache is still valid
+      // Validate cache entry structure
+      if (!isValidCacheEntry(entry)) {
+        debug.warn(CACHE, 'Invalid cache entry structure')
+        return null
+      }
+
+      // Check version
+      if (entry.version !== CACHE_VERSION) {
+        debug.log(CACHE, 'Cache version mismatch')
+        return null
+      }
+
+      // Check TTL
       if (Date.now() - entry.timestamp > CACHE_TTL) {
         debug.log(CACHE, 'Cache expired')
+        return null
+      }
+
+      // Check size
+      if (entry.size > MAX_CACHE_SIZE) {
+        debug.warn(CACHE, 'Cache size exceeds limit')
         return null
       }
 
@@ -50,9 +93,23 @@ export const parameterCache: ParameterCache = {
    */
   async saveToCache(params: RawParameter[]): Promise<void> {
     try {
+      // Calculate entry size
+      const entrySize = new Blob([JSON.stringify(params)]).size
+
+      // Skip caching if too large
+      if (entrySize > MAX_CACHE_SIZE) {
+        debug.warn(CACHE, 'Parameters too large to cache', {
+          size: entrySize,
+          limit: MAX_CACHE_SIZE
+        })
+        return
+      }
+
       const entry: CacheEntry = {
         data: params,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        version: CACHE_VERSION,
+        size: entrySize
       }
 
       await Promise.resolve(localStorage.setItem(CACHE_KEY, JSON.stringify(entry)))

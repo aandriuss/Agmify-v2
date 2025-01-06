@@ -34,3 +34,9 @@ export function isValidParameterState(state: unknown): state is ParameterState {
   if (!state || typeof state !== 'object') return false
   return 'initialized' in state && 'isProcessing' in state
 }
+
+// Type guard for DataState
+export function isValidDataState(state: unknown): state is DataState {
+  if (!state || typeof state !== 'object') return false
+  return 'parentElements' in state && 'childElements' in state
+}

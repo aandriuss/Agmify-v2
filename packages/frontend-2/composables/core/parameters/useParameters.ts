@@ -1,6 +1,7 @@
 import { onMounted, watch } from 'vue'
 import type { ComputedRef } from 'vue'
 import { useParameterStore } from './store'
+import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
   RawParameter,
   AvailableBimParameter,
@@ -54,7 +55,8 @@ interface UseParametersReturn {
 }
 
 export function useParameters(options: UseParametersOptions): UseParametersReturn {
-  const store = useParameterStore()
+  const parameterStore = useParameterStore()
+  const tableStore = useTableStore()
 
   // Track last processed categories to prevent unnecessary reprocessing
   let lastProcessedParentCategories: string[] = []
@@ -78,20 +80,22 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
           newChild,
           currentState: {
             parent: {
-              raw: store.parentRawParameters.value?.length || 0,
+              raw: parameterStore.parentRawParameters.value?.length || 0,
               available: {
-                bim: store.parentAvailableBimParameters.value?.length || 0,
-                user: store.parentAvailableUserParameters.value?.length || 0
+                bim: parameterStore.parentAvailableBimParameters.value?.length || 0,
+                user: parameterStore.parentAvailableUserParameters.value?.length || 0
               },
-              selected: store.parentSelectedParameters.value?.length || 0
+              selected:
+                tableStore.currentTable.value?.selectedParameters?.parent?.length || 0
             },
             child: {
-              raw: store.childRawParameters.value?.length || 0,
+              raw: parameterStore.childRawParameters.value?.length || 0,
               available: {
-                bim: store.childAvailableBimParameters.value?.length || 0,
-                user: store.childAvailableUserParameters.value?.length || 0
+                bim: parameterStore.childAvailableBimParameters.value?.length || 0,
+                user: parameterStore.childAvailableUserParameters.value?.length || 0
               },
-              selected: store.childSelectedParameters.value?.length || 0
+              selected:
+                tableStore.currentTable.value?.selectedParameters?.child?.length || 0
             }
           }
         })
@@ -113,7 +117,13 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
             'Error processing category change:',
             err
           )
-          store.setError(err instanceof Error ? err : new Error(String(err)))
+          debug.error(DebugCategories.PARAMETERS, 'Category change error:', {
+            error: err,
+            state: {
+              hasTable: !!tableStore.currentTable.value,
+              hasParameters: parameterStore.parentRawParameters.value?.length || 0
+            }
+          })
         }
       }
     },
@@ -129,49 +139,73 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
       lastProcessedParentCategories = [...options.selectedParentCategories.value]
       lastProcessedChildCategories = [...options.selectedChildCategories.value]
 
-      // Wait for store to be ready
-      if (store.isProcessing.value) {
-        debug.log(DebugCategories.PARAMETERS, 'Waiting for parameter store')
-        await new Promise<void>((resolve) => {
-          const unwatch = watch(
-            () => store.isProcessing.value,
-            (isProcessing) => {
-              if (!isProcessing) {
-                unwatch()
-                resolve()
-              }
-            },
-            { immediate: true }
-          )
-        })
+      // Wait for stores to be ready
+      debug.log(DebugCategories.PARAMETERS, 'Waiting for stores')
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Store initialization timeout'))
+        }, 10000)
+
+        if (
+          !parameterStore.isProcessing.value &&
+          parameterStore.state.value.initialized &&
+          tableStore.currentTable.value
+        ) {
+          clearTimeout(timeout)
+          resolve()
+          return
+        }
+
+        const unwatch = watch(
+          [
+            () => parameterStore.isProcessing.value,
+            () => parameterStore.state.value.initialized,
+            () => tableStore.currentTable.value
+          ],
+          ([isProcessing, initialized, table]) => {
+            if (!isProcessing && initialized && table) {
+              clearTimeout(timeout)
+              unwatch()
+              resolve()
+            }
+          },
+          { immediate: true }
+        )
+      })
+
+      // Now that stores are ready, verify parameters
+      const paramCounts = {
+        parentRaw: parameterStore.parentRawParameters.value?.length || 0,
+        childRaw: parameterStore.childRawParameters.value?.length || 0,
+        parentBim: parameterStore.parentAvailableBimParameters.value?.length || 0,
+        childBim: parameterStore.childAvailableBimParameters.value?.length || 0
       }
 
-      // Verify parameters exist
-      const hasParameters =
-        (store.parentRawParameters.value?.length ?? 0) > 0 ||
-        (store.childRawParameters.value?.length ?? 0) > 0
+      debug.log(DebugCategories.PARAMETERS, 'Parameter availability check', paramCounts)
 
-      if (!hasParameters) {
+      // Log if no parameters found but continue with defaults
+      if (paramCounts.parentRaw === 0 && paramCounts.childRaw === 0) {
         debug.warn(DebugCategories.PARAMETERS, 'No parameters found in store')
-        return
       }
 
       debug.log(DebugCategories.PARAMETERS, 'Parameters initialized', {
         parent: {
-          raw: store.parentRawParameters.value?.length || 0,
+          raw: parameterStore.parentRawParameters.value?.length || 0,
           available: {
-            bim: store.parentAvailableBimParameters.value?.length || 0,
-            user: store.parentAvailableUserParameters.value?.length || 0
+            bim: parameterStore.parentAvailableBimParameters.value?.length || 0,
+            user: parameterStore.parentAvailableUserParameters.value?.length || 0
           },
-          selected: store.parentSelectedParameters.value?.length || 0
+          selected:
+            tableStore.currentTable.value?.selectedParameters?.parent?.length || 0
         },
         child: {
-          raw: store.childRawParameters.value?.length || 0,
+          raw: parameterStore.childRawParameters.value?.length || 0,
           available: {
-            bim: store.childAvailableBimParameters.value?.length || 0,
-            user: store.childAvailableUserParameters.value?.length || 0
+            bim: parameterStore.childAvailableBimParameters.value?.length || 0,
+            user: parameterStore.childAvailableUserParameters.value?.length || 0
           },
-          selected: store.childSelectedParameters.value?.length || 0
+          selected:
+            tableStore.currentTable.value?.selectedParameters?.child?.length || 0
         }
       })
 
@@ -181,27 +215,38 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
       )
     } catch (err) {
       debug.error(DebugCategories.PARAMETERS, 'Failed to initialize parameters:', err)
-      store.setError(err instanceof Error ? err : new Error(String(err)))
+      debug.error(DebugCategories.PARAMETERS, 'Initialization error:', {
+        error: err,
+        state: {
+          hasTable: !!tableStore.currentTable.value,
+          hasParameters: parameterStore.parentRawParameters.value?.length || 0
+        }
+      })
+      throw err instanceof Error ? err : new Error(String(err))
     }
   })
 
   return {
     // Parameter collections
     parentParameters: {
-      raw: store.parentRawParameters,
+      raw: parameterStore.parentRawParameters,
       available: {
-        bim: store.parentAvailableBimParameters,
-        user: store.parentAvailableUserParameters
+        bim: parameterStore.parentAvailableBimParameters,
+        user: parameterStore.parentAvailableUserParameters
       },
-      selected: store.parentSelectedParameters
+      selected: computed(
+        () => tableStore.currentTable.value?.selectedParameters?.parent || []
+      )
     },
     childParameters: {
-      raw: store.childRawParameters,
+      raw: parameterStore.childRawParameters,
       available: {
-        bim: store.childAvailableBimParameters,
-        user: store.childAvailableUserParameters
+        bim: parameterStore.childAvailableBimParameters,
+        user: parameterStore.childAvailableUserParameters
       },
-      selected: store.childSelectedParameters
+      selected: computed(
+        () => tableStore.currentTable.value?.selectedParameters?.child || []
+      )
     },
 
     // Parameter management
@@ -216,14 +261,49 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
 
       const parameterValue =
         initialValue !== undefined ? convertToParameterValue(initialValue) : null
-      store.addUserParameter(isParent, name, type, group, parameterValue)
+      const currentParams = tableStore.currentTable.value?.selectedParameters
+      const parentParams = currentParams?.parent || []
+      const childParams = currentParams?.child || []
+
+      tableStore.updateSelectedParameters({
+        parent: isParent
+          ? [
+              ...parentParams,
+              {
+                id: `${name}-${Date.now()}`,
+                name,
+                type,
+                group,
+                value: parameterValue,
+                kind: 'user',
+                visible: true,
+                order: parentParams.length + 1
+              }
+            ]
+          : parentParams,
+        child: !isParent
+          ? [
+              ...childParams,
+              {
+                id: `${name}-${Date.now()}`,
+                name,
+                type,
+                group,
+                value: parameterValue,
+                kind: 'user',
+                visible: true,
+                order: childParams.length + 1
+              }
+            ]
+          : childParams
+      })
 
       debug.log(DebugCategories.PARAMETERS, 'User parameter added', {
         state: {
-          available: {
-            user: isParent
-              ? store.parentAvailableUserParameters.value?.length || 0
-              : store.childAvailableUserParameters.value?.length || 0
+          selected: {
+            parent:
+              tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
+            child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
           }
         }
       })
@@ -233,42 +313,71 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
         id,
         isParent,
         state: {
-          available: {
-            bim: isParent
-              ? store.parentAvailableBimParameters.value?.length || 0
-              : store.childAvailableBimParameters.value?.length || 0,
-            user: isParent
-              ? store.parentAvailableUserParameters.value?.length || 0
-              : store.childAvailableUserParameters.value?.length || 0
+          selected: {
+            parent:
+              tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
+            child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
           }
         }
       })
 
-      store.removeParameter(isParent, id)
+      tableStore.updateSelectedParameters({
+        parent: isParent
+          ? (tableStore.currentTable.value?.selectedParameters?.parent || []).filter(
+              (p) => p.id !== id
+            )
+          : tableStore.currentTable.value?.selectedParameters?.parent || [],
+        child: !isParent
+          ? (tableStore.currentTable.value?.selectedParameters?.child || []).filter(
+              (p) => p.id !== id
+            )
+          : tableStore.currentTable.value?.selectedParameters?.child || []
+      })
 
       debug.log(DebugCategories.PARAMETERS, 'Parameter removed', {
         state: {
-          available: {
-            bim: isParent
-              ? store.parentAvailableBimParameters.value?.length || 0
-              : store.childAvailableBimParameters.value?.length || 0,
-            user: isParent
-              ? store.parentAvailableUserParameters.value?.length || 0
-              : store.childAvailableUserParameters.value?.length || 0
+          selected: {
+            parent:
+              tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
+            child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
           }
         }
       })
     },
     updateParameterVisibility: (id, visible, isParent) => {
-      store.updateParameterVisibility(id, visible, isParent)
+      const params = tableStore.currentTable.value?.selectedParameters
+      if (!params) return
+
+      tableStore.updateSelectedParameters({
+        parent: isParent
+          ? params.parent.map((p) => (p.id === id ? { ...p, visible } : p))
+          : params.parent,
+        child: !isParent
+          ? params.child.map((p) => (p.id === id ? { ...p, visible } : p))
+          : params.child
+      })
     },
     updateParameterOrder: (id, newOrder, isParent) => {
-      store.updateParameterOrder(id, newOrder, isParent)
+      const params = tableStore.currentTable.value?.selectedParameters
+      if (!params) return
+
+      tableStore.updateSelectedParameters({
+        parent: isParent
+          ? params.parent.map((p) => (p.id === id ? { ...p, order: newOrder } : p))
+          : params.parent,
+        child: !isParent
+          ? params.child.map((p) => (p.id === id ? { ...p, order: newOrder } : p))
+          : params.child
+      })
     },
 
     // Status
-    isProcessing: store.isProcessing,
-    hasError: store.hasError,
-    lastUpdated: store.lastUpdated
+    isProcessing: parameterStore.isProcessing,
+    hasError: computed(
+      () => parameterStore.hasError.value || tableStore.hasError.value
+    ),
+    lastUpdated: computed(() =>
+      Math.max(parameterStore.lastUpdated.value, tableStore.lastUpdated.value)
+    )
   }
 }

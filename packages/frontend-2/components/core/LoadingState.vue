@@ -1,112 +1,81 @@
 <template>
   <div class="loading-state">
-    <div v-if="isLoading" class="loading-indicator" role="status">
-      <div class="spinner">
-        <span class="sr-only">Loading...</span>
-      </div>
-      <p v-if="loadingMessage" class="loading-message" aria-live="polite">
-        {{ loadingMessage }}
-      </p>
-    </div>
-
-    <div v-else-if="error" class="error-state" role="alert">
-      <div class="error-icon">
-        <svg
-          class="h-6 w-6 text-danger"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-          />
-        </svg>
-      </div>
-      <div class="error-content">
-        <p class="error-message">{{ error.message }}</p>
-        <p v-if="error.details" class="error-details">{{ error.details }}</p>
-        <button
-          v-if="canRetry"
-          type="button"
-          class="retry-button"
-          @click="$emit('retry')"
-        >
-          Try Again
-        </button>
-      </div>
-    </div>
-
-    <slot v-else />
+    <Transition name="fade" mode="out-in">
+      <template v-if="isLoading || error">
+        <div class="loading-overlay">
+          <div v-if="error" class="error-state">
+            <XCircleIcon class="h-8 w-8 text-error" />
+            <div class="error-message">{{ error.message }}</div>
+            <slot name="error-actions" />
+          </div>
+          <div v-else class="loading-state">
+            <LoadingProgress />
+            <Transition name="fade" mode="out-in">
+              <div v-if="loadingMessage" :key="loadingMessage" class="loading-message">
+                {{ loadingMessage }}
+              </div>
+            </Transition>
+            <slot name="loading-actions" />
+          </div>
+        </div>
+      </template>
+      <template v-else>
+        <div class="content-state">
+          <slot />
+        </div>
+      </template>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-interface ErrorWithDetails extends Error {
-  details?: string
-}
+import { XCircleIcon } from '@heroicons/vue/24/solid'
+import LoadingProgress from './LoadingProgress.vue'
 
-defineProps({
-  isLoading: {
-    type: Boolean,
-    required: true
-  },
-  error: {
-    type: Object as () => ErrorWithDetails | null,
-    default: null
-  },
-  loadingMessage: {
-    type: String,
-    default: 'Loading...'
-  },
-  canRetry: {
-    type: Boolean,
-    default: true
-  }
-})
-
-defineEmits<{
-  (e: 'retry'): void
+defineProps<{
+  isLoading: boolean
+  error?: Error | null
+  loadingMessage?: string
 }>()
 </script>
 
 <style scoped>
+.loading-overlay {
+  @apply absolute inset-0 flex items-center justify-center bg-foundation backdrop-blur-sm z-50;
+}
+
+.error-state,
 .loading-state {
-  @apply h-full w-full;
+  @apply flex flex-col items-center gap-4 p-8 rounded-lg bg-foundation shadow-lg;
 }
 
-.loading-indicator {
-  @apply flex flex-col items-center justify-center h-full min-h-[200px];
-}
-
-.spinner {
-  @apply w-10 h-10 border-4 border-primary-muted border-t-primary rounded-full animate-spin;
-}
-
+.error-message,
 .loading-message {
-  @apply mt-4 text-sm text-foreground-2;
+  @apply text-lg font-medium text-center text-foreground;
+
+  min-height: 2rem;
 }
 
-.error-state {
-  @apply flex items-start gap-4 p-6 bg-danger-lighter rounded-lg bg-opacity-20;
+.content-state {
+  @apply w-full h-full;
 }
 
-.error-content {
-  @apply flex-1;
+.content-loading {
+  @apply pointer-events-none select-none opacity-50;
 }
 
-.error-message {
-  @apply text-sm font-medium text-danger-darker;
+.loading-state {
+  @apply relative min-h-[200px] w-full h-full;
 }
 
-.error-details {
-  @apply mt-1 text-sm text-danger;
+/* Transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
 }
 
-.retry-button {
-  @apply mt-4 px-4 py-2 text-sm font-medium text-foreground-on-primary bg-danger rounded-md 
-    hover:bg-danger-darker focus:outline-none focus:ring-2 focus:ring-danger-lighter focus:ring-offset-2 transition-colors;
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

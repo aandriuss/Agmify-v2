@@ -42,6 +42,8 @@ export interface ViewerTableRow extends ElementData {
   // Ensure all required table properties are present
   parameters: Record<string, ParameterValue> // Make parameters required
   column?: TableColumn // Optional reference to display column
+  // Allow dynamic parameter properties
+  [key: string]: ParameterValue | unknown
 }
 
 /**
@@ -104,11 +106,21 @@ export function toViewerTableRow(
   element: ElementData,
   column?: TableColumn
 ): ViewerTableRow {
-  return {
+  // Create base row with element data
+  const row: ViewerTableRow = {
     ...element,
-    parameters: element.parameters || {}, // Ensure parameters is present
-    column // Optional reference to display column
+    parameters: element.parameters || {},
+    column
   }
+
+  // Flatten parameters into top-level properties for table display
+  if (element.parameters) {
+    Object.entries(element.parameters).forEach(([key, value]) => {
+      row[key] = value
+    })
+  }
+
+  return row as ViewerTableRow
 }
 
 /**
