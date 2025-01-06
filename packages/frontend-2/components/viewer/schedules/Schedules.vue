@@ -127,7 +127,6 @@ import type {
   WorldTreeRoot
 } from '~/composables/core/types/viewer/viewer-types'
 import { isValidDataState } from '~/composables/core/types/state'
-import { isValidTableState } from '~/composables/core/types/tables/table-state'
 import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
 import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
 import { parentCategories, childCategories } from '~/composables/core/config/categories'
@@ -678,10 +677,8 @@ onMounted(async () => {
 
     // 8. Load tables and initialize data
     transitionPhase('data_sync')
-    const tablesResponse = await tablesState.loadTables()
-    const tablesList = isValidTableState(tablesResponse)
-      ? processTablesList(tablesResponse.state.value.tables)
-      : []
+    await tablesState.loadTables()
+    const tablesList = processTablesList(tablesState.state.value.tables)
 
     await elementsData.initializeData()
     if (elementsData.hasError.value) {
