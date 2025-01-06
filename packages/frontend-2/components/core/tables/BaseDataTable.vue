@@ -1,11 +1,11 @@
 <template>
   <div class="base-table">
     <!-- Loading State -->
-    <div v-if="loading" class="table-state">
+    <div v-if="isLoading" class="table-state">
       <slot name="loading">
         <div class="p-4 text-center text-gray-500">
           <div class="flex flex-col items-center gap-2">
-            <span>Loading data...</span>
+            <span>{{ loadingMessage || 'Loading data...' }}</span>
           </div>
         </div>
       </slot>
@@ -29,7 +29,7 @@
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="!data?.length || !visibleTableColumns.length" class="table-state">
+    <div v-else-if="!isDataValid || !hasVisibleColumns" class="table-state">
       <slot name="empty">
         <div class="p-4 text-center text-gray-500">
           <div class="flex flex-col items-center gap-2">
@@ -42,14 +42,17 @@
     <!-- Data Table -->
     <DataTable
       v-else
-      :value="data"
-      resizable-columns
-      reorderable-columns
-      striped-rows
+      :value="props.data"
+      :resizable-columns="true"
+      :reorderable-columns="true"
+      :striped-rows="true"
       class="p-datatable-sm shadow-sm"
       :paginator="false"
       :rows="10"
-      expand-mode="row"
+      :expand-mode="hasExpandableRows ? 'row' : undefined"
+      data-key="id"
+      :expanded-rows="hasExpandableRows ? expandedRowsMap : undefined"
+      @update:expanded-rows="hasExpandableRows ? handleExpandedRowsChange : undefined"
       @column-resize="handleColumnResize"
       @column-reorder="handleColumnReorder"
       @row-expand="handleRowExpand"
@@ -62,14 +65,14 @@
           <div class="p-1">
             <DataTable
               :value="slotProps.data.details"
-              resizable-columns
-              reorderable-columns
-              striped-rows
+              :resizable-columns="true"
+              :reorderable-columns="true"
+              :striped-rows="true"
               class="nested-table"
+              data-key="id"
               @column-resize="handleColumnResize"
               @column-reorder="handleColumnReorder"
             >
-              <Column :expander="true" style="width: 3rem" />
               <Column
                 v-for="col in visibleDetailColumns"
                 :key="col.field"
@@ -77,7 +80,7 @@
                 :header="col.header"
                 :data-field="col.field"
                 :style="{ width: col.width ? `${col.width}px` : 'auto' }"
-                sortable
+                :sortable="true"
               />
             </DataTable>
           </div>
@@ -85,7 +88,7 @@
       </template>
 
       <!-- Default Columns -->
-      <Column :expander="true" style="width: 3rem" />
+      <Column v-if="hasExpandableRows" :expander="true" style="width: 3rem" />
       <Column
         v-for="col in visibleTableColumns"
         :key="col.field"
@@ -93,7 +96,7 @@
         :header="col.header"
         :data-field="col.field"
         :style="{ width: col.width ? `${col.width}px` : 'auto' }"
-        sortable
+        :sortable="true"
         @visibility-change="handleColumnVisibilityChange(col)"
       />
     </DataTable>
@@ -101,20 +104,19 @@
 </template>
 
 <script setup lang="ts" generic="T extends BaseTableRow">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import type { DataTableFilterEvent } from 'primevue/datatable'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
-import type { DataTableFilterEvent } from 'primevue/datatable'
 import type {
   TableEmits,
   BaseTableRow
 } from '~/composables/core/types/tables/table-events'
 import { filterUtils } from '~/composables/core/types/tables/table-events'
-
-const debug = useDebug()
+import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
 
 interface BaseTableProps<T extends BaseTableRow> {
   tableId: string
@@ -123,6 +125,7 @@ interface BaseTableProps<T extends BaseTableRow> {
   columns: TableColumn[]
   detailColumns?: TableColumn[]
   loading?: boolean
+  loadingMessage?: string
   error?: Error | null
   initialState?: {
     expandedRows?: T[]
@@ -130,10 +133,13 @@ interface BaseTableProps<T extends BaseTableRow> {
   }
 }
 
+const debug = useDebug()
+
 // Props with defaults
 const props = withDefaults(defineProps<BaseTableProps<T>>(), {
   tableName: 'Untitled Table',
   loading: false,
+  loadingMessage: '',
   error: null,
   detailColumns: () => [],
   initialState: () => ({})
@@ -142,15 +148,66 @@ const props = withDefaults(defineProps<BaseTableProps<T>>(), {
 // Emits with generic row type
 const emit = defineEmits<TableEmits<T>>()
 
-// Initialize table store and computed values
+// Initialize stores and loading state
 const tableStore = useTableStore()
+const { state: loadingState } = useLoadingState()
 
+// Table state
+const expandedRowsMap = ref<Record<string, boolean>>(
+  props.initialState?.expandedRows?.reduce((acc, row) => {
+    if (row.id) acc[row.id] = true
+    return acc
+  }, {} as Record<string, boolean>) || {}
+)
+
+// Computed properties
+const hasExpandableRows = computed(() => {
+  return props.data.some((row) => Array.isArray(row.details) && row.details.length > 0)
+})
+
+const isLoading = computed(() => props.loading)
+const isDataValid = computed(() => Array.isArray(props.data) && props.data.length > 0)
+const hasVisibleColumns = computed(() => props.columns?.length > 0)
+
+const visibleTableColumns = computed(() => {
+  if (!Array.isArray(props.columns)) return []
+  return props.columns.filter((col) => col?.visible)
+})
+
+const visibleDetailColumns = computed(() => {
+  if (!Array.isArray(props.detailColumns)) return []
+  return props.detailColumns.filter((col) => col?.visible)
+})
+
+// Watch for column changes with loading state awareness
+watch(
+  [() => props.columns, () => loadingState.value.phase],
+  ([newColumns, phase]) => {
+    if (phase !== 'complete') return
+    if (!Array.isArray(newColumns)) return
+    tableStore.updateColumns(newColumns, props.detailColumns || [])
+  },
+  { deep: true }
+)
+
+watch(
+  [() => props.detailColumns, () => loadingState.value.phase],
+  ([newColumns, phase]) => {
+    if (phase !== 'complete') return
+    if (!Array.isArray(newColumns)) return
+    tableStore.updateColumns(props.columns, newColumns)
+  },
+  { deep: true }
+)
+
+// Error state with loading phase context
 const errorState = computed(() => {
   if (props.error) {
     return {
       message: props.error.message,
       name: props.error.name,
-      stack: props.error.stack
+      stack: props.error.stack,
+      phase: loadingState.value.phase
     }
   }
   if (tableStore.hasError.value) {
@@ -158,41 +215,17 @@ const errorState = computed(() => {
     return {
       message: storeError?.message || 'An error occurred',
       name: storeError?.name || 'Error',
-      stack: storeError?.stack
+      stack: storeError?.stack,
+      phase: loadingState.value.phase
     }
   }
   return null
 })
 
-// Computed values
-const visibleTableColumns = computed(() => props.columns.filter((col) => col.visible))
-
-const visibleDetailColumns = computed(() =>
-  props.detailColumns.filter((col) => col.visible)
-)
-
-// Watch for column changes
-watch(
-  () => props.columns,
-  (newColumns) => {
-    tableStore.updateColumns(newColumns, props.detailColumns || [])
-  },
-  { deep: true }
-)
-
-watch(
-  () => props.detailColumns,
-  (newColumns) => {
-    if (newColumns) {
-      tableStore.updateColumns(props.columns, newColumns)
-    }
-  },
-  { deep: true }
-)
-
-// Event handlers
+// Event handlers with improved error context
 function handleFilter(event: DataTableFilterEvent): void {
   try {
+    if (loadingState.value.phase !== 'complete') return
     const payload = filterUtils.createFilterPayload(event)
     emit('filter', payload)
   } catch (err) {
@@ -202,14 +235,63 @@ function handleFilter(event: DataTableFilterEvent): void {
 
 function handleError(err: unknown): void {
   const error = err instanceof Error ? err : new Error(String(err))
+  debug.error(DebugCategories.ERROR, 'Table error:', {
+    error,
+    phase: loadingState.value.phase,
+    state: {
+      isLoading: isLoading.value,
+      dataValid: isDataValid.value,
+      hasColumns: hasVisibleColumns.value
+    }
+  })
   emit('error', { error })
+}
+
+interface ExpandableRow {
+  id: string
+  [key: string]: unknown
+}
+
+function isExpandableRow(value: unknown): value is ExpandableRow {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { id: string }).id === 'string'
+  )
+}
+
+function handleExpandedRowsChange(value: unknown): void {
+  if (Array.isArray(value)) {
+    // Handle array case
+    const newMap: Record<string, boolean> = {}
+    value.forEach((row) => {
+      if (isExpandableRow(row)) {
+        newMap[row.id] = true
+      }
+    })
+    expandedRowsMap.value = newMap
+  } else if (typeof value === 'object' && value !== null) {
+    // Handle object case
+    expandedRowsMap.value = value as Record<string, boolean>
+  }
+
+  debug.log(DebugCategories.STATE, 'Expanded rows changed:', {
+    type: Array.isArray(value) ? 'array' : 'object',
+    expandedCount: Array.isArray(value)
+      ? value.length
+      : Object.keys(value as Record<string, boolean>).length
+  })
 }
 
 function handleColumnVisibilityChange(column: TableColumn): void {
   try {
+    if (loadingState.value.phase !== 'complete') return
+    if (!column?.id) return
+
     debug.log(DebugCategories.COLUMNS, 'Column visibility change requested', {
       id: column.id,
-      visible: !column.visible
+      visible: !column.visible,
+      phase: loadingState.value.phase
     })
 
     emit('column-visibility-change', {
@@ -222,12 +304,13 @@ function handleColumnVisibilityChange(column: TableColumn): void {
   } catch (err) {
     const error =
       err instanceof Error ? err : new Error('Failed to update column visibility')
-    emit('error', { error })
+    handleError(error)
   }
 }
 
 function handleColumnResize(event: { element: HTMLElement; delta: number }): void {
   try {
+    if (loadingState.value.phase !== 'complete') return
     const field = event.element.dataset.field
     if (!field) return
 
@@ -242,12 +325,13 @@ function handleColumnResize(event: { element: HTMLElement; delta: number }): voi
     emit('column-resize', { element: event.element, delta: event.delta })
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to resize column')
-    emit('error', { error })
+    handleError(error)
   }
 }
 
 function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
   try {
+    if (loadingState.value.phase !== 'complete') return
     const { dragIndex, dropIndex } = event
     const columns = [...props.columns]
     const [movedColumn] = columns.splice(dragIndex, 1)
@@ -263,25 +347,29 @@ function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): v
     emit('column-reorder', { dragIndex, dropIndex })
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to reorder columns')
-    emit('error', { error })
+    handleError(error)
   }
 }
 
 function handleRowExpand(event: { data: T }): void {
   try {
+    if (loadingState.value.phase !== 'complete') return
+    if (!event.data?.id) return
     emit('row-expand', { row: event.data })
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to expand row')
-    emit('error', { error })
+    handleError(error)
   }
 }
 
 function handleRowCollapse(event: { data: T }): void {
   try {
+    if (loadingState.value.phase !== 'complete') return
+    if (!event.data?.id) return
     emit('row-collapse', { row: event.data })
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to collapse row')
-    emit('error', { error })
+    handleError(error)
   }
 }
 
@@ -291,13 +379,13 @@ function handleRetry(): void {
 </script>
 
 <style>
-.base-table ::v-deep .p-datatable {
+.base-table :deep(.p-datatable) {
   background-color: var(--surface-card);
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
 }
 
-.base-table ::v-deep .p-datatable .p-datatable-header {
+.base-table :deep(.p-datatable .p-datatable-header) {
   background-color: var(--surface-section);
   border-top-left-radius: 0.5rem;
   border-top-right-radius: 0.5rem;
@@ -306,7 +394,7 @@ function handleRetry(): void {
   height: 3rem;
 }
 
-.base-table ::v-deep .p-datatable .p-datatable-thead > tr > th {
+.base-table :deep(.p-datatable .p-datatable-thead > tr > th) {
   background-color: var(--surface-section);
   color: var(--text-color);
   font-weight: 600;
@@ -315,44 +403,43 @@ function handleRetry(): void {
   height: 3rem;
 }
 
-.base-table ::v-deep .p-datatable .p-datatable-tbody > tr {
+.base-table :deep(.p-datatable .p-datatable-tbody > tr) {
   color: var(--text-color);
   transition: background-color 0.2s;
 }
 
-.base-table ::v-deep .p-datatable .p-datatable-tbody > tr > td {
+.base-table :deep(.p-datatable .p-datatable-tbody > tr > td) {
   padding: 0.2rem;
   border-bottom: 1px solid var(--surface-border);
 }
 
-.base-table ::v-deep .p-datatable .p-datatable-tbody > tr:hover {
-  background-color: #f0f7ff;
+.base-table :deep(.p-datatable .p-datatable-tbody > tr:hover) {
+  background-color: var(--surface-hover);
 }
 
-.base-table ::v-deep .p-datatable-expanded-row > td {
+.base-table :deep(.p-datatable-expanded-row > td) {
   padding: 0 !important;
 }
 
-.base-table ::v-deep .p-datatable-expanded-row .p-datatable {
+.base-table :deep(.p-datatable-expanded-row .p-datatable) {
   margin: 0 !important;
 }
 
-.base-table
-  ::v-deep
-  .p-datatable-expanded-row
-  .p-datatable
-  .p-datatable-thead
-  > tr
-  > th {
-  background-color: #f8f9fa;
+.base-table :deep(.p-datatable-expanded-row .p-datatable .p-datatable-thead > tr > th) {
+  background-color: var(--surface-ground);
 }
 
-.base-table ::v-deep .p-datatable-expanded-row .p-datatable .p-column-resizer {
+.base-table :deep(.p-datatable-expanded-row .p-datatable .p-column-resizer) {
   width: 0;
   background-color: transparent;
 }
 
-.base-table ::v-deep .p-datatable-expanded-row .p-datatable .p-column-resizer:hover {
-  background-color: #e9ecef;
+.base-table :deep(.p-datatable-expanded-row .p-datatable .p-column-resizer:hover) {
+  background-color: var(--surface-hover);
+}
+
+.table-state {
+  padding: 2rem;
+  text-align: center;
 }
 </style>

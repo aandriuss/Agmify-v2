@@ -65,14 +65,6 @@
     </header>
 
     <main class="table-content">
-      <div v-if="isLoading || isUpdating" class="loading-overlay">
-        <div class="spinner" role="status">
-          <!-- Changed from class to direct utility -->
-          <span class="sr-only">Loading...</span>
-        </div>
-        <p class="loading-text">{{ isUpdating ? 'Updating...' : 'Loading...' }}</p>
-      </div>
-
       <slot />
     </main>
 
@@ -206,17 +198,5 @@ function handleTableNameInput(event: Event) {
 
 .action-button:disabled {
   @apply opacity-50 cursor-not-allowed;
-}
-
-.loading-overlay {
-  @apply absolute inset-0 flex flex-col items-center justify-center bg-foundation bg-opacity-75;
-}
-
-.spinner {
-  @apply w-8 h-8 border-4 border-primary-muted border-t-primary rounded-full animate-spin;
-}
-
-.loading-text {
-  @apply mt-4 text-sm text-foreground-2;
 }
 </style>

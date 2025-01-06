@@ -1,30 +1,20 @@
 <template>
   <div class="loading-state">
-    <Transition name="fade" mode="out-in">
-      <template v-if="isLoading || error">
-        <div class="loading-overlay">
-          <div v-if="error" class="error-state">
-            <XCircleIcon class="h-8 w-8 text-error" />
-            <div class="error-message">{{ error.message }}</div>
-            <slot name="error-actions" />
-          </div>
-          <div v-else class="loading-state">
-            <LoadingProgress />
-            <Transition name="fade" mode="out-in">
-              <div v-if="loadingMessage" :key="loadingMessage" class="loading-message">
-                {{ loadingMessage }}
-              </div>
-            </Transition>
-            <slot name="loading-actions" />
-          </div>
-        </div>
-      </template>
-      <template v-else>
-        <div class="content-state">
-          <slot />
-        </div>
-      </template>
-    </Transition>
+    <div v-if="error" class="error-state">
+      <XCircleIcon class="h-8 w-8 text-error" />
+      <div class="error-message">{{ error.message }}</div>
+      <slot name="error-actions" />
+    </div>
+    <div v-else-if="isLoading" class="loading-state">
+      <LoadingProgress />
+      <div v-if="loadingMessage" class="loading-message">
+        {{ loadingMessage }}
+      </div>
+      <slot name="loading-actions" />
+    </div>
+    <div v-else class="content-state">
+      <slot />
+    </div>
   </div>
 </template>
 

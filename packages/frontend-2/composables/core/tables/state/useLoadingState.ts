@@ -1,4 +1,5 @@
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
@@ -27,7 +28,7 @@ export function useLoadingState() {
   const parameterStore = useParameterStore()
 
   // Track loading phase
-  const state = ref<LoadingState>({
+  const state: Ref<LoadingState> = ref({
     phase: 'initial',
     error: null,
     version: 0
@@ -75,17 +76,34 @@ export function useLoadingState() {
       scheduleData.length === tableData.length &&
       tableData.length === evaluatedData.length
 
-    // Data integrity checks
+    // Data integrity checks - only validate the data we have after filtering
     const dataIntegrity =
-      lengthsMatch &&
-      scheduleData.every((item, index) => {
-        if (!item?.id) return false
-        const tableItem = tableData[index]
-        const evalItem = evaluatedData[index]
-        return tableItem?.id === item.id && evalItem?.id === item.id
-      })
+      scheduleData?.every((item, index) => {
+        // Skip validation for filtered out elements
+        if (!tableData?.[index] || !evaluatedData?.[index]) return true
+        // Validate IDs match for elements that exist in all datasets
+        return (
+          item?.id === tableData[index]?.id && item?.id === evaluatedData[index]?.id
+        )
+      }) ?? true
 
-    const dataConsistent = lengthsMatch && dataIntegrity
+    // Ensure we have some data to display
+    const hasMinimumData =
+      (scheduleData?.length ?? 0) > 0 &&
+      (parameterStore.parentRawParameters.value?.length ?? 0) > 0
+
+    const dataConsistent = dataIntegrity && hasMinimumData
+
+    debug.log(DebugCategories.STATE, 'Data consistency check:', {
+      dataIntegrity,
+      hasMinimumData,
+      counts: {
+        scheduleData: scheduleData?.length ?? 0,
+        tableData: tableData?.length ?? 0,
+        evaluatedData: evaluatedData?.length ?? 0,
+        parameters: parameterStore.parentRawParameters.value?.length ?? 0
+      }
+    })
 
     // Store initialization checks
     const storesInitialized =
@@ -145,30 +163,37 @@ export function useLoadingState() {
     }
   })
 
-  // Loading state based on phase and validation
+  // Simple loading state - only based on phase
   const isLoading = computed(() => {
-    const validation = validateData()
+    const isInitializing = state.value.phase !== 'complete'
 
     // Log state for debugging
     debug.log(DebugCategories.STATE, 'Loading state', {
       phase: state.value.phase,
       version: state.value.version,
-      validation
+      isInitializing
     })
 
-    return (
-      state.value.phase !== 'complete' ||
-      validation.isProcessing ||
-      validation.isLoading ||
-      !validation.dataConsistent
-    )
+    return isInitializing
   })
+
+  // Return type-safe composable
+  // Return type-safe composable
+  interface LoadingStateComposable {
+    loadingMessage: ComputedRef<string>
+    isLoading: ComputedRef<boolean>
+    currentPhase: ComputedRef<LoadingPhase>
+    transitionPhase: (phase: LoadingPhase, error?: Error | null) => void
+    validateData: () => ValidationChecks
+    state: Ref<LoadingState>
+  }
 
   return {
     loadingMessage,
     isLoading,
     currentPhase: computed(() => state.value.phase),
     transitionPhase,
-    validateData
-  }
+    validateData,
+    state
+  } as LoadingStateComposable
 }
