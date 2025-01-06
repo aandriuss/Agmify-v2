@@ -2,9 +2,11 @@ import { ref, watch } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   TableSettings,
-  TableInitializationInstance,
-  Store
+  Store,
+  ScheduleInitializationInstance,
+  TableSelectedParameters
 } from '~/composables/core/types'
+import { createTableColumns } from '~/composables/core/types/tables/table-column'
 
 export interface TableInteractionsState {
   selectedTableId: string
@@ -17,7 +19,7 @@ export interface TableInteractionsState {
 export interface TableInteractionsOptions {
   store: Store
   state: TableInteractionsState
-  initComponent: TableInitializationInstance
+  initComponent: ScheduleInitializationInstance
   handleError: (error: unknown) => void
   onClose?: () => void
 }
@@ -77,22 +79,46 @@ export function useTableInteractions(options: TableInteractionsOptions) {
       // Validate table name
       const trimmedName = validateTableName(state.value.tableName)
 
-      // Create table config
-      const tableConfig: Partial<TableSettings> = {
+      // Get current table settings
+      const currentTable = state.value.currentTable
+
+      // Create table config with type safety
+      const selectedParameters: TableSelectedParameters = {
+        parent: currentTable?.selectedParameters?.parent || [],
+        child: currentTable?.selectedParameters?.child || []
+      }
+
+      // Create complete table config
+      const tableConfig: TableSettings = {
+        id:
+          state.value.selectedTableId ||
+          `table_${Date.now()}_${Math.random().toString(36).slice(2)}`,
         name: trimmedName,
         displayName: trimmedName,
         categoryFilters: {
           selectedParentCategories: state.value.selectedParentCategories || [],
           selectedChildCategories: state.value.selectedChildCategories || []
         },
-        selectedParameterIds: []
+        selectedParameters,
+        // Create proper columns from selected parameters
+        parentColumns: createTableColumns(selectedParameters.parent).map((col) => ({
+          ...col,
+          field: col.id,
+          header: col.parameter.name
+        })),
+        childColumns: createTableColumns(selectedParameters.child).map((col) => ({
+          ...col,
+          field: col.id,
+          header: col.parameter.name
+        })),
+        lastUpdateTimestamp: Date.now()
       }
 
-      // Update store with table data
+      // Update table store
       await store.lifecycle.update({
-        selectedTableId: state.value.selectedTableId,
-        currentTableId: state.value.selectedTableId,
-        tableName: trimmedName
+        selectedTableId: tableConfig.id,
+        currentTableId: tableConfig.id,
+        tableName: tableConfig.name
       })
 
       debug.completeState(DebugCategories.TABLE_UPDATES, 'Table save complete', {

@@ -12,6 +12,12 @@ export * from './table-config'
 // Event types for table interactions
 export * from './table-events'
 
+// State types for table management
+export * from './table-state'
+
+// Category types for table filtering
+export * from './category-types'
+
 /**
  * @deprecated All legacy types have been replaced by the core types above.
  * Use the following replacements:

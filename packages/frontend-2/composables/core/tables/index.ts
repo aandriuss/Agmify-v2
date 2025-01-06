@@ -1,6 +1,4 @@
 // State Management
-export { useTableState } from './state/useTableState'
-export { useNamedTableState } from './state/useNamedTableState'
 export { useDataTableState } from './state/useDataTableState'
 export { useViewerTableState } from './state/useViewerTableState'
 export { useColumnState } from './state/useColumnState'

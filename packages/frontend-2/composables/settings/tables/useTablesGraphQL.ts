@@ -1,41 +1,96 @@
 import { useMutation, useQuery, provideApolloClient } from '@vue/apollo-composable'
 import { gql } from 'graphql-tag'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import type { TableSettings } from '~/composables/core/types'
 import { useNuxtApp } from '#app'
 import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
 import { isGraphQLAuthError } from '~/composables/core/utils/errors'
+import {
+  isTableData,
+  transformTableData,
+  transformTableToInput
+} from '~/composables/core/tables/transforms/tableDataTransforms'
+import type { TableSettings } from '~/composables/core/types'
+
+// GraphQL Response Types
+interface TableGraphQLData {
+  id: string
+  name: string
+  displayName: string
+  childColumns: string[]
+  parentColumns: string[]
+  categoryFilters: {
+    selectedChildCategories: string[]
+    selectedParentCategories: string[]
+  }
+  selectedParameterIds: string[]
+}
 
 interface GetTablesResponse {
-  activeUser: {
-    tables: Record<string, TableSettings>
-  }
+  tableSettingsP: TableGraphQLData[]
 }
 
-interface UpdateTablesResponse {
-  userTablesUpdate: boolean
+interface CreateTableResponse {
+  createNamedTable: TableGraphQLData
 }
 
-interface UpdateTablesVariables {
-  tables: Record<string, TableSettings>
+interface UpdateTableResponse {
+  updateNamedTable: TableGraphQLData
 }
 
 const GET_USER_TABLES = gql`
   query GetUserTables {
-    activeUser {
-      tables
+    tableSettingsP {
+      id
+      name
+      displayName
+      childColumns
+      parentColumns
+      categoryFilters {
+        selectedChildCategories
+        selectedParentCategories
+      }
+      selectedParameterIds
     }
   }
 `
 
-const UPDATE_USER_TABLES = gql`
-  mutation UpdateUserTables($tables: JSONObject!) {
-    userTablesUpdate(tables: $tables)
+const UPDATE_TABLE = gql`
+  mutation UpdateNamedTable($id: String!, $table: TableInput!) {
+    updateNamedTable(id: $id, table: $table) {
+      id
+      name
+      displayName
+      childColumns
+      parentColumns
+      categoryFilters {
+        selectedChildCategories
+        selectedParentCategories
+      }
+      selectedParameterIds
+    }
+  }
+`
+
+const CREATE_TABLE = gql`
+  mutation CreateNamedTable($table: TableInput!) {
+    createNamedTable(table: $table) {
+      id
+      name
+      displayName
+      childColumns
+      parentColumns
+      categoryFilters {
+        selectedChildCategories
+        selectedParentCategories
+      }
+      selectedParameterIds
+    }
   }
 `
 
 export async function useTablesGraphQL() {
   const nuxtApp = useNuxtApp()
+
   // Helper to get Apollo client with auth check
   async function getApolloClient() {
     try {
@@ -64,13 +119,21 @@ export async function useTablesGraphQL() {
     }
   }
 
-  // Helper to run code in Nuxt context
+  // Helper to run code in Nuxt context with Apollo
   async function runInContext<T>(fn: () => Promise<T> | T): Promise<T> {
     const runContext = nuxtApp?.runWithContext
     if (!runContext) {
       throw new Error('Nuxt app context not available')
     }
-    return runContext(fn)
+    return runContext(async () => {
+      // Ensure Apollo client is provided
+      const apolloClient = nuxtApp.$apollo?.default
+      if (!apolloClient) {
+        throw new Error('Apollo client not initialized')
+      }
+      provideApolloClient(apolloClient)
+      return fn()
+    })
   }
 
   try {
@@ -81,23 +144,6 @@ export async function useTablesGraphQL() {
     provideApolloClient(apolloClient)
 
     debug.completeState(DebugCategories.INITIALIZATION, 'GraphQL client initialized')
-
-    const { mutate: updateTablesMutation } = useMutation<
-      UpdateTablesResponse,
-      UpdateTablesVariables
-    >(UPDATE_USER_TABLES, {
-      // Update the cache after mutation
-      update: (cache, { data }) => {
-        if (data?.userTablesUpdate) {
-          // Invalidate and refetch the tables query
-          cache.evict({ fieldName: 'activeUser' })
-          cache.gc()
-        }
-      },
-      // Refetch the tables query after mutation
-      refetchQueries: [{ query: GET_USER_TABLES }],
-      awaitRefetchQueries: true
-    })
 
     const {
       result,
@@ -132,43 +178,22 @@ export async function useTablesGraphQL() {
           throw err
         })
 
-        if (!response?.data?.activeUser?.tables) {
+        const data = response?.data as GetTablesResponse | undefined
+        if (!data?.tableSettingsP) {
           debug.warn(DebugCategories.INITIALIZATION, 'No data in GraphQL response')
           return {}
         }
 
-        const rawTables = response.data.activeUser.tables
+        const rawTables = data.tableSettingsP
         const tables: Record<string, TableSettings> = {}
 
         // Process tables from the response
-        Object.entries(rawTables).forEach(([_, tableData]) => {
-          if (
-            tableData &&
-            typeof tableData === 'object' &&
-            'id' in tableData &&
-            'name' in tableData
-          ) {
-            const table = tableData as TableSettings
-            const validatedTable: TableSettings = {
-              id: table.id,
-              name: table.name,
-              displayName: table.displayName || table.name,
-              parentColumns: Array.isArray(table.parentColumns)
-                ? table.parentColumns
-                : [],
-              childColumns: Array.isArray(table.childColumns) ? table.childColumns : [],
-              categoryFilters: table.categoryFilters || {
-                selectedParentCategories: [],
-                selectedChildCategories: []
-              },
-              selectedParameters: table.selectedParameters || {
-                parent: [],
-                child: []
-              },
-              lastUpdateTimestamp: Date.now()
-            }
-            // Use table ID as key for consistency
+        rawTables.forEach((tableData) => {
+          if (isTableData(tableData)) {
+            const validatedTable = transformTableData(tableData)
             tables[validatedTable.id] = validatedTable
+          } else {
+            debug.warn(DebugCategories.INITIALIZATION, 'Invalid table data', tableData)
           }
         })
 
@@ -194,49 +219,43 @@ export async function useTablesGraphQL() {
         // Ensure we have auth and Apollo client
         await getApolloClient()
 
-        // Create a simple object with table IDs as keys for saving to backend
-        const tablesToSave = Object.entries(tables).reduce<
-          Record<string, TableSettings>
-        >((acc, [_, table]) => {
-          const validatedTable: TableSettings = {
-            id: table.id,
-            name: table.name,
-            displayName: table.displayName || table.name,
-            parentColumns: Array.isArray(table.parentColumns)
-              ? table.parentColumns
-              : [],
-            childColumns: Array.isArray(table.childColumns) ? table.childColumns : [],
-            categoryFilters: table.categoryFilters || {
-              selectedParentCategories: [],
-              selectedChildCategories: []
-            },
-            selectedParameters: table.selectedParameters || {
-              parent: [],
-              child: []
-            },
-            lastUpdateTimestamp: Date.now()
+        // Execute mutation inside runInContext
+        const result = await runInContext(async () => {
+          const table = Object.values(tables)[0]
+          if (!table) {
+            throw new Error('No table to save')
           }
-          // Use table ID as key for backend storage
-          return { ...acc, [validatedTable.id]: validatedTable }
-        }, {})
 
-        debug.log(DebugCategories.STATE, 'Tables update payload', {
-          tableCount: Object.keys(tablesToSave).length,
-          tableIds: Object.keys(tablesToSave)
+          const tableInput = transformTableToInput(table)
+
+          // Execute appropriate mutation
+          const isNew = !table.id || table.id === 'default'
+          if (isNew) {
+            const { mutate } = useMutation<CreateTableResponse>(CREATE_TABLE)
+            return mutate({
+              table: tableInput
+            })
+          } else {
+            const { mutate } = useMutation<UpdateTableResponse>(UPDATE_TABLE)
+            return mutate({
+              id: table.id,
+              table: tableInput
+            })
+          }
         })
 
-        const result = await runInContext(() =>
-          updateTablesMutation({
-            tables: tablesToSave
-          })
-        )
-
-        if (!result?.data) {
+        const data = result?.data as
+          | (CreateTableResponse | UpdateTableResponse)
+          | undefined
+        if (!data) {
           debug.warn(DebugCategories.STATE, 'No data in mutation response')
           return false
         }
 
-        const success = result.data.userTablesUpdate
+        const success = !!(
+          (data as CreateTableResponse).createNamedTable ||
+          (data as UpdateTableResponse).updateNamedTable
+        )
 
         debug.log(DebugCategories.STATE, 'Tables update result', {
           success

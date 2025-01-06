@@ -7,13 +7,45 @@ import type {
 } from './types'
 import type {
   TableCategoryFilters,
-  TableSelectedParameters
-} from '~/composables/core/types/tables/table-config'
-import type { TableColumn } from '~/composables/core/types/tables/table-column'
-import { useTableService } from '../services/tableService'
+  TableSelectedParameters,
+  FilterDef,
+  TableColumn
+} from '~/composables/core/types'
+import { createTableColumns } from '~/composables/core/types'
+import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { defaultSelectedParameters, defaultTableConfig } from '../config/defaults'
-import { createTableColumns } from '~/composables/core/types/tables/table-column'
+
+const LAST_SELECTED_TABLE_KEY = 'speckle:lastSelectedTableId'
+
+// Storage helper with fallback
+const storage = {
+  getItem(key: string): string | null {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null
+    } catch {
+      return null
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(key, value)
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  },
+  removeItem(key: string): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(key)
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+}
 
 /**
  * Table Store
@@ -46,7 +78,14 @@ function createInitialState(): TableStoreState {
     currentTableId: null,
     loading: false,
     error: null,
-    lastUpdated: Date.now()
+    lastUpdated: Date.now(),
+    sortField: undefined,
+    sortOrder: undefined,
+    filters: undefined,
+    currentView: 'parent',
+    isDirty: false,
+    isUpdating: false,
+    lastUpdateTime: Date.now()
   }
 }
 
@@ -56,7 +95,7 @@ function createInitialState(): TableStoreState {
 function createTableStore(options: TableStoreOptions = {}): TableStore {
   // Initialize state
   const state = ref<TableStoreState>(createInitialState())
-  const tableService = useTableService()
+  let graphqlOps: Awaited<ReturnType<typeof useTablesGraphQL>> | null = null
 
   // Create default table with columns created from default parameters
   const defaultParentColumns = createTableColumns(defaultSelectedParameters.parent)
@@ -67,12 +106,16 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     ...defaultTableConfig,
     parentColumns: defaultParentColumns,
     childColumns: defaultChildColumns,
+    categoryFilters: {
+      ...defaultTableConfig.categoryFilters
+    },
     lastUpdateTimestamp: Date.now()
   }
 
-  // Set default table and make it current
+  // Set default table and make it current or restore from local storage
   state.value.tables.set(defaultTable.id, defaultTable)
-  state.value.currentTableId = defaultTable.id
+  const savedTableId = storage.getItem(LAST_SELECTED_TABLE_KEY)
+  state.value.currentTableId = savedTableId || defaultTable.id
 
   debug.log(DebugCategories.STATE, 'Default table created', {
     selectedParameters: {
@@ -102,6 +145,70 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   const error = computed(() => state.value.error)
   const hasError = computed(() => state.value.error !== null)
   const lastUpdated = computed(() => state.value.lastUpdated)
+  const sortField = computed(() => state.value.sortField)
+  const sortOrder = computed(() => state.value.sortOrder)
+  const filters = computed(() => state.value.filters)
+  const currentView = computed(() => state.value.currentView)
+  const isDirty = computed(() => state.value.isDirty)
+  const isUpdating = computed(() => state.value.isUpdating)
+  const lastUpdateTime = computed(() => state.value.lastUpdateTime)
+
+  /**
+   * Initialize GraphQL operations
+   */
+  async function initGraphQL() {
+    try {
+      debug.startState(
+        DebugCategories.INITIALIZATION,
+        'Initializing GraphQL operations'
+      )
+      graphqlOps = await useTablesGraphQL()
+      debug.completeState(
+        DebugCategories.INITIALIZATION,
+        'GraphQL operations initialized'
+      )
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to initialize GraphQL', err)
+      const error =
+        err instanceof Error ? err : new Error('Failed to initialize GraphQL')
+      state.value.error = error
+      throw error
+    }
+  }
+
+  /**
+   * Set current table and persist selection
+   */
+  function setCurrentTable(tableId: string | null) {
+    debug.startState(DebugCategories.STATE, 'Setting current table', { tableId })
+
+    state.value.currentTableId = tableId
+    state.value.isDirty = false
+
+    if (tableId) {
+      storage.setItem(LAST_SELECTED_TABLE_KEY, tableId)
+    } else {
+      storage.removeItem(LAST_SELECTED_TABLE_KEY)
+    }
+
+    debug.completeState(DebugCategories.STATE, 'Current table set')
+  }
+
+  /**
+   * Toggle between parent and child view
+   */
+  function toggleView(): void {
+    debug.startState(DebugCategories.STATE, 'Toggling view', {
+      from: state.value.currentView
+    })
+
+    state.value.currentView = state.value.currentView === 'parent' ? 'child' : 'parent'
+    state.value.lastUpdated = Date.now()
+
+    debug.completeState(DebugCategories.STATE, 'View toggled', {
+      to: state.value.currentView
+    })
+  }
 
   /**
    * Load table from PostgreSQL
@@ -111,33 +218,27 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     state.value.loading = true
 
     try {
-      // Fetch table from PostgreSQL
-      const table = await tableService.fetchTable(tableId)
+      // Initialize GraphQL if not already done
+      if (!graphqlOps) {
+        await initGraphQL()
+      }
 
-      // Create columns from selected parameters
-      const parentColumns = createTableColumns(table.selectedParameters.parent)
-      const childColumns = createTableColumns(table.selectedParameters.child)
+      if (!graphqlOps) {
+        throw new Error('GraphQL operations not initialized')
+      }
 
-      // Update store with table and generated columns
-      state.value.tables.set(tableId, {
-        ...table,
-        parentColumns,
-        childColumns
-      })
-      state.value.currentTableId = tableId
+      // Fetch tables from PostgreSQL
+      const tables = await graphqlOps.fetchTables()
+      const table = tables[tableId]
+
+      if (!table) {
+        throw new Error(`Table ${tableId} not found`)
+      }
+
+      // Update store with table
+      state.value.tables.set(tableId, table)
+      setCurrentTable(tableId)
       state.value.lastUpdated = Date.now()
-
-      debug.log(DebugCategories.STATE, 'Table loaded with columns', {
-        tableId,
-        selectedParameters: {
-          parent: table.selectedParameters.parent.length,
-          child: table.selectedParameters.child.length
-        },
-        columns: {
-          parent: parentColumns.length,
-          child: childColumns.length
-        }
-      })
 
       debug.log(DebugCategories.STATE, 'Table loaded', {
         tableId,
@@ -162,38 +263,36 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       settings
     })
     state.value.loading = true
+    state.value.isUpdating = true
+    state.value.lastUpdateTime = Date.now()
 
     try {
+      // Initialize GraphQL if not already done
+      if (!graphqlOps) {
+        await initGraphQL()
+      }
+
+      if (!graphqlOps) {
+        throw new Error('GraphQL operations not initialized')
+      }
+
       // Save to PostgreSQL
-      const savedTable = await tableService.saveTable(settings)
-
-      // Create columns from selected parameters
-      const parentColumns = createTableColumns(savedTable.selectedParameters.parent)
-      const childColumns = createTableColumns(savedTable.selectedParameters.child)
-
-      // Update store with table and generated columns
-      state.value.tables.set(savedTable.id, {
-        ...savedTable,
-        parentColumns,
-        childColumns
+      const success = await graphqlOps.updateTables({
+        [settings.id]: settings
       })
+
+      if (!success) {
+        throw new Error('Failed to save table')
+      }
+
+      // Update store with saved table
+      state.value.tables.set(settings.id, settings)
       state.value.lastUpdated = Date.now()
-
-      debug.log(DebugCategories.STATE, 'Table saved with columns', {
-        tableId: savedTable.id,
-        selectedParameters: {
-          parent: savedTable.selectedParameters.parent.length,
-          child: savedTable.selectedParameters.child.length
-        },
-        columns: {
-          parent: parentColumns.length,
-          child: childColumns.length
-        }
-      })
+      state.value.isDirty = false
 
       debug.log(DebugCategories.STATE, 'Table saved', {
-        tableId: savedTable.id,
-        table: savedTable
+        tableId: settings.id,
+        table: settings
       })
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
@@ -202,7 +301,40 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       throw error
     } finally {
       state.value.loading = false
+      state.value.isUpdating = false
     }
+  }
+
+  /**
+   * Update sort state
+   */
+  function updateSort(field: string | undefined, order: number | undefined): void {
+    debug.startState(DebugCategories.STATE, 'Updating sort', {
+      field,
+      order
+    })
+
+    state.value.sortField = field
+    state.value.sortOrder = order
+    state.value.lastUpdated = Date.now()
+    state.value.isDirty = true
+
+    debug.completeState(DebugCategories.STATE, 'Sort updated')
+  }
+
+  /**
+   * Update filters
+   */
+  function updateFilters(newFilters: Record<string, FilterDef> | undefined): void {
+    debug.startState(DebugCategories.STATE, 'Updating filters', {
+      filterCount: newFilters ? Object.keys(newFilters).length : 0
+    })
+
+    state.value.filters = newFilters
+    state.value.lastUpdated = Date.now()
+    state.value.isDirty = true
+
+    debug.completeState(DebugCategories.STATE, 'Filters updated')
   }
 
   /**
@@ -215,9 +347,10 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         tableId: updates.id,
         updates
       })
-      state.value.currentTableId = updates.id
+      setCurrentTable(updates.id)
       state.value.tables.set(updates.id, updates as TableSettings)
       state.value.lastUpdated = Date.now()
+      state.value.isDirty = true
       return
     }
 
@@ -265,6 +398,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
 
     state.value.tables.set(current.id, updated)
     state.value.lastUpdated = Date.now()
+    state.value.isDirty = true
 
     debug.log(DebugCategories.STATE, 'Table updated', {
       tableId: current.id,
@@ -281,13 +415,26 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     state.value.loading = true
 
     try {
-      // Delete from PostgreSQL
-      await tableService.deleteTable(tableId)
+      // Initialize GraphQL if not already done
+      if (!graphqlOps) {
+        await initGraphQL()
+      }
+
+      if (!graphqlOps) {
+        throw new Error('GraphQL operations not initialized')
+      }
+
+      // Delete from PostgreSQL by saving an empty record
+      const success = await graphqlOps.updateTables({})
+
+      if (!success) {
+        throw new Error('Failed to delete table')
+      }
 
       // Update store
       state.value.tables.delete(tableId)
       if (state.value.currentTableId === tableId) {
-        state.value.currentTableId = null
+        setCurrentTable(null)
       }
       state.value.lastUpdated = Date.now()
 
@@ -332,6 +479,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         lastUpdateTimestamp: Date.now()
       })
       state.value.lastUpdated = Date.now()
+      state.value.isDirty = true
     }
 
     debug.completeState(DebugCategories.STATE, 'Parameters and columns updated', {
@@ -428,6 +576,9 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       ...defaultTableConfig,
       parentColumns: defaultParentColumns,
       childColumns: defaultChildColumns,
+      categoryFilters: {
+        ...defaultTableConfig.categoryFilters
+      },
       lastUpdateTimestamp: Date.now()
     }
 
@@ -464,8 +615,12 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   async function initialize(): Promise<void> {
     debug.startState(DebugCategories.STATE, 'Initializing table store')
     try {
-      // Initialize state synchronously but return promise
+      // Initialize GraphQL operations
+      await initGraphQL()
+
+      // Initialize state
       reset()
+
       debug.log(DebugCategories.STATE, 'Table store initialized')
       return Promise.resolve()
     } catch (err) {
@@ -484,12 +639,24 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     error,
     hasError,
     lastUpdated,
+    sortField,
+    sortOrder,
+    filters,
+
+    // View management
+    toggleView,
+    currentView,
+    isDirty,
+    isUpdating,
+    lastUpdateTime,
 
     // Table operations
     loadTable,
     saveTable,
     updateTable,
     deleteTable,
+    updateSort,
+    updateFilters,
 
     // Parameter management
     updateSelectedParameters,

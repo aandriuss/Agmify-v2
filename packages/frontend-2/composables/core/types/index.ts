@@ -219,7 +219,8 @@ export type {
   ColumnReorderPayload,
   ColumnResizePayload,
   TableUpdatePayload,
-  ErrorPayload
+  ErrorPayload,
+  FilterDef
 } from './tables'
 
 export { createTableColumns } from './tables'

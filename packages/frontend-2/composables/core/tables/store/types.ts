@@ -21,13 +21,13 @@
  */
 
 import type { Ref } from 'vue'
-import type { TableColumn } from '~/composables/core/types/tables/table-column'
-
 import type {
   BaseTableConfig,
   TableCategoryFilters,
-  TableSelectedParameters
-} from '~/composables/core/types/tables/table-config'
+  TableSelectedParameters,
+  FilterDef,
+  TableColumn
+} from '~/composables/core/types'
 
 /**
  * Table settings stored in PostgreSQL
@@ -55,6 +55,13 @@ export interface TableStoreState {
   loading: boolean
   error: Error | null
   lastUpdated: number
+  sortField: string | undefined
+  sortOrder: number | undefined
+  filters: Record<string, FilterDef> | undefined
+  currentView: 'parent' | 'child'
+  isDirty: boolean
+  isUpdating: boolean
+  lastUpdateTime: number
 }
 
 /**
@@ -73,6 +80,13 @@ export interface TableStore {
   error: Ref<Error | null>
   hasError: Ref<boolean>
   lastUpdated: Ref<number>
+  sortField: Ref<string | undefined>
+  sortOrder: Ref<number | undefined>
+  filters: Ref<Record<string, FilterDef> | undefined>
+  currentView: Ref<'parent' | 'child'>
+  isDirty: Ref<boolean>
+  isUpdating: Ref<boolean>
+  lastUpdateTime: Ref<number>
 
   // Table operations
   loadTable(tableId: string): Promise<void>
@@ -88,6 +102,13 @@ export interface TableStore {
 
   // Column management
   updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]): void
+
+  // Sort and filter operations
+  updateSort(field: string | undefined, order: number | undefined): void
+  updateFilters(filters: Record<string, FilterDef> | undefined): void
+
+  // View management
+  toggleView(): void
 
   // Store management
   initialize(): Promise<void>

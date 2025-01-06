@@ -9,7 +9,7 @@
       <TableLayout class="viewer-container">
         <template #header>
           <ScheduleTableHeader
-            :selected-table-id="_interactions.state.value.selectedTableId"
+            :selected-table-id="store.state.value.currentTableId"
             :table-name="_interactions.state.value.tableName"
             :tables="store.tablesArray.value || []"
             :show-category-options="showCategoryOptions"
@@ -29,7 +29,7 @@
           <div class="menu-container">
             <CategoryMenu
               v-show="showCategoryOptions"
-              :is-updating="!isInitialized || tablesState.loading.value"
+              :is-updating="!isInitialized || tableStore.isLoading.value"
               :error="error"
               :initial-parent-categories="categories.selectedParentCategories.value"
               :initial-child-categories="categories.selectedChildCategories.value"
@@ -101,6 +101,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, unref } from 'vue'
+import { gql } from '@apollo/client/core'
 import { isEqual } from 'lodash'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
@@ -108,14 +109,17 @@ import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
 import { useAuthManager } from '~/lib/auth/composables/auth'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useTableInteractions } from '~/composables/core/tables/interactions/useTableInteractions'
-import { useTableInitialization } from '~/composables/core/tables/initialization/useTableInitialization'
+import { useScheduleInitialization } from './composables/useScheduleInitialization'
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import type { ElementData, SelectedParameter } from '~/composables/core/types'
-import type { TableSettings } from '~/composables/core/tables/store/types'
+import type {
+  ElementData,
+  SelectedParameter,
+  TableColumn,
+  TableSettings
+} from '~/composables/core/types'
 import type { ColumnVisibilityPayload } from '~/composables/core/types/tables/table-events'
-import { useTablesState } from '~/composables/settings/tables/useTablesState'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import ScheduleMainView from './components/ScheduleMainView.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
@@ -129,6 +133,7 @@ import type {
 import { isValidDataState } from '~/composables/core/types/state'
 import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
 import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
+import { useNuxtApp } from '#app'
 import { parentCategories, childCategories } from '~/composables/core/config/categories'
 import ScheduleTableHeader from './components/ScheduleTableHeader.vue'
 
@@ -156,7 +161,7 @@ function safeObjectEntries<T extends Record<string, unknown>>(
 const debug = useDebug()
 const store = useStore()
 const parameterStore = useParameterStore()
-const tablesState = useTablesState()
+const tableStore = useTableStore()
 const bimElements = useBIMElements({
   childCategories
 })
@@ -240,7 +245,7 @@ async function handleSelectedTableIdUpdate(tableId: string) {
 
     // If selecting existing table, get its settings
     if (tableId) {
-      const selectedTable = tablesState.getSelectedTable()
+      const selectedTable = tableStore.currentTable.value
       if (selectedTable) {
         // Update with table settings
         _interactions.state.value = {
@@ -251,12 +256,6 @@ async function handleSelectedTableIdUpdate(tableId: string) {
             selectedTable.categoryFilters.selectedParentCategories,
           selectedChildCategories: selectedTable.categoryFilters.selectedChildCategories
         }
-
-        // Update columns through store
-        await store.lifecycle.update({
-          currentTableColumns: selectedTable.parentColumns,
-          currentDetailColumns: selectedTable.childColumns
-        })
       }
     }
 
@@ -293,26 +292,37 @@ async function handleTableNameUpdate(name: string) {
 async function handleSaveTable() {
   try {
     debug.log(DebugCategories.TABLE_UPDATES, 'Saving table')
-    await _interactions.handleSaveTable()
 
-    // Reload tables after save
-    await tablesState.loadTables()
+    // Get Nuxt app instance
+    const nuxtApp = useNuxtApp()
+    if (!nuxtApp?.runWithContext) {
+      throw new Error('Nuxt app context not available')
+    }
 
-    // Update store with latest data
-    const currentTable = tablesState.getSelectedTable()
-    if (currentTable) {
-      // Update basic table info
+    // Run save operation in Nuxt context
+    await nuxtApp.runWithContext(async () => {
+      // Ensure Apollo client is provided
+      const { client: apolloClient } = useApolloClient()
+      if (!apolloClient) throw new Error('Apollo client not initialized')
+      provideApolloClient(apolloClient)
+
+      // Get table config from interactions
+      const tableConfig = await _interactions.handleSaveTable()
+
+      // Save table to store
+      await tableStore.saveTable(tableConfig)
+
+      // Update store with latest data
       await store.lifecycle.update({
-        selectedTableId: currentTable.id,
-        tableName: currentTable.name
+        selectedTableId: tableConfig.id,
+        tableName: tableConfig.name
       })
 
-      // Update table store with columns
-      await tableStore.updateColumns(
-        currentTable.parentColumns,
-        currentTable.childColumns
-      )
-    }
+      debug.log(DebugCategories.TABLE_UPDATES, 'Table saved successfully', {
+        id: tableConfig.id,
+        name: tableConfig.name
+      })
+    })
   } catch (err) {
     handleError(err)
   }
@@ -323,10 +333,10 @@ const hasChanges = computed(() => {
   const currentTableId = _interactions.state.value.selectedTableId
   if (!currentTableId) return false
 
-  const currentTable = tablesState.getSelectedTable()
+  const currentTable = tableStore.currentTable.value
   if (!currentTable) return false
 
-  const originalTable = tablesState.originalTables.value[currentTableId]
+  const originalTable = tableStore.state.value.tables.get(currentTableId)
   if (!originalTable) return true // New table
 
   return (
@@ -339,8 +349,8 @@ const hasChanges = computed(() => {
       categories.selectedChildCategories.value,
       originalTable.categoryFilters.selectedChildCategories
     ) ||
-    !isEqual(store.currentTableColumns.value, originalTable.parentColumns) ||
-    !isEqual(store.currentDetailColumns.value, originalTable.childColumns)
+    !isEqual(currentTable.parentColumns, originalTable.parentColumns) ||
+    !isEqual(currentTable.childColumns, originalTable.childColumns)
   )
 })
 
@@ -391,9 +401,45 @@ const _currentTable = computed(() => {
 })
 
 // Initialize core composables
-const tableStore = useTableStore()
-const { initComponent } = useTableInitialization({
-  store: tableStore
+// Create a store adapter that matches the Store interface
+const storeAdapter = {
+  ...store,
+  lifecycle: {
+    init: async () => {
+      if (tableStore.initialize) {
+        await tableStore.initialize()
+      } else {
+        await store.lifecycle.init()
+      }
+    },
+    update: async (updates: Record<string, unknown>) => {
+      // Handle column updates through table store
+      if ('currentTableColumns' in updates || 'currentDetailColumns' in updates) {
+        const parentColumns = Array.isArray(updates.currentTableColumns)
+          ? (updates.currentTableColumns as TableColumn[])
+          : []
+        const childColumns = Array.isArray(updates.currentDetailColumns)
+          ? (updates.currentDetailColumns as TableColumn[])
+          : []
+        await tableStore.updateColumns(parentColumns, childColumns)
+      }
+      // Pass other updates to core store
+      else {
+        await store.lifecycle.update(updates)
+      }
+    },
+    cleanup: async () => {
+      if (tableStore.reset) {
+        await tableStore.reset()
+      } else {
+        await store.lifecycle.cleanup()
+      }
+    }
+  }
+}
+
+const { initComponent } = useScheduleInitialization({
+  store: storeAdapter
 })
 
 // Expose necessary functions
@@ -615,24 +661,83 @@ onMounted(async () => {
     if (!apolloClient) throw new Error('Apollo client not initialized')
     provideApolloClient(apolloClient)
 
+    // Wait for Apollo client to be ready
+    await new Promise<void>((resolve, reject) => {
+      let attempts = 0
+      const maxAttempts = 50 // 5 seconds total
+
+      const checkClient = async () => {
+        attempts++
+        debug.log(DebugCategories.INITIALIZATION, 'Checking Apollo client', {
+          attempt: attempts,
+          hasClient: !!apolloClient,
+          hasCache: !!apolloClient.cache
+        })
+
+        // Try to execute a simple query to verify client is ready
+        try {
+          await apolloClient.query({
+            query: gql`
+              query TestQuery {
+                __typename
+              }
+            `
+          })
+          debug.log(DebugCategories.INITIALIZATION, 'Apollo client ready')
+          resolve()
+        } catch (err) {
+          debug.log(DebugCategories.INITIALIZATION, 'Apollo client not ready yet', {
+            attempt: attempts,
+            error: err
+          })
+          if (attempts >= maxAttempts) {
+            reject(new Error('Apollo client initialization timed out'))
+          } else {
+            setTimeout(checkClient, 100)
+          }
+        }
+      }
+      void checkClient()
+    })
+
+    debug.log(DebugCategories.INITIALIZATION, 'Apollo client ready')
+
     // 2. Initialize core store
     transitionPhase('core_store')
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing core store')
     await store.lifecycle.init()
-    if (!store.initialized.value) throw new Error('Core store failed to initialize')
+    if (!store.initialized.value) {
+      debug.error(DebugCategories.ERROR, 'Core store failed to initialize', {
+        storeState: store.state.value
+      })
+      throw new Error('Core store failed to initialize')
+    }
+    debug.log(DebugCategories.INITIALIZATION, 'Core store initialized')
 
     // 3. Initialize parameter store
     transitionPhase('parameter_store')
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing parameter store')
     await parameterStore.init()
     if (!parameterStore.state.value.initialized) {
+      debug.error(DebugCategories.ERROR, 'Parameter store failed to initialize', {
+        parameterState: parameterStore.state.value
+      })
       throw new Error('Parameter store failed to initialize')
     }
+    debug.log(DebugCategories.INITIALIZATION, 'Parameter store initialized')
 
     // 4. Initialize table store
     transitionPhase('table_store')
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing table store')
     await initComponent.initialize()
     if (!tableStore.currentTable.value) {
+      debug.error(DebugCategories.ERROR, 'Table store failed to initialize', {
+        tableState: tableStore.state.value,
+        currentTable: tableStore.currentTable.value
+      })
       throw new Error('Table store failed to initialize')
     }
+    debug.log(DebugCategories.INITIALIZATION, 'Table store initialized')
 
     // 5. Wait for auth
     const waitForUser = useWaitForActiveUser()
@@ -677,8 +782,10 @@ onMounted(async () => {
 
     // 8. Load tables and initialize data
     transitionPhase('data_sync')
-    await tablesState.loadTables()
-    const tablesList = processTablesList(tablesState.state.value.tables)
+    await tableStore.initialize()
+    const tablesList = processTablesList(
+      Object.fromEntries(tableStore.state.value.tables)
+    )
 
     await elementsData.initializeData()
     if (elementsData.hasError.value) {
