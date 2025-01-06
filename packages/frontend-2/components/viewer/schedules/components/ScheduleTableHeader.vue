@@ -74,19 +74,24 @@
     <div class="flex-1" />
 
     <div class="flex items-center gap-2">
-      <!-- Category Filter Button -->
-      <FormButton
-        text
-        size="sm"
-        color="subtle"
-        @click="emit('toggle-category-options')"
-      >
-        Category filter options
-        <template #icon-right>
-          <ChevronDownIcon v-if="!showCategoryOptions" class="size-4" />
-          <ChevronUpIcon v-else class="size-4" />
-        </template>
-      </FormButton>
+      <!-- Action Buttons -->
+      <div class="flex items-center gap-2">
+        <FormButton
+          text
+          size="sm"
+          color="subtle"
+          @click="emit('toggle-category-options')"
+        >
+          Category filter options
+          <template #icon-right>
+            <ChevronDownIcon v-if="!showCategoryOptions" class="size-4" />
+            <ChevronUpIcon v-else class="size-4" />
+          </template>
+        </FormButton>
+        <FormButton text size="sm" color="subtle" @click="emit('manage-parameters')">
+          Manage parameters
+        </FormButton>
+      </div>
     </div>
   </div>
 </template>
@@ -119,6 +124,7 @@ const emit = defineEmits<{
   'table-change': []
   save: []
   'toggle-category-options': []
+  'manage-parameters': []
 }>()
 
 const isEditing = ref(false)

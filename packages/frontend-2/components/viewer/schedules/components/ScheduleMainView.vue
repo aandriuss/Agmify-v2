@@ -1,90 +1,54 @@
 <template>
-  <TableLayout class="viewer-container">
-    <template #controls>
-      <div class="flex items-center gap-4">
-        <slot name="table-controls" />
-      </div>
-    </template>
-
-    <template #actions>
-      <div class="flex items-center gap-2">
-        <slot name="table-actions" />
-      </div>
-    </template>
-
-    <div class="schedule-table-container">
-      <!-- Parameter Manager -->
-      <ParameterManager
-        v-if="showParameterManager"
-        :selected-parent-categories="store.selectedParentCategories.value"
-        :selected-child-categories="store.selectedChildCategories.value"
-        :available-parent-parameters="parameterStore.parentAvailableBimParameters.value"
-        :available-child-parameters="parameterStore.childAvailableBimParameters.value"
-        :selected-parent-parameters="
-          tableStore.currentTable.value?.selectedParameters?.parent || []
-        "
-        :selected-child-parameters="
-          tableStore.currentTable.value?.selectedParameters?.child || []
-        "
-        :can-create-parameters="true"
-        @parameter-visibility-change="handleParameterVisibilityChange"
-        @parameter-edit="handleParameterEdit"
-        @parameter-create="handleParameterCreate"
-        @parameter-select="handleParameterSelect"
-        @parameter-deselect="handleParameterDeselect"
-        @error="handleError"
-      />
-
-      <!-- Debug Info -->
-      <div v-if="debug.isEnabled.value" class="mb-2 p-2 bg-gray-100">
-        <pre class="text-xs">{{
-          {
-            tableId: selectedTableId,
-            tableName,
-            dataLength: tableData?.length || 0,
-            columnsLength: tableColumns?.length || 0,
-            detailColumnsLength: detailColumns?.length || 0,
-            error: error?.message
-          }
-        }}</pre>
-      </div>
-
-      <!-- Data Table -->
-      <BaseDataTable
-        :table-id="selectedTableId"
-        :table-name="tableName"
-        :data="tableData"
-        :columns="tableColumns"
-        :detail-columns="detailColumns"
-        :loading="!hasData"
-        :error="error"
-        @row-expand="handleRowExpand"
-        @row-collapse="handleRowCollapse"
-        @column-visibility-change="handleColumnVisibilityChange"
-        @column-reorder="handleColumnReorder"
-        @column-resize="handleColumnResize"
-        @error="handleError"
-        @retry="handleRetry"
-      />
-
-      <!-- Debug Panel -->
-      <DebugPanel
-        v-if="debug.isEnabled.value"
-        :schedule-data="store.scheduleData.value"
-        :evaluated-data="store.evaluatedData.value"
-        :table-data="store.tableData.value"
-        :parent-elements="parentElements"
-        :child-elements="childElements"
-        :parent-columns="tableStore.currentTable.value?.parentColumns || []"
-        :child-columns="tableStore.currentTable.value?.childColumns || []"
-        :show-parameter-stats="true"
-        :show-bim-data="true"
-        :show-parameter-categories="true"
-        :show-table-categories="true"
-        @update:is-test-mode="handleTestModeUpdate"
-      />
+  <div class="viewer-container">
+    <!-- Debug Info -->
+    <div v-if="debug.isEnabled.value" class="mb-2 p-2 bg-gray-100">
+      <pre class="text-xs">{{
+        {
+          tableId: selectedTableId,
+          tableName,
+          dataLength: tableData?.length || 0,
+          columnsLength: tableColumns?.length || 0,
+          detailColumnsLength: detailColumns?.length || 0,
+          error: error?.message
+        }
+      }}</pre>
     </div>
-  </TableLayout>
+
+    <!-- Data Table -->
+    <BaseDataTable
+      :table-id="selectedTableId"
+      :table-name="tableName"
+      :data="tableData"
+      :columns="tableColumns"
+      :detail-columns="detailColumns"
+      :loading="!hasData"
+      :error="error"
+      @row-expand="handleRowExpand"
+      @row-collapse="handleRowCollapse"
+      @column-visibility-change="handleColumnVisibilityChange"
+      @column-reorder="handleColumnReorder"
+      @column-resize="handleColumnResize"
+      @error="handleError"
+      @retry="handleRetry"
+    />
+
+    <!-- Debug Panel -->
+    <DebugPanel
+      v-if="debug.isEnabled.value"
+      :schedule-data="store.scheduleData.value"
+      :evaluated-data="store.evaluatedData.value"
+      :table-data="store.tableData.value"
+      :parent-elements="parentElements"
+      :child-elements="childElements"
+      :parent-columns="tableStore.currentTable.value?.parentColumns || []"
+      :child-columns="tableStore.currentTable.value?.childColumns || []"
+      :show-parameter-stats="true"
+      :show-bim-data="true"
+      :show-parameter-categories="true"
+      :show-table-categories="true"
+      @update:is-test-mode="handleTestModeUpdate"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -103,24 +67,18 @@ import type {
   BaseItem,
   ParameterValue
 } from '~/composables/core/types'
-import { createSelectedParameter, isEquationValue } from '~/composables/core/types'
+import { isEquationValue } from '~/composables/core/types'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
-import ParameterManager from '~/components/core/parameters/next/ParameterManager.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
-import TableLayout from '~/components/core/tables/TableLayout.vue'
-
-// Initialize stores
-const debug = useDebug()
-const store = useStore()
-const tableStore = useTableStore()
-const parameterStore = useParameterStore()
 
 // Props with destructuring for used values
-const { selectedTableId, tableName, showParameterManager } = defineProps<{
+const { selectedTableId, tableName } = defineProps<{
   selectedTableId: string
   currentTable: TableSettings | null
   tableName: string
   showParameterManager: boolean
+  showCategoryOptions: boolean
+  hasChanges: boolean
 }>()
 
 // Emits with type safety
@@ -140,7 +98,19 @@ const emit = defineEmits<{
   (e: 'row-expand', payload: { row: ElementData }): void
   (e: 'row-collapse', payload: { row: ElementData }): void
   (e: 'retry', payload: { timestamp: number }): void
+  // Table operations
+  (e: 'update:selected-table-id', value: string): void
+  (e: 'update:table-name', value: string): void
+  (e: 'table-change'): void
+  (e: 'save'): void
+  (e: 'toggle-category-options'): void
 }>()
+
+// Initialize stores
+const debug = useDebug()
+const store = useStore()
+const tableStore = useTableStore()
+const parameterStore = useParameterStore()
 
 // Initialize parameter system
 const parameters = useParameters({
@@ -321,11 +291,6 @@ function handleError(err: unknown): void {
   emit('error', { error: safeError })
 }
 
-function handleParameterVisibilityChange(param: SelectedParameter): void {
-  parameters.updateParameterVisibility(param.id, param.visible, param.kind === 'bim')
-  emit('parameter-visibility-change', { parameter: param })
-}
-
 function handleColumnVisibilityChange(event: {
   column: TableColumn
   visible: boolean
@@ -334,55 +299,6 @@ function handleColumnVisibilityChange(event: {
   if (param) {
     parameters.updateParameterVisibility(param.id, event.visible, param.kind === 'bim')
     emit('column-visibility-change', event)
-  }
-}
-
-function handleParameterSelect(param: AvailableParameter, isParent: boolean): void {
-  try {
-    const currentTable = tableStore.currentTable.value
-    if (!currentTable) return
-
-    const selectedParam = createSelectedParameter(
-      param,
-      isParent
-        ? currentTable.selectedParameters.parent.length
-        : currentTable.selectedParameters.child.length
-    )
-
-    const selectedParams = {
-      parent: isParent
-        ? [...currentTable.selectedParameters.parent, selectedParam]
-        : currentTable.selectedParameters.parent,
-      child: !isParent
-        ? [...currentTable.selectedParameters.child, selectedParam]
-        : currentTable.selectedParameters.child
-    }
-
-    tableStore.updateSelectedParameters(selectedParams)
-    emit('parameter-select', { parameter: selectedParam })
-  } catch (err) {
-    handleError(err)
-  }
-}
-
-function handleParameterDeselect(param: AvailableParameter, isParent: boolean): void {
-  try {
-    const currentTable = tableStore.currentTable.value
-    if (!currentTable) return
-
-    const selectedParams = {
-      parent: isParent
-        ? currentTable.selectedParameters.parent.filter((p) => p.id !== param.id)
-        : currentTable.selectedParameters.parent,
-      child: !isParent
-        ? currentTable.selectedParameters.child.filter((p) => p.id !== param.id)
-        : currentTable.selectedParameters.child
-    }
-
-    tableStore.updateSelectedParameters(selectedParams)
-    emit('parameter-deselect', { parameter: param })
-  } catch (err) {
-    handleError(err)
   }
 }
 
@@ -409,25 +325,6 @@ function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): v
 
 function handleColumnResize(event: { element: HTMLElement; delta: number }): void {
   emit('column-resize', event)
-}
-
-function handleParameterCreate(): void {
-  emit('parameter-create', { timestamp: Date.now() })
-}
-
-function handleParameterEdit(param: SelectedParameter): void {
-  const baseParam: BaseItem = {
-    id: param.id,
-    name: param.name,
-    field: param.id,
-    header: param.name,
-    visible: param.visible,
-    removable: param.kind === 'user',
-    order: param.order,
-    category: param.category,
-    description: param.description
-  }
-  emit('parameter-click', { parameter: baseParam })
 }
 
 function handleRowExpand(event: { data: ElementData }): void {

@@ -1,127 +1,107 @@
 <template>
   <ViewerLayoutPanel @close="$emit('close')">
     <template #title>Datasets</template>
-    <TableLayout class="viewer-container">
-      <template #controls>
-        <div class="flex items-center gap-4">
-          <FormButton
-            text
-            size="sm"
-            color="subtle"
-            :icon-right="showCategoryOptions ? ChevronUpIcon : ChevronDownIcon"
-            @click="showCategoryOptions = !showCategoryOptions"
-          >
-            Category filter options
-          </FormButton>
-        </div>
-      </template>
-
-      <template #actions>
-        <div class="flex items-center gap-2">
-          <slot name="table-actions" />
-        </div>
-      </template>
-
-      <LoadingState
-        :is-loading="!isInitialized"
-        :error="error"
-        :loading-message="currentPhase === 'complete' ? '' : 'Loading data...'"
-      >
-        <!-- Category Options Section -->
-        <div
-          v-show="showCategoryOptions"
-          class="sticky top-10 px-2 py-2 border-b-2 border-primary-muted bg-foundation"
-        >
-          <div class="flex flex-row justify-between">
-            <!-- Parent Categories -->
-            <div class="flex-1 mr-4">
-              <span class="text-body-xs text-foreground font-medium mb-2 block">
-                Host Categories
-              </span>
-              <div class="max-h-[200px] overflow-y-auto">
-                <div v-for="category in parentCategories" :key="category">
-                  <FormButton
-                    size="sm"
-                    :icon-left="
-                      categories.selectedParentCategories.value?.includes(category)
-                        ? CheckCircleIcon
-                        : CheckCircleIconOutlined
-                    "
-                    text
-                    @click="toggleParentCategory(category)"
-                  >
-                    {{ category }}
-                  </FormButton>
-                </div>
-              </div>
-            </div>
-
-            <!-- Child Categories -->
-            <div class="flex-1">
-              <span class="text-body-xs text-foreground font-medium mb-2 block">
-                Child Categories
-              </span>
-              <div class="max-h-[200px] overflow-y-auto">
-                <div v-for="category in childCategories" :key="category">
-                  <FormButton
-                    size="sm"
-                    :icon-left="
-                      categories.selectedChildCategories.value?.includes(category)
-                        ? CheckCircleIcon
-                        : CheckCircleIconOutlined
-                    "
-                    text
-                    @click="toggleChildCategory(category)"
-                  >
-                    {{ category }}
-                  </FormButton>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="schedule-container">
-          <ScheduleMainView
-            :selected-table-id="tableStore.currentTable?.value?.id || ''"
-            :current-table="_currentTable"
-            :is-initialized="isInitialized"
-            :table-name="tableStore.currentTable?.value?.name || ''"
-            :current-table-id="tableStore.currentTable?.value?.id || ''"
-            :table-key="tableStore.lastUpdated?.toString() || ''"
-            :error="error"
-            :parent-base-columns="tableStore.currentTable.value?.parentColumns || []"
-            :parent-available-columns="parameterStore.parentAvailableBimParameters"
-            :parent-visible-columns="
-              tableStore.currentTable?.value?.parentColumns || []
+    <LoadingState
+      :is-loading="!isInitialized"
+      :error="error"
+      :loading-message="currentPhase === 'complete' ? '' : 'Loading data...'"
+    >
+      <TableLayout class="viewer-container">
+        <template #header>
+          <ScheduleTableHeader
+            :selected-table-id="_interactions.state.value.selectedTableId"
+            :table-name="_interactions.state.value.tableName"
+            :tables="store.tablesArray.value || []"
+            :show-category-options="showCategoryOptions"
+            :has-changes="hasChanges"
+            @update:selected-table-id="handleSelectedTableIdUpdate"
+            @update:table-name="handleTableNameUpdate"
+            @table-change="handleTableChange"
+            @save="handleSaveTable"
+            @toggle-category-options="showCategoryOptions = !showCategoryOptions"
+            @manage-parameters="
+              _interactions.showParameterManager.value =
+                !_interactions.showParameterManager.value
             "
-            :child-base-columns="tableStore.currentTable?.value?.childColumns || []"
-            :child-available-columns="parameterStore.childAvailableBimParameters"
-            :child-visible-columns="tableStore.currentTable?.value?.childColumns || []"
-            :schedule-data="unref(store.scheduleData) || []"
-            :evaluated-data="unref(store.evaluatedData) || []"
-            :table-data="unref(store.tableData) || []"
-            :is-loading="false"
-            :is-loading-additional-data="false"
-            :has-selected-categories="categories.hasSelectedCategories"
-            :selected-parent-categories="unref(categories.selectedParentCategories)"
-            :selected-child-categories="unref(categories.selectedChildCategories)"
-            :show-parameter-manager="_interactions.showParameterManager.value"
-            :parent-elements="unref(parentElements)"
-            :child-elements="unref(childElements)"
-            :is-test-mode="false"
-            @error="handleError"
-            @table-updated="handleTableDataUpdate"
-            @column-visibility-change="handleColumnVisibilityChange"
           />
-        </div>
-      </LoadingState>
-    </TableLayout>
+        </template>
+        <template #menu>
+          <div class="menu-container">
+            <CategoryMenu
+              v-show="showCategoryOptions"
+              :is-updating="!isInitialized || tablesState.loading.value"
+              :error="error"
+              :initial-parent-categories="categories.selectedParentCategories.value"
+              :initial-child-categories="categories.selectedChildCategories.value"
+              @update="handleCategoryUpdate"
+            />
+            <ParameterManager
+              v-show="_interactions.showParameterManager.value"
+              :selected-parent-categories="categories.selectedParentCategories.value"
+              :selected-child-categories="categories.selectedChildCategories.value"
+              :available-parent-parameters="parameterStore.parentAvailableBimParameters"
+              :available-child-parameters="parameterStore.childAvailableBimParameters"
+              :selected-parent-parameters="
+                tableStore.currentTable?.value?.parentColumns || []
+              "
+              :selected-child-parameters="
+                tableStore.currentTable?.value?.childColumns || []
+              "
+              :can-create-parameters="false"
+              @parameter-visibility-change="handleParameterVisibilityChange"
+              @error="handleError"
+            />
+          </div>
+        </template>
+
+        <template #default>
+          <div class="schedule-container">
+            <ScheduleMainView
+              :selected-table-id="tableStore.currentTable?.value?.id || ''"
+              :current-table="_currentTable"
+              :is-initialized="isInitialized"
+              :table-name="tableStore.currentTable?.value?.name || ''"
+              :current-table-id="tableStore.currentTable?.value?.id || ''"
+              :table-key="tableStore.lastUpdated?.toString() || ''"
+              :error="error"
+              :parent-base-columns="tableStore.currentTable.value?.parentColumns || []"
+              :parent-available-columns="parameterStore.parentAvailableBimParameters"
+              :parent-visible-columns="
+                tableStore.currentTable?.value?.parentColumns || []
+              "
+              :child-base-columns="tableStore.currentTable?.value?.childColumns || []"
+              :child-available-columns="parameterStore.childAvailableBimParameters"
+              :child-visible-columns="
+                tableStore.currentTable?.value?.childColumns || []
+              "
+              :schedule-data="unref(store.scheduleData) || []"
+              :evaluated-data="unref(store.evaluatedData) || []"
+              :table-data="unref(store.tableData) || []"
+              :is-loading="false"
+              :is-loading-additional-data="false"
+              :has-selected-categories="categories.hasSelectedCategories"
+              :selected-parent-categories="unref(categories.selectedParentCategories)"
+              :selected-child-categories="unref(categories.selectedChildCategories)"
+              :show-parameter-manager="_interactions.showParameterManager.value"
+              :show-category-options="showCategoryOptions"
+              :has-changes="hasChanges"
+              :parent-elements="unref(parentElements)"
+              :child-elements="unref(childElements)"
+              :is-test-mode="false"
+              @error="handleError"
+              @table-updated="handleTableDataUpdate"
+              @column-visibility-change="handleColumnVisibilityChange"
+            />
+          </div>
+        </template>
+      </TableLayout>
+    </LoadingState>
   </ViewerLayoutPanel>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, unref } from 'vue'
+import { isEqual } from 'lodash'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
@@ -132,20 +112,15 @@ import { useTableInitialization } from '~/composables/core/tables/initialization
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import type { ElementData } from '~/composables/core/types'
+import type { ElementData, SelectedParameter } from '~/composables/core/types'
 import type { TableSettings } from '~/composables/core/tables/store/types'
 import type { ColumnVisibilityPayload } from '~/composables/core/types/tables/table-events'
 import { useTablesState } from '~/composables/settings/tables/useTablesState'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
-import {
-  CheckCircleIcon,
-  ChevronDownIcon,
-  ChevronUpIcon
-} from '@heroicons/vue/24/solid'
-import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/outline'
 import ScheduleMainView from './components/ScheduleMainView.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
+import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
   ViewerNode,
@@ -155,20 +130,8 @@ import { isValidDataState } from '~/composables/core/types/state'
 import { isValidTableState } from '~/composables/core/types/tables/table-state'
 import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
 import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
-
-// Available categories
-const parentCategories = ['Walls', 'Floors', 'Roofs']
-const childCategories = [
-  'Structural Framing',
-  'Structural Connections',
-  'Windows',
-  'Doors',
-  'Ducts',
-  'Pipes',
-  'Cable Trays',
-  'Conduits',
-  'Lighting Fixtures'
-]
+import { parentCategories, childCategories } from '~/composables/core/config/categories'
+import ScheduleTableHeader from './components/ScheduleTableHeader.vue'
 
 // Type-safe array utilities
 function safeArrayFrom<T>(value: T[] | undefined | null): T[] {
@@ -234,17 +197,167 @@ const error = ref<Error | null>(null)
 const showCategoryOptions = ref(false)
 const initializationAttempted = ref(false)
 
+// Category handlers
+async function handleCategoryUpdate(payload: {
+  type: 'parent' | 'child'
+  categories: string[]
+}) {
+  try {
+    debug.log(DebugCategories.CATEGORIES, 'Category update', payload)
+
+    if (payload.type === 'parent') {
+      store.setParentCategories(payload.categories)
+    } else {
+      store.setChildCategories(payload.categories)
+    }
+
+    await elementsData.initializeData()
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+async function handleTableChange() {
+  try {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Table change requested')
+    await elementsData.initializeData()
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+// Table operations handlers
+async function handleSelectedTableIdUpdate(tableId: string) {
+  try {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Table selection changed', { tableId })
+
+    // Update interactions state
+    _interactions.state.value = {
+      ..._interactions.state.value,
+      selectedTableId: tableId,
+      // For new table, use default name
+      tableName: !tableId ? 'New Table' : _interactions.state.value.tableName
+    }
+
+    // If selecting existing table, get its settings
+    if (tableId) {
+      const selectedTable = tablesState.getSelectedTable()
+      if (selectedTable) {
+        // Update with table settings
+        _interactions.state.value = {
+          ..._interactions.state.value,
+          tableName: selectedTable.name,
+          currentTable: selectedTable,
+          selectedParentCategories:
+            selectedTable.categoryFilters.selectedParentCategories,
+          selectedChildCategories: selectedTable.categoryFilters.selectedChildCategories
+        }
+
+        // Update columns through store
+        await store.lifecycle.update({
+          currentTableColumns: selectedTable.parentColumns,
+          currentDetailColumns: selectedTable.childColumns
+        })
+      }
+    }
+
+    // Update store
+    await store.lifecycle.update({
+      selectedTableId: tableId,
+      tableName: _interactions.state.value.tableName
+    })
+
+    // Initialize data with new settings
+    await elementsData.initializeData()
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+async function handleTableNameUpdate(name: string) {
+  try {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Table name changed', { name })
+
+    // Update interactions state
+    _interactions.state.value = {
+      ..._interactions.state.value,
+      tableName: name
+    }
+
+    // Update store
+    await store.lifecycle.update({ tableName: name })
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+async function handleSaveTable() {
+  try {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Saving table')
+    await _interactions.handleSaveTable()
+
+    // Reload tables after save
+    await tablesState.loadTables()
+
+    // Update store with latest data
+    const currentTable = tablesState.getSelectedTable()
+    if (currentTable) {
+      // Update basic table info
+      await store.lifecycle.update({
+        selectedTableId: currentTable.id,
+        tableName: currentTable.name
+      })
+
+      // Update table store with columns
+      await tableStore.updateColumns(
+        currentTable.parentColumns,
+        currentTable.childColumns
+      )
+    }
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+// Computed properties
+const hasChanges = computed(() => {
+  const currentTableId = _interactions.state.value.selectedTableId
+  if (!currentTableId) return false
+
+  const currentTable = tablesState.getSelectedTable()
+  if (!currentTable) return false
+
+  const originalTable = tablesState.originalTables.value[currentTableId]
+  if (!originalTable) return true // New table
+
+  return (
+    currentTable.name !== originalTable.name ||
+    !isEqual(
+      categories.selectedParentCategories.value,
+      originalTable.categoryFilters.selectedParentCategories
+    ) ||
+    !isEqual(
+      categories.selectedChildCategories.value,
+      originalTable.categoryFilters.selectedChildCategories
+    ) ||
+    !isEqual(store.currentTableColumns.value, originalTable.parentColumns) ||
+    !isEqual(store.currentDetailColumns.value, originalTable.childColumns)
+  )
+})
+
 // Initialize data composables with category refs
 const categories = useTableCategories({
   initialState: {
-    selectedParentCategories: parentCategories,
-    selectedChildCategories: childCategories
+    selectedParentCategories: [],
+    selectedChildCategories: []
   },
   onUpdate: async (state) => {
+    debug.log(DebugCategories.CATEGORIES, 'Categories updated', state)
     await store.lifecycle.update({
       selectedParentCategories: state.selectedParentCategories,
       selectedChildCategories: state.selectedChildCategories
     })
+    await elementsData.initializeData()
   },
   onError: (err) => updateErrorState(createSafeError(err))
 })
@@ -294,8 +407,8 @@ defineExpose({
 const _interactions = useTableInteractions({
   store,
   state: {
-    selectedTableId: '',
-    tableName: '',
+    selectedTableId: store.selectedTableId.value || 'default',
+    tableName: store.tableName.value || 'Default Table',
     currentTable: null,
     selectedParentCategories: parentCategories,
     selectedChildCategories: childCategories
@@ -310,34 +423,53 @@ const { isLoading, currentPhase, transitionPhase, validateData } = useLoadingSta
 // Computed properties for component state
 const isInitialized = computed(() => currentPhase.value === 'complete')
 
-// Category toggle handlers with type safety
-const toggleParentCategory = async (category: string) => {
-  const current = safeArrayFrom(categories.selectedParentCategories.value)
-  const index = current.indexOf(category)
-  if (index === -1) {
-    current.push(category)
-  } else {
-    current.splice(index, 1)
-  }
-  store.setParentCategories(current)
-  await elementsData.initializeData()
-}
-
-const toggleChildCategory = async (category: string) => {
-  const current = safeArrayFrom(categories.selectedChildCategories.value)
-  const index = current.indexOf(category)
-  if (index === -1) {
-    current.push(category)
-  } else {
-    current.splice(index, 1)
-  }
-  store.setChildCategories(current)
-  await elementsData.initializeData()
-}
-
 // Handler functions with type safety
 function handleTableDataUpdate(): void {
   updateErrorState(null)
+}
+
+// Type guard for SelectedParameter
+function isSelectedParameter(value: unknown): value is SelectedParameter {
+  if (!value || typeof value !== 'object') return false
+  const param = value as { id?: unknown; visible?: unknown }
+  return typeof param.id === 'string' && typeof param.visible === 'boolean'
+}
+
+async function handleParameterVisibilityChange(
+  parameter: SelectedParameter
+): Promise<void> {
+  try {
+    // Validate parameter
+    if (!isSelectedParameter(parameter)) {
+      throw new Error('Invalid parameter object')
+    }
+
+    const { id, visible } = parameter
+    debug.log(DebugCategories.PARAMETERS, 'Parameter visibility changed', {
+      id,
+      visible
+    })
+
+    // Get current columns
+    const parentColumns = tableStore.currentTable.value?.parentColumns || []
+
+    // Update parameter visibility in table store
+    await tableStore.updateColumns(
+      parentColumns.map((col) => ({
+        ...col,
+        visible: col.id === id ? visible : col.visible,
+        parameter: {
+          ...col.parameter,
+          visible: col.id === id ? visible : col.parameter.visible
+        }
+      })),
+      tableStore.currentTable.value?.childColumns || []
+    )
+
+    debug.log(DebugCategories.PARAMETERS, 'Parameter visibility updated in stores')
+  } catch (err) {
+    handleError(err)
+  }
 }
 
 function isValidTable(table: unknown): table is TableSettings {
