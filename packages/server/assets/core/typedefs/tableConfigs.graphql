@@ -1,3 +1,5 @@
+scalar JSON
+
 """
 Selected parameters for table with parent/child separation
 """
@@ -28,13 +30,39 @@ type TableColumn {
 }
 
 """
+Sort configuration for tables
+"""
+type TableSort {
+  field: String
+  order: SortOrder
+}
+
+"""
+Filter configuration for table columns
+"""
+type TableFilter {
+  columnId: String!
+  value: JSON
+  operator: String!
+}
+
+"""
 Named table configuration with additional metadata
 """
 type TableSettings {
   id: ID!
   name: String!
+  displayName: String!
   config: TableConfig!
   categoryFilters: CategoryFilters
+  sort: TableSort
+  filters: [TableFilter!]
+  lastUpdateTimestamp: Float!
+}
+
+enum SortOrder {
+  ASC
+  DESC
 }
 
 """
@@ -55,11 +83,43 @@ input TableColumnInput {
 }
 
 """
+Input type for parameters (both BIM and User types)
+"""
+input ParameterInput {
+  # Common fields
+  id: ID!
+  kind: String! # 'bim' or 'user'
+  name: String!
+  field: String!
+  visible: Boolean!
+  header: String!
+  description: String
+  category: String
+  order: Int
+  computed: JSON
+  source: String
+  removable: Boolean!
+  value: String!
+  metadata: JSON
+
+  # BIM-specific fields
+  type: BimValueType # Required if kind = 'bim'
+  sourceValue: String # Required if kind = 'bim'
+  fetchedGroup: String # Required if kind = 'bim'
+  currentGroup: String # Required if kind = 'bim'
+  # User-specific fields
+  userType: UserValueType # Required if kind = 'user'
+  group: String # Required if kind = 'user'
+  equation: String
+  isCustom: Boolean
+}
+
+"""
 Input for selected parameters
 """
 input TableSelectedParametersInput {
-  parent: [ID!]!
-  child: [ID!]!
+  parent: [ParameterInput!]!
+  child: [ParameterInput!]!
 }
 
 """
@@ -82,11 +142,25 @@ input CreateNamedTableInput {
   categoryFilters: CategoryFiltersInput
 }
 
+input TableSortInput {
+  field: String
+  order: SortOrder
+}
+
+input TableFilterInput {
+  columnId: String!
+  value: JSON
+  operator: String!
+}
+
 input UpdateNamedTableInput {
   id: ID!
   name: String
+  displayName: String
   config: TableConfigInput
   categoryFilters: CategoryFiltersInput
+  sort: TableSortInput
+  filters: [TableFilterInput!]
 }
 
 extend type Query {

@@ -94,7 +94,7 @@ export function useScheduleTable(options: UseScheduleTableOptions) {
             id: key,
             name: key.split('.').pop() || key,
             value,
-            sourceGroup: key.split('.')[0] || 'Parameters',
+            fetchedGroup: key.split('.')[0] || 'Parameters',
             metadata: {
               category: viewerRow.category,
               fullKey: key,

@@ -147,8 +147,8 @@ export function convertToParameterValue(value: unknown): ParameterValue {
  */
 export function extractParameterGroup(param: AvailableParameter): string {
   if (isBimParameter(param)) {
-    // Use currentGroup if available, fallback to sourceGroup
-    return param.currentGroup || param.sourceGroup || 'Parameters'
+    // Use currentGroup if available, fallback to fetchedGroup
+    return param.currentGroup || param.fetchedGroup || 'Parameters'
   }
   if (isUserParameter(param)) {
     // Use group if available, fallback to default

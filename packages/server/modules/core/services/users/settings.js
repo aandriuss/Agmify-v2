@@ -14,12 +14,20 @@ async function getTables(userId) {
   if (!user) return {};
 
   // First try to get tables from the new tables column
-  let rawTables = user.tables;
-
-  // Fall back to tables from usersettings if they exist
-  if (!rawTables) {
+  let rawTables;
+  try {
+    // Handle both cases: when tables is already parsed by pg or still a string
+    rawTables = typeof user.tables === 'string' ? JSON.parse(user.tables) : user.tables;
+  } catch (err) {
+    console.warn('Failed to parse tables JSON:', err);
+    // Fall back to tables from usersettings if they exist
     const settings = user.usersettings || user.settings || {};
-    rawTables = settings.tables;
+    try {
+      rawTables = typeof settings.tables === 'string' ? JSON.parse(settings.tables) : settings.tables;
+    } catch (err) {
+      console.warn('Failed to parse settings.tables JSON:', err);
+      rawTables = null;
+    }
   }
 
   if (!rawTables) return {};
@@ -88,15 +96,18 @@ async function updateUserSettings(userId, newSettings) {
   await db('users')
     .where({ id: userId })
     .update({ 
-      usersettings: JSON.stringify(newSettings),
-      settings: JSON.stringify(newSettings) // Keep settings in sync
+      usersettings: newSettings
     });
 }
 
 async function updateTables(userId, tables) {
+  // Ensure we have a valid object
+  const tableData = tables || {};
+
+  // Store directly since values are already stringified by transformTableToInput
   await db('users')
     .where({ id: userId })
-    .update({ tables });
+    .update({ tables: tableData });
   return true;
 }
 

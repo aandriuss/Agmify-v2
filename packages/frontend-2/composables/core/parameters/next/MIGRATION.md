@@ -54,7 +54,7 @@ import { useParameters } from '~/composables/core/parameters'
 
 // New
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
-import { useParameters } from '~/composables/core/parameters/next/useParameters'
+import { useParameters } from '~/composables/core/parameters/useParameters'
 import type {
   AvailableBimParameter,
   AvailableUserParameter,
@@ -164,7 +164,7 @@ function processParameter(param: any) {
 import type { RawParameter } from '@/composables/core/parameters/store/types'
 
 function processParameter(param: RawParameter) {
-  if (param.sourceGroup === 'Identity Data') {
+  if (param.fetchedGroup === 'Identity Data') {
     // Handle Identity Data parameters
   } else {
     // Handle other parameters
@@ -189,14 +189,14 @@ describe('Parameter Processing', () => {
       id: string
       name: string
       value: unknown
-      sourceGroup: string
+      fetchedGroup: string
     }
 
     const expectedParam: ExpectedParameter = {
       id: 'Identity Data.Mark',
       name: 'Mark',
       value: 'W1',
-      sourceGroup: 'Identity Data'
+      fetchedGroup: 'Identity Data'
     }
 
     expect(mockStore.setRawParameters).toHaveBeenCalledWith(

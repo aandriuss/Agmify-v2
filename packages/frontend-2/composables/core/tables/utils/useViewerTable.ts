@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import type { TableColumn, BaseTableRow } from '~/composables/core/types'
-import type { TableState } from '~/composables/core/tables/store'
+import type { TableState } from '~/components/viewer/components/tables/DataTable/composables/types'
 
 import type { DataTableFilterMeta } from 'primevue/datatable'
 import { TableError } from '~/components/tables/DataTable/utils'

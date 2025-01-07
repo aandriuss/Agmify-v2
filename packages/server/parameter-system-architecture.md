@@ -35,7 +35,7 @@ interface RawParameter {
   id: string
   name: string
   value: unknown
-  sourceGroup: string
+  fetchedGroup: string
   metadata: ParameterMetadata
 }
 ```
@@ -49,7 +49,7 @@ interface AvailableBimParameter {
   name: string
   type: BimValueType
   value: ParameterValue
-  sourceGroup: string
+  fetchedGroup: string
   currentGroup: string
   visible?: boolean
   isSystem: boolean

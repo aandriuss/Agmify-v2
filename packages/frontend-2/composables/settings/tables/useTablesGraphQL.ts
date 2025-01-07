@@ -11,18 +11,192 @@ import {
 } from '~/composables/core/tables/transforms/tableDataTransforms'
 import type { TableSettings } from '~/composables/core/types'
 
+// GraphQL Enums
+enum BimValueType {
+  string = 'string',
+  number = 'number',
+  boolean = 'boolean',
+  date = 'date',
+  object = 'object',
+  array = 'array'
+}
+
+enum UserValueType {
+  fixed = 'fixed',
+  equation = 'equation'
+}
+
+// GraphQL Parameter Types
+interface GraphQLBimParameter {
+  id: string
+  name: string
+  kind: 'bim'
+  bimType: BimValueType
+  value: string // Always string in GraphQL
+  visible: boolean
+  order: number
+  sourceValue: string
+  fetchedGroup: string
+  currentGroup: string
+  field: string
+  header: string
+  removable: boolean
+  metadata?: {
+    category?: string
+    fullKey?: string
+    isSystem?: boolean
+    group?: string
+    elementId?: string
+    isNested?: boolean
+    parentKey?: string
+    isJsonString?: boolean
+    [key: string]: unknown
+  }
+}
+
+interface GraphQLUserParameter {
+  id: string
+  name: string
+  kind: 'user'
+  userType: UserValueType
+  value: string // Always string in GraphQL
+  group: string
+  visible: boolean
+  order: number
+  equation?: string
+  isCustom?: boolean
+  field: string
+  header: string
+  removable: boolean
+  metadata?: {
+    category?: string
+    fullKey?: string
+    isSystem?: boolean
+    group?: string
+    elementId?: string
+    isNested?: boolean
+    parentKey?: string
+    isJsonString?: boolean
+    [key: string]: unknown
+  }
+}
+
+type GraphQLParameter = GraphQLBimParameter | GraphQLUserParameter
+
+/**
+ * JSON value types
+ */
+type JSONPrimitive = string | number | boolean | null
+type JSONObject = { [key: string]: JSONValue }
+type JSONArray = JSONValue[]
+type JSONValue = JSONPrimitive | JSONObject | JSONArray
+
+/**
+ * Type guard for JSON object
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isJSONObject(value: unknown): value is JSONObject {
+  if (!isRecord(value)) return false
+  return Object.values(value).every((val) => {
+    if (val === null) return true
+    if (typeof val === 'string') return true
+    if (typeof val === 'number') return true
+    if (typeof val === 'boolean') return true
+    if (typeof val === 'object') {
+      if (Array.isArray(val)) {
+        return val.every((item) => isJSONValue(item))
+      }
+      return isJSONObject(val)
+    }
+    return false
+  })
+}
+
+/**
+ * Type guard for JSON value
+ */
+function isJSONValue(value: unknown): value is JSONValue {
+  if (value === null) return true
+  if (typeof value === 'string') return true
+  if (typeof value === 'number') return true
+  if (typeof value === 'boolean') return true
+  if (typeof value === 'object') {
+    if (Array.isArray(value)) {
+      return value.every((item) => isJSONValue(item))
+    }
+    return isJSONObject(value)
+  }
+  return false
+}
+
+/**
+ * Type-safe JSON parsing with validation
+ */
+function safeParseJSON(value: string): JSONValue | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const parsed = JSON.parse(value)
+    return isJSONValue(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Helper to validate parameter types
+ */
+function validateParameterType(type: string, kind: 'bim' | 'user'): boolean {
+  if (kind === 'bim') {
+    return Object.values(BimValueType).includes(type as BimValueType)
+  } else {
+    return Object.values(UserValueType).includes(type as UserValueType)
+  }
+}
+
 // GraphQL Response Types
 interface TableGraphQLData {
   id: string
   name: string
   displayName: string
-  childColumns: string[]
-  parentColumns: string[]
-  categoryFilters: {
-    selectedChildCategories: string[]
-    selectedParentCategories: string[]
+  config: {
+    parentColumns: {
+      field: string
+      header: string
+      width?: number
+      visible: boolean
+      removable?: boolean
+      order: number
+    }[]
+    childColumns: {
+      field: string
+      header: string
+      width?: number
+      visible: boolean
+      removable?: boolean
+      order: number
+    }[]
+    selectedParameters: {
+      parent: GraphQLParameter[]
+      child: GraphQLParameter[]
+    }
   }
-  selectedParameterIds: string[]
+  categoryFilters?: {
+    selectedParentCategories: string[]
+    selectedChildCategories: string[]
+  }
+  sort?: {
+    field?: string
+    order?: 'ASC' | 'DESC'
+  }
+  filters?: {
+    columnId: string
+    value: string | number | boolean
+    operator: string
+  }[]
+  lastUpdateTimestamp: number
 }
 
 interface GetTablesResponse {
@@ -43,47 +217,332 @@ const GET_USER_TABLES = gql`
       id
       name
       displayName
-      childColumns
-      parentColumns
-      categoryFilters {
-        selectedChildCategories
-        selectedParentCategories
+      config {
+        parentColumns {
+          field
+          header
+          width
+          visible
+          removable
+          order
+        }
+        childColumns {
+          field
+          header
+          width
+          visible
+          removable
+          order
+        }
+        selectedParameters {
+          parent {
+            ... on BimParameter {
+              id
+              name
+              kind
+              bimType: type
+              value
+              visible
+              order
+              sourceValue
+              fetchedGroup
+              currentGroup
+              field
+              header
+              removable
+              metadata
+            }
+            ... on UserParameter {
+              id
+              name
+              kind
+              userType: type
+              value
+              group
+              visible
+              order
+              equation
+              isCustom
+              field
+              header
+              removable
+              metadata
+            }
+          }
+          child {
+            ... on BimParameter {
+              id
+              name
+              kind
+              bimType: type
+              value
+              visible
+              order
+              sourceValue
+              fetchedGroup
+              currentGroup
+              field
+              header
+              removable
+              metadata
+            }
+            ... on UserParameter {
+              id
+              name
+              kind
+              userType: type
+              value
+              group
+              visible
+              order
+              equation
+              isCustom
+              field
+              header
+              removable
+              metadata
+            }
+          }
+        }
       }
-      selectedParameterIds
+      categoryFilters {
+        selectedParentCategories
+        selectedChildCategories
+      }
+      sort {
+        field
+        order
+      }
+      filters {
+        columnId
+        value
+        operator
+      }
+      lastUpdateTimestamp
     }
   }
 `
 
 const UPDATE_TABLE = gql`
-  mutation UpdateNamedTable($id: String!, $table: TableInput!) {
-    updateNamedTable(id: $id, table: $table) {
+  mutation UpdateNamedTable($input: UpdateNamedTableInput!) {
+    updateNamedTable(input: $input) {
       id
       name
       displayName
-      childColumns
-      parentColumns
-      categoryFilters {
-        selectedChildCategories
-        selectedParentCategories
+      config {
+        parentColumns {
+          field
+          header
+          width
+          visible
+          removable
+          order
+        }
+        childColumns {
+          field
+          header
+          width
+          visible
+          removable
+          order
+        }
+        selectedParameters {
+          parent {
+            ... on BimParameter {
+              id
+              name
+              kind
+              bimType: type
+              value
+              visible
+              order
+              sourceValue
+              fetchedGroup
+              currentGroup
+              field
+              header
+              removable
+              metadata
+            }
+            ... on UserParameter {
+              id
+              name
+              kind
+              userType: type
+              value
+              group
+              visible
+              order
+              equation
+              isCustom
+              field
+              header
+              removable
+              metadata
+            }
+          }
+          child {
+            ... on BimParameter {
+              id
+              name
+              kind
+              bimType: type
+              value
+              visible
+              order
+              sourceValue
+              fetchedGroup
+              currentGroup
+              field
+              header
+              removable
+              metadata
+            }
+            ... on UserParameter {
+              id
+              name
+              kind
+              userType: type
+              value
+              group
+              visible
+              order
+              equation
+              isCustom
+              field
+              header
+              removable
+              metadata
+            }
+          }
+        }
       }
-      selectedParameterIds
+      categoryFilters {
+        selectedParentCategories
+        selectedChildCategories
+      }
+      sort {
+        field
+        order
+      }
+      filters {
+        columnId
+        value
+        operator
+      }
+      lastUpdateTimestamp
     }
   }
 `
 
 const CREATE_TABLE = gql`
-  mutation CreateNamedTable($table: TableInput!) {
-    createNamedTable(table: $table) {
+  mutation CreateNamedTable($input: CreateNamedTableInput!) {
+    createNamedTable(input: $input) {
       id
       name
       displayName
-      childColumns
-      parentColumns
-      categoryFilters {
-        selectedChildCategories
-        selectedParentCategories
+      config {
+        parentColumns {
+          field
+          header
+          width
+          visible
+          removable
+          order
+        }
+        childColumns {
+          field
+          header
+          width
+          visible
+          removable
+          order
+        }
+        selectedParameters {
+          parent {
+            ... on BimParameter {
+              id
+              name
+              kind
+              bimType: type
+              value
+              visible
+              order
+              sourceValue
+              fetchedGroup
+              currentGroup
+              field
+              header
+              removable
+              metadata
+            }
+            ... on UserParameter {
+              id
+              name
+              kind
+              userType: type
+              value
+              group
+              visible
+              order
+              equation
+              isCustom
+              field
+              header
+              removable
+              metadata
+            }
+          }
+          child {
+            ... on BimParameter {
+              id
+              name
+              kind
+              bimType: type
+              value
+              visible
+              order
+              sourceValue
+              fetchedGroup
+              currentGroup
+              field
+              header
+              removable
+              metadata
+            }
+            ... on UserParameter {
+              id
+              name
+              kind
+              userType: type
+              value
+              group
+              visible
+              order
+              equation
+              isCustom
+              field
+              header
+              removable
+              metadata
+            }
+          }
+        }
       }
-      selectedParameterIds
+      categoryFilters {
+        selectedParentCategories
+        selectedChildCategories
+      }
+      sort {
+        field
+        order
+      }
+      filters {
+        columnId
+        value
+        operator
+      }
+      lastUpdateTimestamp
     }
   }
 `
@@ -179,21 +638,95 @@ export async function useTablesGraphQL() {
         })
 
         const data = response?.data as GetTablesResponse | undefined
-        if (!data?.tableSettingsP) {
+        if (!data) {
           debug.warn(DebugCategories.INITIALIZATION, 'No data in GraphQL response')
           return {}
         }
 
-        const rawTables = data.tableSettingsP
+        // tableSettingsP will always be an array (possibly empty) due to the schema
+        const rawTables = data.tableSettingsP || []
         const tables: Record<string, TableSettings> = {}
 
-        // Process tables from the response
+        // Transform and validate tables from the response
         rawTables.forEach((tableData) => {
-          if (isTableData(tableData)) {
-            const validatedTable = transformTableData(tableData)
-            tables[validatedTable.id] = validatedTable
-          } else {
-            debug.warn(DebugCategories.INITIALIZATION, 'Invalid table data', tableData)
+          try {
+            // Transform and validate GraphQL parameters
+            const transformedData = {
+              ...tableData,
+              config: {
+                ...tableData.config,
+                selectedParameters: {
+                  parent: tableData.config.selectedParameters.parent.map((param) => {
+                    if (param.kind === 'bim') {
+                      if (!validateParameterType(param.bimType, 'bim')) {
+                        throw new Error(`Invalid BIM parameter type: ${param.bimType}`)
+                      }
+                      return {
+                        ...param,
+                        type: param.bimType,
+                        fetchedGroup: param.fetchedGroup,
+                        currentGroup: param.currentGroup,
+                        isSystem: false,
+                        value: param.value ? safeParseJSON(param.value) : null
+                      }
+                    } else {
+                      if (!validateParameterType(param.userType, 'user')) {
+                        throw new Error(
+                          `Invalid user parameter type: ${param.userType}`
+                        )
+                      }
+                      return {
+                        ...param,
+                        type: param.userType,
+                        value: param.value ? safeParseJSON(param.value) : null
+                      }
+                    }
+                  }),
+                  child: tableData.config.selectedParameters.child.map((param) => {
+                    if (param.kind === 'bim') {
+                      if (!validateParameterType(param.bimType, 'bim')) {
+                        throw new Error(`Invalid BIM parameter type: ${param.bimType}`)
+                      }
+                      return {
+                        ...param,
+                        type: param.bimType,
+                        fetchedGroup: param.fetchedGroup,
+                        currentGroup: param.currentGroup,
+                        isSystem: false,
+                        value: param.value ? safeParseJSON(param.value) : null
+                      }
+                    } else {
+                      if (!validateParameterType(param.userType, 'user')) {
+                        throw new Error(
+                          `Invalid user parameter type: ${param.userType}`
+                        )
+                      }
+                      return {
+                        ...param,
+                        type: param.userType,
+                        value: param.value ? safeParseJSON(param.value) : null
+                      }
+                    }
+                  })
+                }
+              }
+            }
+
+            if (isTableData(transformedData)) {
+              const validatedTable = transformTableData(transformedData)
+              tables[validatedTable.id] = validatedTable
+            } else {
+              debug.warn(
+                DebugCategories.INITIALIZATION,
+                'Invalid table data',
+                tableData
+              )
+            }
+          } catch (err) {
+            debug.error(DebugCategories.ERROR, 'Failed to transform table data', {
+              tableId: tableData.id,
+              error: err
+            })
           }
         })
 
@@ -233,13 +766,24 @@ export async function useTablesGraphQL() {
           if (isNew) {
             const { mutate } = useMutation<CreateTableResponse>(CREATE_TABLE)
             return mutate({
-              table: tableInput
+              input: {
+                name: table.name,
+                config: tableInput.config,
+                categoryFilters: tableInput.categoryFilters
+              }
             })
           } else {
             const { mutate } = useMutation<UpdateTableResponse>(UPDATE_TABLE)
             return mutate({
-              id: table.id,
-              table: tableInput
+              input: {
+                id: table.id,
+                name: tableInput.name,
+                displayName: tableInput.displayName,
+                config: tableInput.config,
+                categoryFilters: tableInput.categoryFilters,
+                sort: tableInput.sort,
+                filters: tableInput.filters
+              }
             })
           }
         })

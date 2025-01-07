@@ -192,7 +192,7 @@ export function useElementsData(
                   id: param.id,
                   name: param.name,
                   value: null,
-                  sourceGroup: param.group,
+                  fetchedGroup: param.group,
                   metadata: param.metadata || {}
                 },
                 param.type as BimValueType,
@@ -211,7 +211,7 @@ export function useElementsData(
                   id: param.id,
                   name: param.name,
                   value: null,
-                  sourceGroup: param.group,
+                  fetchedGroup: param.group,
                   metadata: param.metadata || {}
                 },
                 param.type as BimValueType,
@@ -335,7 +335,7 @@ export function useElementsData(
                     id: param.id,
                     name: param.name,
                     value: null,
-                    sourceGroup: param.group,
+                    fetchedGroup: param.group,
                     metadata: param.metadata || {}
                   },
                   param.type as BimValueType,
@@ -353,7 +353,7 @@ export function useElementsData(
                     id: param.id,
                     name: param.name,
                     value: null,
-                    sourceGroup: param.group,
+                    fetchedGroup: param.group,
                     metadata: param.metadata || {}
                   },
                   param.type as BimValueType,
@@ -525,7 +525,7 @@ export function useElementsData(
                       id: param.id,
                       name: param.name,
                       value: null,
-                      sourceGroup: param.group,
+                      fetchedGroup: param.group,
                       metadata: param.metadata || {}
                     },
                     param.type as BimValueType,
@@ -543,7 +543,7 @@ export function useElementsData(
                       id: param.id,
                       name: param.name,
                       value: null,
-                      sourceGroup: param.group,
+                      fetchedGroup: param.group,
                       metadata: param.metadata || {}
                     },
                     param.type as BimValueType,
@@ -659,7 +659,7 @@ export function useElementsData(
                   id: param.id,
                   name: param.name,
                   value: null,
-                  sourceGroup: param.group,
+                  fetchedGroup: param.group,
                   metadata: param.metadata || {}
                 },
                 param.type as BimValueType,
@@ -677,7 +677,7 @@ export function useElementsData(
                   id: param.id,
                   name: param.name,
                   value: null,
-                  sourceGroup: param.group,
+                  fetchedGroup: param.group,
                   metadata: param.metadata || {}
                 },
                 param.type as BimValueType,
@@ -781,7 +781,7 @@ export function useElementsData(
                   id: param.id,
                   name: param.name,
                   value: null,
-                  sourceGroup: param.group,
+                  fetchedGroup: param.group,
                   metadata: param.metadata || {}
                 },
                 param.type as BimValueType,
@@ -799,7 +799,7 @@ export function useElementsData(
                   id: param.id,
                   name: param.name,
                   value: null,
-                  sourceGroup: param.group,
+                  fetchedGroup: param.group,
                   metadata: param.metadata || {}
                 },
                 param.type as BimValueType,

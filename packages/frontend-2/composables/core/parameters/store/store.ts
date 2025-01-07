@@ -1,7 +1,6 @@
 import { ref, computed } from 'vue'
-import { debug } from '~/composables/core/utils/debug'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { parentCategories } from '~/composables/core/config/categories'
-import { ParameterDebugCategories } from '~/composables/core/utils/debug-categories'
 import type { ElementData } from '~/composables/core/types'
 import type {
   ParameterStore,
@@ -69,10 +68,15 @@ function createParameterStore(): ParameterStore {
 
   /**
    * Process parameters from elements
+   * Note: This function is async to maintain API compatibility,
+   * even though the current implementation has no async operations.
+   * This allows for future async processing without breaking consumers.
    */
+
+  // eslint-disable-next-line @typescript-eslint/require-await
   async function processParameters(elements: ElementData[]): Promise<void> {
     try {
-      debug.startState(ParameterDebugCategories.STATE, 'Processing parameters')
+      debug.startState(DebugCategories.PARAMETERS, 'Processing parameters')
       state.value.processing.status = 'processing'
       state.value.processing.lastAttempt = Date.now()
 
@@ -81,7 +85,7 @@ function createParameterStore(): ParameterStore {
         (el) => el.parameters && Object.keys(el.parameters).length > 0
       )
 
-      debug.log(ParameterDebugCategories.STATE, 'Elements with parameters', {
+      debug.log(DebugCategories.PARAMETERS, 'Elements with parameters', {
         total: elements.length,
         valid: validElements.length,
         sample: validElements[0]
@@ -93,13 +97,13 @@ function createParameterStore(): ParameterStore {
       })
 
       if (validElements.length === 0) {
-        debug.warn(ParameterDebugCategories.STATE, 'No elements with parameters found')
+        debug.warn(DebugCategories.PARAMETERS, 'No elements with parameters found')
         return
       }
 
       // Extract raw parameters
       const rawParams = extractRawParameters(validElements)
-      debug.log(ParameterDebugCategories.STATE, 'Raw parameters extracted', {
+      debug.log(DebugCategories.PARAMETERS, 'Raw parameters extracted', {
         count: rawParams.length,
         elementCount: validElements.length,
         sample: rawParams[0]
@@ -112,8 +116,8 @@ function createParameterStore(): ParameterStore {
       })
 
       // Process raw parameters into available parameters
-      const available = await processParams(rawParams)
-      debug.log(ParameterDebugCategories.STATE, 'Parameters processed', {
+      const available = processParams(rawParams)
+      debug.log(DebugCategories.PARAMETERS, 'Parameters processed', {
         rawCount: rawParams.length,
         processedCount: available.length,
         sample: available[0]
@@ -139,8 +143,8 @@ function createParameterStore(): ParameterStore {
         const isParent = param.metadata?.isParent || parentCategories.includes(category)
 
         // Set required properties
-        if (!param.sourceGroup) param.sourceGroup = category
-        if (!param.currentGroup) param.currentGroup = param.sourceGroup
+        if (!param.fetchedGroup) param.fetchedGroup = category
+        if (!param.currentGroup) param.currentGroup = param.fetchedGroup
 
         // Add to appropriate array
         if (isParent) parentBim.push(param)
@@ -148,7 +152,7 @@ function createParameterStore(): ParameterStore {
       })
 
       // Log categorization results
-      debug.log(ParameterDebugCategories.STATE, 'Parameters categorized', {
+      debug.log(DebugCategories.PARAMETERS, 'Parameters categorized', {
         total: available.length,
         parent: {
           bim: parentBim.length,
@@ -225,12 +229,12 @@ function createParameterStore(): ParameterStore {
       }
 
       debug.completeState(
-        ParameterDebugCategories.STATE,
+        DebugCategories.PARAMETERS,
         'Parameters processed',
         finalCounts
       )
     } catch (err) {
-      debug.error(ParameterDebugCategories.STATE, 'Failed to process parameters:', err)
+      debug.error(DebugCategories.PARAMETERS, 'Failed to process parameters:', err)
       state.value.processing.status = 'error'
       state.value.processing.error = err instanceof Error ? err : new Error(String(err))
       throw state.value.processing.error
@@ -241,7 +245,7 @@ function createParameterStore(): ParameterStore {
    * Initialize parameter store
    */
   async function init(): Promise<void> {
-    debug.startState(ParameterDebugCategories.STATE, 'Initializing parameter store')
+    debug.startState(DebugCategories.PARAMETERS, 'Initializing parameter store')
     try {
       // Initialize state immediately
       state.value = {
@@ -254,14 +258,14 @@ function createParameterStore(): ParameterStore {
         }
       }
 
-      debug.completeState(ParameterDebugCategories.STATE, 'Parameter store initialized')
+      debug.completeState(DebugCategories.PARAMETERS, 'Parameter store initialized')
 
       // Load cache in background but await its completion
       await parameterCache
         .loadFromCache()
         .then((cached: RawParameter[] | null) => {
           if (cached?.length) {
-            debug.log(ParameterDebugCategories.STATE, 'Processing cached parameters')
+            debug.log(DebugCategories.PARAMETERS, 'Processing cached parameters')
             const convertedElements = cached.map((param: RawParameter) => {
               const paramValue = convertToParameterValue(param.value)
               return {
@@ -282,7 +286,7 @@ function createParameterStore(): ParameterStore {
             })
             processParameters(convertedElements).catch((err) => {
               debug.error(
-                ParameterDebugCategories.STATE,
+                DebugCategories.PARAMETERS,
                 'Failed to process cached parameters:',
                 err
               )
@@ -290,10 +294,10 @@ function createParameterStore(): ParameterStore {
           }
         })
         .catch((err) => {
-          debug.error(ParameterDebugCategories.STATE, 'Failed to load cache:', err)
+          debug.error(DebugCategories.PARAMETERS, 'Failed to load cache:', err)
         })
     } catch (err) {
-      debug.error(ParameterDebugCategories.STATE, 'Failed to initialize store:', err)
+      debug.error(DebugCategories.PARAMETERS, 'Failed to initialize store:', err)
       state.value.processing.status = 'error'
       state.value.processing.error = err instanceof Error ? err : new Error(String(err))
       throw state.value.processing.error
@@ -305,7 +309,7 @@ function createParameterStore(): ParameterStore {
    */
   function reset(): void {
     state.value = createInitialState()
-    debug.log(ParameterDebugCategories.STATE, 'Parameter store reset')
+    debug.log(DebugCategories.PARAMETERS, 'Parameter store reset')
   }
 
   /**

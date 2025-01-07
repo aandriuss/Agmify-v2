@@ -35,6 +35,7 @@ export interface ErrorPayload {
   error: Error
 }
 
+// NEEDED OR NOT?
 /**
  * Filter utilities
  */
@@ -93,3 +94,8 @@ export type ScheduleEmits<TRow extends BaseTableRow = BaseTableRow> =
     (e: 'create-parameter', payload: TableUpdatePayload): void
     (e: 'error', payload: ErrorPayload): void
   }
+
+export interface ExpandableTableRow {
+  id: string
+  [key: string]: unknown
+}

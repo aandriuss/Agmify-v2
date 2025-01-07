@@ -3,15 +3,17 @@ import type {
   TableStore,
   TableStoreState,
   TableSettings,
-  TableStoreOptions
+  TableStoreOptions,
+  TableSort
 } from './types'
 import type {
   TableCategoryFilters,
   TableSelectedParameters,
-  FilterDef,
+  TableFilter,
   TableColumn
 } from '~/composables/core/types'
 import { createTableColumns } from '~/composables/core/types'
+import { isSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { defaultSelectedParameters, defaultTableConfig } from '../config/defaults'
@@ -52,16 +54,16 @@ const storage = {
  *
  * Responsibilities:
  * 1. Table Management
- *    - Load/save tables from/to PostgreSQL
- *    - Manage current table state
+ * - Load/save tables from/to PostgreSQL
+ * - Manage current table state
  *
  * 2. Selected Parameters
- *    - Owns selected parameters (both parent and child)
- *    - Manages parameter visibility and order
+ * - Owns selected parameters (both parent and child)
+ * - Manages parameter visibility and order
  *
  * 3. Column Management
- *    - Owns table columns (using TableColumn type)
- *    - Manages column visibility and order
+ * - Owns table columns (using TableColumn type)
+ * - Manages column visibility and order
  *
  * Does NOT handle:
  * - Raw parameters (managed by Parameter Store)
@@ -79,9 +81,8 @@ function createInitialState(): TableStoreState {
     loading: false,
     error: null,
     lastUpdated: Date.now(),
-    sortField: undefined,
-    sortOrder: undefined,
-    filters: undefined,
+    sort: undefined,
+    filters: [],
     currentView: 'parent',
     isDirty: false,
     isUpdating: false,
@@ -145,9 +146,8 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   const error = computed(() => state.value.error)
   const hasError = computed(() => state.value.error !== null)
   const lastUpdated = computed(() => state.value.lastUpdated)
-  const sortField = computed(() => state.value.sortField)
-  const sortOrder = computed(() => state.value.sortOrder)
-  const filters = computed(() => state.value.filters)
+  const sort = computed(() => state.value.sort)
+  const filters = computed<TableFilter[]>(() => state.value.filters || [])
   const currentView = computed(() => state.value.currentView)
   const isDirty = computed(() => state.value.isDirty)
   const isUpdating = computed(() => state.value.isUpdating)
@@ -308,14 +308,10 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   /**
    * Update sort state
    */
-  function updateSort(field: string | undefined, order: number | undefined): void {
-    debug.startState(DebugCategories.STATE, 'Updating sort', {
-      field,
-      order
-    })
+  function updateSort(sort: TableSort | undefined): void {
+    debug.startState(DebugCategories.STATE, 'Updating sort', sort)
 
-    state.value.sortField = field
-    state.value.sortOrder = order
+    state.value.sort = sort
     state.value.lastUpdated = Date.now()
     state.value.isDirty = true
 
@@ -325,12 +321,12 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   /**
    * Update filters
    */
-  function updateFilters(newFilters: Record<string, FilterDef> | undefined): void {
+  function updateFilters(newFilters: TableFilter[]): void {
     debug.startState(DebugCategories.STATE, 'Updating filters', {
-      filterCount: newFilters ? Object.keys(newFilters).length : 0
+      filterCount: newFilters.length
     })
 
-    state.value.filters = newFilters
+    state.value.filters = [...newFilters]
     state.value.lastUpdated = Date.now()
     state.value.isDirty = true
 
@@ -463,23 +459,44 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
 
     debug.startState(DebugCategories.STATE, 'Updating selected parameters')
 
-    // Create columns directly from parameters
-    const parentColumns = createTableColumns(parameters.parent)
-    const childColumns = createTableColumns(parameters.child)
+    try {
+      // Validate parameters
+      const validParentParams = parameters.parent.filter(isSelectedParameter)
+      const validChildParams = parameters.child.filter(isSelectedParameter)
 
-    // Update state immediately
-    const currentId = state.value.currentTableId
-    const current = state.value.tables.get(currentId)
-    if (current) {
-      state.value.tables.set(currentId, {
-        ...current,
-        selectedParameters: parameters,
-        parentColumns,
-        childColumns,
-        lastUpdateTimestamp: Date.now()
-      })
-      state.value.lastUpdated = Date.now()
-      state.value.isDirty = true
+      if (
+        validParentParams.length !== parameters.parent.length ||
+        validChildParams.length !== parameters.child.length
+      ) {
+        throw new Error('Invalid parameters detected')
+      }
+
+      // Create columns from validated parameters
+      const parentColumns = createTableColumns(validParentParams)
+      const childColumns = createTableColumns(validChildParams)
+
+      // Update state with validated data
+      const currentId = state.value.currentTableId
+      const current = state.value.tables.get(currentId)
+      if (current) {
+        state.value.tables.set(currentId, {
+          ...current,
+          selectedParameters: {
+            parent: validParentParams,
+            child: validChildParams
+          },
+          parentColumns,
+          childColumns,
+          lastUpdateTimestamp: Date.now()
+        })
+        state.value.lastUpdated = Date.now()
+        state.value.isDirty = true
+      }
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to update parameters:', err)
+      state.value.error =
+        err instanceof Error ? err : new Error('Failed to update parameters')
+      return
     }
 
     debug.completeState(DebugCategories.STATE, 'Parameters and columns updated', {
@@ -488,8 +505,8 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         child: parameters.child.length
       },
       columns: {
-        parent: parentColumns.length,
-        child: childColumns.length
+        parent: parameters.parent.length,
+        child: parameters.child.length
       }
     })
   }
@@ -639,8 +656,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     error,
     hasError,
     lastUpdated,
-    sortField,
-    sortOrder,
+    sort,
     filters,
 
     // View management

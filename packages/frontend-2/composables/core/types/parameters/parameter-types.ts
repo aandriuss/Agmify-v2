@@ -1,38 +1,5 @@
-// This file has been migrated to parameter-states.ts
-// Re-export types from parameter-states.ts for backward compatibility
+// This file is deprecated. Use parameter-states.ts directly.
+// All types have been moved to parameter-states.ts.
 
-import type { AvailableBimParameter, AvailableUserParameter } from './parameter-states'
-
-// Type aliases for backward compatibility
-export type BimParameter = AvailableBimParameter
-export type UserParameter = AvailableUserParameter
-export type Parameter = AvailableBimParameter | AvailableUserParameter
-
-// Re-export type guards
-export {
-  isAvailableBimParameter as isBimParameter,
-  isAvailableUserParameter as isUserParameter,
-  isSelectedParameter
-} from './parameter-states'
-
-// Re-export creation utilities
-export {
-  createAvailableBimParameter as createBimParameter,
-  createAvailableUserParameter as createUserParameter,
-  createSelectedParameter
-} from './parameter-states'
-
-// Export empty interfaces for backward compatibility
-export interface ParameterValueState {
-  fetchedValue: unknown
-  currentValue: unknown
-  previousValue: unknown
-  userValue: unknown
-}
-
-export interface Parameters {
-  [key: string]: ParameterValueState
-}
-
-// Note: This file is maintained for backward compatibility.
-// New code should use types from parameter-states.ts directly.
+// Re-export everything from parameter-states for any remaining imports
+export * from './parameter-states'

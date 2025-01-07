@@ -58,6 +58,7 @@
       @row-expand="handleRowExpand"
       @row-collapse="handleRowCollapse"
       @filter="handleFilter"
+      @sort="handleSort"
     >
       <!-- Row Expansion Template -->
       <template #expansion="slotProps">
@@ -107,16 +108,27 @@
 import { computed, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import type { DataTableFilterEvent } from 'primevue/datatable'
+import type {
+  DataTableFilterEvent,
+  DataTableSortEvent,
+  DataTableFilterMetaData,
+  DataTableFilterMeta
+} from 'primevue/datatable'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
+import type { TableSort, TableFilter } from '~/composables/core/types'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   TableEmits,
-  BaseTableRow
+  BaseTableRow,
+  ExpandableTableRow
 } from '~/composables/core/types/tables/table-events'
-import { filterUtils } from '~/composables/core/types/tables/table-events'
 import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
+
+// Extend TableEmits to include sort event
+interface ExtendedTableEmits<T extends BaseTableRow> extends TableEmits<T> {
+  (e: 'sort', payload: { sort: TableSort }): void
+}
 
 interface BaseTableProps<T extends BaseTableRow> {
   tableId: string
@@ -133,6 +145,25 @@ interface BaseTableProps<T extends BaseTableRow> {
   }
 }
 
+// Add type for filter match modes
+type FilterMatchMode =
+  | 'startsWith'
+  | 'contains'
+  | 'notContains'
+  | 'endsWith'
+  | 'equals'
+  | 'notEquals'
+  | 'in'
+  | 'lt'
+  | 'lte'
+  | 'gt'
+  | 'gte'
+  | 'between'
+  | 'dateIs'
+  | 'dateIsNot'
+  | 'dateBefore'
+  | 'dateAfter'
+
 const debug = useDebug()
 
 // Props with defaults
@@ -145,8 +176,8 @@ const props = withDefaults(defineProps<BaseTableProps<T>>(), {
   initialState: () => ({})
 })
 
-// Emits with generic row type
-const emit = defineEmits<TableEmits<T>>()
+// Emits with extended type
+const emit = defineEmits<ExtendedTableEmits<T>>()
 
 // Initialize stores and loading state
 const tableStore = useTableStore()
@@ -162,7 +193,10 @@ const expandedRowsMap = ref<Record<string, boolean>>(
 
 // Computed properties
 const hasExpandableRows = computed(() => {
-  return props.data.some((row) => Array.isArray(row.details) && row.details.length > 0)
+  return props.data.some(
+    (row) =>
+      isExpandableRow(row) && Array.isArray(row.details) && row.details.length > 0
+  )
 })
 
 const isLoading = computed(() => props.loading)
@@ -222,12 +256,114 @@ const errorState = computed(() => {
   return null
 })
 
-// Event handlers with improved error context
+// Type guards
+function isFilterMetaData(value: unknown): value is DataTableFilterMetaData {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'value' in value &&
+    'matchMode' in value &&
+    typeof (value as DataTableFilterMetaData).value !== 'undefined' &&
+    typeof (value as DataTableFilterMetaData).matchMode === 'string'
+  )
+}
+
+function isValidFilterValue(value: unknown): value is string | number | boolean {
+  return (
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+  )
+}
+
+function isValidMatchMode(value: unknown): value is FilterMatchMode {
+  if (typeof value !== 'string') return false
+  return [
+    'startsWith',
+    'contains',
+    'notContains',
+    'endsWith',
+    'equals',
+    'notEquals',
+    'in',
+    'lt',
+    'lte',
+    'gt',
+    'gte',
+    'between',
+    'dateIs',
+    'dateIsNot',
+    'dateBefore',
+    'dateAfter'
+  ].includes(value)
+}
+
+// Type guard for expandable rows with improved type safety
+function isExpandableRow(value: unknown): value is ExpandableTableRow {
+  if (!value || typeof value !== 'object') return false
+
+  const candidate = value as Partial<ExpandableTableRow>
+  return (
+    'id' in candidate &&
+    typeof candidate.id === 'string' &&
+    'details' in candidate &&
+    Array.isArray(candidate.details)
+  )
+}
+
+// Event handlers with improved type safety
+function handleSort(event: DataTableSortEvent): void {
+  try {
+    if (loadingState.value.phase !== 'complete') return
+
+    const field = event.sortField?.toString()
+    if (!field) return
+
+    const sort: TableSort = {
+      field,
+      order: event.sortOrder === 1 ? 'ASC' : 'DESC'
+    }
+
+    tableStore.updateSort(sort)
+    emit('sort', { sort })
+  } catch (err) {
+    handleError(err instanceof Error ? err : new Error('Failed to apply sort'))
+  }
+}
+
 function handleFilter(event: DataTableFilterEvent): void {
   try {
     if (loadingState.value.phase !== 'complete') return
-    const payload = filterUtils.createFilterPayload(event)
-    emit('filter', payload)
+
+    const filters: TableFilter[] = []
+    const eventFilters = event.filters || {}
+
+    Object.entries(eventFilters).forEach(([columnId, filterMeta]) => {
+      if (isFilterMetaData(filterMeta)) {
+        const value = isValidFilterValue(filterMeta.value) ? filterMeta.value : ''
+        const matchMode = filterMeta.matchMode
+
+        if (isValidFilterValue(value) && isValidMatchMode(matchMode)) {
+          filters.push({
+            columnId,
+            value,
+            operator: matchMode
+          })
+        }
+      }
+    })
+
+    const filterMeta: DataTableFilterMeta = filters.reduce(
+      (acc, filter) => ({
+        ...acc,
+        [filter.columnId]: {
+          value: filter.value,
+          matchMode: filter.operator
+        }
+      }),
+      {} as DataTableFilterMeta
+    )
+
+    tableStore.updateFilters(filters)
+    emit('filter', { filters: filterMeta })
   } catch (err) {
     handleError(err instanceof Error ? err : new Error('Failed to apply filters'))
   }
@@ -245,19 +381,6 @@ function handleError(err: unknown): void {
     }
   })
   emit('error', { error })
-}
-
-interface ExpandableRow {
-  id: string
-  [key: string]: unknown
-}
-
-function isExpandableRow(value: unknown): value is ExpandableRow {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { id: string }).id === 'string'
-  )
 }
 
 function handleExpandedRowsChange(value: unknown): void {

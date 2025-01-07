@@ -12,6 +12,7 @@ export interface TableColumn {
   field: string
   header: string
   visible: boolean
+  removable?: boolean
   sortable?: boolean
   filterable?: boolean
   width?: number
@@ -41,8 +42,8 @@ export function createBaseColumn(
     parameter: {
       id,
       name: header,
-      kind: 'bim',
-      type: 'string',
+      kind: 'bim' as const,
+      type: 'string' as const,
       value: '',
       group: 'Base Properties',
       visible: true,

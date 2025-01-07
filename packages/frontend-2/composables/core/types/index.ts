@@ -106,14 +106,7 @@ export type {
   EquationValue,
   ParameterValue,
   ValidationRules,
-  ValidationResult,
-
-  // Backward compatibility
-  ParameterDefinition,
-  ParameterValueType,
-  RawBimParameter,
-  ParameterValueState,
-  Parameters
+  ValidationResult
 } from './parameters'
 
 // Parameter System Functions
@@ -122,21 +115,18 @@ export {
   PARAMETER_SETTINGS,
 
   // Type Guards
-  isBimParameter,
-  isUserParameter,
   isRawParameter,
   isAvailableBimParameter,
   isAvailableUserParameter,
   isSelectedParameter,
 
   // Parameter Creation
-  createBimParameter,
-  createUserParameter,
+  createAvailableBimParameter,
+  createAvailableUserParameter,
   createSelectedParameter,
 
   // Parameter Operations
   convertBimToUserType,
-  createAvailableUserParameter,
   isEquationValue,
   isPrimitiveValue
 } from './parameters'
@@ -220,7 +210,8 @@ export type {
   ColumnResizePayload,
   TableUpdatePayload,
   ErrorPayload,
-  FilterDef
+  FilterDef,
+  ExpandableTableRow
 } from './tables'
 
 export { createTableColumns } from './tables'
@@ -263,3 +254,6 @@ export type {
 } from './viewer'
 
 export type { TableSettings, TableStoreState, TableStore } from '../tables/store/types'
+
+// will fix later
+export type { TableSort, TableFilter } from '../tables/store/types'

@@ -228,7 +228,7 @@ function extractColumns(elements: ElementData[]): TableColumn[] {
               id: key,
               name: key,
               value: processedValue, // Use processed value
-              sourceGroup: 'Parameters',
+              fetchedGroup: 'Parameters',
               metadata: {
                 category: element.category || 'Parameters'
               }
@@ -264,7 +264,7 @@ function extractColumns(elements: ElementData[]): TableColumn[] {
               id: columnKey,
               name: key,
               value,
-              sourceGroup: 'Metadata',
+              fetchedGroup: 'Metadata',
               metadata: {
                 category: 'Metadata'
               }

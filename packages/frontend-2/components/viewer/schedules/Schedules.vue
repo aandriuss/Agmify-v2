@@ -39,13 +39,35 @@
               v-show="_interactions.showParameterManager.value"
               :selected-parent-categories="categories.selectedParentCategories.value"
               :selected-child-categories="categories.selectedChildCategories.value"
-              :available-parent-parameters="parameterStore.parentAvailableBimParameters"
-              :available-child-parameters="parameterStore.childAvailableBimParameters"
+              :available-parent-parameters="
+                unref(parameterStore.parentAvailableBimParameters)
+              "
+              :available-child-parameters="
+                unref(parameterStore.childAvailableBimParameters)
+              "
               :selected-parent-parameters="
-                tableStore.currentTable?.value?.parentColumns || []
+                (tableStore.currentTable?.value?.parentColumns || []).map((col) => ({
+                  id: col.id,
+                  name: col.header,
+                  kind: col.parameter.kind,
+                  type: col.parameter.type,
+                  value: col.parameter.value,
+                  visible: col.visible,
+                  group: col.parameter.group || '',
+                  order: col.order
+                }))
               "
               :selected-child-parameters="
-                tableStore.currentTable?.value?.childColumns || []
+                (tableStore.currentTable?.value?.childColumns || []).map((col) => ({
+                  id: col.id,
+                  name: col.header,
+                  kind: col.parameter.kind,
+                  type: col.parameter.type,
+                  value: col.parameter.value,
+                  visible: col.visible,
+                  group: col.parameter.group || '',
+                  order: col.order
+                }))
               "
               :can-create-parameters="false"
               @parameter-visibility-change="handleParameterVisibilityChange"
@@ -125,6 +147,7 @@ import ScheduleMainView from './components/ScheduleMainView.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
 import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
+import ParameterManager from '~/components/core/parameters/ParameterManager.vue'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
   ViewerNode,

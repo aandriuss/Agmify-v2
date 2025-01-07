@@ -25,9 +25,25 @@ import type {
   BaseTableConfig,
   TableCategoryFilters,
   TableSelectedParameters,
-  FilterDef,
   TableColumn
 } from '~/composables/core/types'
+
+/**
+ * Sort configuration for tables
+ */
+export interface TableSort {
+  field?: string
+  order?: 'ASC' | 'DESC'
+}
+
+/**
+ * Filter configuration for table columns
+ */
+export interface TableFilter {
+  columnId: string
+  value: string | number | boolean
+  operator: string
+}
 
 /**
  * Table settings stored in PostgreSQL
@@ -39,6 +55,8 @@ export interface TableSettings extends BaseTableConfig {
   displayName: string
   childColumns: TableColumn[]
   parentColumns: TableColumn[]
+  sort?: TableSort
+  filters: TableFilter[]
   lastUpdateTimestamp: number
 }
 
@@ -55,13 +73,12 @@ export interface TableStoreState {
   loading: boolean
   error: Error | null
   lastUpdated: number
-  sortField: string | undefined
-  sortOrder: number | undefined
-  filters: Record<string, FilterDef> | undefined
   currentView: 'parent' | 'child'
   isDirty: boolean
   isUpdating: boolean
   lastUpdateTime: number
+  sort?: TableSort
+  filters?: TableFilter[]
 }
 
 /**
@@ -80,13 +97,12 @@ export interface TableStore {
   error: Ref<Error | null>
   hasError: Ref<boolean>
   lastUpdated: Ref<number>
-  sortField: Ref<string | undefined>
-  sortOrder: Ref<number | undefined>
-  filters: Ref<Record<string, FilterDef> | undefined>
   currentView: Ref<'parent' | 'child'>
   isDirty: Ref<boolean>
   isUpdating: Ref<boolean>
   lastUpdateTime: Ref<number>
+  sort: Ref<TableSort | undefined>
+  filters: Ref<TableFilter[]>
 
   // Table operations
   loadTable(tableId: string): Promise<void>
@@ -104,8 +120,8 @@ export interface TableStore {
   updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]): void
 
   // Sort and filter operations
-  updateSort(field: string | undefined, order: number | undefined): void
-  updateFilters(filters: Record<string, FilterDef> | undefined): void
+  updateSort(sort: TableSort | undefined): void
+  updateFilters(filters: TableFilter[]): void
 
   // View management
   toggleView(): void

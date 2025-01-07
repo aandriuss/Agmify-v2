@@ -21,7 +21,7 @@ export interface RawParameter {
   id: string
   name: string
   value: unknown
-  sourceGroup: string
+  fetchedGroup: string
   metadata: ParameterMetadata
 }
 
@@ -34,7 +34,7 @@ export interface AvailableBimParameter {
   name: string
   type: BimValueType
   value: ParameterValue
-  sourceGroup: string
+  fetchedGroup: string
   currentGroup: string
   visible?: boolean
   isSystem: boolean
@@ -133,7 +133,7 @@ export const isRawParameter = (param: unknown): param is RawParameter => {
   return (
     typeof p.id === 'string' &&
     typeof p.name === 'string' &&
-    typeof p.sourceGroup === 'string' &&
+    typeof p.fetchedGroup === 'string' &&
     'value' in p &&
     typeof p.metadata === 'object'
   )
@@ -148,7 +148,7 @@ export const isAvailableBimParameter = (
     p.kind === 'bim' &&
     typeof p.id === 'string' &&
     typeof p.name === 'string' &&
-    typeof p.sourceGroup === 'string' &&
+    typeof p.fetchedGroup === 'string' &&
     typeof p.currentGroup === 'string' &&
     typeof p.isSystem === 'boolean' &&
     'value' in p &&
@@ -194,7 +194,9 @@ export const createAvailableBimParameter = (
   isSystem = false
 ): AvailableBimParameter => {
   // Handle Parameters.* format
-  const sourceGroup = raw.id.startsWith('Parameters.') ? 'Parameters' : raw.sourceGroup
+  const fetchedGroup = raw.id.startsWith('Parameters.')
+    ? 'Parameters'
+    : raw.fetchedGroup
   const name = raw.id.startsWith('Parameters.')
     ? raw.id.split('.').slice(1).join('.')
     : raw.name
@@ -205,10 +207,10 @@ export const createAvailableBimParameter = (
     name,
     type,
     value: processedValue,
-    sourceGroup,
-    currentGroup: sourceGroup,
+    fetchedGroup,
+    currentGroup: fetchedGroup,
     visible: true,
-    isSystem: isSystem || raw.name.startsWith('__') || sourceGroup.startsWith('__'),
+    isSystem: isSystem || raw.name.startsWith('__') || fetchedGroup.startsWith('__'),
     metadata: raw.metadata
   }
 }
@@ -244,7 +246,7 @@ export const createSelectedParameter = (
   type: available.type,
   value: available.value,
   group:
-    'sourceGroup' in available && available.kind === 'bim'
+    'fetchedGroup' in available && available.kind === 'bim'
       ? available.currentGroup
       : available.group,
   visible,

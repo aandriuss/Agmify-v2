@@ -207,14 +207,14 @@ describe('Parameter Processing', () => {
       id: string
       name: string
       value: unknown
-      sourceGroup: string
+      fetchedGroup: string
     }
 
     const expected: ExpectedParameter = {
       id: 'test',
       name: 'Test',
       value: 123,
-      sourceGroup: 'Group'
+      fetchedGroup: 'Group'
     }
 
     expect(mockStore.setRawParameters).toHaveBeenCalledWith(

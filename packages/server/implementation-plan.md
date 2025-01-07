@@ -24,7 +24,7 @@ elements.forEach((element) => {
       id: key,
       name: getName(key),
       value: value,
-      sourceGroup: group,
+      fetchedGroup: group,
       metadata: {
         category: element.category,
         elementId: element.id
@@ -40,7 +40,7 @@ elements.forEach((element) => {
 // Determine if parameter is BIM or user
 function classifyParameter(raw: RawParameter): 'bim' | 'user' {
   // 1. Check Source Groups
-  if (isStandardGroup(raw.sourceGroup)) return 'bim' // e.g., 'Pset_', 'Base'
+  if (isStandardGroup(raw.fetchedGroup)) return 'bim' // e.g., 'Pset_', 'Base'
 
   // 2. Check Patterns
   if (isBimPattern(raw.id)) return 'bim' // e.g., 'IFCWALL', '.Type'
@@ -285,7 +285,7 @@ interface RawParameter {
   id: string
   name: string
   value: unknown
-  sourceGroup: string
+  fetchedGroup: string
   metadata: ParameterMetadata
 }
 ```
@@ -304,7 +304,7 @@ interface AvailableBimParameter {
   name: string
   type: BimValueType
   value: ParameterValue
-  sourceGroup: string // Original group
+  fetchedGroup: string // Original group
   currentGroup: string // Current display group
   visible?: boolean
   isSystem: boolean

@@ -186,7 +186,7 @@ function convertToParameters(
         id: param.field,
         name: param.name,
         value: param.sourceValue,
-        sourceGroup: param.group,
+        fetchedGroup: param.group,
         metadata: {}
       },
       param.type,

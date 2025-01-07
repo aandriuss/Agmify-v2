@@ -1,14 +1,17 @@
 import type { ProcessedHeader } from '~/composables/core/types/viewer/viewer-base'
 import type {
-  Parameter,
-  BimParameter,
-  UserParameter,
+  SelectedParameter,
+  AvailableBimParameter,
+  AvailableUserParameter,
   ParameterValue,
   BimValueType,
   UserValueType,
   ValidationRules
 } from '~/composables/core/types'
-import { createBimParameter, createUserParameter } from '~/composables/core/types'
+import {
+  createAvailableBimParameter,
+  createAvailableUserParameter
+} from '~/composables/core/types'
 import { debug, DebugCategories } from '../debug'
 
 /**
@@ -34,14 +37,18 @@ function isEquationString(value: unknown): value is string {
 }
 
 /**
- * Convert a ProcessedHeader to a Parameter
+ * Convert a ProcessedHeader to a SelectedParameter
  */
-export function processedHeaderToParameter(header: ProcessedHeader): Parameter {
+export function processedHeaderToParameter(header: ProcessedHeader): SelectedParameter {
   try {
-    debug.startState(DebugCategories.DATA_TRANSFORM, 'Converting header to parameter', {
-      id: header.id,
-      type: header.type
-    })
+    debug.startState(
+      DebugCategories.DATA_TRANSFORM,
+      'Converting header to SelectedParameter',
+      {
+        id: header.id,
+        type: header.type
+      }
+    )
 
     // Common properties
     const baseProps = {
@@ -57,13 +64,13 @@ export function processedHeaderToParameter(header: ProcessedHeader): Parameter {
       value: header.value as ParameterValue
     }
 
-    // Convert to BIM parameter if it has BIM-specific properties
+    // Convert to BIM SelectedParameter if it has BIM-specific properties
     if (
       'sourceValue' in header &&
       'fetchedGroup' in header &&
       'currentGroup' in header
     ) {
-      const bimParam = createBimParameter({
+      const bimParam = createAvailableBimParameter({
         ...baseProps,
         type: header.type as BimValueType,
         sourceValue: header.sourceValue as string,
@@ -81,7 +88,7 @@ export function processedHeaderToParameter(header: ProcessedHeader): Parameter {
     }
 
     // Otherwise, convert to user parameter
-    const userParam = createUserParameter({
+    const userParam = createAvailableUserParameter({
       ...baseProps,
       type: header.type as UserValueType,
       group: header.currentGroup,
@@ -111,12 +118,16 @@ export function processedHeaderToParameter(header: ProcessedHeader): Parameter {
 /**
  * Convert a Parameter to a ProcessedHeader
  */
-export function parameterToProcessedHeader(param: Parameter): ProcessedHeader {
+export function parameterToProcessedHeader(param: SelectedParameter): ProcessedHeader {
   try {
-    debug.startState(DebugCategories.DATA_TRANSFORM, 'Converting parameter to header', {
-      id: param.id,
-      type: param.type
-    })
+    debug.startState(
+      DebugCategories.DATA_TRANSFORM,
+      'Converting SelectedParameter to header',
+      {
+        id: param.id,
+        type: param.type
+      }
+    )
 
     // Common properties
     const baseHeader: ProcessedHeader = {
@@ -139,7 +150,7 @@ export function parameterToProcessedHeader(param: Parameter): ProcessedHeader {
 
     // Add BIM-specific properties
     if ('sourceValue' in param) {
-      const bimParam = param as BimParameter
+      const bimParam = param as AvailableBimParameter
       const header = {
         ...baseHeader,
         sourceValue: bimParam.sourceValue,
@@ -158,7 +169,7 @@ export function parameterToProcessedHeader(param: Parameter): ProcessedHeader {
 
     // Add user-specific properties
     if ('group' in param) {
-      const userParam = param as UserParameter
+      const userParam = param as AvailableUserParameter
       const header = {
         ...baseHeader,
         currentGroup: userParam.group,
@@ -184,7 +195,7 @@ export function parameterToProcessedHeader(param: Parameter): ProcessedHeader {
   } catch (err) {
     debug.error(
       DebugCategories.DATA_TRANSFORM,
-      'Failed to convert parameter to header:',
+      'Failed to convert SelectedParameter to header:',
       err
     )
     throw err
@@ -194,13 +205,17 @@ export function parameterToProcessedHeader(param: Parameter): ProcessedHeader {
 /**
  * Convert an array of ProcessedHeaders to Parameters
  */
-export function processedHeadersToParameters(headers: ProcessedHeader[]): Parameter[] {
+export function processedHeadersToParameters(
+  headers: ProcessedHeader[]
+): SelectedParameter[] {
   return headers.map(processedHeaderToParameter)
 }
 
 /**
  * Convert an array of Parameters to ProcessedHeaders
  */
-export function parametersToProcessedHeaders(params: Parameter[]): ProcessedHeader[] {
+export function parametersToProcessedHeaders(
+  params: SelectedParameter[]
+): ProcessedHeader[] {
   return params.map(parameterToProcessedHeader)
 }

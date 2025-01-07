@@ -2,7 +2,9 @@ import { ref, computed } from 'vue'
 import type {
   TableSettings,
   TableCategoryFilters,
-  TableColumn
+  TableColumn,
+  TableSort,
+  TableFilter
 } from '~/composables/core/types'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParametersState } from '~/composables/parameters/useParametersState'
@@ -156,6 +158,8 @@ export function useTableConfigs() {
       displayName?: string
       config?: Partial<Omit<TableSettings, 'id' | 'name' | 'lastUpdateTimestamp'>>
       categoryFilters?: TableCategoryFilters
+      sort?: TableSort
+      filters?: TableFilter[]
     }
   ) => {
     try {
@@ -175,6 +179,8 @@ export function useTableConfigs() {
         categoryFilters: updates.categoryFilters || currentTable.categoryFilters,
         selectedParameters:
           updates.config?.selectedParameters || currentTable.selectedParameters,
+        sort: updates.sort || currentTable.sort,
+        filters: updates.filters || currentTable.filters,
         lastUpdateTimestamp: Date.now()
       }
 
@@ -283,6 +289,55 @@ export function useTableConfigs() {
     store.state.value.lastUpdated = Date.now()
   }
 
+  const updateTableSort = async (tableId: string, sort: TableSort | null) => {
+    try {
+      debug.startState(DebugCategories.STATE, 'Updating table sort', { tableId })
+
+      const table = store.state.value.tables.get(tableId)
+      if (!table) {
+        throw new Error('Table not found')
+      }
+
+      await updateNamedTable(tableId, { sort: sort || undefined })
+
+      debug.completeState(DebugCategories.STATE, 'Table sort updated successfully')
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error updating table sort:', error)
+      throw error instanceof Error ? error : new Error('Failed to update table sort')
+    }
+  }
+
+  const updateTableFilters = async (tableId: string, filters: TableFilter[]) => {
+    try {
+      debug.startState(DebugCategories.STATE, 'Updating table filters', { tableId })
+
+      const table = store.state.value.tables.get(tableId)
+      if (!table) {
+        throw new Error('Table not found')
+      }
+
+      await updateNamedTable(tableId, { filters })
+
+      debug.completeState(DebugCategories.STATE, 'Table filters updated successfully')
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error updating table filters:', error)
+      throw error instanceof Error ? error : new Error('Failed to update table filters')
+    }
+  }
+
+  const clearTableFilters = async (tableId: string) => {
+    try {
+      debug.startState(DebugCategories.STATE, 'Clearing table filters', { tableId })
+
+      await updateTableFilters(tableId, [])
+
+      debug.completeState(DebugCategories.STATE, 'Table filters cleared successfully')
+    } catch (error) {
+      debug.error(DebugCategories.ERROR, 'Error clearing table filters:', error)
+      throw error instanceof Error ? error : new Error('Failed to clear table filters')
+    }
+  }
+
   return {
     // State
     namedTables,
@@ -299,6 +354,9 @@ export function useTableConfigs() {
     updateNamedTable,
     updateTableColumns,
     deleteNamedTable,
-    selectTable
+    selectTable,
+    updateTableSort,
+    updateTableFilters,
+    clearTableFilters
   }
 }

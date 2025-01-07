@@ -27,7 +27,12 @@ const {
 const db = require('@/db/knex')
 const { BadRequestError } = require('@/modules/shared/errors')
 const { saveActivityFactory } = require('@/modules/activitystream/repositories')
-const { getUserSettings, getTables, updateTables } = require('@/modules/core/services/users/settings')
+const { 
+  getUserSettings, 
+  getTables, 
+  updateTables,
+  updateUserSettings 
+} = require('@/modules/core/services/users/settings')
 
 /** @type {import('@/modules/core/graph/generated/graphql').Resolvers} */
 const resolvers = {
@@ -214,10 +219,7 @@ const resolvers = {
       const userId = context.userId;
       if (!userId) throw new Error('User not authenticated');
 
-      await db('users')
-        .where({ id: userId })
-        .update({ usersettings: settings });
-
+      await updateUserSettings(userId, settings);
       return true;
     },
 
@@ -225,7 +227,21 @@ const resolvers = {
       const userId = context.userId;
       if (!userId) throw new Error('User not authenticated');
 
-      return await updateTables(userId, tables);
+      // Ensure we have valid table data
+      if (!tables || typeof tables !== 'object') {
+        throw new Error('Invalid table data');
+      }
+
+      try {
+        const success = await updateTables(userId, tables);
+        if (!success) {
+          throw new Error('Failed to update tables');
+        }
+        return true;
+      } catch (err) {
+        console.error('Error updating tables:', err);
+        throw new Error('Failed to update tables: ' + err.message);
+      }
     },
 
     activeUserMutations: () => ({}) // Empty function to prevent errors

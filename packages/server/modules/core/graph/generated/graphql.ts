@@ -32,6 +32,7 @@ export type Scalars = {
   BigInt: { input: bigint; output: bigint; }
   /** A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar. */
   DateTime: { input: Date; output: Date; }
+  JSON: { input: any; output: any; }
   /** The `JSONObject` scalar type represents JSON objects as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf). */
   JSONObject: { input: Record<string, unknown>; output: Record<string, unknown>; }
 };
@@ -1937,6 +1938,32 @@ export type ObjectCreateInput = {
 /** Union of all parameter types */
 export type Parameter = BimParameter | UserParameter;
 
+/** Input type for parameters (both BIM and User types) */
+export type ParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  computed?: InputMaybe<Scalars['JSON']['input']>;
+  currentGroup?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  equation?: InputMaybe<Scalars['String']['input']>;
+  fetchedGroup?: InputMaybe<Scalars['String']['input']>;
+  field: Scalars['String']['input'];
+  group?: InputMaybe<Scalars['String']['input']>;
+  header: Scalars['String']['input'];
+  id: Scalars['ID']['input'];
+  isCustom?: InputMaybe<Scalars['Boolean']['input']>;
+  kind: Scalars['String']['input'];
+  metadata?: InputMaybe<Scalars['JSON']['input']>;
+  name: Scalars['String']['input'];
+  order?: InputMaybe<Scalars['Int']['input']>;
+  removable: Scalars['Boolean']['input'];
+  source?: InputMaybe<Scalars['String']['input']>;
+  sourceValue?: InputMaybe<Scalars['String']['input']>;
+  type?: InputMaybe<BimValueType>;
+  userType?: InputMaybe<UserValueType>;
+  value: Scalars['String']['input'];
+  visible: Scalars['Boolean']['input'];
+};
+
 /** Response type for parameter mutations */
 export type ParameterMutationResponse = {
   __typename?: 'ParameterMutationResponse';
@@ -3134,6 +3161,11 @@ export enum SortDirection {
   Desc = 'DESC'
 }
 
+export enum SortOrder {
+  Asc = 'ASC',
+  Desc = 'DESC'
+}
+
 export type Stream = {
   __typename?: 'Stream';
   /**
@@ -3627,6 +3659,20 @@ export type TableConfigInput = {
   selectedParameters: TableSelectedParametersInput;
 };
 
+/** Filter configuration for table columns */
+export type TableFilter = {
+  __typename?: 'TableFilter';
+  columnId: Scalars['String']['output'];
+  operator: Scalars['String']['output'];
+  value?: Maybe<Scalars['JSON']['output']>;
+};
+
+export type TableFilterInput = {
+  columnId: Scalars['String']['input'];
+  operator: Scalars['String']['input'];
+  value?: InputMaybe<Scalars['JSON']['input']>;
+};
+
 /** Selected parameters for table with parent/child separation */
 export type TableSelectedParameters = {
   __typename?: 'TableSelectedParameters';
@@ -3636,8 +3682,8 @@ export type TableSelectedParameters = {
 
 /** Input for selected parameters */
 export type TableSelectedParametersInput = {
-  child: Array<Scalars['ID']['input']>;
-  parent: Array<Scalars['ID']['input']>;
+  child: Array<ParameterInput>;
+  parent: Array<ParameterInput>;
 };
 
 /** Named table configuration with additional metadata */
@@ -3645,8 +3691,24 @@ export type TableSettings = {
   __typename?: 'TableSettings';
   categoryFilters?: Maybe<CategoryFilters>;
   config: TableConfig;
+  displayName: Scalars['String']['output'];
+  filters?: Maybe<Array<TableFilter>>;
   id: Scalars['ID']['output'];
+  lastUpdateTimestamp: Scalars['Float']['output'];
   name: Scalars['String']['output'];
+  sort?: Maybe<TableSort>;
+};
+
+/** Sort configuration for tables */
+export type TableSort = {
+  __typename?: 'TableSort';
+  field?: Maybe<Scalars['String']['output']>;
+  order?: Maybe<SortOrder>;
+};
+
+export type TableSortInput = {
+  field?: InputMaybe<Scalars['String']['input']>;
+  order?: InputMaybe<SortOrder>;
 };
 
 export type TestAutomationRun = {
@@ -3731,8 +3793,11 @@ export type UpdateModelInput = {
 export type UpdateNamedTableInput = {
   categoryFilters?: InputMaybe<CategoryFiltersInput>;
   config?: InputMaybe<TableConfigInput>;
+  displayName?: InputMaybe<Scalars['String']['input']>;
+  filters?: InputMaybe<Array<TableFilterInput>>;
   id: Scalars['ID']['input'];
   name?: InputMaybe<Scalars['String']['input']>;
+  sort?: InputMaybe<TableSortInput>;
 };
 
 /** Input for updating a user parameter */
@@ -4791,6 +4856,7 @@ export type ResolversTypes = {
   GendoAIRenderInput: GendoAiRenderInput;
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
   Int: ResolverTypeWrapper<Scalars['Int']['output']>;
+  JSON: ResolverTypeWrapper<Scalars['JSON']['output']>;
   JSONObject: ResolverTypeWrapper<Scalars['JSONObject']['output']>;
   JoinWorkspaceInput: JoinWorkspaceInput;
   LegacyCommentViewerData: ResolverTypeWrapper<LegacyCommentViewerData>;
@@ -4808,6 +4874,7 @@ export type ResolversTypes = {
   ObjectCollection: ResolverTypeWrapper<Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversTypes['Object']> }>;
   ObjectCreateInput: ObjectCreateInput;
   Parameter: ResolverTypeWrapper<ResolversUnionTypes<ResolversTypes>['Parameter']>;
+  ParameterInput: ParameterInput;
   ParameterMutationResponse: ResolverTypeWrapper<Omit<ParameterMutationResponse, 'parameter'> & { parameter: ResolversTypes['Parameter'] }>;
   PasswordStrengthCheckFeedback: ResolverTypeWrapper<PasswordStrengthCheckFeedback>;
   PasswordStrengthCheckResults: ResolverTypeWrapper<PasswordStrengthCheckResults>;
@@ -4880,6 +4947,7 @@ export type ResolversTypes = {
   SetPrimaryUserEmailInput: SetPrimaryUserEmailInput;
   SmartTextEditorValue: ResolverTypeWrapper<SmartTextEditorValueSchema>;
   SortDirection: SortDirection;
+  SortOrder: SortOrder;
   Stream: ResolverTypeWrapper<StreamGraphQLReturn>;
   StreamAccessRequest: ResolverTypeWrapper<StreamAccessRequestGraphQLReturn>;
   StreamCollaborator: ResolverTypeWrapper<StreamCollaboratorGraphQLReturn>;
@@ -4896,9 +4964,13 @@ export type ResolversTypes = {
   TableColumnInput: TableColumnInput;
   TableConfig: ResolverTypeWrapper<Omit<TableConfig, 'selectedParameters'> & { selectedParameters: ResolversTypes['TableSelectedParameters'] }>;
   TableConfigInput: TableConfigInput;
+  TableFilter: ResolverTypeWrapper<TableFilter>;
+  TableFilterInput: TableFilterInput;
   TableSelectedParameters: ResolverTypeWrapper<Omit<TableSelectedParameters, 'child' | 'parent'> & { child: Array<ResolversTypes['Parameter']>, parent: Array<ResolversTypes['Parameter']> }>;
   TableSelectedParametersInput: TableSelectedParametersInput;
   TableSettings: ResolverTypeWrapper<Omit<TableSettings, 'config'> & { config: ResolversTypes['TableConfig'] }>;
+  TableSort: ResolverTypeWrapper<TableSort>;
+  TableSortInput: TableSortInput;
   TestAutomationRun: ResolverTypeWrapper<TestAutomationRun>;
   TestAutomationRunTrigger: ResolverTypeWrapper<TestAutomationRunTrigger>;
   TestAutomationRunTriggerPayload: ResolverTypeWrapper<TestAutomationRunTriggerPayload>;
@@ -5070,6 +5142,7 @@ export type ResolversParentTypes = {
   GendoAIRenderInput: GendoAiRenderInput;
   ID: Scalars['ID']['output'];
   Int: Scalars['Int']['output'];
+  JSON: Scalars['JSON']['output'];
   JSONObject: Scalars['JSONObject']['output'];
   JoinWorkspaceInput: JoinWorkspaceInput;
   LegacyCommentViewerData: LegacyCommentViewerData;
@@ -5087,6 +5160,7 @@ export type ResolversParentTypes = {
   ObjectCollection: Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversParentTypes['Object']> };
   ObjectCreateInput: ObjectCreateInput;
   Parameter: ResolversUnionTypes<ResolversParentTypes>['Parameter'];
+  ParameterInput: ParameterInput;
   ParameterMutationResponse: Omit<ParameterMutationResponse, 'parameter'> & { parameter: ResolversParentTypes['Parameter'] };
   PasswordStrengthCheckFeedback: PasswordStrengthCheckFeedback;
   PasswordStrengthCheckResults: PasswordStrengthCheckResults;
@@ -5161,9 +5235,13 @@ export type ResolversParentTypes = {
   TableColumnInput: TableColumnInput;
   TableConfig: Omit<TableConfig, 'selectedParameters'> & { selectedParameters: ResolversParentTypes['TableSelectedParameters'] };
   TableConfigInput: TableConfigInput;
+  TableFilter: TableFilter;
+  TableFilterInput: TableFilterInput;
   TableSelectedParameters: Omit<TableSelectedParameters, 'child' | 'parent'> & { child: Array<ResolversParentTypes['Parameter']>, parent: Array<ResolversParentTypes['Parameter']> };
   TableSelectedParametersInput: TableSelectedParametersInput;
   TableSettings: Omit<TableSettings, 'config'> & { config: ResolversParentTypes['TableConfig'] };
+  TableSort: TableSort;
+  TableSortInput: TableSortInput;
   TestAutomationRun: TestAutomationRun;
   TestAutomationRunTrigger: TestAutomationRunTrigger;
   TestAutomationRunTriggerPayload: TestAutomationRunTriggerPayload;
@@ -5758,6 +5836,10 @@ export type GendoAiRenderCollectionResolvers<ContextType = GraphQLContext, Paren
   totalCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
+
+export interface JsonScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['JSON'], any> {
+  name: 'JSON';
+}
 
 export interface JsonObjectScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['JSONObject'], any> {
   name: 'JSONObject';
@@ -6456,6 +6538,13 @@ export type TableConfigResolvers<ContextType = GraphQLContext, ParentType extend
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type TableFilterResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableFilter'] = ResolversParentTypes['TableFilter']> = {
+  columnId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  operator?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  value?: Resolver<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type TableSelectedParametersResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableSelectedParameters'] = ResolversParentTypes['TableSelectedParameters']> = {
   child?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType>;
   parent?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType>;
@@ -6465,8 +6554,18 @@ export type TableSelectedParametersResolvers<ContextType = GraphQLContext, Paren
 export type TableSettingsResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableSettings'] = ResolversParentTypes['TableSettings']> = {
   categoryFilters?: Resolver<Maybe<ResolversTypes['CategoryFilters']>, ParentType, ContextType>;
   config?: Resolver<ResolversTypes['TableConfig'], ParentType, ContextType>;
+  displayName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  filters?: Resolver<Maybe<Array<ResolversTypes['TableFilter']>>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  lastUpdateTimestamp?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  sort?: Resolver<Maybe<ResolversTypes['TableSort']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type TableSortResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableSort'] = ResolversParentTypes['TableSort']> = {
+  field?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  order?: Resolver<Maybe<ResolversTypes['SortOrder']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -6873,6 +6972,7 @@ export type Resolvers<ContextType = GraphQLContext> = {
   FileUpload?: FileUploadResolvers<ContextType>;
   GendoAIRender?: GendoAiRenderResolvers<ContextType>;
   GendoAIRenderCollection?: GendoAiRenderCollectionResolvers<ContextType>;
+  JSON?: GraphQLScalarType;
   JSONObject?: GraphQLScalarType;
   LegacyCommentViewerData?: LegacyCommentViewerDataResolvers<ContextType>;
   LimitedUser?: LimitedUserResolvers<ContextType>;
@@ -6933,8 +7033,10 @@ export type Resolvers<ContextType = GraphQLContext> = {
   Subscription?: SubscriptionResolvers<ContextType>;
   TableColumn?: TableColumnResolvers<ContextType>;
   TableConfig?: TableConfigResolvers<ContextType>;
+  TableFilter?: TableFilterResolvers<ContextType>;
   TableSelectedParameters?: TableSelectedParametersResolvers<ContextType>;
   TableSettings?: TableSettingsResolvers<ContextType>;
+  TableSort?: TableSortResolvers<ContextType>;
   TestAutomationRun?: TestAutomationRunResolvers<ContextType>;
   TestAutomationRunTrigger?: TestAutomationRunTriggerResolvers<ContextType>;
   TestAutomationRunTriggerPayload?: TestAutomationRunTriggerPayloadResolvers<ContextType>;
