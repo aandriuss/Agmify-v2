@@ -125,6 +125,7 @@ import TableLayout from '~/components/core/tables/TableLayout.vue'
 import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
 import ParameterManager from '~/components/core/parameters/ParameterManager.vue'
 import { useTableStore } from '~/composables/core/tables/store/store'
+import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 import type {
   ViewerNode,
   WorldTreeRoot
@@ -146,14 +147,6 @@ function createSafeError(err: unknown): Error {
   if (err instanceof Error) return err
   if (typeof err === 'string') return new Error(err)
   return new Error('An unknown error occurred')
-}
-
-// Type-safe object utilities
-function safeObjectEntries<T extends Record<string, unknown>>(
-  obj: T | undefined | null
-): [string, T[keyof T]][] {
-  if (!obj) return []
-  return Object.entries(obj) as [string, T[keyof T]][]
 }
 
 // Initialize systems
@@ -552,12 +545,6 @@ async function handleParameterVisibilityChange(
   }
 }
 
-function isValidTable(table: unknown): table is TableSettings {
-  if (!table || typeof table !== 'object') return false
-  const candidate = table as { id?: unknown }
-  return typeof candidate.id === 'string'
-}
-
 async function handleColumnVisibilityChange(
   payload: ColumnVisibilityPayload
 ): Promise<void> {
@@ -817,26 +804,55 @@ onMounted(async () => {
 
     // 8. Load tables and initialize data
     transitionPhase('data_sync')
-    await tableStore.initialize()
-    const tablesList = processTablesList(
-      Object.fromEntries(tableStore.state.value.tables)
-    )
 
-    await elementsData.initializeData()
-    if (elementsData.hasError.value) {
-      throw new Error('Failed to initialize element data')
+    try {
+      // First initialize table store
+      await tableStore.initialize()
+      debug.log(DebugCategories.INITIALIZATION, 'Table store initialized')
+
+      // Then fetch tables from GraphQL
+      const graphqlOps = await useTablesGraphQL()
+      const tables = await graphqlOps.fetchTables()
+      debug.log(DebugCategories.INITIALIZATION, 'Tables fetched from GraphQL', {
+        tableCount: Object.keys(tables).length
+      })
+
+      // Initialize element data
+      await elementsData.initializeData()
+      if (elementsData.hasError.value) {
+        throw new Error('Failed to initialize element data')
+      }
+      debug.log(DebugCategories.INITIALIZATION, 'Element data initialized')
+
+      // Process and update tables in store
+      const existingTables = Object.entries(tables)
+        .map(([id, table]: [string, TableSettings]) => ({
+          id,
+          name: table.name || 'Unnamed Table'
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+
+      // Update store state with all tables
+      await store.lifecycle.update({
+        tablesArray: existingTables,
+        selectedTableId:
+          store.state.value.currentTableId || existingTables[0]?.id || 'default',
+        tableName: store.state.value.currentTableId
+          ? tableStore.currentTable.value?.name || 'Default Table'
+          : existingTables[0]?.name || 'Default Table',
+        selectedParentCategories: parentCategories,
+        selectedChildCategories: childCategories
+      })
+
+      debug.log(DebugCategories.INITIALIZATION, 'Store updated with tables', {
+        tableCount: existingTables.length,
+        tableIds: existingTables.map((t) => t.id),
+        selectedId: store.state.value.currentTableId
+      })
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to initialize tables:', err)
+      throw new Error('Failed to initialize tables')
     }
-
-    // Update store state
-    await store.lifecycle.update({
-      tablesArray: tablesList,
-      selectedTableId:
-        tablesList[0]?.id || tableStore.currentTable.value?.id || 'default',
-      tableName:
-        tablesList[0]?.name || tableStore.currentTable.value?.name || 'Default Table',
-      selectedParentCategories: parentCategories,
-      selectedChildCategories: childCategories
-    })
 
     // Final validation
     const finalValidation = validateData()
@@ -893,20 +909,6 @@ onMounted(async () => {
     initializationAttempted.value = true
   }
 })
-
-// Helper to process tables list
-function processTablesList(tables: unknown) {
-  if (!tables) return []
-
-  type TablesType = Record<string, TableSettings>
-  return safeObjectEntries<TablesType>(tables as TablesType)
-    .filter((entry): entry is [string, TableSettings] => isValidTable(entry[1]))
-    .filter(([_, table]) => table.id !== 'defaultTable')
-    .map(([_, table]) => ({
-      id: table.id,
-      name: table.name || 'Unnamed Table'
-    }))
-}
 </script>
 
 <style scoped>
