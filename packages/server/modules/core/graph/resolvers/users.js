@@ -223,23 +223,87 @@ const resolvers = {
       return true;
     },
 
-    async userTablesUpdate(_parent, { tables }, context) {
+    async userTablesUpdate(_parent, { input }, context) {
       const userId = context.userId;
       if (!userId) throw new Error('User not authenticated');
 
-      // Ensure we have valid table data
-      if (!tables || typeof tables !== 'object') {
-        throw new Error('Invalid table data');
-      }
-
       try {
-        const success = await updateTables(userId, tables);
+         
+        console.log('GraphQL Resolver - Raw Input:', {
+          userId,
+          hasInput: !!input,
+          hasTables: !!input?.tables,
+          tablesLength: input?.tables?.length || 0,
+          rawInput: JSON.stringify(input, null, 2)
+        });
+
+        // Log the schema info
+        console.log('GraphQL Schema Info:', {
+          mutation: 'userTablesUpdate',
+          expectedInput: 'TableSettingsMapInput',
+          actualInput: input ? Object.keys(input) : []
+        });
+
+        // Convert input array to map
+        const tablesMap = input?.tables?.reduce((acc, entry) => {
+          if (!entry || !entry.id || !entry.settings) {
+            console.warn('Invalid table entry:', entry);
+            return acc;
+          }
+
+          // Merge settings with ID to match database structure
+          acc[entry.id] = {
+            id: entry.id,
+            ...entry.settings
+          };
+          return acc;
+        }, {}) || {};
+
+        // Log the transformed data
+        console.log('GraphQL Resolver - Transformed Data:', {
+          userId,
+          tableCount: Object.keys(tablesMap).length,
+          tableIds: Object.keys(tablesMap),
+          firstTablePreview: Object.values(tablesMap)[0] ? {
+            id: Object.values(tablesMap)[0].id,
+            name: Object.values(tablesMap)[0].name,
+            columnsCount: {
+              parent: Object.values(tablesMap)[0].parentColumns?.length || 0,
+              child: Object.values(tablesMap)[0].childColumns?.length || 0
+            },
+            parametersCount: {
+              parent: Object.values(tablesMap)[0].selectedParameters?.parent?.length || 0,
+              child: Object.values(tablesMap)[0].selectedParameters?.child?.length || 0
+            }
+          } : null
+        });
+
+        // GraphQL schema validation ensures the structure is valid,
+        // so we can skip the manual validation here
+
+        const success = await updateTables(userId, tablesMap);
         if (!success) {
+          console.error('Failed to update tables - updateTables returned false');
           throw new Error('Failed to update tables');
         }
+
+        // Log success
+        console.log('Tables updated successfully:', {
+          userId,
+          tableCount: Object.keys(tablesMap).length
+        });
+
         return true;
       } catch (err) {
-        console.error('Error updating tables:', err);
+        console.error('Error updating tables:', {
+          error: err,
+          message: err.message,
+          stack: err.stack,
+          data: {
+            userId,
+            tableCount: input?.tables?.length || 0
+          }
+        });
         throw new Error('Failed to update tables: ' + err.message);
       }
     },

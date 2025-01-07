@@ -1,6 +1,5 @@
 import type { Ref } from 'vue'
 import type { TableColumn } from './table-column'
-import type { BaseTableRow } from '~/composables/core/types'
 import type { SelectedParameter } from '../parameters/parameter-states'
 
 /**
@@ -92,31 +91,6 @@ export interface NamedTableState extends CoreTableState {
   toggleView: () => void
   addTable: (config: unknown) => void
   removeTable: (tableId: string) => void
-}
-
-/**
- * DataTable state options
- */
-export interface DataTableStateOptions extends TableStateOptions {
-  initialState?: {
-    expandedRows?: BaseTableRow[]
-    detailColumns?: TableColumn[]
-  }
-}
-
-/**
- * DataTable state interface
- */
-export interface DataTableState extends CoreTableState {
-  // UI state
-  isLoading: Ref<boolean>
-  expandedRows: Ref<BaseTableRow[]>
-  detailColumns: Ref<TableColumn[]>
-
-  // UI methods
-  expandRow: (row: BaseTableRow) => void
-  collapseRow: (row: BaseTableRow) => void
-  updateDetailColumns: (columns: TableColumn[]) => void
 }
 
 /**

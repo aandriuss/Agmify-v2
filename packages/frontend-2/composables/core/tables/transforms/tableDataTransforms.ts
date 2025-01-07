@@ -5,14 +5,14 @@ import type {
   TableFilter
 } from '~/composables/core/types'
 import type {
-  SelectedParameter,
+  // SelectedParameter,
   AvailableBimParameter,
   AvailableUserParameter
 } from '~/composables/core/types/parameters/parameter-states'
 import {
   isAvailableBimParameter,
   isAvailableUserParameter,
-  isSelectedParameter,
+  // isSelectedParameter,
   createSelectedParameter
 } from '~/composables/core/types/parameters/parameter-states'
 
@@ -25,41 +25,41 @@ interface TableColumnInput {
   order: number
 }
 
-interface TableInput {
-  name: string
-  displayName?: string
-  config: {
-    parentColumns: TableColumnInput[]
-    childColumns: TableColumnInput[]
-    selectedParameters: {
-      parent: ParameterInput[]
-      child: ParameterInput[]
-    }
-  }
-  categoryFilters?: {
-    selectedParentCategories: string[]
-    selectedChildCategories: string[]
-  }
-  sort?: TableSort
-  filters?: TableFilter[]
-}
+// interface TableInput {
+//   name: string
+//   displayName?: string
+//   config: {
+//     parentColumns: TableColumnInput[]
+//     childColumns: TableColumnInput[]
+//     selectedParameters: {
+//       parent: ParameterInput[]
+//       child: ParameterInput[]
+//     }
+//   }
+//   categoryFilters?: {
+//     selectedParentCategories: string[]
+//     selectedChildCategories: string[]
+//   }
+//   sort?: TableSort
+//   filters?: TableFilter[]
+// }
 
 /**
  * Input type for parameters matching SelectedParameter interface
  */
-interface ParameterInput {
-  id: string
-  name: string
-  kind: 'bim' | 'user'
-  type: string // BimValueType | UserValueType
-  value: string
-  group: string
-  visible: boolean
-  order: number
-  category?: string
-  description?: string
-  metadata?: Record<string, unknown>
-}
+// interface ParameterInput {
+//   id: string
+//   name: string
+//   kind: 'bim' | 'user'
+//   type: string // BimValueType | UserValueType
+//   value: string
+//   group: string
+//   visible: boolean
+//   order: number
+//   category?: string
+//   description?: string
+//   metadata?: Record<string, unknown>
+// }
 
 interface TableData {
   id: string
@@ -129,12 +129,14 @@ export function isTableData(data: unknown): data is TableData {
  * Transform GraphQL table data to TableSettings
  */
 export function transformTableData(tableData: TableData): TableSettings {
-  // Filter and validate parameters
+  // Filter and validate parameters with type narrowing
   const parentParams = tableData.config.selectedParameters.parent.filter(
-    (param) => isAvailableBimParameter(param) || isAvailableUserParameter(param)
+    (param): param is AvailableBimParameter | AvailableUserParameter =>
+      isAvailableBimParameter(param) || isAvailableUserParameter(param)
   )
   const childParams = tableData.config.selectedParameters.child.filter(
-    (param) => isAvailableBimParameter(param) || isAvailableUserParameter(param)
+    (param): param is AvailableBimParameter | AvailableUserParameter =>
+      isAvailableBimParameter(param) || isAvailableUserParameter(param)
   )
   return {
     id: tableData.id,
@@ -151,17 +153,19 @@ export function transformTableData(tableData: TableData): TableSettings {
         order: col.order,
         parameter: createSelectedParameter(
           {
-            kind: 'bim' as const,
+            kind: 'bim',
             id: col.field,
             name: col.header,
-            type: 'string' as const,
+            type: 'string',
             value: null,
             fetchedGroup: 'Parameters',
             currentGroup: 'Parameters',
             visible: col.visible,
-            isSystem: true
-          },
-          col.order
+            isSystem: true,
+            metadata: {}
+          } as AvailableBimParameter,
+          col.order,
+          col.visible
         )
       })
     ),
@@ -176,17 +180,19 @@ export function transformTableData(tableData: TableData): TableSettings {
         order: col.order,
         parameter: createSelectedParameter(
           {
-            kind: 'bim' as const,
+            kind: 'bim',
             id: col.field,
             name: col.header,
-            type: 'string' as const,
+            type: 'string',
             value: null,
             fetchedGroup: 'Parameters',
             currentGroup: 'Parameters',
             visible: col.visible,
-            isSystem: true
-          },
-          col.order
+            isSystem: true,
+            metadata: {}
+          } as AvailableBimParameter,
+          col.order,
+          col.visible
         )
       })
     ),
@@ -208,105 +214,111 @@ export function transformTableData(tableData: TableData): TableSettings {
  * Transform TableSettings to GraphQL input
  * @throws Error if any parameter is missing an id
  */
-export function transformTableToInput(table: TableSettings): TableInput {
-  // Validate parameters and ensure they have proper types
-  const validateParams = (params: SelectedParameter[]) => {
-    const validParams = params.filter(isSelectedParameter)
-    if (validParams.length !== params.length) {
-      throw new Error('Invalid parameters detected')
-    }
 
-    // Additional validation for required fields
-    validParams.forEach((param, index) => {
-      if (!param.id || !param.name || !param.kind || !param.type) {
-        throw new Error(`Missing required fields in parameter at index ${index}`)
-      }
-      if (param.kind !== 'bim' && param.kind !== 'user') {
-        throw new Error(`Invalid parameter kind at index ${index}: ${param.kind}`)
-      }
-    })
-    return validParams
-  }
+// is it still NEEDED OR NOT?
+// export function transformTableToInput(table: TableSettings): TableInput {
+//   // Validate parameters and ensure they have proper types
+//   const validateParams = (params: SelectedParameter[]): SelectedParameter[] => {
+//     // First validate using type guard
+//     const validParams = params.filter((param): param is SelectedParameter => {
+//       if (!isSelectedParameter(param)) return false
 
-  const validParentParams = validateParams(table.selectedParameters.parent)
-  const validChildParams = validateParams(table.selectedParameters.child)
+//       // Additional validation for required fields
+//       if (!param.id || !param.name || !param.kind || !param.type) {
+//         throw new Error(`Missing required fields in parameter`)
+//       }
+//       if (param.kind !== 'bim' && param.kind !== 'user') {
+//         throw new Error(`Invalid parameter kind: ${param.kind}`)
+//       }
+//       return true
+//     })
 
-  return {
-    name: table.name,
-    displayName: table.displayName,
-    config: {
-      parentColumns: table.parentColumns.map((col) => ({
-        field: col.field,
-        header: col.header,
-        width: col.width,
-        visible: col.visible,
-        removable: col.removable,
-        order: col.order
-      })),
-      childColumns: table.childColumns.map((col) => ({
-        field: col.field,
-        header: col.header,
-        width: col.width,
-        visible: col.visible,
-        removable: col.removable,
-        order: col.order
-      })),
-      selectedParameters: {
-        parent: validParentParams.map((param) => ({
-          id: param.id,
-          kind: param.kind,
-          name: param.name,
-          type: param.type,
-          value:
-            typeof param.value === 'string' ? param.value : JSON.stringify(param.value),
-          group: param.group,
-          visible: param.visible,
-          order: param.order,
-          category: param.category,
-          description: param.description,
-          metadata: param.metadata,
-          // Required fields from schema
-          field: param.id, // Use ID as field since it contains the full path
-          header: param.name, // Use name as header
-          removable: !param.metadata?.isSystem, // Not removable if system parameter
-          // BIM-specific required fields
-          ...(param.kind === 'bim' && {
-            fetchedGroup: param.group, // Use group as fetchedGroup for BIM parameters
-            currentGroup: param.group, // Use same group for currentGroup initially
-            sourceValue: param.value ? JSON.stringify(param.value) : 'null'
-          })
-        })),
-        child: validChildParams.map((param) => ({
-          id: param.id,
-          kind: param.kind,
-          name: param.name,
-          type: param.type,
-          value:
-            typeof param.value === 'string' ? param.value : JSON.stringify(param.value),
-          group: param.group,
-          visible: param.visible,
-          order: param.order,
-          category: param.category,
-          description: param.description,
-          metadata: param.metadata,
-          // Required fields from schema
-          field: param.id, // Use ID as field since it contains the full path
-          header: param.name, // Use name as header
-          removable: !param.metadata?.isSystem, // Not removable if system parameter
-          // BIM-specific required fields
-          ...(param.kind === 'bim' && {
-            fetchedGroup: param.group, // Use group as fetchedGroup for BIM parameters
-            currentGroup: param.group, // Use same group for currentGroup initially
-            sourceValue: param.value ? JSON.stringify(param.value) : 'null'
-          })
-        }))
-      }
-    },
-    categoryFilters: table.categoryFilters,
-    sort: table.sort,
-    filters: table.filters
-  }
-}
+//     if (validParams.length !== params.length) {
+//       throw new Error('Invalid parameters detected')
+//     }
+
+//     return validParams
+//   }
+
+//   const validParentParams = validateParams(table.selectedParameters.parent)
+//   const validChildParams = validateParams(table.selectedParameters.child)
+
+//   return {
+//     name: table.name,
+//     displayName: table.displayName,
+//     config: {
+//       parentColumns: table.parentColumns.map((col) => ({
+//         field: col.field,
+//         header: col.header,
+//         width: col.width,
+//         visible: col.visible,
+//         removable: col.removable,
+//         order: col.order
+//       })),
+//       childColumns: table.childColumns.map((col) => ({
+//         field: col.field,
+//         header: col.header,
+//         width: col.width,
+//         visible: col.visible,
+//         removable: col.removable,
+//         order: col.order
+//       })),
+//       selectedParameters: {
+//         parent: validParentParams.map((param) => ({
+//           id: param.id,
+//           kind: param.kind,
+//           name: param.name,
+//           type: param.type,
+//           value:
+//             typeof param.value === 'string' ? param.value : JSON.stringify(param.value),
+//           group: param.group,
+//           visible: param.visible,
+//           order: param.order,
+//           category: param.category,
+//           description: param.description,
+//           metadata: param.metadata,
+//           // Required fields from schema
+//           field: param.id, // Use ID as field since it contains the full path
+//           header: param.name, // Use name as header
+//           removable: !param.metadata?.isSystem, // Not removable if system parameter
+//           // BIM-specific required fields
+//           ...(param.kind === 'bim' && {
+//             fetchedGroup: param.group, // Use group as fetchedGroup for BIM parameters
+//             currentGroup: param.group, // Use same group for currentGroup initially
+//             sourceValue: param.value ? JSON.stringify(param.value) : 'null'
+//           })
+//         })),
+//         child: validChildParams.map((param) => ({
+//           id: param.id,
+//           kind: param.kind,
+//           name: param.name,
+//           type: param.type,
+//           value:
+//             typeof param.value === 'string' ? param.value : JSON.stringify(param.value),
+//           group: param.group,
+//           visible: param.visible,
+//           order: param.order,
+//           category: param.category,
+//           description: param.description,
+//           metadata: param.metadata,
+//           // Required fields from schema
+//           field: param.id, // Use ID as field since it contains the full path
+//           header: param.name, // Use name as header
+//           removable: !param.metadata?.isSystem, // Not removable if system parameter
+//           // BIM-specific required fields
+//           ...(param.kind === 'bim' && {
+//             fetchedGroup: param.group, // Use group as fetchedGroup for BIM parameters
+//             currentGroup: param.group, // Use same group for currentGroup initially
+//             sourceValue: param.value ? JSON.stringify(param.value) : 'null'
+//           })
+//         }))
+//       }
+//     },
+//     categoryFilters: table.categoryFilters,
+//     sort: table.sort,
+//     filters: table.filters
+//   }
+// }
 
 /**
  * Format table key for storage

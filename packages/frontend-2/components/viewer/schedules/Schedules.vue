@@ -10,7 +10,7 @@
         <template #header>
           <ScheduleTableHeader
             :selected-table-id="store.state.value.currentTableId"
-            :table-name="_interactions.state.value.tableName"
+            :table-name="tableName"
             :tables="store.tablesArray.value || []"
             :show-category-options="showCategoryOptions"
             :has-changes="hasChanges"
@@ -19,10 +19,7 @@
             @table-change="handleTableChange"
             @save="handleSaveTable"
             @toggle-category-options="showCategoryOptions = !showCategoryOptions"
-            @manage-parameters="
-              _interactions.showParameterManager.value =
-                !_interactions.showParameterManager.value
-            "
+            @manage-parameters="showParameterManager = !showParameterManager"
           />
         </template>
         <template #menu>
@@ -36,7 +33,7 @@
               @update="handleCategoryUpdate"
             />
             <ParameterManager
-              v-show="_interactions.showParameterManager.value"
+              v-show="showParameterManager"
               :selected-parent-categories="categories.selectedParentCategories.value"
               :selected-child-categories="categories.selectedChildCategories.value"
               :available-parent-parameters="
@@ -45,30 +42,8 @@
               :available-child-parameters="
                 unref(parameterStore.childAvailableBimParameters)
               "
-              :selected-parent-parameters="
-                (tableStore.currentTable?.value?.parentColumns || []).map((col) => ({
-                  id: col.id,
-                  name: col.header,
-                  kind: col.parameter.kind,
-                  type: col.parameter.type,
-                  value: col.parameter.value,
-                  visible: col.visible,
-                  group: col.parameter.group || '',
-                  order: col.order
-                }))
-              "
-              :selected-child-parameters="
-                (tableStore.currentTable?.value?.childColumns || []).map((col) => ({
-                  id: col.id,
-                  name: col.header,
-                  kind: col.parameter.kind,
-                  type: col.parameter.type,
-                  value: col.parameter.value,
-                  visible: col.visible,
-                  group: col.parameter.group || '',
-                  order: col.order
-                }))
-              "
+              :selected-parent-parameters="selectedParentParameters"
+              :selected-child-parameters="selectedChildParameters"
               :can-create-parameters="false"
               @parameter-visibility-change="handleParameterVisibilityChange"
               @error="handleError"
@@ -104,7 +79,7 @@
               :has-selected-categories="categories.hasSelectedCategories"
               :selected-parent-categories="unref(categories.selectedParentCategories)"
               :selected-child-categories="unref(categories.selectedChildCategories)"
-              :show-parameter-manager="_interactions.showParameterManager.value"
+              :show-parameter-manager="showParameterManager"
               :show-category-options="showCategoryOptions"
               :has-changes="hasChanges"
               :parent-elements="unref(parentElements)"
@@ -130,7 +105,6 @@ import { useStore } from '~/composables/core/store'
 import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
 import { useAuthManager } from '~/lib/auth/composables/auth'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
-import { useTableInteractions } from '~/composables/core/tables/interactions/useTableInteractions'
 import { useScheduleInitialization } from './composables/useScheduleInitialization'
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
@@ -139,8 +113,10 @@ import type {
   ElementData,
   SelectedParameter,
   TableColumn,
-  TableSettings
+  TableSettings,
+  AvailableParameter
 } from '~/composables/core/types'
+import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import type { ColumnVisibilityPayload } from '~/composables/core/types/tables/table-events'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import ScheduleMainView from './components/ScheduleMainView.vue'
@@ -222,7 +198,9 @@ watch(worldTree, (newTree) => {
 // Initialize refs with proper types
 const error = ref<Error | null>(null)
 const showCategoryOptions = ref(false)
+const showParameterManager = ref(false)
 const initializationAttempted = ref(false)
+const tableName = ref<string>('New Table')
 
 // Category handlers
 async function handleCategoryUpdate(payload: {
@@ -258,34 +236,20 @@ async function handleSelectedTableIdUpdate(tableId: string) {
   try {
     debug.log(DebugCategories.TABLE_UPDATES, 'Table selection changed', { tableId })
 
-    // Update interactions state
-    _interactions.state.value = {
-      ..._interactions.state.value,
-      selectedTableId: tableId,
-      // For new table, use default name
-      tableName: !tableId ? 'New Table' : _interactions.state.value.tableName
-    }
-
     // If selecting existing table, get its settings
     if (tableId) {
       const selectedTable = tableStore.currentTable.value
       if (selectedTable) {
-        // Update with table settings
-        _interactions.state.value = {
-          ..._interactions.state.value,
-          tableName: selectedTable.name,
-          currentTable: selectedTable,
-          selectedParentCategories:
-            selectedTable.categoryFilters.selectedParentCategories,
-          selectedChildCategories: selectedTable.categoryFilters.selectedChildCategories
-        }
+        tableName.value = selectedTable.name
       }
+    } else {
+      tableName.value = 'New Table'
     }
 
     // Update store
     await store.lifecycle.update({
       selectedTableId: tableId,
-      tableName: _interactions.state.value.tableName
+      tableName: tableName.value
     })
 
     // Initialize data with new settings
@@ -298,14 +262,7 @@ async function handleSelectedTableIdUpdate(tableId: string) {
 async function handleTableNameUpdate(name: string) {
   try {
     debug.log(DebugCategories.TABLE_UPDATES, 'Table name changed', { name })
-
-    // Update interactions state
-    _interactions.state.value = {
-      ..._interactions.state.value,
-      tableName: name
-    }
-
-    // Update store
+    tableName.value = name
     await store.lifecycle.update({ tableName: name })
   } catch (err) {
     handleError(err)
@@ -329,8 +286,27 @@ async function handleSaveTable() {
       if (!apolloClient) throw new Error('Apollo client not initialized')
       provideApolloClient(apolloClient)
 
-      // Get table config from interactions
-      const tableConfig = await _interactions.handleSaveTable()
+      // Create table config
+      const currentTableId = store.state.value.currentTableId
+      const newId = currentTableId || `table-${Date.now()}`
+
+      const tableConfig: TableSettings = {
+        id: newId,
+        name: tableName.value,
+        displayName: tableName.value,
+        parentColumns: tableStore.currentTable.value?.parentColumns || [],
+        childColumns: tableStore.currentTable.value?.childColumns || [],
+        categoryFilters: {
+          selectedParentCategories: categories.selectedParentCategories.value,
+          selectedChildCategories: categories.selectedChildCategories.value
+        },
+        selectedParameters: {
+          parent: selectedParentParameters.value,
+          child: selectedChildParameters.value
+        },
+        filters: [],
+        lastUpdateTimestamp: Date.now()
+      }
 
       // Save table to store
       await tableStore.saveTable(tableConfig)
@@ -353,7 +329,7 @@ async function handleSaveTable() {
 
 // Computed properties
 const hasChanges = computed(() => {
-  const currentTableId = _interactions.state.value.selectedTableId
+  const currentTableId = store.state.value.currentTableId
   if (!currentTableId) return false
 
   const currentTable = tableStore.currentTable.value
@@ -423,6 +399,55 @@ const _currentTable = computed(() => {
   }
 })
 
+// Transform parameters for ParameterManager
+const selectedParentParameters = computed(() =>
+  (tableStore.currentTable?.value?.parentColumns || []).map((col) =>
+    createSelectedParameter(
+      {
+        id: col.id,
+        name: col.header,
+        kind: col.parameter.kind,
+        type: col.parameter.type,
+        value: col.parameter.value,
+        group: col.parameter.group || 'Base Properties',
+        visible: col.visible,
+        isSystem: false,
+        metadata: col.parameter.metadata || {},
+        ...(col.parameter.kind === 'bim' && {
+          fetchedGroup: col.parameter.group || 'Base Properties',
+          currentGroup: col.parameter.group || 'Base Properties'
+        })
+      } as AvailableParameter,
+      col.order,
+      col.visible
+    )
+  )
+)
+
+const selectedChildParameters = computed(() =>
+  (tableStore.currentTable?.value?.childColumns || []).map((col) =>
+    createSelectedParameter(
+      {
+        id: col.id,
+        name: col.header,
+        kind: col.parameter.kind,
+        type: col.parameter.type,
+        value: col.parameter.value,
+        group: col.parameter.group || 'Base Properties',
+        visible: col.visible,
+        isSystem: false,
+        metadata: col.parameter.metadata || {},
+        ...(col.parameter.kind === 'bim' && {
+          fetchedGroup: col.parameter.group || 'Base Properties',
+          currentGroup: col.parameter.group || 'Base Properties'
+        })
+      } as AvailableParameter,
+      col.order,
+      col.visible
+    )
+  )
+)
+
 // Initialize core composables
 // Create a store adapter that matches the Store interface
 const storeAdapter = {
@@ -470,19 +495,6 @@ defineExpose({
   handleError: (err: unknown) => updateErrorState(createSafeError(err)),
   handleTableDataUpdate,
   handleColumnVisibilityChange
-})
-
-const _interactions = useTableInteractions({
-  store,
-  state: {
-    selectedTableId: store.selectedTableId.value || 'default',
-    tableName: store.tableName.value || 'Default Table',
-    currentTable: null,
-    selectedParentCategories: parentCategories,
-    selectedChildCategories: childCategories
-  },
-  initComponent,
-  handleError: (err) => handleError(createSafeError(err))
 })
 
 // Loading state management

@@ -180,11 +180,6 @@ extend type Mutation {
   userSettingsUpdate(settings: JSONObject!): Boolean!
 
   """
-  Update user tables configuration
-  """
-  userTablesUpdate(tables: JSONObject!): Boolean!
-
-  """
   Update user parameters mapping configuration
   """
   userParameterMappingsUpdate(mappings: JSONObject!): Boolean!

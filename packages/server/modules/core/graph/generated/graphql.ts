@@ -489,7 +489,7 @@ export type BimParameter = BaseParameter & {
   visible: Scalars['Boolean']['output'];
 };
 
-/** BIM value type enum */
+/** Value types for BIM parameters */
 export enum BimValueType {
   Array = 'array',
   Boolean = 'boolean',
@@ -916,12 +916,6 @@ export type CreateModelInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
   projectId: Scalars['ID']['input'];
-};
-
-export type CreateNamedTableInput = {
-  categoryFilters?: InputMaybe<CategoryFiltersInput>;
-  config: TableConfigInput;
-  name: Scalars['String']['input'];
 };
 
 export type CreateUserEmailInput = {
@@ -1382,12 +1376,8 @@ export type Mutation = {
   commitsMove: Scalars['Boolean']['output'];
   /** Create a new BIM parameter */
   createBimParameter: ParameterMutationResponse;
-  /** Create a new named table configuration */
-  createNamedTable: TableSettings;
   /** Create a new user parameter */
   createUserParameter: ParameterMutationResponse;
-  /** Delete a named table configuration */
-  deleteNamedTable: Scalars['Boolean']['output'];
   /** Delete a parameter */
   deleteParameter: Scalars['Boolean']['output'];
   /**
@@ -1482,8 +1472,6 @@ export type Mutation = {
   streamsDelete: Scalars['Boolean']['output'];
   /** Update a BIM parameter */
   updateBimParameter: ParameterMutationResponse;
-  /** Update an existing named table configuration */
-  updateNamedTable: TableSettings;
   /** Update a user parameter */
   updateUserParameter: ParameterMutationResponse;
   /**
@@ -1501,7 +1489,11 @@ export type Mutation = {
   userRoleChange: Scalars['Boolean']['output'];
   /** Update user settings (controlWidth only) */
   userSettingsUpdate: Scalars['Boolean']['output'];
-  /** Update user tables configuration */
+  /**
+   * Update user tables
+   * Takes a map of table ID to table settings
+   * Stored as JSONB in database but validated through GraphQL types
+   */
   userTablesUpdate: Scalars['Boolean']['output'];
   /**
    * Edits a user's profile.
@@ -1660,18 +1652,8 @@ export type MutationCreateBimParameterArgs = {
 };
 
 
-export type MutationCreateNamedTableArgs = {
-  input: CreateNamedTableInput;
-};
-
-
 export type MutationCreateUserParameterArgs = {
   input: CreateUserParameterInput;
-};
-
-
-export type MutationDeleteNamedTableArgs = {
-  id: Scalars['ID']['input'];
 };
 
 
@@ -1803,11 +1785,6 @@ export type MutationUpdateBimParameterArgs = {
 };
 
 
-export type MutationUpdateNamedTableArgs = {
-  input: UpdateNamedTableInput;
-};
-
-
 export type MutationUpdateUserParameterArgs = {
   id: Scalars['ID']['input'];
   input: UpdateUserParameterInput;
@@ -1852,7 +1829,7 @@ export type MutationUserSettingsUpdateArgs = {
 
 
 export type MutationUserTablesUpdateArgs = {
-  tables: Scalars['JSONObject']['input'];
+  input: TableSettingsMapInput;
 };
 
 
@@ -1935,8 +1912,32 @@ export type ObjectCreateInput = {
   streamId: Scalars['String']['input'];
 };
 
-/** Union of all parameter types */
-export type Parameter = BimParameter | UserParameter;
+/** Parameter type for both BIM and user parameters */
+export type Parameter = {
+  __typename?: 'Parameter';
+  category?: Maybe<Scalars['String']['output']>;
+  computed?: Maybe<Scalars['JSON']['output']>;
+  currentGroup?: Maybe<Scalars['String']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  equation?: Maybe<Scalars['String']['output']>;
+  fetchedGroup?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
+  group?: Maybe<Scalars['String']['output']>;
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  isCustom?: Maybe<Scalars['Boolean']['output']>;
+  kind: Scalars['String']['output'];
+  metadata?: Maybe<Scalars['JSON']['output']>;
+  name: Scalars['String']['output'];
+  order?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  sourceValue?: Maybe<Scalars['String']['output']>;
+  type?: Maybe<BimValueType>;
+  userType?: Maybe<UserValueType>;
+  value: Scalars['String']['output'];
+  visible: Scalars['Boolean']['output'];
+};
 
 /** Input type for parameters (both BIM and User types) */
 export type ParameterInput = {
@@ -2749,10 +2750,6 @@ export type Query = {
   streams?: Maybe<StreamCollection>;
   /** Get all parameters for a specific table */
   tableParameters: Array<Parameter>;
-  /** Get a specific named table configuration */
-  tableSettings?: Maybe<TableSettings>;
-  /** Get all named table configurations for the current user */
-  tableSettingsP: Array<TableSettings>;
   /**
    * Gets the profile of a user. If no id argument is provided, will return the current authenticated user's profile (as extracted from the authorization header).
    * @deprecated To be removed in the near future! Use 'activeUser' to get info about the active user or 'otherUser' to get info about another user.
@@ -2894,11 +2891,6 @@ export type QueryStreamsArgs = {
 
 export type QueryTableParametersArgs = {
   tableId: Scalars['ID']['input'];
-};
-
-
-export type QueryTableSettingsArgs = {
-  id: Scalars['ID']['input'];
 };
 
 
@@ -3628,18 +3620,26 @@ export type SubscriptionViewerUserActivityBroadcastedArgs = {
 export type TableColumn = {
   __typename?: 'TableColumn';
   field: Scalars['String']['output'];
+  filterable?: Maybe<Scalars['Boolean']['output']>;
   header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
   order: Scalars['Int']['output'];
+  parameter: Parameter;
   removable?: Maybe<Scalars['Boolean']['output']>;
+  sortable?: Maybe<Scalars['Boolean']['output']>;
   visible: Scalars['Boolean']['output'];
   width?: Maybe<Scalars['Int']['output']>;
 };
 
 export type TableColumnInput = {
   field: Scalars['String']['input'];
+  filterable?: InputMaybe<Scalars['Boolean']['input']>;
   header: Scalars['String']['input'];
+  id: Scalars['ID']['input'];
   order: Scalars['Int']['input'];
+  parameter: ParameterInput;
   removable?: InputMaybe<Scalars['Boolean']['input']>;
+  sortable?: InputMaybe<Scalars['Boolean']['input']>;
   visible: Scalars['Boolean']['input'];
   width?: InputMaybe<Scalars['Int']['input']>;
 };
@@ -3667,6 +3667,7 @@ export type TableFilter = {
   value?: Maybe<Scalars['JSON']['output']>;
 };
 
+/** Input for table filter */
 export type TableFilterInput = {
   columnId: Scalars['String']['input'];
   operator: Scalars['String']['input'];
@@ -3699,16 +3700,42 @@ export type TableSettings = {
   sort?: Maybe<TableSort>;
 };
 
+/** Input for a single table settings entry */
+export type TableSettingsEntry = {
+  /** Table ID - used as key in the map */
+  id: Scalars['ID']['input'];
+  /** Table settings */
+  settings: TableSettingsInput;
+};
+
+/** Input for table settings */
+export type TableSettingsInput = {
+  categoryFilters?: InputMaybe<CategoryFiltersInput>;
+  childColumns: Array<TableColumnInput>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  displayName: Scalars['String']['input'];
+  filters?: InputMaybe<Array<TableFilterInput>>;
+  lastUpdateTimestamp: Scalars['Float']['input'];
+  metadata?: InputMaybe<Scalars['JSON']['input']>;
+  name: Scalars['String']['input'];
+  parentColumns: Array<TableColumnInput>;
+  selectedParameters: TableSelectedParametersInput;
+};
+
+/** Input for table settings map */
+export type TableSettingsMapInput = {
+  /**
+   * Map of table ID to table settings
+   * Key is the table ID, value is the table settings
+   */
+  tables: Array<TableSettingsEntry>;
+};
+
 /** Sort configuration for tables */
 export type TableSort = {
   __typename?: 'TableSort';
   field?: Maybe<Scalars['String']['output']>;
   order?: Maybe<SortOrder>;
-};
-
-export type TableSortInput = {
-  field?: InputMaybe<Scalars['String']['input']>;
-  order?: InputMaybe<SortOrder>;
 };
 
 export type TestAutomationRun = {
@@ -3788,16 +3815,6 @@ export type UpdateModelInput = {
   id: Scalars['ID']['input'];
   name?: InputMaybe<Scalars['String']['input']>;
   projectId: Scalars['ID']['input'];
-};
-
-export type UpdateNamedTableInput = {
-  categoryFilters?: InputMaybe<CategoryFiltersInput>;
-  config?: InputMaybe<TableConfigInput>;
-  displayName?: InputMaybe<Scalars['String']['input']>;
-  filters?: InputMaybe<Array<TableFilterInput>>;
-  id: Scalars['ID']['input'];
-  name?: InputMaybe<Scalars['String']['input']>;
-  sort?: InputMaybe<TableSortInput>;
 };
 
 /** Input for updating a user parameter */
@@ -4123,10 +4140,15 @@ export type UserUpdateInput = {
   name?: InputMaybe<Scalars['String']['input']>;
 };
 
-/** User value type enum */
+/** Value types for user parameters */
 export enum UserValueType {
+  Array = 'array',
+  Boolean = 'boolean',
   Equation = 'equation',
-  Fixed = 'fixed'
+  Fixed = 'fixed',
+  Number = 'number',
+  Object = 'object',
+  String = 'string'
 }
 
 export type UserWorkspacesFilter = {
@@ -4740,12 +4762,6 @@ export type DirectiveResolverFn<TResult = {}, TParent = {}, TContext = {}, TArgs
   info: GraphQLResolveInfo
 ) => TResult | Promise<TResult>;
 
-/** Mapping of union types */
-export type ResolversUnionTypes<_RefType extends Record<string, unknown>> = {
-  AutomationRevisionTriggerDefinition: ( AutomationRevisionTriggerDefinitionGraphQLReturn );
-  AutomationRunTrigger: ( AutomationRunTriggerGraphQLReturn );
-  Parameter: ( BimParameter ) | ( UserParameter );
-};
 
 /** Mapping of interface types */
 export type ResolversInterfaceTypes<_RefType extends Record<string, unknown>> = {
@@ -4835,7 +4851,6 @@ export type ResolversTypes = {
   CreateCommentInput: CreateCommentInput;
   CreateCommentReplyInput: CreateCommentReplyInput;
   CreateModelInput: CreateModelInput;
-  CreateNamedTableInput: CreateNamedTableInput;
   CreateUserEmailInput: CreateUserEmailInput;
   CreateUserParameterInput: CreateUserParameterInput;
   CreateVersionInput: CreateVersionInput;
@@ -4873,9 +4888,9 @@ export type ResolversTypes = {
   Object: ResolverTypeWrapper<ObjectGraphQLReturn>;
   ObjectCollection: ResolverTypeWrapper<Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversTypes['Object']> }>;
   ObjectCreateInput: ObjectCreateInput;
-  Parameter: ResolverTypeWrapper<ResolversUnionTypes<ResolversTypes>['Parameter']>;
+  Parameter: ResolverTypeWrapper<Parameter>;
   ParameterInput: ParameterInput;
-  ParameterMutationResponse: ResolverTypeWrapper<Omit<ParameterMutationResponse, 'parameter'> & { parameter: ResolversTypes['Parameter'] }>;
+  ParameterMutationResponse: ResolverTypeWrapper<ParameterMutationResponse>;
   PasswordStrengthCheckFeedback: ResolverTypeWrapper<PasswordStrengthCheckFeedback>;
   PasswordStrengthCheckResults: ResolverTypeWrapper<PasswordStrengthCheckResults>;
   PendingStreamCollaborator: ResolverTypeWrapper<PendingStreamCollaboratorGraphQLReturn>;
@@ -4962,15 +4977,17 @@ export type ResolversTypes = {
   Subscription: ResolverTypeWrapper<{}>;
   TableColumn: ResolverTypeWrapper<TableColumn>;
   TableColumnInput: TableColumnInput;
-  TableConfig: ResolverTypeWrapper<Omit<TableConfig, 'selectedParameters'> & { selectedParameters: ResolversTypes['TableSelectedParameters'] }>;
+  TableConfig: ResolverTypeWrapper<TableConfig>;
   TableConfigInput: TableConfigInput;
   TableFilter: ResolverTypeWrapper<TableFilter>;
   TableFilterInput: TableFilterInput;
-  TableSelectedParameters: ResolverTypeWrapper<Omit<TableSelectedParameters, 'child' | 'parent'> & { child: Array<ResolversTypes['Parameter']>, parent: Array<ResolversTypes['Parameter']> }>;
+  TableSelectedParameters: ResolverTypeWrapper<TableSelectedParameters>;
   TableSelectedParametersInput: TableSelectedParametersInput;
-  TableSettings: ResolverTypeWrapper<Omit<TableSettings, 'config'> & { config: ResolversTypes['TableConfig'] }>;
+  TableSettings: ResolverTypeWrapper<TableSettings>;
+  TableSettingsEntry: TableSettingsEntry;
+  TableSettingsInput: TableSettingsInput;
+  TableSettingsMapInput: TableSettingsMapInput;
   TableSort: ResolverTypeWrapper<TableSort>;
-  TableSortInput: TableSortInput;
   TestAutomationRun: ResolverTypeWrapper<TestAutomationRun>;
   TestAutomationRunTrigger: ResolverTypeWrapper<TestAutomationRunTrigger>;
   TestAutomationRunTriggerPayload: ResolverTypeWrapper<TestAutomationRunTriggerPayload>;
@@ -4981,7 +4998,6 @@ export type ResolversTypes = {
   UpdateAutomateFunctionInput: UpdateAutomateFunctionInput;
   UpdateBimParameterInput: UpdateBimParameterInput;
   UpdateModelInput: UpdateModelInput;
-  UpdateNamedTableInput: UpdateNamedTableInput;
   UpdateUserParameterInput: UpdateUserParameterInput;
   UpdateVersionInput: UpdateVersionInput;
   User: ResolverTypeWrapper<UserGraphQLReturn>;
@@ -5123,7 +5139,6 @@ export type ResolversParentTypes = {
   CreateCommentInput: CreateCommentInput;
   CreateCommentReplyInput: CreateCommentReplyInput;
   CreateModelInput: CreateModelInput;
-  CreateNamedTableInput: CreateNamedTableInput;
   CreateUserEmailInput: CreateUserEmailInput;
   CreateUserParameterInput: CreateUserParameterInput;
   CreateVersionInput: CreateVersionInput;
@@ -5159,9 +5174,9 @@ export type ResolversParentTypes = {
   Object: ObjectGraphQLReturn;
   ObjectCollection: Omit<ObjectCollection, 'objects'> & { objects: Array<ResolversParentTypes['Object']> };
   ObjectCreateInput: ObjectCreateInput;
-  Parameter: ResolversUnionTypes<ResolversParentTypes>['Parameter'];
+  Parameter: Parameter;
   ParameterInput: ParameterInput;
-  ParameterMutationResponse: Omit<ParameterMutationResponse, 'parameter'> & { parameter: ResolversParentTypes['Parameter'] };
+  ParameterMutationResponse: ParameterMutationResponse;
   PasswordStrengthCheckFeedback: PasswordStrengthCheckFeedback;
   PasswordStrengthCheckResults: PasswordStrengthCheckResults;
   PendingStreamCollaborator: PendingStreamCollaboratorGraphQLReturn;
@@ -5233,15 +5248,17 @@ export type ResolversParentTypes = {
   Subscription: {};
   TableColumn: TableColumn;
   TableColumnInput: TableColumnInput;
-  TableConfig: Omit<TableConfig, 'selectedParameters'> & { selectedParameters: ResolversParentTypes['TableSelectedParameters'] };
+  TableConfig: TableConfig;
   TableConfigInput: TableConfigInput;
   TableFilter: TableFilter;
   TableFilterInput: TableFilterInput;
-  TableSelectedParameters: Omit<TableSelectedParameters, 'child' | 'parent'> & { child: Array<ResolversParentTypes['Parameter']>, parent: Array<ResolversParentTypes['Parameter']> };
+  TableSelectedParameters: TableSelectedParameters;
   TableSelectedParametersInput: TableSelectedParametersInput;
-  TableSettings: Omit<TableSettings, 'config'> & { config: ResolversParentTypes['TableConfig'] };
+  TableSettings: TableSettings;
+  TableSettingsEntry: TableSettingsEntry;
+  TableSettingsInput: TableSettingsInput;
+  TableSettingsMapInput: TableSettingsMapInput;
   TableSort: TableSort;
-  TableSortInput: TableSortInput;
   TestAutomationRun: TestAutomationRun;
   TestAutomationRunTrigger: TestAutomationRunTrigger;
   TestAutomationRunTriggerPayload: TestAutomationRunTriggerPayload;
@@ -5251,7 +5268,6 @@ export type ResolversParentTypes = {
   UpdateAutomateFunctionInput: UpdateAutomateFunctionInput;
   UpdateBimParameterInput: UpdateBimParameterInput;
   UpdateModelInput: UpdateModelInput;
-  UpdateNamedTableInput: UpdateNamedTableInput;
   UpdateUserParameterInput: UpdateUserParameterInput;
   UpdateVersionInput: UpdateVersionInput;
   User: UserGraphQLReturn;
@@ -5952,9 +5968,7 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   commitsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsDeleteArgs, 'input'>>;
   commitsMove?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationCommitsMoveArgs, 'input'>>;
   createBimParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationCreateBimParameterArgs, 'input'>>;
-  createNamedTable?: Resolver<ResolversTypes['TableSettings'], ParentType, ContextType, RequireFields<MutationCreateNamedTableArgs, 'input'>>;
   createUserParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationCreateUserParameterArgs, 'input'>>;
-  deleteNamedTable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteNamedTableArgs, 'id'>>;
   deleteParameter?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteParameterArgs, 'id'>>;
   inviteDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationInviteDeleteArgs, 'inviteId'>>;
   inviteResend?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationInviteResendArgs, 'inviteId'>>;
@@ -5982,7 +5996,6 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   streamUpdatePermission?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationStreamUpdatePermissionArgs, 'permissionParams'>>;
   streamsDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, Partial<MutationStreamsDeleteArgs>>;
   updateBimParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationUpdateBimParameterArgs, 'id' | 'input'>>;
-  updateNamedTable?: Resolver<ResolversTypes['TableSettings'], ParentType, ContextType, RequireFields<MutationUpdateNamedTableArgs, 'input'>>;
   updateUserParameter?: Resolver<ResolversTypes['ParameterMutationResponse'], ParentType, ContextType, RequireFields<MutationUpdateUserParameterArgs, 'id' | 'input'>>;
   userCommentThreadActivityBroadcast?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserCommentThreadActivityBroadcastArgs, 'commentId' | 'streamId'>>;
   userDelete?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserDeleteArgs, 'userConfirmation'>>;
@@ -5991,7 +6004,7 @@ export type MutationResolvers<ContextType = GraphQLContext, ParentType extends R
   userParametersUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserParametersUpdateArgs, 'parameters'>>;
   userRoleChange?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserRoleChangeArgs, 'userRoleInput'>>;
   userSettingsUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserSettingsUpdateArgs, 'settings'>>;
-  userTablesUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserTablesUpdateArgs, 'tables'>>;
+  userTablesUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserTablesUpdateArgs, 'input'>>;
   userUpdate?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserUpdateArgs, 'user'>>;
   userViewerActivityBroadcast?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationUserViewerActivityBroadcastArgs, 'resourceId' | 'streamId'>>;
   versionMutations?: Resolver<ResolversTypes['VersionMutations'], ParentType, ContextType>;
@@ -6021,7 +6034,29 @@ export type ObjectCollectionResolvers<ContextType = GraphQLContext, ParentType e
 };
 
 export type ParameterResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['Parameter'] = ResolversParentTypes['Parameter']> = {
-  __resolveType: TypeResolveFn<'BimParameter' | 'UserParameter', ParentType, ContextType>;
+  category?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  computed?: Resolver<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
+  currentGroup?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  equation?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  fetchedGroup?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  field?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  group?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  header?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  isCustom?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
+  kind?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  metadata?: Resolver<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  order?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  removable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  source?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  sourceValue?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  type?: Resolver<Maybe<ResolversTypes['BimValueType']>, ParentType, ContextType>;
+  userType?: Resolver<Maybe<ResolversTypes['UserValueType']>, ParentType, ContextType>;
+  value?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  visible?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
 export type ParameterMutationResponseResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['ParameterMutationResponse'] = ResolversParentTypes['ParameterMutationResponse']> = {
@@ -6287,8 +6322,6 @@ export type QueryResolvers<ContextType = GraphQLContext, ParentType extends Reso
   streamInvites?: Resolver<Array<ResolversTypes['PendingStreamCollaborator']>, ParentType, ContextType>;
   streams?: Resolver<Maybe<ResolversTypes['StreamCollection']>, ParentType, ContextType, RequireFields<QueryStreamsArgs, 'limit'>>;
   tableParameters?: Resolver<Array<ResolversTypes['Parameter']>, ParentType, ContextType, RequireFields<QueryTableParametersArgs, 'tableId'>>;
-  tableSettings?: Resolver<Maybe<ResolversTypes['TableSettings']>, ParentType, ContextType, RequireFields<QueryTableSettingsArgs, 'id'>>;
-  tableSettingsP?: Resolver<Array<ResolversTypes['TableSettings']>, ParentType, ContextType>;
   user?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType, Partial<QueryUserArgs>>;
   userPwdStrength?: Resolver<ResolversTypes['PasswordStrengthCheckResults'], ParentType, ContextType, RequireFields<QueryUserPwdStrengthArgs, 'pwd'>>;
   userSearch?: Resolver<ResolversTypes['UserSearchResultCollection'], ParentType, ContextType, RequireFields<QueryUserSearchArgs, 'archived' | 'emailOnly' | 'limit' | 'query'>>;
@@ -6523,9 +6556,13 @@ export type SubscriptionResolvers<ContextType = GraphQLContext, ParentType exten
 
 export type TableColumnResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableColumn'] = ResolversParentTypes['TableColumn']> = {
   field?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  filterable?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   header?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   order?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  parameter?: Resolver<ResolversTypes['Parameter'], ParentType, ContextType>;
   removable?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
+  sortable?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType>;
   visible?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   width?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;

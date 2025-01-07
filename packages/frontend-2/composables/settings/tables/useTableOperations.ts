@@ -73,7 +73,12 @@ export function useTableOperations(options: UseTableOperationsOptions) {
         selectedParentCategories: [],
         selectedChildCategories: []
       },
-      selectedParameterIds: []
+      selectedParameters: {
+        parent: [],
+        child: []
+      },
+      filters: [],
+      lastUpdateTimestamp: Date.now()
     }
 
     const updatedTable: TableSettings = {
@@ -94,10 +99,13 @@ export function useTableOperations(options: UseTableOperationsOptions) {
           selectedParentCategories: [],
           selectedChildCategories: []
         },
-      selectedParameterIds: Array.isArray(config.selectedParameterIds)
-        ? config.selectedParameterIds
-        : baseTable.selectedParameterIds || [],
-      description: config.description || baseTable.description
+      selectedParameters: config.selectedParameters ||
+        baseTable.selectedParameters || {
+          parent: [],
+          child: []
+        },
+      filters: config.filters || baseTable.filters || [],
+      lastUpdateTimestamp: config.lastUpdateTimestamp || Date.now()
     }
 
     const currentTables = settings.value.namedTables || {}
@@ -213,10 +221,12 @@ export function useTableOperations(options: UseTableOperationsOptions) {
         selectedParentCategories: [],
         selectedChildCategories: []
       },
-      selectedParameterIds: Array.isArray(config.selectedParameterIds)
-        ? config.selectedParameterIds
-        : [],
-      description: config.description
+      selectedParameters: config.selectedParameters || {
+        parent: [],
+        child: []
+      },
+      filters: config.filters || [],
+      lastUpdateTimestamp: Date.now()
     }
 
     const currentTables = settings.value.namedTables || {}

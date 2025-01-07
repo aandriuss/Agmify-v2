@@ -420,8 +420,26 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         throw new Error('GraphQL operations not initialized')
       }
 
-      // Delete from PostgreSQL by saving an empty record
-      const success = await graphqlOps.updateTables({})
+      // Delete from PostgreSQL by saving an empty tables array
+      const success = await graphqlOps.updateTables({
+        [tableId]: {
+          id: tableId,
+          name: '',
+          displayName: '',
+          parentColumns: [],
+          childColumns: [],
+          categoryFilters: {
+            selectedParentCategories: [],
+            selectedChildCategories: []
+          },
+          selectedParameters: {
+            parent: [],
+            child: []
+          },
+          filters: [],
+          lastUpdateTimestamp: Date.now()
+        }
+      })
 
       if (!success) {
         throw new Error('Failed to delete table')

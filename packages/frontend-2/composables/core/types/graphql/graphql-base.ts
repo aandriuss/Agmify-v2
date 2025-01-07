@@ -1,4 +1,4 @@
-import type { TableColumn, CategoryFilters } from '../tables'
+import type { TableColumn, TableCategoryFilters } from '../tables'
 import type { BimValueType, UserValueType } from '../parameters'
 
 /**
@@ -97,7 +97,105 @@ export interface ParametersOperationResponse {
 }
 
 /**
- * Table Types
+ * Table GraphQL Types
+ */
+/**
+ * GraphQL Table Input Types - match schema exactly
+ */
+export interface TableSettingsInput {
+  name: string
+  displayName: string
+  parentColumns: TableColumnInput[]
+  childColumns: TableColumnInput[]
+  categoryFilters?: CategoryFiltersInput
+  selectedParameters: TableSelectedParametersInput
+  filters?: TableFilterInput[]
+  lastUpdateTimestamp: number
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface TableColumnInput {
+  id: string
+  field: string
+  header: string
+  width?: number
+  visible: boolean
+  removable?: boolean
+  order: number
+  sortable?: boolean
+  filterable?: boolean
+  parameter: ParameterInput
+}
+
+export interface CategoryFiltersInput {
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
+}
+
+export interface TableSelectedParametersInput {
+  parent: ParameterInput[]
+  child: ParameterInput[]
+}
+
+export interface TableFilterInput {
+  columnId: string
+  value: unknown
+  operator: string
+}
+
+export interface ParameterInput {
+  // Common fields
+  id: string
+  kind: 'bim' | 'user'
+  name: string
+  field: string
+  visible: boolean
+  header: string
+  description?: string
+  category?: string
+  order?: number
+  computed?: unknown
+  source?: string
+  removable: boolean
+  value: string
+  metadata?: Record<string, unknown>
+
+  // BIM-specific fields
+  type?: BimValueType
+  sourceValue?: string
+  fetchedGroup?: string
+  currentGroup?: string
+
+  // User-specific fields
+  userType?: UserValueType
+  group?: string
+  equation?: string
+  isCustom?: boolean
+}
+
+export interface TableSettingsEntry {
+  id: string
+  settings: TableSettingsInput
+}
+
+export interface TableSettingsMapInput {
+  tables: TableSettingsEntry[]
+}
+
+export interface TablesQueryResponse {
+  activeUser: {
+    tables: Record<string, TableSettingsEntry>
+  }
+}
+
+export interface TablesMutationResponse {
+  userTablesUpdate: boolean
+}
+
+/**
+ * Legacy Table Types
+ * @deprecated Use TableSettingsInput and related types instead
  */
 export interface TableResponse {
   id: string
@@ -105,8 +203,11 @@ export interface TableResponse {
   parentColumns: TableColumn[]
   childColumns: TableColumn[]
   metadata?: Record<string, unknown>
-  categoryFilters: CategoryFilters
-  selectedParameterIds: string[]
+  categoryFilters: TableCategoryFilters
+  selectedParameters: {
+    parent: string[]
+    child: string[]
+  }
 }
 
 export interface CreateNamedTableInput {
@@ -114,8 +215,11 @@ export interface CreateNamedTableInput {
   parentColumns: TableColumn[]
   childColumns: TableColumn[]
   metadata?: Record<string, unknown>
-  categoryFilters: CategoryFilters
-  selectedParameterIds: string[]
+  categoryFilters: TableCategoryFilters
+  selectedParameters: {
+    parent: string[]
+    child: string[]
+  }
 }
 
 export interface UpdateNamedTableInput {
@@ -124,16 +228,11 @@ export interface UpdateNamedTableInput {
   parentColumns?: TableColumn[]
   childColumns?: TableColumn[]
   metadata?: Record<string, unknown>
-  categoryFilters?: CategoryFilters
-  selectedParameterIds?: string[]
-}
-
-export interface TablesQueryResponse {
-  tableSettingsP: TableResponse[]
-}
-
-export interface TablesMutationResponse {
-  userTablesUpdate: boolean
+  categoryFilters?: TableCategoryFilters
+  selectedParameters?: {
+    parent: string[]
+    child: string[]
+  }
 }
 
 /**

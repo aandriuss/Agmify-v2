@@ -67,20 +67,51 @@ export type AvailableParameter = AvailableBimParameter | AvailableUserParameter
 
 /**
  * Selected parameter with display properties
+ * Includes all fields needed for both internal use and GraphQL
  */
-export interface SelectedParameter {
+export interface BaseSelectedParameter {
+  // Core fields (always required)
   id: string
   name: string
   kind: 'bim' | 'user'
   type: BimValueType | UserValueType
   value: ParameterValue
-  group: string
   visible: boolean
   order: number
+
+  // Display fields (required by GraphQL)
+  field: string // Defaults to id
+  header: string // Defaults to name
+  removable: boolean // Defaults to true
+  group: string // Required for all parameters
+
+  // Optional display fields
   category?: string
   description?: string
   metadata?: ParameterMetadata
 }
+
+export interface BimSelectedParameter extends BaseSelectedParameter {
+  kind: 'bim'
+  type: BimValueType
+  sourceValue: string
+  fetchedGroup: string
+  currentGroup: string
+  equation?: never
+  isCustom?: never
+}
+
+export interface UserSelectedParameter extends BaseSelectedParameter {
+  kind: 'user'
+  type: UserValueType
+  equation?: string
+  isCustom?: boolean
+  sourceValue?: never
+  fetchedGroup?: never
+  currentGroup?: never
+}
+
+export type SelectedParameter = BimSelectedParameter | UserSelectedParameter
 
 /**
  * Base parameter collections without selected parameters
@@ -239,19 +270,39 @@ export const createSelectedParameter = (
   available: AvailableParameter,
   order: number,
   visible = true
-): SelectedParameter => ({
-  id: available.id,
-  name: available.name,
-  kind: available.kind,
-  type: available.type,
-  value: available.value,
-  group:
-    'fetchedGroup' in available && available.kind === 'bim'
-      ? available.currentGroup
-      : available.group,
-  visible,
-  order,
-  category: available.category,
-  description: available.description,
-  metadata: available.metadata
-})
+): SelectedParameter => {
+  const base = {
+    id: available.id,
+    name: available.name,
+    value: available.value,
+    visible,
+    order,
+    field: available.id,
+    header: available.name,
+    removable: true,
+    category: available.category,
+    description: available.description,
+    metadata: available.metadata
+  }
+
+  if (available.kind === 'bim') {
+    return {
+      ...base,
+      kind: 'bim' as const,
+      type: available.type,
+      group: available.currentGroup,
+      sourceValue: String(available.value),
+      fetchedGroup: available.fetchedGroup,
+      currentGroup: available.currentGroup
+    }
+  }
+
+  return {
+    ...base,
+    kind: 'user' as const,
+    type: available.type,
+    group: available.group,
+    equation: available.equation,
+    isCustom: false
+  }
+}

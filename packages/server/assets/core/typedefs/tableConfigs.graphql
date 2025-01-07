@@ -1,6 +1,34 @@
 scalar JSON
 
 """
+Parameter type for both BIM and user parameters
+"""
+type Parameter {
+  id: ID!
+  kind: String! # 'bim' or 'user'
+  name: String!
+  field: String!
+  visible: Boolean!
+  header: String!
+  description: String
+  category: String
+  order: Int
+  computed: JSON
+  source: String
+  removable: Boolean!
+  value: String!
+  metadata: JSON
+  type: BimValueType # For BIM parameters
+  sourceValue: String # For BIM parameters
+  fetchedGroup: String # For BIM parameters
+  currentGroup: String # For BIM parameters
+  userType: UserValueType # For user parameters
+  group: String # For user parameters
+  equation: String # For user parameters
+  isCustom: Boolean # For user parameters
+}
+
+"""
 Selected parameters for table with parent/child separation
 """
 type TableSelectedParameters {
@@ -21,12 +49,16 @@ type TableConfig {
 Column configuration for tables
 """
 type TableColumn {
+  id: ID!
   field: String!
   header: String!
   width: Int
   visible: Boolean!
   removable: Boolean
   order: Int!
+  sortable: Boolean
+  filterable: Boolean
+  parameter: Parameter!
 }
 
 """
@@ -66,6 +98,28 @@ enum SortOrder {
 }
 
 """
+Value types for BIM parameters
+"""
+enum BimValueType {
+  string
+  number
+  boolean
+  array
+  object
+}
+
+"""
+Value types for user parameters
+"""
+enum UserValueType {
+  string
+  number
+  boolean
+  array
+  object
+}
+
+"""
 Category filters for the table
 """
 type CategoryFilters {
@@ -74,12 +128,16 @@ type CategoryFilters {
 }
 
 input TableColumnInput {
+  id: ID!
   field: String!
   header: String!
   width: Int
   visible: Boolean!
   removable: Boolean
   order: Int!
+  sortable: Boolean
+  filterable: Boolean
+  parameter: ParameterInput!
 }
 
 """
@@ -136,58 +194,67 @@ input CategoryFiltersInput {
   selectedChildCategories: [String!]!
 }
 
-input CreateNamedTableInput {
+"""
+Input for table settings map
+"""
+input TableSettingsMapInput {
+  """
+  Map of table ID to table settings
+  Key is the table ID, value is the table settings
+  """
+  tables: [TableSettingsEntry!]!
+}
+
+"""
+Input for a single table settings entry
+"""
+input TableSettingsEntry {
+  """
+  Table ID - used as key in the map
+  """
+  id: ID!
+
+  """
+  Table settings
+  """
+  settings: TableSettingsInput!
+}
+
+"""
+Input for table settings
+"""
+input TableSettingsInput {
   name: String!
-  config: TableConfigInput!
+  displayName: String!
+  parentColumns: [TableColumnInput!]!
+  childColumns: [TableColumnInput!]!
   categoryFilters: CategoryFiltersInput
+  selectedParameters: TableSelectedParametersInput!
+  filters: [TableFilterInput!]
+  lastUpdateTimestamp: Float!
+  description: String
+  metadata: JSON
 }
 
-input TableSortInput {
-  field: String
-  order: SortOrder
-}
-
+"""
+Input for table filter
+"""
 input TableFilterInput {
   columnId: String!
   value: JSON
   operator: String!
 }
 
-input UpdateNamedTableInput {
-  id: ID!
-  name: String
-  displayName: String
-  config: TableConfigInput
-  categoryFilters: CategoryFiltersInput
-  sort: TableSortInput
-  filters: [TableFilterInput!]
-}
-
-extend type Query {
-  """
-  Get all named table configurations for the current user
-  """
-  tableSettingsP: [TableSettings!]!
-
-  """
-  Get a specific named table configuration
-  """
-  tableSettings(id: ID!): TableSettings
-}
-
 extend type Mutation {
   """
-  Create a new named table configuration
+  Update user tables
+  Takes a map of table ID to table settings
+  Stored as JSONB in database but validated through GraphQL types
   """
-  createNamedTable(input: CreateNamedTableInput!): TableSettings!
+  userTablesUpdate(input: TableSettingsMapInput!): Boolean!
 
   """
-  Update an existing named table configuration
+  Update user settings
   """
-  updateNamedTable(input: UpdateNamedTableInput!): TableSettings!
-
-  """
-  Delete a named table configuration
-  """
-  deleteNamedTable(id: ID!): Boolean!
+  userSettingsUpdate(settings: JSON!): Boolean!
 }

@@ -1,55 +1,49 @@
-import { defineStore } from 'pinia' // why???
 import { ref, computed } from 'vue'
-import type {
-  TableInstanceState,
-  TableTypeSettings,
-  TableUpdateOperation
-} from '~/composables/core/types'
-import { useUserSettings } from '~/composables/useUserSettings'
+import type { TableSettings } from '~/composables/core/tables/store/types'
+import { useTableStore } from '~/composables/core/tables/store/store'
 
-export const useTableRegistry = defineStore('tableRegistry', () => {
-  const { updateNamedTable, createNamedTable } = useUserSettings()
+export function useTableRegistry() {
+  const tableStore = useTableStore()
 
   // State
-  const tables = ref(new Map<string, TableInstanceState>())
-  const typeSettings = ref(new Map<string, TableTypeSettings>())
-  const pendingUpdates = ref(new Map<string, TableUpdateOperation>())
+  const tables = ref(new Map<string, TableSettings>())
 
   // Getters
   const getTable = computed(() => (id: string) => tables.value.get(id))
-  const getTypeSettings = computed(() => (type: string) => typeSettings.value.get(type))
 
   // Actions
   const registerTable = async (
     id: string,
-    type: string,
-    initialState?: Partial<TableInstanceState>
+    name: string,
+    initialState?: Partial<TableSettings>
   ) => {
-    const typeConfig = typeSettings.value.get(type)
-    if (!typeConfig) {
-      throw new Error(`No configuration found for table type: ${type}`)
-    }
-
-    const defaultState: TableInstanceState = {
+    const defaultState: TableSettings = {
       id,
-      type,
-      name: initialState?.name || `New ${type} Table`,
-      parentColumns: initialState?.parentColumns || [...typeConfig.defaultColumns],
+      name,
+      displayName: initialState?.displayName || name,
+      parentColumns: initialState?.parentColumns || [],
       childColumns: initialState?.childColumns || [],
       categoryFilters: initialState?.categoryFilters || {
         selectedParentCategories: [],
         selectedChildCategories: []
       },
-      version: 0,
-      lastUpdated: Date.now()
+      selectedParameters: {
+        parent: [],
+        child: []
+      },
+      filters: [],
+      lastUpdateTimestamp: Date.now()
     }
 
     // Create in backend
-    await createNamedTable(id, {
+    await tableStore.updateTable({
+      id,
       name: defaultState.name,
       parentColumns: defaultState.parentColumns,
       childColumns: defaultState.childColumns,
-      categoryFilters: defaultState.categoryFilters
+      categoryFilters: defaultState.categoryFilters,
+      selectedParameters: defaultState.selectedParameters,
+      lastUpdateTimestamp: Date.now()
     })
 
     // Update local state
@@ -58,25 +52,27 @@ export const useTableRegistry = defineStore('tableRegistry', () => {
     return defaultState
   }
 
-  const updateTable = async (id: string, updates: Partial<TableInstanceState>) => {
+  const updateTable = async (id: string, updates: Partial<TableSettings>) => {
     const currentState = tables.value.get(id)
     if (!currentState) {
       throw new Error(`Table not found: ${id}`)
     }
 
-    const newState = {
+    const newState: TableSettings = {
       ...currentState,
       ...updates,
-      version: currentState.version + 1,
-      lastUpdated: Date.now()
+      lastUpdateTimestamp: Date.now()
     }
 
     // Update backend
-    await updateNamedTable(id, {
+    await tableStore.updateTable({
+      id,
       name: newState.name,
       parentColumns: newState.parentColumns,
       childColumns: newState.childColumns,
-      categoryFilters: newState.categoryFilters
+      categoryFilters: newState.categoryFilters,
+      selectedParameters: newState.selectedParameters,
+      lastUpdateTimestamp: Date.now()
     })
 
     // Update local state
@@ -85,23 +81,15 @@ export const useTableRegistry = defineStore('tableRegistry', () => {
     return newState
   }
 
-  const registerTypeSettings = (type: string, settings: TableTypeSettings) => {
-    typeSettings.value.set(type, settings)
-  }
-
   return {
     // State
     tables,
-    typeSettings,
-    pendingUpdates,
 
     // Getters
     getTable,
-    getTypeSettings,
 
     // Actions
     registerTable,
-    updateTable,
-    registerTypeSettings
+    updateTable
   }
-})
+}

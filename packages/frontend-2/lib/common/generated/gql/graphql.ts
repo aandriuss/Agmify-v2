@@ -475,7 +475,7 @@ export type BimParameter = BaseParameter & {
   visible: Scalars['Boolean']['output'];
 };
 
-/** BIM value type enum */
+/** Value types for BIM parameters */
 export enum BimValueType {
   Array = 'array',
   Boolean = 'boolean',
@@ -897,12 +897,6 @@ export type CreateModelInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
   projectId: Scalars['ID']['input'];
-};
-
-export type CreateNamedTableInput = {
-  categoryFilters?: InputMaybe<CategoryFiltersInput>;
-  config: TableConfigInput;
-  name: Scalars['String']['input'];
 };
 
 export type CreateUserEmailInput = {
@@ -1363,12 +1357,8 @@ export type Mutation = {
   commitsMove: Scalars['Boolean']['output'];
   /** Create a new BIM parameter */
   createBimParameter: ParameterMutationResponse;
-  /** Create a new named table configuration */
-  createNamedTable: TableSettings;
   /** Create a new user parameter */
   createUserParameter: ParameterMutationResponse;
-  /** Delete a named table configuration */
-  deleteNamedTable: Scalars['Boolean']['output'];
   /** Delete a parameter */
   deleteParameter: Scalars['Boolean']['output'];
   /**
@@ -1463,8 +1453,6 @@ export type Mutation = {
   streamsDelete: Scalars['Boolean']['output'];
   /** Update a BIM parameter */
   updateBimParameter: ParameterMutationResponse;
-  /** Update an existing named table configuration */
-  updateNamedTable: TableSettings;
   /** Update a user parameter */
   updateUserParameter: ParameterMutationResponse;
   /**
@@ -1482,7 +1470,11 @@ export type Mutation = {
   userRoleChange: Scalars['Boolean']['output'];
   /** Update user settings (controlWidth only) */
   userSettingsUpdate: Scalars['Boolean']['output'];
-  /** Update user tables configuration */
+  /**
+   * Update user tables
+   * Takes a map of table ID to table settings
+   * Stored as JSONB in database but validated through GraphQL types
+   */
   userTablesUpdate: Scalars['Boolean']['output'];
   /**
    * Edits a user's profile.
@@ -1641,18 +1633,8 @@ export type MutationCreateBimParameterArgs = {
 };
 
 
-export type MutationCreateNamedTableArgs = {
-  input: CreateNamedTableInput;
-};
-
-
 export type MutationCreateUserParameterArgs = {
   input: CreateUserParameterInput;
-};
-
-
-export type MutationDeleteNamedTableArgs = {
-  id: Scalars['ID']['input'];
 };
 
 
@@ -1784,11 +1766,6 @@ export type MutationUpdateBimParameterArgs = {
 };
 
 
-export type MutationUpdateNamedTableArgs = {
-  input: UpdateNamedTableInput;
-};
-
-
 export type MutationUpdateUserParameterArgs = {
   id: Scalars['ID']['input'];
   input: UpdateUserParameterInput;
@@ -1833,7 +1810,7 @@ export type MutationUserSettingsUpdateArgs = {
 
 
 export type MutationUserTablesUpdateArgs = {
-  tables: Scalars['JSONObject']['input'];
+  input: TableSettingsMapInput;
 };
 
 
@@ -1916,8 +1893,32 @@ export type ObjectCreateInput = {
   streamId: Scalars['String']['input'];
 };
 
-/** Union of all parameter types */
-export type Parameter = BimParameter | UserParameter;
+/** Parameter type for both BIM and user parameters */
+export type Parameter = {
+  __typename?: 'Parameter';
+  category?: Maybe<Scalars['String']['output']>;
+  computed?: Maybe<Scalars['JSON']['output']>;
+  currentGroup?: Maybe<Scalars['String']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  equation?: Maybe<Scalars['String']['output']>;
+  fetchedGroup?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
+  group?: Maybe<Scalars['String']['output']>;
+  header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  isCustom?: Maybe<Scalars['Boolean']['output']>;
+  kind: Scalars['String']['output'];
+  metadata?: Maybe<Scalars['JSON']['output']>;
+  name: Scalars['String']['output'];
+  order?: Maybe<Scalars['Int']['output']>;
+  removable: Scalars['Boolean']['output'];
+  source?: Maybe<Scalars['String']['output']>;
+  sourceValue?: Maybe<Scalars['String']['output']>;
+  type?: Maybe<BimValueType>;
+  userType?: Maybe<UserValueType>;
+  value: Scalars['String']['output'];
+  visible: Scalars['Boolean']['output'];
+};
 
 /** Input type for parameters (both BIM and User types) */
 export type ParameterInput = {
@@ -2730,10 +2731,6 @@ export type Query = {
   streams?: Maybe<StreamCollection>;
   /** Get all parameters for a specific table */
   tableParameters: Array<Parameter>;
-  /** Get a specific named table configuration */
-  tableSettings?: Maybe<TableSettings>;
-  /** Get all named table configurations for the current user */
-  tableSettingsP: Array<TableSettings>;
   /**
    * Gets the profile of a user. If no id argument is provided, will return the current authenticated user's profile (as extracted from the authorization header).
    * @deprecated To be removed in the near future! Use 'activeUser' to get info about the active user or 'otherUser' to get info about another user.
@@ -2875,11 +2872,6 @@ export type QueryStreamsArgs = {
 
 export type QueryTableParametersArgs = {
   tableId: Scalars['ID']['input'];
-};
-
-
-export type QueryTableSettingsArgs = {
-  id: Scalars['ID']['input'];
 };
 
 
@@ -3609,18 +3601,26 @@ export type SubscriptionViewerUserActivityBroadcastedArgs = {
 export type TableColumn = {
   __typename?: 'TableColumn';
   field: Scalars['String']['output'];
+  filterable?: Maybe<Scalars['Boolean']['output']>;
   header: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
   order: Scalars['Int']['output'];
+  parameter: Parameter;
   removable?: Maybe<Scalars['Boolean']['output']>;
+  sortable?: Maybe<Scalars['Boolean']['output']>;
   visible: Scalars['Boolean']['output'];
   width?: Maybe<Scalars['Int']['output']>;
 };
 
 export type TableColumnInput = {
   field: Scalars['String']['input'];
+  filterable?: InputMaybe<Scalars['Boolean']['input']>;
   header: Scalars['String']['input'];
+  id: Scalars['ID']['input'];
   order: Scalars['Int']['input'];
+  parameter: ParameterInput;
   removable?: InputMaybe<Scalars['Boolean']['input']>;
+  sortable?: InputMaybe<Scalars['Boolean']['input']>;
   visible: Scalars['Boolean']['input'];
   width?: InputMaybe<Scalars['Int']['input']>;
 };
@@ -3648,6 +3648,7 @@ export type TableFilter = {
   value?: Maybe<Scalars['JSON']['output']>;
 };
 
+/** Input for table filter */
 export type TableFilterInput = {
   columnId: Scalars['String']['input'];
   operator: Scalars['String']['input'];
@@ -3680,16 +3681,42 @@ export type TableSettings = {
   sort?: Maybe<TableSort>;
 };
 
+/** Input for a single table settings entry */
+export type TableSettingsEntry = {
+  /** Table ID - used as key in the map */
+  id: Scalars['ID']['input'];
+  /** Table settings */
+  settings: TableSettingsInput;
+};
+
+/** Input for table settings */
+export type TableSettingsInput = {
+  categoryFilters?: InputMaybe<CategoryFiltersInput>;
+  childColumns: Array<TableColumnInput>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  displayName: Scalars['String']['input'];
+  filters?: InputMaybe<Array<TableFilterInput>>;
+  lastUpdateTimestamp: Scalars['Float']['input'];
+  metadata?: InputMaybe<Scalars['JSON']['input']>;
+  name: Scalars['String']['input'];
+  parentColumns: Array<TableColumnInput>;
+  selectedParameters: TableSelectedParametersInput;
+};
+
+/** Input for table settings map */
+export type TableSettingsMapInput = {
+  /**
+   * Map of table ID to table settings
+   * Key is the table ID, value is the table settings
+   */
+  tables: Array<TableSettingsEntry>;
+};
+
 /** Sort configuration for tables */
 export type TableSort = {
   __typename?: 'TableSort';
   field?: Maybe<Scalars['String']['output']>;
   order?: Maybe<SortOrder>;
-};
-
-export type TableSortInput = {
-  field?: InputMaybe<Scalars['String']['input']>;
-  order?: InputMaybe<SortOrder>;
 };
 
 export type TestAutomationRun = {
@@ -3769,16 +3796,6 @@ export type UpdateModelInput = {
   id: Scalars['ID']['input'];
   name?: InputMaybe<Scalars['String']['input']>;
   projectId: Scalars['ID']['input'];
-};
-
-export type UpdateNamedTableInput = {
-  categoryFilters?: InputMaybe<CategoryFiltersInput>;
-  config?: InputMaybe<TableConfigInput>;
-  displayName?: InputMaybe<Scalars['String']['input']>;
-  filters?: InputMaybe<Array<TableFilterInput>>;
-  id: Scalars['ID']['input'];
-  name?: InputMaybe<Scalars['String']['input']>;
-  sort?: InputMaybe<TableSortInput>;
 };
 
 /** Input for updating a user parameter */
@@ -4104,10 +4121,15 @@ export type UserUpdateInput = {
   name?: InputMaybe<Scalars['String']['input']>;
 };
 
-/** User value type enum */
+/** Value types for user parameters */
 export enum UserValueType {
+  Array = 'array',
+  Boolean = 'boolean',
   Equation = 'equation',
-  Fixed = 'fixed'
+  Fixed = 'fixed',
+  Number = 'number',
+  Object = 'object',
+  String = 'string'
 }
 
 export type UserWorkspacesFilter = {
@@ -6625,6 +6647,7 @@ export type AllObjectTypes = {
   Mutation: Mutation,
   Object: Object,
   ObjectCollection: ObjectCollection,
+  Parameter: Parameter,
   ParameterMutationResponse: ParameterMutationResponse,
   PasswordStrengthCheckFeedback: PasswordStrengthCheckFeedback,
   PasswordStrengthCheckResults: PasswordStrengthCheckResults,
@@ -7174,9 +7197,7 @@ export type MutationFieldArgs = {
   commitsDelete: MutationCommitsDeleteArgs,
   commitsMove: MutationCommitsMoveArgs,
   createBimParameter: MutationCreateBimParameterArgs,
-  createNamedTable: MutationCreateNamedTableArgs,
   createUserParameter: MutationCreateUserParameterArgs,
-  deleteNamedTable: MutationDeleteNamedTableArgs,
   deleteParameter: MutationDeleteParameterArgs,
   inviteDelete: MutationInviteDeleteArgs,
   inviteResend: MutationInviteResendArgs,
@@ -7204,7 +7225,6 @@ export type MutationFieldArgs = {
   streamUpdatePermission: MutationStreamUpdatePermissionArgs,
   streamsDelete: MutationStreamsDeleteArgs,
   updateBimParameter: MutationUpdateBimParameterArgs,
-  updateNamedTable: MutationUpdateNamedTableArgs,
   updateUserParameter: MutationUpdateUserParameterArgs,
   userCommentThreadActivityBroadcast: MutationUserCommentThreadActivityBroadcastArgs,
   userDelete: MutationUserDeleteArgs,
@@ -7236,6 +7256,30 @@ export type ObjectCollectionFieldArgs = {
   cursor: {},
   objects: {},
   totalCount: {},
+}
+export type ParameterFieldArgs = {
+  category: {},
+  computed: {},
+  currentGroup: {},
+  description: {},
+  equation: {},
+  fetchedGroup: {},
+  field: {},
+  group: {},
+  header: {},
+  id: {},
+  isCustom: {},
+  kind: {},
+  metadata: {},
+  name: {},
+  order: {},
+  removable: {},
+  source: {},
+  sourceValue: {},
+  type: {},
+  userType: {},
+  value: {},
+  visible: {},
 }
 export type ParameterMutationResponseFieldArgs = {
   parameter: {},
@@ -7450,8 +7494,6 @@ export type QueryFieldArgs = {
   streamInvites: {},
   streams: QueryStreamsArgs,
   tableParameters: QueryTableParametersArgs,
-  tableSettings: QueryTableSettingsArgs,
-  tableSettingsP: {},
   user: QueryUserArgs,
   userPwdStrength: QueryUserPwdStrengthArgs,
   userSearch: QueryUserSearchArgs,
@@ -7646,9 +7688,13 @@ export type SubscriptionFieldArgs = {
 }
 export type TableColumnFieldArgs = {
   field: {},
+  filterable: {},
   header: {},
+  id: {},
   order: {},
+  parameter: {},
   removable: {},
+  sortable: {},
   visible: {},
   width: {},
 }
@@ -8014,6 +8060,7 @@ export type AllObjectFieldArgTypes = {
   Mutation: MutationFieldArgs,
   Object: ObjectFieldArgs,
   ObjectCollection: ObjectCollectionFieldArgs,
+  Parameter: ParameterFieldArgs,
   ParameterMutationResponse: ParameterMutationResponseFieldArgs,
   PasswordStrengthCheckFeedback: PasswordStrengthCheckFeedbackFieldArgs,
   PasswordStrengthCheckResults: PasswordStrengthCheckResultsFieldArgs,
