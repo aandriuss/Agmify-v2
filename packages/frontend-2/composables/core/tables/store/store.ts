@@ -218,6 +218,18 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     state.value.loading = true
 
     try {
+      // First check if we already have the table in memory
+      const existingTable = state.value.tables.get(tableId)
+      if (existingTable) {
+        debug.log(DebugCategories.STATE, 'Using cached table', {
+          tableId,
+          table: existingTable
+        })
+        setCurrentTable(tableId)
+        state.value.lastUpdated = Date.now()
+        return
+      }
+
       // Initialize GraphQL if not already done
       if (!graphqlOps) {
         await initGraphQL()
@@ -240,7 +252,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       setCurrentTable(tableId)
       state.value.lastUpdated = Date.now()
 
-      debug.log(DebugCategories.STATE, 'Table loaded', {
+      debug.log(DebugCategories.STATE, 'Table loaded from server', {
         tableId,
         table
       })
@@ -260,7 +272,8 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   async function saveTable(settings: TableSettings) {
     debug.startState(DebugCategories.STATE, 'Saving table', {
       tableId: settings.id,
-      settings
+      settings,
+      isNew: !state.value.tables.has(settings.id)
     })
     state.value.loading = true
     state.value.isUpdating = true
@@ -285,15 +298,38 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         throw new Error('Failed to save table')
       }
 
+      // Check if this is an update or new table
+      const isNewTable = !state.value.tables.has(settings.id)
+
       // Update store with saved table
       state.value.tables.set(settings.id, settings)
+
+      // Only update currentTableId if it's a new table or matches current
+      if (isNewTable || state.value.currentTableId === settings.id) {
+        setCurrentTable(settings.id)
+      }
+
       state.value.lastUpdated = Date.now()
       state.value.isDirty = false
 
       debug.log(DebugCategories.STATE, 'Table saved', {
         tableId: settings.id,
-        table: settings
+        table: settings,
+        currentId: state.value.currentTableId,
+        isNewTable
       })
+
+      // Fetch all tables to ensure store is in sync
+      const tables = await graphqlOps.fetchTables()
+
+      // Update tables but preserve current selection
+      const currentId = state.value.currentTableId
+      Object.entries(tables).forEach(([id, table]) => {
+        state.value.tables.set(id, table)
+      })
+      if (currentId) {
+        state.value.currentTableId = currentId
+      }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       debug.error(DebugCategories.ERROR, 'Failed to save table:', error)

@@ -5,17 +5,17 @@
       <div v-if="!isEditing" class="flex items-center gap-2">
         <select
           id="table-select"
-          :value="selectedTableId"
+          :value="props.selectedTableId"
+          :disabled="props.isLoading"
           class="px-2 py-1 rounded border bg-background text-sm h-7 min-w-[180px]"
           @change="handleTableChange($event)"
         >
-          <option value="">Create New Table</option>
-          <option v-for="table in tables" :key="table.id" :value="table.id">
+          <option v-for="table in props.tables" :key="table.id" :value="table.id">
             {{ table.name }}
           </option>
         </select>
         <FormButton
-          v-if="selectedTableId"
+          v-if="props.selectedTableId"
           text
           size="sm"
           color="subtle"
@@ -24,7 +24,16 @@
           <PencilIcon class="size-4" />
         </FormButton>
         <FormButton
-          v-if="hasChanges && !isEditing"
+          text
+          size="sm"
+          color="subtle"
+          class="border rounded"
+          @click="createNewTable"
+        >
+          <PlusIcon class="size-4" />
+        </FormButton>
+        <FormButton
+          v-if="props.hasChanges || isNewTable"
           text
           size="sm"
           color="danger"
@@ -84,7 +93,7 @@
         >
           Category filter options
           <template #icon-right>
-            <ChevronDownIcon v-if="!showCategoryOptions" class="size-4" />
+            <ChevronDownIcon v-if="!props.showCategoryOptions" class="size-4" />
             <ChevronUpIcon v-else class="size-4" />
           </template>
         </FormButton>
@@ -97,14 +106,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick, watch, computed } from 'vue'
 import {
   ChevronDownIcon,
   ChevronUpIcon,
   PencilIcon,
   CheckIcon,
   XMarkIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  PlusIcon
 } from '@heroicons/vue/24/solid'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 
@@ -116,7 +126,17 @@ const props = defineProps<{
   tables: { id: string; name: string }[]
   showCategoryOptions: boolean
   hasChanges?: boolean
+  isLoading?: boolean
 }>()
+
+// Computed properties
+const selectedTable = computed(() => {
+  return props.tables.find((table) => table.id === props.selectedTableId)
+})
+
+const isNewTable = computed(() => {
+  return props.selectedTableId && !selectedTable.value
+})
 
 const emit = defineEmits<{
   'update:selectedTableId': [value: string]
@@ -128,27 +148,67 @@ const emit = defineEmits<{
 }>()
 
 const isEditing = ref(false)
-const editingName = ref('')
+const editingName = ref(props.tableName)
 const nameInput = ref<HTMLInputElement | null>(null)
 const nameError = ref<string | null>(null)
+
+// Watch for table selection changes
+watch(
+  () => props.selectedTableId,
+  (newId) => {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Selected table ID changed', {
+      newId,
+      availableTables: props.tables,
+      foundTable: props.tables.find((t) => t.id === newId),
+      isEditing: isEditing.value
+    })
+
+    if (!isEditing.value) {
+      if (newId) {
+        const table = selectedTable.value
+        if (table) {
+          editingName.value = table.name
+        }
+      } else {
+        editingName.value = 'New Table'
+      }
+    }
+  },
+  { immediate: true }
+)
+
+// Debug watcher for tables prop
+watch(
+  () => props.tables,
+  (newTables) => {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Tables array changed', {
+      tableCount: newTables.length,
+      tableIds: newTables.map((t) => t.id),
+      currentSelectedId: props.selectedTableId,
+      matchingTable: newTables.find((t) => t.id === props.selectedTableId)
+    })
+  },
+  { immediate: true }
+)
+
+// Watch for table name changes
+watch(
+  () => props.tableName,
+  (newName) => {
+    if (!isEditing.value) {
+      editingName.value = newName
+    }
+  }
+)
 
 function startEditing() {
   debug.log(DebugCategories.TABLE_UPDATES, 'Starting edit mode', {
     currentName: props.tableName,
-    selectedId: props.selectedTableId
+    selectedId: props.selectedTableId,
+    selectedTable: selectedTable.value
   })
 
-  // If we have a selected table, use its name
-  if (props.selectedTableId && props.tableName !== 'Default Table') {
-    editingName.value = props.tableName
-  } else if (!props.selectedTableId) {
-    // For new table, use "New Table"
-    editingName.value = 'New Table'
-  } else {
-    // Fallback to current name
-    editingName.value = props.tableName || ''
-  }
-
+  editingName.value = props.tableName
   isEditing.value = true
   nameError.value = null
   nextTick(() => {
@@ -176,13 +236,18 @@ async function handleSave() {
   }
 
   try {
-    debug.log(DebugCategories.TABLE_UPDATES, 'Saving table with name:', name)
+    debug.log(DebugCategories.TABLE_UPDATES, 'Saving table with name:', {
+      name,
+      selectedId: props.selectedTableId
+    })
+
     // Update the name first
     emit('update:tableName', name)
     // Wait for next tick to ensure name is updated
     await nextTick()
     // Then trigger save
     emit('save')
+
     isEditing.value = false
     nameError.value = null
   } catch (err) {
@@ -224,51 +289,69 @@ function handleGlobalSave() {
 }
 
 function cancelEdit() {
-  editingName.value = props.tableName
+  // Restore the name from the selected table
+  if (props.selectedTableId) {
+    const table = selectedTable.value
+    editingName.value = table ? table.name : props.tableName
+  } else {
+    editingName.value = props.tableName
+  }
+
+  debug.log(DebugCategories.TABLE_UPDATES, 'Canceling edit', {
+    selectedId: props.selectedTableId,
+    restoredName: editingName.value
+  })
+
   isEditing.value = false
   nameError.value = null
+}
+
+async function createNewTable() {
+  debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table')
+
+  try {
+    // Clear selection and set default name
+    emit('update:selectedTableId', '')
+    emit('update:tableName', 'New Table')
+
+    // Wait for updates to propagate
+    await nextTick()
+    emit('table-change')
+
+    // Start editing mode
+    await nextTick()
+    startEditing()
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Failed to create new table:', err)
+  }
 }
 
 async function handleTableChange(event: Event) {
   const target = event.target as HTMLSelectElement
   const newValue = target.value
 
-  // Update selected table ID
-  emit('update:selectedTableId', newValue)
+  debug.log(DebugCategories.TABLE_UPDATES, 'Table selection changing', {
+    from: props.selectedTableId,
+    to: newValue,
+    currentName: props.tableName,
+    isEditing: isEditing.value
+  })
 
-  // Wait for the selectedTableId to be updated before emitting table-change
-  await nextTick()
-  emit('table-change')
+  try {
+    // Update selected table ID first
+    emit('update:selectedTableId', newValue)
 
-  // If creating new table, start editing mode
-  if (!newValue) {
-    debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table, starting edit mode')
-    await nextTick() // Wait for state updates
-    startEditing()
+    // Then update name based on selection
+    const table = props.tables.find((t) => t.id === newValue)
+    if (table) {
+      emit('update:tableName', table.name)
+    }
+
+    // Wait for updates to propagate
+    await nextTick()
+    emit('table-change')
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Failed to change table:', err)
   }
 }
-
-// Watch for table name changes
-watch(
-  [() => props.tableName, () => props.selectedTableId],
-  ([newName, selectedId]) => {
-    debug.log(DebugCategories.STATE, 'Table name or ID changed', {
-      newName,
-      selectedId,
-      isEditing: isEditing.value
-    })
-
-    // Only update editing name if we're in edit mode
-    if (isEditing.value) {
-      // If we have a selected table, use its name
-      if (selectedId && newName !== 'Default Table') {
-        editingName.value = newName
-      } else if (!selectedId) {
-        // For new table, use "New Table"
-        editingName.value = 'New Table'
-      }
-    }
-  },
-  { immediate: true }
-)
 </script>

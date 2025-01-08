@@ -72,7 +72,7 @@ import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 
 // Props with destructuring for used values
-const { selectedTableId, tableName } = defineProps<{
+const props = defineProps<{
   selectedTableId: string
   currentTable: TableSettings | null
   tableName: string
@@ -111,6 +111,24 @@ const debug = useDebug()
 const store = useStore()
 const tableStore = useTableStore()
 const parameterStore = useParameterStore()
+
+// Watch for table selection changes
+watch(
+  () => props.selectedTableId,
+  (newId, oldId) => {
+    debug.log(DebugCategories.STATE, 'Table selection changed in MainView', {
+      from: oldId,
+      to: newId,
+      currentTable: tableStore.currentTable.value?.id
+    })
+
+    // Force a reactivity update
+    if (newId !== oldId) {
+      tableStore.state.value.lastUpdated = Date.now()
+    }
+  },
+  { immediate: true }
+)
 
 // Initialize parameter system
 const parameters = useParameters({

@@ -9,7 +9,7 @@
       <TableLayout class="viewer-container">
         <template #header>
           <ScheduleTableHeader
-            :selected-table-id="store.state.value.currentTableId"
+            :selected-table-id="tableStore.currentTable.value?.id || ''"
             :table-name="tableName"
             :tables="store.tablesArray.value || []"
             :show-category-options="showCategoryOptions"
@@ -103,7 +103,6 @@ import { isEqual } from 'lodash'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
-import { useAuthManager } from '~/lib/auth/composables/auth'
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useScheduleInitialization } from './composables/useScheduleInitialization'
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
@@ -114,7 +113,8 @@ import type {
   SelectedParameter,
   TableColumn,
   TableSettings,
-  AvailableParameter
+  AvailableParameter,
+  BimValueType
 } from '~/composables/core/types'
 import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import type { ColumnVisibilityPayload } from '~/composables/core/types/tables/table-events'
@@ -134,7 +134,7 @@ import { isValidDataState } from '~/composables/core/types/state'
 import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
 import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
 import { useNuxtApp } from '#app'
-import { parentCategories, childCategories } from '~/composables/core/config/categories'
+import { childCategories } from '~/composables/core/config/categories'
 import ScheduleTableHeader from './components/ScheduleTableHeader.vue'
 
 // Type-safe array utilities
@@ -195,6 +195,56 @@ const showParameterManager = ref(false)
 const initializationAttempted = ref(false)
 const tableName = ref<string>('New Table')
 
+// Watch for table store changes
+watch(
+  () => tableStore.currentTable.value,
+  (newTable) => {
+    if (newTable) {
+      tableName.value = newTable.name
+      store.lifecycle.update({
+        selectedTableId: newTable.id,
+        tableName: newTable.name
+      })
+    }
+  },
+  { immediate: true }
+)
+
+// Computed properties
+const hasChanges = computed(() => {
+  const currentTableId = store.state.value.currentTableId
+  if (!currentTableId) return false
+
+  const currentTable = tableStore.currentTable.value
+  if (!currentTable) return false
+
+  const originalTable = tableStore.state.value.tables.get(currentTableId)
+  if (!originalTable) return true // New table
+
+  // Compare specific properties that should trigger changes
+  const hasCategoryChanges = !isEqual(
+    currentTable.categoryFilters,
+    originalTable.categoryFilters
+  )
+  const hasColumnChanges =
+    !isEqual(currentTable.parentColumns, originalTable.parentColumns) ||
+    !isEqual(currentTable.childColumns, originalTable.childColumns)
+  const hasParameterChanges = !isEqual(
+    currentTable.selectedParameters,
+    originalTable.selectedParameters
+  )
+
+  debug.log(DebugCategories.TABLE_UPDATES, 'Checking for changes', {
+    hasCategoryChanges,
+    hasColumnChanges,
+    hasParameterChanges,
+    currentCategories: currentTable.categoryFilters,
+    originalCategories: originalTable.categoryFilters
+  })
+
+  return hasCategoryChanges || hasColumnChanges || hasParameterChanges
+})
+
 // Category handlers
 async function handleCategoryUpdate(payload: {
   type: 'parent' | 'child'
@@ -203,10 +253,42 @@ async function handleCategoryUpdate(payload: {
   try {
     debug.log(DebugCategories.CATEGORIES, 'Category update', payload)
 
+    // Update store categories
     if (payload.type === 'parent') {
       store.setParentCategories(payload.categories)
     } else {
       store.setChildCategories(payload.categories)
+    }
+
+    // Update table store with new categories
+    const currentTable = tableStore.currentTable.value
+    if (currentTable) {
+      const updatedTable = {
+        ...currentTable,
+        categoryFilters: {
+          ...currentTable.categoryFilters,
+          selectedParentCategories:
+            payload.type === 'parent'
+              ? payload.categories
+              : categories.selectedParentCategories.value,
+          selectedChildCategories:
+            payload.type === 'child'
+              ? payload.categories
+              : categories.selectedChildCategories.value
+        },
+        lastUpdateTimestamp: Date.now() // Force update timestamp to trigger change detection
+      }
+
+      // Update the table in store
+      await tableStore.updateTable(updatedTable)
+
+      // Update the original table in store to ensure change detection works
+      const tableId = currentTable.id
+      if (tableId) {
+        const tables = new Map(tableStore.state.value.tables)
+        tables.set(tableId, { ...updatedTable })
+        tableStore.state.value.tables = tables
+      }
     }
 
     await elementsData.initializeData()
@@ -215,10 +297,10 @@ async function handleCategoryUpdate(payload: {
   }
 }
 
-async function handleTableChange() {
+function handleTableChange() {
   try {
     debug.log(DebugCategories.TABLE_UPDATES, 'Table change requested')
-    await elementsData.initializeData()
+    // No need to initialize data here since it's already done in handleSelectedTableIdUpdate
   } catch (err) {
     handleError(err)
   }
@@ -227,26 +309,60 @@ async function handleTableChange() {
 // Table operations handlers
 async function handleSelectedTableIdUpdate(tableId: string) {
   try {
-    debug.log(DebugCategories.TABLE_UPDATES, 'Table selection changed', { tableId })
-
-    // If selecting existing table, get its settings
-    if (tableId) {
-      const selectedTable = tableStore.currentTable.value
-      if (selectedTable) {
-        tableName.value = selectedTable.name
-      }
-    } else {
-      tableName.value = 'New Table'
-    }
-
-    // Update store
-    await store.lifecycle.update({
-      selectedTableId: tableId,
-      tableName: tableName.value
+    debug.log(DebugCategories.TABLE_UPDATES, 'Table selection changed', {
+      tableId,
+      currentId: tableStore.currentTable.value?.id,
+      currentName: tableName.value
     })
 
-    // Initialize data with new settings
-    await elementsData.initializeData()
+    // Skip if same table is selected
+    if (tableId === tableStore.currentTable.value?.id) {
+      debug.log(DebugCategories.TABLE_UPDATES, 'Same table selected, skipping update')
+      return
+    }
+
+    if (tableId) {
+      // Load the table first
+      await tableStore.loadTable(tableId)
+      const selectedTable = tableStore.currentTable.value
+
+      if (selectedTable) {
+        // Update name and store after loading
+        tableName.value = selectedTable.name
+
+        // Update categories from the selected table
+        store.setParentCategories(
+          selectedTable.categoryFilters.selectedParentCategories || []
+        )
+        store.setChildCategories(
+          selectedTable.categoryFilters.selectedChildCategories || []
+        )
+
+        // Update store state
+        await store.lifecycle.update({
+          selectedTableId: tableId,
+          tableName: selectedTable.name,
+          selectedParentCategories:
+            selectedTable.categoryFilters.selectedParentCategories || [],
+          selectedChildCategories:
+            selectedTable.categoryFilters.selectedChildCategories || []
+        })
+
+        // Initialize data after store updates
+        await elementsData.initializeData()
+      }
+    } else {
+      // Clear selection
+      tableName.value = 'New Table'
+      store.setParentCategories([])
+      store.setChildCategories([])
+      await store.lifecycle.update({
+        selectedTableId: '',
+        tableName: 'New Table',
+        selectedParentCategories: [],
+        selectedChildCategories: []
+      })
+    }
   } catch (err) {
     handleError(err)
   }
@@ -254,9 +370,35 @@ async function handleSelectedTableIdUpdate(tableId: string) {
 
 async function handleTableNameUpdate(name: string) {
   try {
-    debug.log(DebugCategories.TABLE_UPDATES, 'Table name changed', { name })
-    tableName.value = name
-    await store.lifecycle.update({ tableName: name })
+    const currentTable = tableStore.currentTable.value
+    const currentId = currentTable?.id
+
+    debug.log(DebugCategories.TABLE_UPDATES, 'Table name changed', {
+      name,
+      currentId,
+      existingTableName: currentTable?.name,
+      isNewTable: !currentTable,
+      currentStoreName: tableName.value
+    })
+
+    // Only update if name actually changed
+    if (name !== tableName.value) {
+      tableName.value = name
+
+      // Update both stores to ensure consistency
+      if (currentTable) {
+        await tableStore.updateTable({
+          ...currentTable,
+          name,
+          displayName: name
+        })
+      }
+
+      await store.lifecycle.update({
+        tableName: name,
+        selectedTableId: currentId || ''
+      })
+    }
   } catch (err) {
     handleError(err)
   }
@@ -279,36 +421,143 @@ async function handleSaveTable() {
       if (!apolloClient) throw new Error('Apollo client not initialized')
       provideApolloClient(apolloClient)
 
-      // Create table config
-      const currentTableId = store.state.value.currentTableId
-      const newId = currentTableId || `table-${Date.now()}`
+      // Get current table state
+      const currentTable = tableStore.currentTable.value
+      const currentTableId = currentTable?.id
 
-      const tableConfig: TableSettings = {
-        id: newId,
+      // Determine if we're creating or updating
+      const isNewTable = !currentTableId || !currentTable
+      const tableId = isNewTable ? `table-${Date.now()}` : currentTableId
+
+      debug.log(DebugCategories.TABLE_UPDATES, 'Table save operation type:', {
+        currentTableId,
+        currentTableName: currentTable?.name,
+        isNewTable,
+        newTableId: tableId,
+        newTableName: tableName.value
+      })
+
+      // If we're updating an existing table, use its current settings as base
+      const baseSettings = currentTable || {
+        id: tableId,
         name: tableName.value,
         displayName: tableName.value,
-        parentColumns: tableStore.currentTable.value?.parentColumns || [],
-        childColumns: tableStore.currentTable.value?.childColumns || [],
+        parentColumns: [],
+        childColumns: [],
         categoryFilters: {
-          selectedParentCategories: categories.selectedParentCategories.value,
-          selectedChildCategories: categories.selectedChildCategories.value
+          selectedParentCategories: [],
+          selectedChildCategories: []
         },
         selectedParameters: {
-          parent: selectedParentParameters.value,
-          child: selectedChildParameters.value
+          parent: [],
+          child: []
         },
         filters: [],
         lastUpdateTimestamp: Date.now()
       }
 
+      // Ensure we have valid columns with parameters
+      const parentColumns = (baseSettings.parentColumns || []).map((col) => {
+        const parameter = col.parameter || {}
+        const group = parameter.group || 'Base Properties'
+
+        return {
+          ...col,
+          parameter: createSelectedParameter(
+            {
+              id: col.id || '',
+              name: col.header || '',
+              kind: 'bim' as const,
+              type: (parameter.type || 'string') as BimValueType,
+              value: parameter.value || null,
+              metadata: parameter.metadata || {},
+              visible: parameter.visible ?? true,
+              isSystem: false,
+              fetchedGroup: group,
+              currentGroup: group
+            },
+            parameter.order || 0,
+            parameter.visible ?? true
+          )
+        }
+      })
+
+      const childColumns = (baseSettings.childColumns || []).map((col) => {
+        const parameter = col.parameter || {}
+        const group = parameter.group || 'Base Properties'
+
+        return {
+          ...col,
+          parameter: createSelectedParameter(
+            {
+              id: col.id || '',
+              name: col.header || '',
+              kind: 'bim' as const,
+              type: (parameter.type || 'string') as BimValueType,
+              value: parameter.value || null,
+              metadata: parameter.metadata || {},
+              visible: parameter.visible ?? true,
+              isSystem: false,
+              fetchedGroup: group,
+              currentGroup: group
+            },
+            parameter.order || 0,
+            parameter.visible ?? true
+          )
+        }
+      })
+
+      const tableConfig: TableSettings = {
+        id: tableId,
+        name: tableName.value,
+        displayName: tableName.value,
+        parentColumns,
+        childColumns,
+        categoryFilters: {
+          selectedParentCategories: categories.selectedParentCategories.value || [],
+          selectedChildCategories: categories.selectedChildCategories.value || []
+        },
+        selectedParameters: {
+          parent: selectedParentParameters.value || [],
+          child: selectedChildParameters.value || []
+        },
+        filters: [],
+        lastUpdateTimestamp: Date.now()
+      }
+
+      debug.log(DebugCategories.TABLE_UPDATES, 'Saving table config:', {
+        id: tableConfig.id,
+        name: tableConfig.name,
+        parentColumns: tableConfig.parentColumns.length,
+        childColumns: tableConfig.childColumns.length
+      })
+
       // Save table to store
       await tableStore.saveTable(tableConfig)
 
-      // Update store with latest data
+      // Fetch updated tables list
+      const graphqlOps = await useTablesGraphQL()
+      const tables = await graphqlOps.fetchTables()
+      const existingTables = Object.entries(tables)
+        .map(([id, table]: [string, TableSettings]) => ({
+          id,
+          name: table.name || 'Unnamed Table'
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+
+      // Update store with latest data - ensure selection is set before tables array
       await store.lifecycle.update({
         selectedTableId: tableConfig.id,
         tableName: tableConfig.name
       })
+
+      // Then update tables array
+      await store.lifecycle.update({
+        tablesArray: existingTables
+      })
+
+      // Force selection update in table store
+      await tableStore.loadTable(tableConfig.id)
 
       debug.log(DebugCategories.TABLE_UPDATES, 'Table saved successfully', {
         id: tableConfig.id,
@@ -319,32 +568,6 @@ async function handleSaveTable() {
     handleError(err)
   }
 }
-
-// Computed properties
-const hasChanges = computed(() => {
-  const currentTableId = store.state.value.currentTableId
-  if (!currentTableId) return false
-
-  const currentTable = tableStore.currentTable.value
-  if (!currentTable) return false
-
-  const originalTable = tableStore.state.value.tables.get(currentTableId)
-  if (!originalTable) return true // New table
-
-  return (
-    currentTable.name !== originalTable.name ||
-    !isEqual(
-      categories.selectedParentCategories.value,
-      originalTable.categoryFilters.selectedParentCategories
-    ) ||
-    !isEqual(
-      categories.selectedChildCategories.value,
-      originalTable.categoryFilters.selectedChildCategories
-    ) ||
-    !isEqual(currentTable.parentColumns, originalTable.parentColumns) ||
-    !isEqual(currentTable.childColumns, originalTable.childColumns)
-  )
-})
 
 // Initialize data composables with category refs
 const categories = useTableCategories({
@@ -393,53 +616,65 @@ const _currentTable = computed(() => {
 })
 
 // Transform parameters for ParameterManager
-const selectedParentParameters = computed(() =>
-  (tableStore.currentTable?.value?.parentColumns || []).map((col) =>
-    createSelectedParameter(
-      {
-        id: col.id,
-        name: col.header,
-        kind: col.parameter.kind,
-        type: col.parameter.type,
-        value: col.parameter.value,
-        group: col.parameter.group || 'Base Properties',
-        visible: col.visible,
-        isSystem: false,
-        metadata: col.parameter.metadata || {},
-        ...(col.parameter.kind === 'bim' && {
-          fetchedGroup: col.parameter.group || 'Base Properties',
-          currentGroup: col.parameter.group || 'Base Properties'
-        })
-      } as AvailableParameter,
-      col.order,
-      col.visible
-    )
-  )
-)
+const selectedParentParameters = computed(() => {
+  const columns = tableStore.currentTable?.value?.parentColumns || []
+  return columns.map((col) => {
+    // Ensure parameter exists and has required properties
+    const parameter = col.parameter || {}
+    const kind = parameter.kind || 'unknown'
+    const group = parameter.group || 'Base Properties'
 
-const selectedChildParameters = computed(() =>
-  (tableStore.currentTable?.value?.childColumns || []).map((col) =>
-    createSelectedParameter(
+    return createSelectedParameter(
       {
-        id: col.id,
-        name: col.header,
-        kind: col.parameter.kind,
-        type: col.parameter.type,
-        value: col.parameter.value,
-        group: col.parameter.group || 'Base Properties',
-        visible: col.visible,
+        id: col.id || '',
+        name: col.header || '',
+        kind,
+        type: parameter.type || 'string',
+        value: parameter.value || null,
+        group,
+        visible: col.visible ?? true,
         isSystem: false,
-        metadata: col.parameter.metadata || {},
-        ...(col.parameter.kind === 'bim' && {
-          fetchedGroup: col.parameter.group || 'Base Properties',
-          currentGroup: col.parameter.group || 'Base Properties'
+        metadata: parameter.metadata || {},
+        ...(kind === 'bim' && {
+          fetchedGroup: group,
+          currentGroup: group
         })
       } as AvailableParameter,
-      col.order,
-      col.visible
+      col.order || 0,
+      col.visible ?? true
     )
-  )
-)
+  })
+})
+
+const selectedChildParameters = computed(() => {
+  const columns = tableStore.currentTable?.value?.childColumns || []
+  return columns.map((col) => {
+    // Ensure parameter exists and has required properties
+    const parameter = col.parameter || {}
+    const kind = parameter.kind || 'unknown'
+    const group = parameter.group || 'Base Properties'
+
+    return createSelectedParameter(
+      {
+        id: col.id || '',
+        name: col.header || '',
+        kind,
+        type: parameter.type || 'string',
+        value: parameter.value || null,
+        group,
+        visible: col.visible ?? true,
+        isSystem: false,
+        metadata: parameter.metadata || {},
+        ...(kind === 'bim' && {
+          fetchedGroup: group,
+          currentGroup: group
+        })
+      } as AvailableParameter,
+      col.order || 0,
+      col.visible ?? true
+    )
+  })
+})
 
 // Initialize core composables
 // Create a store adapter that matches the Store interface
@@ -832,17 +1067,26 @@ onMounted(async () => {
         }))
         .sort((a, b) => a.name.localeCompare(b.name))
 
-      // Update store state with all tables
-      await store.lifecycle.update({
-        tablesArray: existingTables,
-        selectedTableId:
-          store.state.value.currentTableId || existingTables[0]?.id || 'default',
-        tableName: store.state.value.currentTableId
-          ? tableStore.currentTable.value?.name || 'Default Table'
-          : existingTables[0]?.name || 'Default Table',
-        selectedParentCategories: parentCategories,
-        selectedChildCategories: childCategories
-      })
+      // Get current table or first available
+      const currentId = store.state.value.currentTableId
+      const currentTable = currentId ? tables[currentId] : existingTables[0]
+      const selectedId = currentId || currentTable?.id
+
+      if (selectedId) {
+        await tableStore.loadTable(selectedId)
+        const loadedTable = tableStore.currentTable.value
+        if (loadedTable) {
+          // Update store state with all tables
+          await store.lifecycle.update({
+            tablesArray: existingTables,
+            selectedTableId: selectedId,
+            tableName: loadedTable.name,
+            selectedParentCategories:
+              loadedTable.categoryFilters.selectedParentCategories,
+            selectedChildCategories: loadedTable.categoryFilters.selectedChildCategories
+          })
+        }
+      }
 
       debug.log(DebugCategories.INITIALIZATION, 'Store updated with tables', {
         tableCount: existingTables.length,
@@ -891,22 +1135,7 @@ onMounted(async () => {
     // Otherwise, throw an error
     throw new Error('Missing required data')
   } catch (err) {
-    const error = createSafeError(err)
-    debug.error(DebugCategories.ERROR, 'Initialization failed', error)
-
-    // Handle auth errors
-    if (error.message.toLowerCase().includes('auth')) {
-      const { logout } = useAuthManager({
-        deferredApollo: () => undefined
-      })
-      await logout({ skipToast: true })
-      return
-    }
-
-    transitionPhase('error', error)
-    updateErrorState(error)
-  } finally {
-    initializationAttempted.value = true
+    handleError(err)
   }
 })
 </script>
