@@ -21,12 +21,7 @@
  */
 
 import type { Ref } from 'vue'
-import type {
-  BaseTableConfig,
-  TableCategoryFilters,
-  TableSelectedParameters,
-  TableColumn
-} from '~/composables/core/types'
+import type { BaseTableConfig, TableColumn } from '~/composables/core/types'
 
 /**
  * Sort configuration for tables
@@ -70,15 +65,19 @@ export interface TableSettings extends BaseTableConfig {
 export interface TableStoreState {
   tables: Map<string, TableSettings>
   currentTableId: string | null
+  originalTable: TableSettings | null // Original state from PostgreSQL
   loading: boolean
   error: Error | null
-  lastUpdated: number
   currentView: 'parent' | 'child'
-  isDirty: boolean
-  isUpdating: boolean
-  lastUpdateTime: number
-  sort?: TableSort
-  filters?: TableFilter[]
+  lastUpdated: number
+}
+
+/**
+ * Computed state derived from comparing current table with original
+ */
+export interface TableComputedState {
+  hasChanges: boolean // True if current table differs from original
+  currentTable: TableSettings | null // Current working copy
 }
 
 /**
@@ -92,36 +91,25 @@ export interface TableStoreState {
 export interface TableStore {
   // State
   state: Ref<TableStoreState>
-  currentTable: Ref<TableSettings | null>
+  computed: {
+    currentTable: Ref<TableSettings | null>
+    hasChanges: Ref<boolean>
+  }
   isLoading: Ref<boolean>
   error: Ref<Error | null>
   hasError: Ref<boolean>
-  lastUpdated: Ref<number>
   currentView: Ref<'parent' | 'child'>
-  isDirty: Ref<boolean>
-  isUpdating: Ref<boolean>
-  lastUpdateTime: Ref<number>
-  sort: Ref<TableSort | undefined>
-  filters: Ref<TableFilter[]>
+  lastUpdated: Ref<number>
 
-  // Table operations
-  loadTable(tableId: string): Promise<void>
-  saveTable(settings: TableSettings): Promise<void>
-  updateTable(updates: Partial<TableSettings>): void
+  // Core operations
+  loadTable(tableId: string): Promise<void> // Load from PostgreSQL
+  saveTable(settings: TableSettings): Promise<void> // Save to PostgreSQL
+  updateTable(updates: Partial<TableSettings>): void // Update working copy
   deleteTable(tableId: string): Promise<void>
-
-  // Parameter management
-  updateSelectedParameters(parameters: TableSelectedParameters): void
-
-  // Category management
-  updateCategoryFilters(filters: TableCategoryFilters): void
-
-  // Column management
-  updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]): void
-
-  // Sort and filter operations
-  updateSort(sort: TableSort | undefined): void
-  updateFilters(filters: TableFilter[]): void
+  updateColumns(
+    parentColumns: TableColumn[],
+    childColumns: TableColumn[]
+  ): Promise<void>
 
   // View management
   toggleView(): void
@@ -129,6 +117,17 @@ export interface TableStore {
   // Store management
   initialize(): Promise<void>
   reset(): void
+}
+
+// Type guard for table columns
+export function isTableColumn(value: unknown): value is TableColumn {
+  if (!value || typeof value !== 'object') return false
+  const col = value as { id?: unknown; field?: unknown; header?: unknown }
+  return (
+    typeof col.id === 'string' &&
+    typeof col.field === 'string' &&
+    typeof col.header === 'string'
+  )
 }
 
 /**

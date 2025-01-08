@@ -1,19 +1,13 @@
 import { ref, computed } from 'vue'
+import { isEqual } from 'lodash'
 import type {
   TableStore,
   TableStoreState,
   TableSettings,
-  TableStoreOptions,
-  TableSort
+  TableStoreOptions
 } from './types'
-import type {
-  TableCategoryFilters,
-  TableSelectedParameters,
-  TableFilter,
-  TableColumn
-} from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types'
 import { createTableColumns } from '~/composables/core/types'
-import { isSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { defaultSelectedParameters, defaultTableConfig } from '../config/defaults'
@@ -78,15 +72,11 @@ function createInitialState(): TableStoreState {
   return {
     tables: new Map(),
     currentTableId: null,
+    originalTable: null,
     loading: false,
     error: null,
-    lastUpdated: Date.now(),
-    sort: undefined,
-    filters: [],
     currentView: 'parent',
-    isDirty: false,
-    isUpdating: false,
-    lastUpdateTime: Date.now()
+    lastUpdated: Date.now()
   }
 }
 
@@ -136,22 +126,32 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     })
   }
 
-  // Computed state
-  const currentTable = computed(() => {
-    const id = state.value.currentTableId
-    return id ? state.value.tables.get(id) || null : null
-  })
+  // Computed properties for change detection
+  const computedState: {
+    currentTable: Ref<TableSettings | null>
+    hasChanges: Ref<boolean>
+  } = {
+    currentTable: computed(() => {
+      const id = state.value.currentTableId
+      return id ? state.value.tables.get(id) || null : null
+    }),
+    hasChanges: computed(() => {
+      const current = computedState.currentTable.value
+      const original = state.value.originalTable
 
+      if (!current) return false
+      if (!original) return true // New table
+
+      // Deep compare all properties that can change
+      return !isEqual(current, original)
+    })
+  }
+
+  // Basic state refs
   const isLoading = computed(() => state.value.loading)
   const error = computed(() => state.value.error)
   const hasError = computed(() => state.value.error !== null)
-  const lastUpdated = computed(() => state.value.lastUpdated)
-  const sort = computed(() => state.value.sort)
-  const filters = computed<TableFilter[]>(() => state.value.filters || [])
   const currentView = computed(() => state.value.currentView)
-  const isDirty = computed(() => state.value.isDirty)
-  const isUpdating = computed(() => state.value.isUpdating)
-  const lastUpdateTime = computed(() => state.value.lastUpdateTime)
 
   /**
    * Initialize GraphQL operations
@@ -182,12 +182,14 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   function setCurrentTable(tableId: string | null) {
     debug.startState(DebugCategories.STATE, 'Setting current table', { tableId })
 
+    // Update current ID and store original state for change detection
     state.value.currentTableId = tableId
-    state.value.isDirty = false
-
     if (tableId) {
+      const table = state.value.tables.get(tableId)
+      state.value.originalTable = table ? { ...table } : null
       storage.setItem(LAST_SELECTED_TABLE_KEY, tableId)
     } else {
+      state.value.originalTable = null
       storage.removeItem(LAST_SELECTED_TABLE_KEY)
     }
 
@@ -276,8 +278,6 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       isNew: !state.value.tables.has(settings.id)
     })
     state.value.loading = true
-    state.value.isUpdating = true
-    state.value.lastUpdateTime = Date.now()
 
     try {
       // Initialize GraphQL if not already done
@@ -298,38 +298,22 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         throw new Error('Failed to save table')
       }
 
-      // Check if this is an update or new table
-      const isNewTable = !state.value.tables.has(settings.id)
-
-      // Update store with saved table
+      // Update store with saved table and set as original
       state.value.tables.set(settings.id, settings)
+      state.value.originalTable = { ...settings }
 
-      // Only update currentTableId if it's a new table or matches current
+      // Update current ID if needed
+      const isNewTable = !state.value.currentTableId
       if (isNewTable || state.value.currentTableId === settings.id) {
-        setCurrentTable(settings.id)
+        state.value.currentTableId = settings.id
       }
 
       state.value.lastUpdated = Date.now()
-      state.value.isDirty = false
 
       debug.log(DebugCategories.STATE, 'Table saved', {
         tableId: settings.id,
-        table: settings,
-        currentId: state.value.currentTableId,
         isNewTable
       })
-
-      // Fetch all tables to ensure store is in sync
-      const tables = await graphqlOps.fetchTables()
-
-      // Update tables but preserve current selection
-      const currentId = state.value.currentTableId
-      Object.entries(tables).forEach(([id, table]) => {
-        state.value.tables.set(id, table)
-      })
-      if (currentId) {
-        state.value.currentTableId = currentId
-      }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
       debug.error(DebugCategories.ERROR, 'Failed to save table:', error)
@@ -337,36 +321,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       throw error
     } finally {
       state.value.loading = false
-      state.value.isUpdating = false
     }
-  }
-
-  /**
-   * Update sort state
-   */
-  function updateSort(sort: TableSort | undefined): void {
-    debug.startState(DebugCategories.STATE, 'Updating sort', sort)
-
-    state.value.sort = sort
-    state.value.lastUpdated = Date.now()
-    state.value.isDirty = true
-
-    debug.completeState(DebugCategories.STATE, 'Sort updated')
-  }
-
-  /**
-   * Update filters
-   */
-  function updateFilters(newFilters: TableFilter[]): void {
-    debug.startState(DebugCategories.STATE, 'Updating filters', {
-      filterCount: newFilters.length
-    })
-
-    state.value.filters = [...newFilters]
-    state.value.lastUpdated = Date.now()
-    state.value.isDirty = true
-
-    debug.completeState(DebugCategories.STATE, 'Filters updated')
   }
 
   /**
@@ -380,9 +335,10 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         updates
       })
       setCurrentTable(updates.id)
-      state.value.tables.set(updates.id, updates as TableSettings)
+      const newTable = updates as TableSettings
+      state.value.tables.set(updates.id, newTable)
+      state.value.originalTable = { ...newTable }
       state.value.lastUpdated = Date.now()
-      state.value.isDirty = true
       return
     }
 
@@ -430,7 +386,6 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
 
     state.value.tables.set(current.id, updated)
     state.value.lastUpdated = Date.now()
-    state.value.isDirty = true
 
     debug.log(DebugCategories.STATE, 'Table updated', {
       tableId: current.id,
@@ -497,138 +452,6 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     } finally {
       state.value.loading = false
     }
-  }
-
-  /**
-   * Update selected parameters and corresponding columns
-   */
-  function updateSelectedParameters(parameters: TableSelectedParameters) {
-    if (!state.value.currentTableId) {
-      debug.error(
-        DebugCategories.ERROR,
-        'Cannot update parameters: No current table selected'
-      )
-      return
-    }
-
-    debug.startState(DebugCategories.STATE, 'Updating selected parameters')
-
-    try {
-      // Validate parameters
-      const validParentParams = parameters.parent.filter(isSelectedParameter)
-      const validChildParams = parameters.child.filter(isSelectedParameter)
-
-      if (
-        validParentParams.length !== parameters.parent.length ||
-        validChildParams.length !== parameters.child.length
-      ) {
-        throw new Error('Invalid parameters detected')
-      }
-
-      // Create columns from validated parameters
-      const parentColumns = createTableColumns(validParentParams)
-      const childColumns = createTableColumns(validChildParams)
-
-      // Update state with validated data
-      const currentId = state.value.currentTableId
-      const current = state.value.tables.get(currentId)
-      if (current) {
-        state.value.tables.set(currentId, {
-          ...current,
-          selectedParameters: {
-            parent: validParentParams,
-            child: validChildParams
-          },
-          parentColumns,
-          childColumns,
-          lastUpdateTimestamp: Date.now()
-        })
-        state.value.lastUpdated = Date.now()
-        state.value.isDirty = true
-      }
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to update parameters:', err)
-      state.value.error =
-        err instanceof Error ? err : new Error('Failed to update parameters')
-      return
-    }
-
-    debug.completeState(DebugCategories.STATE, 'Parameters and columns updated', {
-      parameters: {
-        parent: parameters.parent.length,
-        child: parameters.child.length
-      },
-      columns: {
-        parent: parameters.parent.length,
-        child: parameters.child.length
-      }
-    })
-  }
-
-  /**
-   * Update category filters
-   */
-  function updateCategoryFilters(filters: TableCategoryFilters) {
-    if (!state.value.currentTableId) {
-      debug.error(
-        DebugCategories.ERROR,
-        'Cannot update filters: No current table selected'
-      )
-      return
-    }
-
-    updateTable({ categoryFilters: filters })
-  }
-
-  /**
-   * Update columns
-   */
-  function updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]) {
-    if (!state.value.currentTableId) {
-      debug.error(
-        DebugCategories.ERROR,
-        'Cannot update columns: No current table selected'
-      )
-      return
-    }
-
-    debug.startState(DebugCategories.STATE, 'Updating columns', {
-      tableId: state.value.currentTableId,
-      currentState: {
-        parent: currentTable.value?.parentColumns?.length || 0,
-        child: currentTable.value?.childColumns?.length || 0
-      },
-      newState: {
-        parent: parentColumns.length,
-        child: childColumns.length
-      }
-    })
-
-    // Validate columns
-    const isValid =
-      parentColumns.every((col) => col.id && col.field && col.header) &&
-      childColumns.every((col) => col.id && col.field && col.header)
-    if (!isValid) {
-      debug.error(DebugCategories.ERROR, 'Invalid columns: Missing required properties')
-      return
-    }
-
-    // Update table with new columns
-    updateTable({ parentColumns, childColumns })
-
-    debug.completeState(DebugCategories.STATE, 'Columns updated', {
-      tableId: state.value.currentTableId,
-      columns: {
-        parent: {
-          count: parentColumns.length,
-          ids: parentColumns.map((col) => col.id)
-        },
-        child: {
-          count: childColumns.length,
-          ids: childColumns.map((col) => col.id)
-        }
-      }
-    })
   }
 
   /**
@@ -702,40 +525,75 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     }
   }
 
+  /**
+   * Update table columns
+   */
+  async function updateColumns(
+    parentColumns: TableColumn[],
+    childColumns: TableColumn[]
+  ): Promise<void> {
+    try {
+      if (!state.value.currentTableId) {
+        throw new Error('Cannot update columns: No current table selected')
+      }
+
+      const current = state.value.tables.get(state.value.currentTableId)
+      if (!current) {
+        throw new Error('Cannot update columns: Current table not found in store')
+      }
+
+      // Update table with new columns
+      const updated = {
+        ...current,
+        parentColumns,
+        childColumns,
+        lastUpdateTimestamp: Date.now()
+      }
+
+      // Save to store
+      await new Promise<void>((resolve) => {
+        state.value.tables.set(current.id, updated)
+        state.value.lastUpdated = Date.now()
+        resolve()
+      })
+
+      debug.log(DebugCategories.STATE, 'Columns updated', {
+        tableId: current.id,
+        columns: {
+          parent: parentColumns.length,
+          child: childColumns.length
+        }
+      })
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      debug.error(DebugCategories.ERROR, 'Failed to update columns:', error)
+      state.value.error = error
+      throw error
+    }
+  }
+
+  // Create lastUpdated ref
+  const lastUpdated = computed(() => state.value.lastUpdated)
+
   return {
     // State
     state: computed(() => state.value),
-    currentTable,
+    computed: computedState,
     isLoading,
     error,
     hasError,
-    lastUpdated,
-    sort,
-    filters,
-
-    // View management
-    toggleView,
     currentView,
-    isDirty,
-    isUpdating,
-    lastUpdateTime,
+    lastUpdated,
 
-    // Table operations
+    // Core operations
     loadTable,
     saveTable,
     updateTable,
     deleteTable,
-    updateSort,
-    updateFilters,
-
-    // Parameter management
-    updateSelectedParameters,
-
-    // Category management
-    updateCategoryFilters,
-
-    // Column management
     updateColumns,
+
+    // View management
+    toggleView,
 
     // Store management
     initialize,

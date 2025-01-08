@@ -3,47 +3,37 @@
     <div class="flex items-center gap-2">
       <!-- Table Selection/Edit Area -->
       <div v-if="!isEditing" class="flex items-center gap-2">
-        <select
-          id="table-select"
-          :value="props.selectedTableId"
-          :disabled="props.isLoading"
-          class="px-2 py-1 rounded border bg-background text-sm h-7 min-w-[180px]"
-          @change="handleTableChange($event)"
-        >
-          <option v-for="table in props.tables" :key="table.id" :value="table.id">
-            {{ table.name }}
-          </option>
-        </select>
-        <FormButton
-          v-if="props.selectedTableId"
-          text
-          size="sm"
-          color="subtle"
-          @click="startEditing"
-        >
-          <PencilIcon class="size-4" />
-        </FormButton>
-        <FormButton
-          text
-          size="sm"
-          color="subtle"
-          class="border rounded"
-          @click="createNewTable"
-        >
-          <PlusIcon class="size-4" />
-        </FormButton>
-        <FormButton
-          v-if="props.hasChanges || isNewTable"
-          text
-          size="sm"
-          color="danger"
-          @click="handleGlobalSave"
-        >
-          <template #default>Save</template>
-          <template #icon-right>
-            <ArrowDownTrayIcon class="size-4" />
-          </template>
-        </FormButton>
+        <div class="flex items-center gap-2">
+          <select
+            id="table-select"
+            :value="props.selectedTableId"
+            :disabled="props.isLoading"
+            class="px-2 py-1 rounded border bg-background text-sm h-7 min-w-[180px]"
+            @change="handleTableChange($event)"
+          >
+            <option v-for="table in existingTables" :key="table.id" :value="table.id">
+              {{ table.name }}
+            </option>
+          </select>
+          <FormButton
+            v-if="props.selectedTableId"
+            text
+            size="sm"
+            color="subtle"
+            @click="startEditing"
+          >
+            <PencilIcon class="size-4" />
+          </FormButton>
+          <FormButton
+            text
+            size="sm"
+            color="primary"
+            class="border rounded hover:bg-primary-100"
+            @click="createNewTable"
+          >
+            <PlusIcon class="size-4" />
+          </FormButton>
+        </div>
       </div>
       <div v-else class="flex flex-col gap-1">
         <div class="flex items-center gap-2">
@@ -85,6 +75,18 @@
     <div class="flex items-center gap-2">
       <!-- Action Buttons -->
       <div class="flex items-center gap-2">
+        <FormButton
+          v-if="props.hasChanges"
+          text
+          size="sm"
+          color="danger"
+          @click="handleGlobalSave"
+        >
+          <template #default>Save</template>
+          <template #icon-right>
+            <ArrowDownTrayIcon class="size-4" />
+          </template>
+        </FormButton>
         <FormButton
           text
           size="sm"
@@ -130,12 +132,14 @@ const props = defineProps<{
 }>()
 
 // Computed properties
-const selectedTable = computed(() => {
-  return props.tables.find((table) => table.id === props.selectedTableId)
+const existingTables = computed(() => {
+  return props.tables.filter(
+    (table) => table.id !== 'new-table' && table.name !== 'Create New Table'
+  )
 })
 
-const isNewTable = computed(() => {
-  return props.selectedTableId && !selectedTable.value
+const selectedTable = computed(() => {
+  return existingTables.value.find((table) => table.id === props.selectedTableId)
 })
 
 const emit = defineEmits<{

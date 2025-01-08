@@ -127,7 +127,7 @@ export function useElementsData(
     isInitialized: _isInitialized,
     error: _tableError
   } = useTableFlow({
-    currentTable: computed(() => tableStore.currentTable.value),
+    currentTable: computed(() => tableStore.computed.currentTable.value),
     defaultConfig: {
       ...defaultTableConfig,
       id: `default-table-${Date.now()}` // Ensure unique id for new table
@@ -176,7 +176,7 @@ export function useElementsData(
       }
 
       // Get selected parameters from table store
-      const currentTable = tableStore.currentTable.value
+      const currentTable = tableStore.computed.currentTable.value
       if (currentTable?.selectedParameters) {
         const { parent: parentParams, child: childParams } =
           currentTable.selectedParameters
@@ -243,8 +243,11 @@ export function useElementsData(
       await initializeTable()
 
       const selectedCounts = {
-        parent: tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
-        child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
+        parent:
+          tableStore.computed.currentTable.value?.selectedParameters?.parent?.length ||
+          0,
+        child:
+          tableStore.computed.currentTable.value?.selectedParameters?.child?.length || 0
       }
 
       debug.log(DebugCategories.INITIALIZATION, 'Table initialized with parameters', {
@@ -318,7 +321,7 @@ export function useElementsData(
         await extractParameters()
 
         // Ensure all elements have selected parameters
-        const currentTable = tableStore.currentTable.value
+        const currentTable = tableStore.computed.currentTable.value
         if (currentTable?.selectedParameters) {
           const { parent: parentParams, child: childParams } =
             currentTable.selectedParameters
@@ -512,7 +515,7 @@ export function useElementsData(
             const parameters = { ...element.parameters }
 
             // Ensure all selected parameters exist
-            const table = tableStore.currentTable.value
+            const table = tableStore.computed.currentTable.value
             if (table?.selectedParameters) {
               const { parent: parentParams, child: childParams } =
                 table.selectedParameters
@@ -642,7 +645,7 @@ export function useElementsData(
       await extractParameters()
 
       // Ensure all elements have selected parameters
-      const currentTable = tableStore.currentTable.value
+      const currentTable = tableStore.computed.currentTable.value
       if (currentTable?.selectedParameters) {
         const { parent: parentParams, child: childParams } =
           currentTable.selectedParameters
@@ -769,7 +772,7 @@ export function useElementsData(
         const parameters = { ...element.parameters }
 
         // Ensure all selected parameters exist
-        const table = tableStore.currentTable.value
+        const table = tableStore.computed.currentTable.value
         if (table?.selectedParameters) {
           const { parent: parentParams, child: childParams } = table.selectedParameters
 

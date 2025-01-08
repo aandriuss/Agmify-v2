@@ -63,7 +63,7 @@ const parameterState = computed(() => {
 })
 
 const tableState = computed(() => {
-  const currentTable = tableStore.currentTable.value
+  const currentTable = tableStore.computed.currentTable.value
   return {
     initialized: !!currentTable,
     hasColumns: (currentTable?.parentColumns?.length ?? 0) > 0

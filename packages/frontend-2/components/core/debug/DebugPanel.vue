@@ -391,7 +391,7 @@
                   </div>
                   <div class="count-item">
                     <span>Current Table ID:</span>
-                    <span>{{ tableStore.currentTable.value?.id || 'None' }}</span>
+                    <span>{{ tableStore.computed.currentTable.value?.id || 'None' }}</span>
                   </div>
                   <div v-if="tableStore.hasError.value" class="count-item error">
                     <span>Table Store Error:</span>
@@ -528,7 +528,7 @@ watch(
 
 // Selected parameters and columns from table store
 const tableStoreCounts = computed(() => {
-  const currentTable = tableStore.currentTable.value
+  const currentTable = tableStore.computed.currentTable.value
   const selectedParams = currentTable?.selectedParameters
   const hasSelectedParams = isSelectedParameters(selectedParams)
 
@@ -667,7 +667,7 @@ const parameterGroups = computed(() => {
     }
   }
 
-  const currentTable = tableStore.currentTable.value
+  const currentTable = tableStore.computed.currentTable.value
   const selectedParams = currentTable?.selectedParameters
   const hasSelectedParams = isSelectedParameters(selectedParams)
 

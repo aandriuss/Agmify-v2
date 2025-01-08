@@ -9,11 +9,11 @@
       <TableLayout class="viewer-container">
         <template #header>
           <ScheduleTableHeader
-            :selected-table-id="tableStore.currentTable.value?.id || ''"
+            :selected-table-id="tableStore.computed.currentTable.value?.id || ''"
             :table-name="tableName"
             :tables="store.tablesArray.value || []"
             :show-category-options="showCategoryOptions"
-            :has-changes="hasChanges"
+            :has-changes="tableStore.computed.hasChanges.value"
             @update:selected-table-id="handleSelectedTableIdUpdate"
             @update:table-name="handleTableNameUpdate"
             @table-change="handleTableChange"
@@ -54,22 +54,26 @@
         <template #default>
           <div class="schedule-container">
             <ScheduleMainView
-              :selected-table-id="tableStore.currentTable?.value?.id || ''"
+              :selected-table-id="tableStore.computed.currentTable.value?.id || ''"
               :current-table="_currentTable"
               :is-initialized="isInitialized"
-              :table-name="tableStore.currentTable?.value?.name || ''"
-              :current-table-id="tableStore.currentTable?.value?.id || ''"
+              :table-name="tableStore.computed.currentTable.value?.name || ''"
+              :current-table-id="tableStore.computed.currentTable.value?.id || ''"
               :table-key="tableStore.lastUpdated?.toString() || ''"
               :error="error"
-              :parent-base-columns="tableStore.currentTable.value?.parentColumns || []"
+              :parent-base-columns="
+                tableStore.computed.currentTable.value?.parentColumns || []
+              "
               :parent-available-columns="parameterStore.parentAvailableBimParameters"
               :parent-visible-columns="
-                tableStore.currentTable?.value?.parentColumns || []
+                tableStore.computed.currentTable.value?.parentColumns || []
               "
-              :child-base-columns="tableStore.currentTable?.value?.childColumns || []"
+              :child-base-columns="
+                tableStore.computed.currentTable.value?.childColumns || []
+              "
               :child-available-columns="parameterStore.childAvailableBimParameters"
               :child-visible-columns="
-                tableStore.currentTable?.value?.childColumns || []
+                tableStore.computed.currentTable.value?.childColumns || []
               "
               :schedule-data="unref(store.scheduleData) || []"
               :evaluated-data="unref(store.evaluatedData) || []"
@@ -99,7 +103,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, unref } from 'vue'
 import { gql } from '@apollo/client/core'
-import { isEqual } from 'lodash'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
@@ -136,6 +139,7 @@ import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
 import { useNuxtApp } from '#app'
 import { childCategories } from '~/composables/core/config/categories'
 import ScheduleTableHeader from './components/ScheduleTableHeader.vue'
+import { isTableColumn } from '~/composables/core/tables/store/types'
 
 // Type-safe array utilities
 function safeArrayFrom<T>(value: T[] | undefined | null): T[] {
@@ -197,7 +201,7 @@ const tableName = ref<string>('New Table')
 
 // Watch for table store changes
 watch(
-  () => tableStore.currentTable.value,
+  () => tableStore.computed.currentTable.value,
   (newTable) => {
     if (newTable) {
       tableName.value = newTable.name
@@ -211,39 +215,8 @@ watch(
 )
 
 // Computed properties
-const hasChanges = computed(() => {
-  const currentTableId = store.state.value.currentTableId
-  if (!currentTableId) return false
-
-  const currentTable = tableStore.currentTable.value
-  if (!currentTable) return false
-
-  const originalTable = tableStore.state.value.tables.get(currentTableId)
-  if (!originalTable) return true // New table
-
-  // Compare specific properties that should trigger changes
-  const hasCategoryChanges = !isEqual(
-    currentTable.categoryFilters,
-    originalTable.categoryFilters
-  )
-  const hasColumnChanges =
-    !isEqual(currentTable.parentColumns, originalTable.parentColumns) ||
-    !isEqual(currentTable.childColumns, originalTable.childColumns)
-  const hasParameterChanges = !isEqual(
-    currentTable.selectedParameters,
-    originalTable.selectedParameters
-  )
-
-  debug.log(DebugCategories.TABLE_UPDATES, 'Checking for changes', {
-    hasCategoryChanges,
-    hasColumnChanges,
-    hasParameterChanges,
-    currentCategories: currentTable.categoryFilters,
-    originalCategories: originalTable.categoryFilters
-  })
-
-  return hasCategoryChanges || hasColumnChanges || hasParameterChanges
-})
+// Use store's computed state for change detection
+const hasChanges = computed(() => tableStore.computed.hasChanges.value)
 
 // Category handlers
 async function handleCategoryUpdate(payload: {
@@ -261,7 +234,7 @@ async function handleCategoryUpdate(payload: {
     }
 
     // Update table store with new categories
-    const currentTable = tableStore.currentTable.value
+    const currentTable = tableStore.computed.currentTable.value
     if (currentTable) {
       const updatedTable = {
         ...currentTable,
@@ -311,12 +284,12 @@ async function handleSelectedTableIdUpdate(tableId: string) {
   try {
     debug.log(DebugCategories.TABLE_UPDATES, 'Table selection changed', {
       tableId,
-      currentId: tableStore.currentTable.value?.id,
+      currentId: tableStore.computed.currentTable.value?.id,
       currentName: tableName.value
     })
 
     // Skip if same table is selected
-    if (tableId === tableStore.currentTable.value?.id) {
+    if (tableId === tableStore.computed.currentTable.value?.id) {
       debug.log(DebugCategories.TABLE_UPDATES, 'Same table selected, skipping update')
       return
     }
@@ -324,17 +297,16 @@ async function handleSelectedTableIdUpdate(tableId: string) {
     if (tableId) {
       // Load the table first
       await tableStore.loadTable(tableId)
-      const selectedTable = tableStore.currentTable.value
+      const selectedTable = tableStore.computed.currentTable.value
 
       if (selectedTable) {
         // Update name and store after loading
         tableName.value = selectedTable.name
 
         // Update categories from the selected table
-        store.setParentCategories(
-          selectedTable.categoryFilters.selectedParentCategories || []
-        )
-        store.setChildCategories(
+        // Update categories using loadCategories
+        await categories.loadCategories(
+          selectedTable.categoryFilters.selectedParentCategories || [],
           selectedTable.categoryFilters.selectedChildCategories || []
         )
 
@@ -354,8 +326,7 @@ async function handleSelectedTableIdUpdate(tableId: string) {
     } else {
       // Clear selection
       tableName.value = 'New Table'
-      store.setParentCategories([])
-      store.setChildCategories([])
+      await categories.loadCategories([], [])
       await store.lifecycle.update({
         selectedTableId: '',
         tableName: 'New Table',
@@ -370,7 +341,7 @@ async function handleSelectedTableIdUpdate(tableId: string) {
 
 async function handleTableNameUpdate(name: string) {
   try {
-    const currentTable = tableStore.currentTable.value
+    const currentTable = tableStore.computed.currentTable.value
     const currentId = currentTable?.id
 
     debug.log(DebugCategories.TABLE_UPDATES, 'Table name changed', {
@@ -422,7 +393,7 @@ async function handleSaveTable() {
       provideApolloClient(apolloClient)
 
       // Get current table state
-      const currentTable = tableStore.currentTable.value
+      const currentTable = tableStore.computed.currentTable.value
       const currentTableId = currentTable?.id
 
       // Determine if we're creating or updating
@@ -559,6 +530,12 @@ async function handleSaveTable() {
       // Force selection update in table store
       await tableStore.loadTable(tableConfig.id)
 
+      // Reload categories to ensure UI is in sync
+      await categories.loadCategories(
+        tableConfig.categoryFilters.selectedParentCategories || [],
+        tableConfig.categoryFilters.selectedChildCategories || []
+      )
+
       debug.log(DebugCategories.TABLE_UPDATES, 'Table saved successfully', {
         id: tableConfig.id,
         name: tableConfig.name
@@ -606,7 +583,7 @@ const childElements = computed<ElementData[]>(() => {
 
 // Convert TableSettings to TableSettings
 const _currentTable = computed(() => {
-  const current = tableStore.currentTable.value
+  const current = tableStore.computed.currentTable.value
   if (!current) return null
 
   return {
@@ -617,7 +594,7 @@ const _currentTable = computed(() => {
 
 // Transform parameters for ParameterManager
 const selectedParentParameters = computed(() => {
-  const columns = tableStore.currentTable?.value?.parentColumns || []
+  const columns = tableStore.computed.currentTable.value?.parentColumns || []
   return columns.map((col) => {
     // Ensure parameter exists and has required properties
     const parameter = col.parameter || {}
@@ -647,7 +624,7 @@ const selectedParentParameters = computed(() => {
 })
 
 const selectedChildParameters = computed(() => {
-  const columns = tableStore.currentTable?.value?.childColumns || []
+  const columns = tableStore.computed.currentTable.value?.childColumns || []
   return columns.map((col) => {
     // Ensure parameter exists and has required properties
     const parameter = col.parameter || {}
@@ -759,20 +736,34 @@ async function handleParameterVisibilityChange(
     })
 
     // Get current columns
-    const parentColumns = tableStore.currentTable.value?.parentColumns || []
+    const parentColumns = tableStore.computed.currentTable.value?.parentColumns || []
 
-    // Update parameter visibility in table store
-    await tableStore.updateColumns(
-      parentColumns.map((col) => ({
+    // Map and validate columns
+    const updatedParentColumns = parentColumns.map((col): TableColumn => {
+      if (!isTableColumn(col)) {
+        throw new Error('Invalid parent column structure')
+      }
+      return {
         ...col,
         visible: col.id === id ? visible : col.visible,
         parameter: {
           ...col.parameter,
           visible: col.id === id ? visible : col.parameter.visible
         }
-      })),
-      tableStore.currentTable.value?.childColumns || []
-    )
+      }
+    })
+
+    const currentChildColumns =
+      tableStore.computed.currentTable.value?.childColumns || []
+    const updatedChildColumns = currentChildColumns.map((col): TableColumn => {
+      if (!isTableColumn(col)) {
+        throw new Error('Invalid child column structure')
+      }
+      return col
+    })
+
+    // Update parameter visibility in table store
+    await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
 
     debug.log(DebugCategories.PARAMETERS, 'Parameter visibility updated in stores')
   } catch (err) {
@@ -789,27 +780,43 @@ async function handleColumnVisibilityChange(
       visible: payload.visible
     })
 
+    // Map and validate columns
+    const currentParentColumns =
+      tableStore.computed.currentTable.value?.parentColumns || []
+    const updatedParentColumns = currentParentColumns.map((col): TableColumn => {
+      if (!isTableColumn(col)) {
+        throw new Error('Invalid parent column structure')
+      }
+      return {
+        ...col,
+        visible: col.id === payload.column.id ? payload.visible : col.visible,
+        parameter: {
+          ...col.parameter,
+          visible:
+            col.id === payload.column.id ? payload.visible : col.parameter.visible
+        }
+      }
+    })
+
+    const currentChildColumns =
+      tableStore.computed.currentTable.value?.childColumns || []
+    const updatedChildColumns = currentChildColumns.map((col): TableColumn => {
+      if (!isTableColumn(col)) {
+        throw new Error('Invalid child column structure')
+      }
+      return {
+        ...col,
+        visible: col.id === payload.column.id ? payload.visible : col.visible,
+        parameter: {
+          ...col.parameter,
+          visible:
+            col.id === payload.column.id ? payload.visible : col.parameter.visible
+        }
+      }
+    })
+
     // Update column visibility in table store
-    await tableStore.updateColumns(
-      tableStore.currentTable.value?.parentColumns.map((col) => ({
-        ...col,
-        visible: col.id === payload.column.id ? payload.visible : col.visible,
-        parameter: {
-          ...col.parameter,
-          visible:
-            col.id === payload.column.id ? payload.visible : col.parameter.visible
-        }
-      })) || [],
-      tableStore.currentTable.value?.childColumns.map((col) => ({
-        ...col,
-        visible: col.id === payload.column.id ? payload.visible : col.visible,
-        parameter: {
-          ...col.parameter,
-          visible:
-            col.id === payload.column.id ? payload.visible : col.parameter.visible
-        }
-      })) || []
-    )
+    await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
 
     debug.log(DebugCategories.COLUMNS, 'Column visibility updated', {
       columnId: payload.column.id,
@@ -852,7 +859,7 @@ function updateErrorState(newError: Error | null): void {
         isLoading: isLoading.value,
         hasElements: bimElements.allElements.value?.length || 0,
         hasParameters: parameterStore.parentRawParameters.value?.length || 0,
-        hasTable: !!tableStore.currentTable.value
+        hasTable: !!tableStore.computed.currentTable.value
       }
     })
   }
@@ -872,7 +879,7 @@ function handleError(err: unknown): void {
       isLoading: isLoading.value,
       hasElements: bimElements.allElements.value?.length || 0,
       hasParameters: parameterStore.parentRawParameters.value?.length || 0,
-      hasTable: !!tableStore.currentTable.value
+      hasTable: !!tableStore.computed.currentTable.value
     }
   })
   updateErrorState(error)
@@ -987,10 +994,10 @@ onMounted(async () => {
     transitionPhase('table_store')
     debug.log(DebugCategories.INITIALIZATION, 'Initializing table store')
     await initComponent.initialize()
-    if (!tableStore.currentTable.value) {
+    if (!tableStore.computed.currentTable.value) {
       debug.error(DebugCategories.ERROR, 'Table store failed to initialize', {
         tableState: tableStore.state.value,
-        currentTable: tableStore.currentTable.value
+        currentTable: tableStore.computed.currentTable.value
       })
       throw new Error('Table store failed to initialize')
     }
@@ -1074,7 +1081,7 @@ onMounted(async () => {
 
       if (selectedId) {
         await tableStore.loadTable(selectedId)
-        const loadedTable = tableStore.currentTable.value
+        const loadedTable = tableStore.computed.currentTable.value
         if (loadedTable) {
           // Update store state with all tables
           await store.lifecycle.update({
@@ -1115,7 +1122,7 @@ onMounted(async () => {
 
     // Check if we have everything we need
     const hasData = (store.scheduleData.value?.length ?? 0) > 0
-    const hasTable = !!tableStore.currentTable.value
+    const hasTable = !!tableStore.computed.currentTable.value
     const hasParams = parameterStore.state.value.initialized
 
     debug.log(DebugCategories.INITIALIZATION, 'Checking initialization state:', {

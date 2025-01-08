@@ -84,7 +84,7 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
       }
 
       // Only update if needed
-      const currentConfig = tableStore.currentTable.value
+      const currentConfig = tableStore.computed.currentTable.value
       const needsUpdate =
         !currentConfig ||
         currentConfig.id !== config.id ||

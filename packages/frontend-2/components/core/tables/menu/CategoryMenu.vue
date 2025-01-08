@@ -82,24 +82,25 @@ import { CheckCircleIcon as CheckCircleIconSolid } from '@heroicons/vue/24/solid
 import { CheckCircleIcon as CheckCircleIconOutline } from '@heroicons/vue/24/outline'
 import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
 import { parentCategories, childCategories } from '~/composables/core/config/categories'
+import { watch } from 'vue'
 
 const props = defineProps<{
   isUpdating?: boolean
   error?: Error | null
-  initialParentCategories?: string[]
-  initialChildCategories?: string[]
+  selectedParentCategories: string[]
+  selectedChildCategories: string[]
 }>()
 
 const emit = defineEmits<{
   (e: 'update', payload: { type: 'parent' | 'child'; categories: string[] }): void
 }>()
 
-// Initialize categories
-const { selectedParentCategories, selectedChildCategories, handleCategoryToggle } =
+// Initialize categories with reactive props
+const { selectedParentCategories, selectedChildCategories, handleCategoryToggle, loadCategories } =
   useTableCategories({
     initialState: {
-      selectedParentCategories: props.initialParentCategories || [],
-      selectedChildCategories: props.initialChildCategories || []
+      selectedParentCategories: props.selectedParentCategories,
+      selectedChildCategories: props.selectedChildCategories
     },
     onUpdate: (state) => {
       emit('update', {
@@ -113,17 +114,18 @@ const { selectedParentCategories, selectedChildCategories, handleCategoryToggle 
       return Promise.resolve()
     }
   })
+
+// Watch for prop changes and update internal state
+watch(
+  () => [props.selectedParentCategories, props.selectedChildCategories],
+  ([newParent, newChild]) => {
+    loadCategories(newParent, newChild)
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
-/* .category-menu {
-  @apply w-full;
-}
-
-.category-button {
-  @apply w-full text-left p-2 flex items-center transition-all duration-200;
-} */
-
 .category-menu {
   background-color: var(--surface-card);
   padding: 0.5rem;

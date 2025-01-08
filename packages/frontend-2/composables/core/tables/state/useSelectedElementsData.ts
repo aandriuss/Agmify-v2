@@ -105,7 +105,8 @@ export function useSelectedElementsData(
       childElementsList.value = []
 
       // Get selected parameters from table store
-      const selectedParams = tableStore.currentTable.value?.selectedParameters || {
+      const selectedParams = tableStore.computed.currentTable.value
+        ?.selectedParameters || {
         parent: [],
         child: []
       }
@@ -163,8 +164,8 @@ export function useSelectedElementsData(
 
               // Get column configuration
               const relevantColumns = element.isChild
-                ? tableStore.currentTable.value?.childColumns || []
-                : tableStore.currentTable.value?.parentColumns || []
+                ? tableStore.computed.currentTable.value?.childColumns || []
+                : tableStore.computed.currentTable.value?.parentColumns || []
 
               // Create base element fields
               const baseFields = {
@@ -309,8 +310,8 @@ export function useSelectedElementsData(
         processingTime: `${Date.now() - performance.now()}ms`,
         tableData: {
           rows: typedViewerData.length,
-          columns: tableStore.currentTable.value?.parentColumns?.length || 0,
-          parameters: tableStore.currentTable.value?.selectedParameters || {
+          columns: tableStore.computed.currentTable.value?.parentColumns?.length || 0,
+          parameters: tableStore.computed.currentTable.value?.selectedParameters || {
             parent: [],
             child: []
           }
@@ -332,7 +333,7 @@ export function useSelectedElementsData(
   watch(
     [
       () => options.elements.value,
-      () => tableStore.currentTable.value?.selectedParameters,
+      () => tableStore.computed.currentTable.value?.selectedParameters,
       () => options.selectedParentCategories.value,
       () => options.selectedChildCategories.value
     ],

@@ -58,7 +58,7 @@ export function useLoadingState() {
     const evaluatedData = store.evaluatedData.value
     const parentParams = parameterStore.parentRawParameters.value
     const childParams = parameterStore.childRawParameters.value
-    const currentTable = tableStore.currentTable.value
+    const currentTable = tableStore.computed.currentTable.value
 
     // Basic presence checks
     const hasScheduleData = Array.isArray(scheduleData) && scheduleData.length > 0

@@ -84,16 +84,30 @@ export function useTableCategories(options: TableCategoriesOptions = {}) {
         category
       })
 
-      const categories =
-        type === 'parent'
-          ? internalState.value.selectedParentCategories
-          : internalState.value.selectedChildCategories
-
-      const index = categories.indexOf(category)
-      if (index === -1) {
-        categories.push(category)
+      if (type === 'parent') {
+        const newCategories = [...internalState.value.selectedParentCategories]
+        const index = newCategories.indexOf(category)
+        if (index === -1) {
+          newCategories.push(category)
+        } else {
+          newCategories.splice(index, 1)
+        }
+        internalState.value = {
+          ...internalState.value,
+          selectedParentCategories: newCategories
+        }
       } else {
-        categories.splice(index, 1)
+        const newCategories = [...internalState.value.selectedChildCategories]
+        const index = newCategories.indexOf(category)
+        if (index === -1) {
+          newCategories.push(category)
+        } else {
+          newCategories.splice(index, 1)
+        }
+        internalState.value = {
+          ...internalState.value,
+          selectedChildCategories: newCategories
+        }
       }
 
       if (onUpdate) {

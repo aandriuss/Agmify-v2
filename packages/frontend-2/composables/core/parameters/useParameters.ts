@@ -86,7 +86,8 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
                 user: parameterStore.parentAvailableUserParameters.value?.length || 0
               },
               selected:
-                tableStore.currentTable.value?.selectedParameters?.parent?.length || 0
+                tableStore.computed.currentTable.value?.selectedParameters?.parent
+                  ?.length || 0
             },
             child: {
               raw: parameterStore.childRawParameters.value?.length || 0,
@@ -95,7 +96,8 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
                 user: parameterStore.childAvailableUserParameters.value?.length || 0
               },
               selected:
-                tableStore.currentTable.value?.selectedParameters?.child?.length || 0
+                tableStore.computed.currentTable.value?.selectedParameters?.child
+                  ?.length || 0
             }
           }
         })
@@ -120,7 +122,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
           debug.error(DebugCategories.PARAMETERS, 'Category change error:', {
             error: err,
             state: {
-              hasTable: !!tableStore.currentTable.value,
+              hasTable: !!tableStore.computed.currentTable.value,
               hasParameters: parameterStore.parentRawParameters.value?.length || 0
             }
           })
@@ -149,7 +151,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
         if (
           !parameterStore.isProcessing.value &&
           parameterStore.state.value.initialized &&
-          tableStore.currentTable.value
+          tableStore.computed.currentTable.value
         ) {
           clearTimeout(timeout)
           resolve()
@@ -160,7 +162,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
           [
             () => parameterStore.isProcessing.value,
             () => parameterStore.state.value.initialized,
-            () => tableStore.currentTable.value
+            () => tableStore.computed.currentTable.value
           ],
           ([isProcessing, initialized, table]) => {
             if (!isProcessing && initialized && table) {
@@ -196,7 +198,8 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
             user: parameterStore.parentAvailableUserParameters.value?.length || 0
           },
           selected:
-            tableStore.currentTable.value?.selectedParameters?.parent?.length || 0
+            tableStore.computed.currentTable.value?.selectedParameters?.parent
+              ?.length || 0
         },
         child: {
           raw: parameterStore.childRawParameters.value?.length || 0,
@@ -205,7 +208,8 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
             user: parameterStore.childAvailableUserParameters.value?.length || 0
           },
           selected:
-            tableStore.currentTable.value?.selectedParameters?.child?.length || 0
+            tableStore.computed.currentTable.value?.selectedParameters?.child?.length ||
+            0
         }
       })
 
@@ -218,7 +222,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
       debug.error(DebugCategories.PARAMETERS, 'Initialization error:', {
         error: err,
         state: {
-          hasTable: !!tableStore.currentTable.value,
+          hasTable: !!tableStore.computed.currentTable.value,
           hasParameters: parameterStore.parentRawParameters.value?.length || 0
         }
       })
@@ -235,7 +239,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
         user: parameterStore.parentAvailableUserParameters
       },
       selected: computed(
-        () => tableStore.currentTable.value?.selectedParameters?.parent || []
+        () => tableStore.computed.currentTable.value?.selectedParameters?.parent || []
       )
     },
     childParameters: {
@@ -245,7 +249,7 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
         user: parameterStore.childAvailableUserParameters
       },
       selected: computed(
-        () => tableStore.currentTable.value?.selectedParameters?.child || []
+        () => tableStore.computed.currentTable.value?.selectedParameters?.child || []
       )
     },
 
@@ -261,49 +265,60 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
 
       const parameterValue =
         initialValue !== undefined ? convertToParameterValue(initialValue) : null
-      const currentParams = tableStore.currentTable.value?.selectedParameters
+      const currentParams = tableStore.computed.currentTable.value?.selectedParameters
       const parentParams = currentParams?.parent || []
       const childParams = currentParams?.child || []
 
-      tableStore.updateSelectedParameters({
-        parent: isParent
-          ? [
-              ...parentParams,
-              {
-                id: `${name}-${Date.now()}`,
-                name,
-                type,
-                group,
-                value: parameterValue,
-                kind: 'user',
-                visible: true,
-                order: parentParams.length + 1
-              }
-            ]
-          : parentParams,
-        child: !isParent
-          ? [
-              ...childParams,
-              {
-                id: `${name}-${Date.now()}`,
-                name,
-                type,
-                group,
-                value: parameterValue,
-                kind: 'user',
-                visible: true,
-                order: childParams.length + 1
-              }
-            ]
-          : childParams
+      tableStore.updateTable({
+        selectedParameters: {
+          parent: isParent
+            ? [
+                ...parentParams,
+                {
+                  id: `${name}-${Date.now()}`,
+                  name,
+                  type,
+                  group,
+                  value: parameterValue,
+                  kind: 'user' as const,
+                  visible: true,
+                  order: parentParams.length + 1,
+                  field: name,
+                  header: name,
+                  removable: true
+                }
+              ]
+            : parentParams,
+          child: !isParent
+            ? [
+                ...childParams,
+                {
+                  id: `${name}-${Date.now()}`,
+                  name,
+                  type,
+                  group,
+                  value: parameterValue,
+                  kind: 'user' as const,
+                  visible: true,
+                  order: childParams.length + 1,
+                  field: name,
+                  header: name,
+                  removable: true
+                }
+              ]
+            : childParams
+        }
       })
 
       debug.log(DebugCategories.PARAMETERS, 'User parameter added', {
         state: {
           selected: {
             parent:
-              tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
-            child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
+              tableStore.computed.currentTable.value?.selectedParameters?.parent
+                ?.length || 0,
+            child:
+              tableStore.computed.currentTable.value?.selectedParameters?.child
+                ?.length || 0
           }
         }
       })
@@ -315,59 +330,71 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
         state: {
           selected: {
             parent:
-              tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
-            child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
+              tableStore.computed.currentTable.value?.selectedParameters?.parent
+                ?.length || 0,
+            child:
+              tableStore.computed.currentTable.value?.selectedParameters?.child
+                ?.length || 0
           }
         }
       })
 
-      tableStore.updateSelectedParameters({
-        parent: isParent
-          ? (tableStore.currentTable.value?.selectedParameters?.parent || []).filter(
-              (p) => p.id !== id
-            )
-          : tableStore.currentTable.value?.selectedParameters?.parent || [],
-        child: !isParent
-          ? (tableStore.currentTable.value?.selectedParameters?.child || []).filter(
-              (p) => p.id !== id
-            )
-          : tableStore.currentTable.value?.selectedParameters?.child || []
+      tableStore.updateTable({
+        selectedParameters: {
+          parent: isParent
+            ? (
+                tableStore.computed.currentTable.value?.selectedParameters?.parent || []
+              ).filter((p) => p.id !== id)
+            : tableStore.computed.currentTable.value?.selectedParameters?.parent || [],
+          child: !isParent
+            ? (
+                tableStore.computed.currentTable.value?.selectedParameters?.child || []
+              ).filter((p) => p.id !== id)
+            : tableStore.computed.currentTable.value?.selectedParameters?.child || []
+        }
       })
 
       debug.log(DebugCategories.PARAMETERS, 'Parameter removed', {
         state: {
           selected: {
             parent:
-              tableStore.currentTable.value?.selectedParameters?.parent?.length || 0,
-            child: tableStore.currentTable.value?.selectedParameters?.child?.length || 0
+              tableStore.computed.currentTable.value?.selectedParameters?.parent
+                ?.length || 0,
+            child:
+              tableStore.computed.currentTable.value?.selectedParameters?.child
+                ?.length || 0
           }
         }
       })
     },
     updateParameterVisibility: (id, visible, isParent) => {
-      const params = tableStore.currentTable.value?.selectedParameters
+      const params = tableStore.computed.currentTable.value?.selectedParameters
       if (!params) return
 
-      tableStore.updateSelectedParameters({
-        parent: isParent
-          ? params.parent.map((p) => (p.id === id ? { ...p, visible } : p))
-          : params.parent,
-        child: !isParent
-          ? params.child.map((p) => (p.id === id ? { ...p, visible } : p))
-          : params.child
+      tableStore.updateTable({
+        selectedParameters: {
+          parent: isParent
+            ? params.parent.map((p) => (p.id === id ? { ...p, visible } : p))
+            : params.parent,
+          child: !isParent
+            ? params.child.map((p) => (p.id === id ? { ...p, visible } : p))
+            : params.child
+        }
       })
     },
     updateParameterOrder: (id, newOrder, isParent) => {
-      const params = tableStore.currentTable.value?.selectedParameters
+      const params = tableStore.computed.currentTable.value?.selectedParameters
       if (!params) return
 
-      tableStore.updateSelectedParameters({
-        parent: isParent
-          ? params.parent.map((p) => (p.id === id ? { ...p, order: newOrder } : p))
-          : params.parent,
-        child: !isParent
-          ? params.child.map((p) => (p.id === id ? { ...p, order: newOrder } : p))
-          : params.child
+      tableStore.updateTable({
+        selectedParameters: {
+          parent: isParent
+            ? params.parent.map((p) => (p.id === id ? { ...p, order: newOrder } : p))
+            : params.parent,
+          child: !isParent
+            ? params.child.map((p) => (p.id === id ? { ...p, order: newOrder } : p))
+            : params.child
+        }
       })
     },
 

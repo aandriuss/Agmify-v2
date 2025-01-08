@@ -96,7 +96,7 @@ export function useTableParameters() {
     () => coreStore.selectedChildCategories.value || []
   )
   const currentTableId = computed(() => tableStore.state.value.currentTableId)
-  const currentTable = computed(() => tableStore.currentTable.value)
+  const currentTable = computed(() => tableStore.computed.currentTable.value)
   const selectedParameters = computed(() => {
     const params = currentTable.value?.selectedParameters
     return isValidParameters(params) ? params : { parent: [], child: [] }

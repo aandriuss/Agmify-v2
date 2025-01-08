@@ -40,8 +40,8 @@
       :table-data="store.tableData.value"
       :parent-elements="parentElements"
       :child-elements="childElements"
-      :parent-columns="tableStore.currentTable.value?.parentColumns || []"
-      :child-columns="tableStore.currentTable.value?.childColumns || []"
+      :parent-columns="tableStore.computed.currentTable.value?.parentColumns || []"
+      :child-columns="tableStore.computed.currentTable.value?.childColumns || []"
       :show-parameter-stats="true"
       :show-bim-data="true"
       :show-parameter-categories="true"
@@ -119,7 +119,7 @@ watch(
     debug.log(DebugCategories.STATE, 'Table selection changed in MainView', {
       from: oldId,
       to: newId,
-      currentTable: tableStore.currentTable.value?.id
+      currentTable: tableStore.computed.currentTable.value?.id
     })
 
     // Force a reactivity update
@@ -137,8 +137,8 @@ const parameters = useParameters({
 })
 
 // Computed properties
-const tableColumns = computed(() => tableStore.currentTable.value?.parentColumns || [])
-const detailColumns = computed(() => tableStore.currentTable.value?.childColumns || [])
+const tableColumns = computed(() => tableStore.computed.currentTable.value?.parentColumns || [])
+const detailColumns = computed(() => tableStore.computed.currentTable.value?.childColumns || [])
 const hasSelectedCategories = computed(() => {
   const parentCats = store.selectedParentCategories.value
   const childCats = store.selectedChildCategories.value
@@ -255,7 +255,7 @@ const isInitialized = computed(() => {
   const storesReady =
     store.initialized.value &&
     parameterStore.state.value.initialized &&
-    tableStore.currentTable.value !== null
+    tableStore.computed.currentTable.value !== null
 
   const hasData = (store.scheduleData.value?.length ?? 0) > 0
   const hasColumns = tableColumns.value?.length > 0 || detailColumns.value?.length > 0
@@ -275,7 +275,7 @@ const isInitialized = computed(() => {
     stores: {
       core: store.initialized.value,
       parameters: parameterStore.state.value.initialized,
-      table: tableStore.currentTable.value !== null
+      table: tableStore.computed.currentTable.value !== null
     }
   })
 
@@ -322,7 +322,7 @@ function handleColumnVisibilityChange(event: {
 
 function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
   try {
-    const currentTable = tableStore.currentTable.value
+    const currentTable = tableStore.computed.currentTable.value
     if (!currentTable) return
 
     const parentColumns = [...(currentTable.parentColumns || [])]

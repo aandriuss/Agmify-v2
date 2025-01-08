@@ -6,11 +6,8 @@ import type {
   AvailableUserParameter
 } from '~/composables/core/types/parameters/parameter-states'
 import type { TableColumn } from '~/composables/core/types/tables'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
 import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
-import type {
-  BimValueType,
-  UserValueType
-} from '~/composables/core/types/parameters/value-types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 type View = 'parent' | 'child'
@@ -44,7 +41,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
 
   // Active columns are all columns in the current view from table store
   const activeColumns = computed(() => {
-    const currentTable = tableStore.currentTable.value
+    const currentTable = tableStore.computed.currentTable.value
     if (!currentTable) return []
 
     return currentView.value === 'parent'
@@ -54,7 +51,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
 
   // Available parameters for the current view (excluding selected ones)
   const availableParameters = computed(() => {
-    const currentTable = tableStore.currentTable.value
+    const currentTable = tableStore.computed.currentTable.value
     if (!currentTable) return []
 
     const isParent = currentView.value === 'parent'
@@ -107,7 +104,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
 
       switch (operation.type) {
         case 'add': {
-          const currentTable = tableStore.currentTable.value
+          const currentTable = tableStore.computed.currentTable.value
           if (!currentTable) return
 
           const selectedParams = isParent
@@ -125,13 +122,15 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             [isParent ? 'parent' : 'child']: [...selectedParams, newSelectedParam]
           }
 
-          await tableStore.updateSelectedParameters(updatedParams)
+          await tableStore.updateTable({
+            selectedParameters: updatedParams
+          })
 
           columnState.value.pendingChanges.push(operation)
           break
         }
         case 'remove': {
-          const currentTable = tableStore.currentTable.value
+          const currentTable = tableStore.computed.currentTable.value
           if (!currentTable) return
 
           const selectedParams = isParent
@@ -145,12 +144,14 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             )
           }
 
-          await tableStore.updateSelectedParameters(updatedParams)
+          await tableStore.updateTable({
+            selectedParameters: updatedParams
+          })
           columnState.value.pendingChanges.push(operation)
           break
         }
         case 'visibility': {
-          const currentTable = tableStore.currentTable.value
+          const currentTable = tableStore.computed.currentTable.value
           if (!currentTable) return
 
           const selectedParams = isParent
@@ -166,12 +167,14 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             )
           }
 
-          await tableStore.updateSelectedParameters(updatedParams)
+          await tableStore.updateTable({
+            selectedParameters: updatedParams
+          })
           columnState.value.pendingChanges.push(operation)
           break
         }
         case 'reorder': {
-          const currentTable = tableStore.currentTable.value
+          const currentTable = tableStore.computed.currentTable.value
           if (!currentTable) return
 
           const selectedParams = [
@@ -194,7 +197,9 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             [isParent ? 'parent' : 'child']: selectedParams
           }
 
-          await tableStore.updateSelectedParameters(updatedParams)
+          await tableStore.updateTable({
+            selectedParameters: updatedParams
+          })
           columnState.value.pendingChanges.push(operation)
           break
         }
@@ -229,72 +234,16 @@ export function useColumnManager(options: UseColumnManagerOptions) {
 
     isUpdating.value = true
     try {
-      const currentTable = tableStore.currentTable.value
+      const currentTable = tableStore.computed.currentTable.value
       if (!currentTable) return false
 
       // Convert selected parameters to column definitions
-      const parentColumns: TableColumn[] = currentTable.selectedParameters.parent.map(
-        (param) => {
-          return {
-            id: param.id,
-            field: param.id,
-            name: param.name,
-            header: param.name,
-            visible: param.visible,
-            removable: true,
-            order: param.order,
-            description: param.description,
-            category: param.category,
-            value: null,
-            ...(param.kind === 'bim'
-              ? {
-                  kind: 'bim' as const,
-                  type: param.type as BimValueType,
-                  sourceValue: null,
-                  fetchedGroup: param.group,
-                  currentGroup: param.group,
-                  source: 'Parameters',
-                  isFixed: false
-                }
-              : {
-                  kind: 'user' as const,
-                  type: param.type as UserValueType,
-                  group: param.group
-                })
-          }
-        }
+      const parentColumns = currentTable.selectedParameters.parent.map((param) =>
+        createTableColumn(param)
       )
 
-      const childColumns: TableColumn[] = currentTable.selectedParameters.child.map(
-        (param) => {
-          return {
-            id: param.id,
-            field: param.id,
-            name: param.name,
-            header: param.name,
-            visible: param.visible,
-            removable: true,
-            order: param.order,
-            description: param.description,
-            category: param.category,
-            value: null,
-            ...(param.kind === 'bim'
-              ? {
-                  kind: 'bim' as const,
-                  type: param.type as BimValueType,
-                  sourceValue: null,
-                  fetchedGroup: param.group,
-                  currentGroup: param.group,
-                  source: 'Parameters',
-                  isFixed: false
-                }
-              : {
-                  kind: 'user' as const,
-                  type: param.type as UserValueType,
-                  group: param.group
-                })
-          }
-        }
+      const childColumns = currentTable.selectedParameters.child.map((param) =>
+        createTableColumn(param)
       )
 
       // Update table store with new columns
