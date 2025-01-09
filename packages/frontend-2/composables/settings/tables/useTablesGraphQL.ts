@@ -283,8 +283,8 @@ export async function useTablesGraphQL() {
                     width: col.width,
                     order: col.order,
                     headerComponent: col.headerComponent,
-                    parameter:
-                      col.parameter.kind === 'bim'
+                    parameter: col.parameter
+                      ? col.parameter.kind === 'bim'
                         ? {
                             id: col.parameter.id,
                             name: col.parameter.name,
@@ -302,7 +302,7 @@ export async function useTablesGraphQL() {
                             group: col.parameter.group,
                             category: col.parameter.category,
                             description: col.parameter.description,
-                            metadata: col.parameter.metadata,
+                            metadata: col.parameter.metadata || {},
                             sourceValue:
                               col.parameter.value === null
                                 ? ''
@@ -327,10 +327,27 @@ export async function useTablesGraphQL() {
                             group: col.parameter.group,
                             category: col.parameter.category,
                             description: col.parameter.description,
-                            metadata: col.parameter.metadata,
+                            metadata: col.parameter.metadata || {},
                             equation: col.parameter.equation,
                             isCustom: col.parameter.isCustom
                           }
+                      : {
+                          id: col.id,
+                          name: col.header || '',
+                          kind: 'bim' as const,
+                          type: 'string' as BimValueType,
+                          value: '',
+                          visible: col.visible,
+                          order: col.order || 0,
+                          field: col.id,
+                          header: col.header || '',
+                          removable: col.removable ?? true,
+                          group: 'Parameters',
+                          metadata: {},
+                          sourceValue: '',
+                          fetchedGroup: 'Parameters',
+                          currentGroup: 'Parameters'
+                        }
                   }
                   return column
                 }),
@@ -514,7 +531,20 @@ export async function useTablesGraphQL() {
         debug.completeState(DebugCategories.STATE, 'Tables update complete')
         return true
       } catch (err) {
-        debug.error(DebugCategories.ERROR, 'Failed to update tables', err)
+        debug.error(DebugCategories.ERROR, 'Failed to update tables', {
+          error: err,
+          errorMessage: err instanceof Error ? err.message : 'Unknown error',
+          errorStack: err instanceof Error ? err.stack : undefined
+        })
+
+        // Check if it's a GraphQL error with details
+        if (err && typeof err === 'object' && 'graphQLErrors' in err) {
+          const graphqlErr = err as { graphQLErrors?: Array<{ message: string }> }
+          if (graphqlErr.graphQLErrors?.length) {
+            throw new Error(graphqlErr.graphQLErrors.map((e) => e.message).join(', '))
+          }
+        }
+
         throw new Error(err instanceof Error ? err.message : 'Failed to update tables')
       }
     }

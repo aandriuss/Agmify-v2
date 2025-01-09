@@ -331,10 +331,14 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
    * Save table to PostgreSQL
    */
   async function saveTable(settings: TableSettings) {
+    const isNewTable = !state.value.availableTables.some((t) => t.id === settings.id)
     debug.startState(DebugCategories.STATE, 'Saving table', {
       tableId: settings.id,
       settings,
-      isNew: !state.value.availableTables.some((t) => t.id === settings.id)
+      isNew: isNewTable,
+      currentTableId: state.value.currentTableId,
+      hasCurrentTable: !!state.value.currentTable,
+      currentTableMatches: state.value.currentTable?.id === settings.id
     })
     state.value.loading = true
 
@@ -346,6 +350,39 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
 
       if (!graphqlOps) {
         throw new Error('GraphQL operations not initialized')
+      }
+
+      // For new tables, initialize in store first
+      if (isNewTable) {
+        // Create default columns if none provided
+        const parentColumns =
+          settings.parentColumns || createTableColumns(defaultSelectedParameters.parent)
+        const childColumns =
+          settings.childColumns || createTableColumns(defaultSelectedParameters.child)
+
+        const newTable: TableSettings = {
+          ...defaultTableConfig,
+          ...settings,
+          parentColumns,
+          childColumns,
+          selectedParameters: {
+            parent: settings.selectedParameters?.parent || [
+              ...defaultSelectedParameters.parent
+            ],
+            child: settings.selectedParameters?.child || [
+              ...defaultSelectedParameters.child
+            ]
+          },
+          lastUpdateTimestamp: Date.now()
+        }
+
+        // Set as current table
+        state.value.currentTableId = settings.id
+        state.value.currentTable = newTable
+        storage.setItem(LAST_SELECTED_TABLE_KEY, settings.id)
+
+        // Use the newly created table for saving
+        settings = newTable
       }
 
       // Save to PostgreSQL
@@ -381,13 +418,6 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         displayName: table.displayName
       }))
 
-      // Update current ID if needed
-      const isNewTable = !state.value.currentTableId
-      if (isNewTable || state.value.currentTableId === settings.id) {
-        state.value.currentTableId = settings.id
-        storage.setItem(LAST_SELECTED_TABLE_KEY, settings.id)
-      }
-
       // Update core store's tables array
       const coreStore = useStore()
       await coreStore.setTablesArray([...state.value.availableTables])
@@ -409,48 +439,55 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   }
 
   /**
+   * Create new table and save to PostgreSQL
+   */
+  async function createTable(id: string, initialData: Partial<TableSettings> = {}) {
+    debug.log(DebugCategories.STATE, 'Creating new table', {
+      tableId: id,
+      initialData
+    })
+
+    // Create default columns if none provided
+    const parentColumns =
+      initialData.parentColumns || createTableColumns(defaultSelectedParameters.parent)
+    const childColumns =
+      initialData.childColumns || createTableColumns(defaultSelectedParameters.child)
+
+    const newTable: TableSettings = {
+      ...defaultTableConfig,
+      ...initialData,
+      id,
+      parentColumns,
+      childColumns,
+      selectedParameters: {
+        parent: initialData.selectedParameters?.parent || [
+          ...defaultSelectedParameters.parent
+        ],
+        child: initialData.selectedParameters?.child || [
+          ...defaultSelectedParameters.child
+        ]
+      },
+      lastUpdateTimestamp: Date.now()
+    }
+
+    // Save to PostgreSQL first
+    await saveTable(newTable)
+
+    // Load the table to ensure consistent state
+    await loadTable(id)
+
+    // Set as current table
+    state.value.currentTableId = id
+    storage.setItem(LAST_SELECTED_TABLE_KEY, id)
+  }
+
+  /**
    * Update current table
    */
   function updateTable(updates: Partial<TableSettings>) {
-    // If this is a new table, create it with default columns
+    // If this is a new table, create it in PostgreSQL first
     if (updates.id && !state.value.availableTables.some((t) => t.id === updates.id)) {
-      debug.log(DebugCategories.STATE, 'Creating new table', {
-        tableId: updates.id,
-        updates
-      })
-
-      // Create default columns if none provided
-      const parentColumns =
-        updates.parentColumns || createTableColumns(defaultSelectedParameters.parent)
-      const childColumns =
-        updates.childColumns || createTableColumns(defaultSelectedParameters.child)
-
-      const newTable: TableSettings = {
-        ...defaultTableConfig,
-        ...updates,
-        parentColumns,
-        childColumns,
-        selectedParameters: {
-          parent: updates.selectedParameters?.parent || [
-            ...defaultSelectedParameters.parent
-          ],
-          child: updates.selectedParameters?.child || [
-            ...defaultSelectedParameters.child
-          ]
-        },
-        lastUpdateTimestamp: Date.now()
-      }
-
-      // Update state
-      state.value.currentTableId = updates.id
-      state.value.currentTable = newTable
-      state.value.availableTables.push({
-        id: newTable.id,
-        name: newTable.name,
-        displayName: newTable.displayName
-      })
-      state.value.lastUpdated = Date.now()
-      return
+      return createTable(updates.id, updates)
     }
 
     // Otherwise update existing table
@@ -514,7 +551,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       })
     }
 
-    // Update current table
+    // Update current table without modifying originalTable to track unsaved changes
     state.value.currentTable = updated
 
     // Update available tables list if name changed
@@ -640,6 +677,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     ]
     initialState.currentTableId = defaultTable.id
     initialState.currentTable = defaultTable
+    initialState.originalTable = { ...defaultTable }
 
     debug.log(DebugCategories.STATE, 'Default table reset with columns', {
       selectedParameters: {
@@ -706,8 +744,9 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         lastUpdateTimestamp: Date.now()
       }
 
-      // Update current table without modifying originalTable
+      // Update current table without modifying originalTable to track unsaved changes
       state.value.currentTable = updated
+
       state.value.lastUpdated = Date.now()
 
       debug.log(DebugCategories.STATE, 'Columns updated', {
