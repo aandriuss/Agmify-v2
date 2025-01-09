@@ -137,12 +137,15 @@ const emit = defineEmits<{
 }>()
 
 // Computed properties
-const existingTables = computed<TableSettings[]>(() => {
+const existingTables = computed(() => {
   return (
-    store.tablesArray.value?.filter(
-      (table: TableSettings) =>
-        table.id !== 'new-table' && table.name !== 'Create New Table'
-    ) || []
+    store.tablesArray.value
+      ?.filter((table) => table.id !== 'new-table' && table.name !== 'Create New Table')
+      .map((table) => ({
+        id: table.id,
+        name: table.name,
+        displayName: table.name // Use name as displayName since TableInfo doesn't have it
+      })) || []
   )
 })
 
@@ -316,7 +319,12 @@ async function createNewTable() {
   try {
     // Get current table state
     const currentTable = tableStore.computed.currentTable.value
-    const firstAvailableTable = store.tablesArray.value[0] as TableSettings | undefined
+    // If no current table, try to get first available table from store
+    let firstAvailableTable: TableSettings | undefined = undefined
+    if (!currentTable && store.tablesArray.value?.length > 0) {
+      await tableStore.loadTable(store.tablesArray.value[0].id)
+      firstAvailableTable = tableStore.computed.currentTable.value || undefined
+    }
 
     // Create new table using current or first available table's state
     const newTable: TableSettings = {

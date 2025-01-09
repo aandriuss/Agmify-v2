@@ -308,8 +308,9 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
             lastUpdateTimestamp: Date.now()
           }
 
-      // Update store with table
+      // Update store with table and set original state for change detection
       state.value.currentTable = table
+      state.value.originalTable = { ...table }
       state.value.lastUpdated = Date.now()
 
       debug.log(DebugCategories.STATE, 'Table loaded', {
@@ -365,9 +366,13 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         throw new Error('Saved table not found in PostgreSQL response')
       }
 
-      // Update both current and original table state
-      state.value.currentTable = savedTable
-      state.value.originalTable = { ...savedTable }
+      // Update both current and original table state to track changes
+      const updatedTable = {
+        ...savedTable,
+        lastUpdateTimestamp: Date.now()
+      }
+      state.value.currentTable = updatedTable
+      state.value.originalTable = { ...updatedTable }
 
       // Update available tables list
       state.value.availableTables = Object.values(tables).map((table) => ({
@@ -380,6 +385,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       const isNewTable = !state.value.currentTableId
       if (isNewTable || state.value.currentTableId === settings.id) {
         state.value.currentTableId = settings.id
+        storage.setItem(LAST_SELECTED_TABLE_KEY, settings.id)
       }
 
       // Update core store's tables array
