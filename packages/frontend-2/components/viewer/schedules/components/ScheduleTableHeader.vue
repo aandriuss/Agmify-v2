@@ -93,7 +93,7 @@
           color="subtle"
           @click="tableStore.toggleCategoryOptions()"
         >
-          Category filter options
+          Table Options
           <template #icon-right>
             <ChevronDownIcon v-if="!showCategoryOptions" class="size-4" />
             <ChevronUpIcon v-else class="size-4" />

@@ -80,7 +80,7 @@
             <div v-show="isGroupExpanded(group.group)" class="space-y-1 ml-4">
               <button
                 v-for="(item, index) in group.items"
-                :key="item.field"
+                :key="getItemId(item)"
                 type="button"
                 class="w-full flex items-center gap-2 p-1 rounded hover:bg-gray-50 text-left"
                 draggable="true"
@@ -91,7 +91,7 @@
                 @dragover.prevent
               >
                 <div class="flex-1">
-                  <div class="text-sm">{{ item.header }}</div>
+                  <div class="text-sm">{{ getItemName(item) }}</div>
                   <div class="text-xs text-gray-500">{{ getItemType(item) }}</div>
                 </div>
 
@@ -102,7 +102,7 @@
                     @click.stop="$emit('add', item)"
                   >
                     <PlusIcon class="w-4 h-4" />
-                    <span class="sr-only">Add {{ item.header }}</span>
+                    <span class="sr-only">Add {{ getItemName(item) }}</span>
                   </button>
                 </div>
               </button>
@@ -114,11 +114,11 @@
         <template v-else>
           <button
             v-for="(item, index) in items"
-            :key="item.field"
+            :key="getItemId(item)"
             type="button"
             class="w-full flex items-center gap-2 p-1 rounded hover:bg-gray-50 text-left"
             :class="{
-              'text-gray-400': mode === 'active' && !item.visible
+              'text-gray-400': mode === 'active' && isColumn(item) && !item.visible
             }"
             draggable="true"
             @dragstart="handleDragStart($event, item, index)"
@@ -128,7 +128,7 @@
             @dragover.prevent
           >
             <div class="flex-1">
-              <div class="text-sm">{{ item.header }}</div>
+              <div class="text-sm">{{ getItemName(item) }}</div>
               <div v-if="mode === 'available'" class="text-xs text-gray-500">
                 {{ getItemGroup(item) }}
               </div>
@@ -142,19 +142,19 @@
                 @click.stop="$emit('add', item)"
               >
                 <PlusIcon class="w-4 h-4" />
-                <span class="sr-only">Add {{ item.header }}</span>
+                <span class="sr-only">Add {{ getItemName(item) }}</span>
               </button>
               <button
-                v-if="mode === 'active' && item.removable"
+                v-if="mode === 'active' && isColumn(item) && item.removable"
                 type="button"
                 class="p-1 text-red-600 hover:text-red-800"
                 @click.stop="$emit('remove', item)"
               >
                 <MinusIcon class="w-4 h-4" />
-                <span class="sr-only">Remove {{ item.header }}</span>
+                <span class="sr-only">Remove {{ getItemName(item) }}</span>
               </button>
               <button
-                v-if="mode === 'active'"
+                v-if="mode === 'active' && isColumn(item)"
                 type="button"
                 class="p-1"
                 :class="{
@@ -166,7 +166,7 @@
                 <EyeIcon v-if="item.visible" class="w-4 h-4" />
                 <EyeSlashIcon v-else class="w-4 h-4" />
                 <span class="sr-only">
-                  {{ item.visible ? 'Hide' : 'Show' }} {{ item.header }}
+                  {{ item.visible ? 'Hide' : 'Show' }} {{ getItemName(item) }}
                 </span>
               </button>
             </div>
@@ -187,8 +187,17 @@ import {
   ChevronRightIcon,
   ChevronDownIcon
 } from '@heroicons/vue/24/outline'
-import type { TableColumn, AvailableParameter } from '~/composables/core/types'
-import { getParameterGroup, isBimParameter } from '~/composables/core/types'
+import type {
+  TableColumn,
+  AvailableBimParameter,
+  AvailableUserParameter
+} from '~/composables/core/types'
+import {
+  isAvailableBimParameter,
+  isAvailableUserParameter
+} from '~/composables/core/types'
+
+type AvailableParameter = AvailableBimParameter | AvailableUserParameter
 
 interface Props {
   items: (TableColumn | AvailableParameter)[]
@@ -228,30 +237,48 @@ const emit = defineEmits<{
 const localSearchTerm = ref(props.searchTerm)
 const expandedGroups = ref<Set<string>>(new Set())
 
-// Helper to determine if item is a Parameter
-function isParameter(
-  item: AvailableParameter | TableColumn
-): item is AvailableParameter {
-  return 'kind' in item
+// Type Guards
+function isColumn(item: AvailableParameter | TableColumn): item is TableColumn {
+  return 'parameter' in item
 }
 
-// Helper to get group name from item
-function getItemGroup(item: AvailableParameter | TableColumn): string {
-  if (isParameter(item)) {
-    return getParameterGroup(item)
+// Helper Functions
+function getItemId(item: AvailableParameter | TableColumn): string {
+  return isColumn(item) ? item.id : item.id
+}
+
+function getItemName(item: AvailableParameter | TableColumn): string {
+  return isColumn(item) ? item.parameter.name : item.name
+}
+
+function getParameterGroup(item: AvailableParameter): string {
+  if (isAvailableBimParameter(item)) {
+    return item.category || 'BIM Parameters'
   }
-  return item.category || item.currentGroup || 'Uncategorized'
+  if (isAvailableUserParameter(item)) {
+    return item.category || 'User Parameters'
+  }
+  return 'Uncategorized'
 }
 
-// Helper to get item type
+function getItemGroup(item: AvailableParameter | TableColumn): string {
+  if (isColumn(item)) {
+    return item.parameter.category || 'Uncategorized'
+  }
+  return getParameterGroup(item)
+}
+
 function getItemType(item: AvailableParameter | TableColumn): string {
-  if (isParameter(item)) {
-    if (isBimParameter(item)) {
-      return `BIM - ${item.type}`
-    }
+  if (isColumn(item)) {
+    return item.parameter.kind === 'bim' ? 'BIM Parameter' : 'User Parameter'
+  }
+  if (isAvailableBimParameter(item)) {
+    return `BIM - ${item.type}`
+  }
+  if (isAvailableUserParameter(item)) {
     return `User - ${item.type}`
   }
-  return item.type || 'string'
+  return 'Unknown'
 }
 
 const groupedItems = computed(() => {
@@ -277,13 +304,6 @@ const groupedItems = computed(() => {
       // BIM groups first
       if (a.group.startsWith('BIM') && !b.group.startsWith('BIM')) return -1
       if (!a.group.startsWith('BIM') && b.group.startsWith('BIM')) return 1
-      // Essential groups next
-      if (a.group === 'Properties') return -1
-      if (b.group === 'Properties') return 1
-      if (a.group === 'Parameters') return -1
-      if (b.group === 'Parameters') return 1
-      if (a.group === 'Dimensions') return -1
-      if (b.group === 'Dimensions') return 1
       // Then sort alphabetically
       return a.group.localeCompare(b.group)
     })
@@ -291,8 +311,8 @@ const groupedItems = computed(() => {
       ...group,
       items: group.items.sort((a, b) => {
         // Sort by name within groups
-        const nameA = isParameter(a) ? a.name : a.header
-        const nameB = isParameter(b) ? b.name : b.header
+        const nameA = getItemName(a)
+        const nameB = getItemName(b)
         return nameA.localeCompare(nameB)
       })
     }))
@@ -306,7 +326,7 @@ function handleDragStart(
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.dropEffect = 'move'
-    event.dataTransfer.setData('text/plain', item.field)
+    event.dataTransfer.setData('text/plain', getItemId(item))
   }
   emit('drag-start', event, item, index)
 }

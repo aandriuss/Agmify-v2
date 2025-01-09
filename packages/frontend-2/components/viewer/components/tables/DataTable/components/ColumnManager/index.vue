@@ -219,7 +219,7 @@ const dropState = reactive<DropState>({
 // Computed
 const tableName = computed(() => props.tableName)
 const isLoading = computed(
-  () => tableStore.isLoading.value || parameterStore.isLoading.value
+  () => tableStore.isLoading.value || parameterStore.isProcessing.value
 )
 
 const hasHiddenColumns = computed(() =>
@@ -459,10 +459,24 @@ onMounted(async () => {
   try {
     debug.startState(DebugCategories.INITIALIZATION, 'Initializing column manager')
 
-    // Load and initialize table
-    await tableStore.loadTable(props.tableId)
-    isInitialized.value = true
+    // Initialize parameter store first
+    if (!parameterStore.state.value.initialized) {
+      await parameterStore.init()
+    }
 
+    // Then load and initialize table
+    await tableStore.loadTable(props.tableId)
+
+    // Verify both stores are ready
+    if (!parameterStore.state.value.initialized) {
+      throw new Error('Parameter store failed to initialize')
+    }
+
+    if (!tableStore.computed.currentTable.value) {
+      throw new Error('Table failed to load')
+    }
+
+    isInitialized.value = true
     debug.completeState(DebugCategories.INITIALIZATION, 'Column manager initialized')
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to initialize')

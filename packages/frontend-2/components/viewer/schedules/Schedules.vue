@@ -14,7 +14,12 @@
         </template>
         <template #menu>
           <div class="menu-container">
-            <CategoryMenu v-show="tableStore.state.value.ui.showCategoryOptions" />
+            <TableOptionsMenu
+              v-show="tableStore.state.value.ui.showCategoryOptions"
+              :table-id="selectedTableId"
+              :table-name="tableName"
+              @table-updated="handleTableDataUpdate"
+            />
           </div>
         </template>
 
@@ -48,7 +53,7 @@ import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import ScheduleMainView from './components/ScheduleMainView.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
-import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
+import TableOptionsMenu from './components/TableOptionsMenu.vue'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 import type {
@@ -111,6 +116,10 @@ watch(worldTree, (newTree) => {
 const error = ref<Error | null>(null)
 const showParameterManager = ref(false)
 const initializationAttempted = ref(false)
+
+// Computed properties for TableOptionsMenu
+const selectedTableId = computed(() => tableStore.computed.currentTable.value?.id || '')
+const tableName = computed(() => tableStore.computed.currentTable.value?.name || '')
 
 // Initialize data composables with store categories
 const elementsData = useElementsData({
