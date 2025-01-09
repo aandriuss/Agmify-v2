@@ -231,18 +231,27 @@ async function handleSave() {
       throw new Error('No table selected')
     }
 
-    // Update table with new name
+    // Update table with new name while preserving all other properties
     const updated = {
       ...current,
       name,
       displayName: name,
+      // Ensure columns have parameters
+      parentColumns: current.parentColumns.map((col) => {
+        const param = current.selectedParameters.parent.find((p) => p.id === col.id)
+        return param ? createTableColumn(param) : col
+      }),
+      childColumns: current.childColumns.map((col) => {
+        const param = current.selectedParameters.child.find((p) => p.id === col.id)
+        return param ? createTableColumn(param) : col
+      }),
       lastUpdateTimestamp: Date.now()
     }
 
     // Update local store
     tableStore.updateTable(updated)
 
-    // Save to PostgreSQL
+    // Save to PostgreSQL only if checkmark clicked
     await tableStore.saveTable(updated)
 
     // Update tables array in core store
