@@ -177,24 +177,41 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           const currentTable = tableStore.computed.currentTable.value
           if (!currentTable) return
 
-          const selectedParams = [
-            ...(isParent
-              ? currentTable.selectedParameters.parent
-              : currentTable.selectedParameters.child)
-          ]
+          const selectedParams = isParent
+            ? currentTable.selectedParameters.parent
+            : currentTable.selectedParameters.child
 
-          // Reorder parameters
-          const [movedParam] = selectedParams.splice(operation.fromIndex, 1)
-          selectedParams.splice(operation.toIndex, 0, movedParam)
+          // Create a new array with the current order
+          const reorderedParams = [...selectedParams]
+
+          // Validate indices
+          if (
+            operation.fromIndex < 0 ||
+            operation.fromIndex >= reorderedParams.length ||
+            operation.toIndex < 0 ||
+            operation.toIndex > reorderedParams.length
+          ) {
+            debug.error(DebugCategories.ERROR, 'Invalid reorder indices', {
+              fromIndex: operation.fromIndex,
+              toIndex: operation.toIndex,
+              length: reorderedParams.length
+            })
+            return
+          }
+
+          // Perform the reorder
+          const [movedParam] = reorderedParams.splice(operation.fromIndex, 1)
+          reorderedParams.splice(operation.toIndex, 0, movedParam)
 
           // Update order values
-          selectedParams.forEach((param, index) => {
+          reorderedParams.forEach((param, index) => {
             param.order = index
           })
 
+          // Update the table
           const updatedParams = {
             ...currentTable.selectedParameters,
-            [isParent ? 'parent' : 'child']: selectedParams
+            [isParent ? 'parent' : 'child']: reorderedParams
           }
 
           await tableStore.updateTable({

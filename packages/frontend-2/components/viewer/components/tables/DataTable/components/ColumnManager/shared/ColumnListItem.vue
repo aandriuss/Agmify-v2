@@ -22,10 +22,10 @@
           v-if="mode === 'active'"
           class="pi pi-bars text-gray-400 cursor-move opacity-0 group-hover:opacity-100 transition-opacity"
         />
-        <ParameterBadge
-          v-if="column"
-          :parameter="isParameter(column) ? column : columnDefToParameter(column)"
-        />
+        <div class="flex flex-col">
+          <span class="text-sm font-medium">{{ getItemName }}</span>
+          <span class="text-xs text-gray-500">{{ getItemType }}</span>
+        </div>
       </div>
 
       <!-- Right side with action buttons -->
@@ -44,7 +44,7 @@
         <!-- Remove button and visibility toggle for active items -->
         <template v-if="mode === 'active'">
           <Button
-            v-if="isColumnDef(column) && column.removable"
+            v-if="isColumn(column) && column.removable"
             icon="pi pi-arrow-left"
             text
             severity="danger"
@@ -67,12 +67,17 @@
 import { computed } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
-import ParameterBadge from '~/components/parameters/ParameterBadge.vue'
-import type { TableColumn, AvailableParameter } from '~/composables/core/types'
+import type {
+  TableColumn,
+  AvailableBimParameter,
+  AvailableUserParameter
+} from '~/composables/core/types'
 import {
-  columnDefToParameter,
-  isParameter
-} from '~/composables/parameters/useParameterConversion'
+  isAvailableBimParameter,
+  isAvailableUserParameter
+} from '~/composables/core/types'
+
+type AvailableParameter = AvailableBimParameter | AvailableUserParameter
 
 interface Props {
   column: TableColumn | AvailableParameter
@@ -103,15 +108,43 @@ const emit = defineEmits<{
   drop: [event: DragEvent, index: number]
 }>()
 
-function isColumnDef(value: TableColumn | AvailableParameter): value is TableColumn {
-  return 'visible' in value && 'removable' in value
+// Type Guards
+function isColumn(value: TableColumn | AvailableParameter): value is TableColumn {
+  return 'parameter' in value
 }
+
+function isParameter(
+  value: TableColumn | AvailableParameter
+): value is AvailableParameter {
+  return 'kind' in value
+}
+
+// Computed Properties
+const getItemName = computed(() => {
+  if (isColumn(props.column)) {
+    return props.column.parameter.name
+  }
+  return props.column.name
+})
+
+const getItemType = computed(() => {
+  if (isColumn(props.column)) {
+    return props.column.parameter.kind === 'bim' ? 'BIM Parameter' : 'User Parameter'
+  }
+  if (isAvailableBimParameter(props.column)) {
+    return `BIM - ${props.column.type}`
+  }
+  if (isAvailableUserParameter(props.column)) {
+    return `User - ${props.column.type}`
+  }
+  return 'Unknown'
+})
 
 // Local state
 const isVisible = computed({
-  get: () => (isColumnDef(props.column) ? props.column.visible : true),
+  get: () => (isColumn(props.column) ? props.column.visible : true),
   set: (value: boolean) => {
-    if (isColumnDef(props.column)) {
+    if (isColumn(props.column)) {
       emit('visibility-change', props.column, value)
     }
   }
@@ -121,13 +154,11 @@ const isVisible = computed({
 function handleAdd() {
   if (isParameter(props.column)) {
     emit('add', props.column)
-  } else {
-    emit('add', columnDefToParameter(props.column))
   }
 }
 
 function handleRemove() {
-  if (isColumnDef(props.column)) {
+  if (isColumn(props.column)) {
     emit('remove', props.column)
   }
 }
@@ -156,7 +187,7 @@ function handleDrop(event: DragEvent) {
 }
 
 function handleVisibilityChange() {
-  if (isColumnDef(props.column)) {
+  if (isColumn(props.column)) {
     emit('visibility-change', props.column, isVisible.value)
   }
 }
@@ -184,10 +215,11 @@ function handleVisibilityChange() {
 
 .drop-position-below::after {
   content: '';
-  @apply absolute left-0 right-0 h-0.5 bg-primary;
+  @apply absolute left-0 right-0 -bottom-px h-0.5 bg-primary;
 }
 
 .drop-position-above::before {
-  @apply -top-px;
+  content: '';
+  @apply absolute left-0 right-0 -top-px h-0.5 bg-primary;
 }
 </style>

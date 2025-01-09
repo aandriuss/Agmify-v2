@@ -12,123 +12,124 @@
 
     <!-- Main content -->
     <div v-else class="h-full flex flex-col">
-      <LayoutDialog
-        :open="props.open"
-        :max-width="'lg'"
-        :hide-closer="false"
-        mode="out-in"
-        :title="tableName"
-        :buttons="dialogButtons"
-        @update:open="$emit('update:open', $event)"
-      >
-        <div class="flex flex-col gap-2">
-          <!-- View selector -->
-          <TabSelector
-            :model-value="columnManager.currentView.value"
-            @update:model-value="handleViewChange"
-          />
+      <div class="flex flex-col gap-2">
+        <!-- View selector -->
+        <TabSelector
+          :model-value="columnManager.currentView.value"
+          @update:model-value="handleViewChange"
+        />
 
-          <!-- Lists container -->
-          <div class="flex gap-1 h-[400px]">
-            <!-- Available Parameters Panel -->
-            <div
-              class="flex-1 border rounded flex flex-col overflow-hidden bg-background"
-            >
-              <div class="p-1 border-b bg-gray-50 flex items-center justify-between">
-                <h3 class="font-medium text-sm">Available Parameters</h3>
-                <FormButton
-                  text
-                  size="sm"
-                  color="subtle"
-                  :icon-right="showFilterOptions ? ChevronUpIcon : ChevronDownIcon"
-                  @click="toggleFilterOptions"
+        <!-- Lists container -->
+        <div class="flex gap-1 h-[400px]">
+          <!-- Available Parameters Panel -->
+          <div
+            class="flex-1 border rounded flex flex-col overflow-hidden bg-background"
+          >
+            <div class="p-1 border-b bg-gray-50 flex items-center justify-between">
+              <h3 class="font-medium text-sm">Available Parameters</h3>
+              <FormButton
+                text
+                size="sm"
+                color="subtle"
+                :icon-right="showFilterOptions ? ChevronUpIcon : ChevronDownIcon"
+                @click="toggleFilterOptions"
+              >
+                Filter Options
+              </FormButton>
+            </div>
+
+            <EnhancedColumnList
+              :key="`available-${columnManager.currentView.value}-${listRefreshKey}`"
+              :items="columnManager.availableParameters.value"
+              mode="available"
+              :show-filter-options="showFilterOptions"
+              :search-term="searchTerm"
+              :is-grouped="isGrouped"
+              :sort-by="sortBy"
+              :drop-position="dropState.dropPosition"
+              @update:search-term="handleSearchUpdate"
+              @update:is-grouped="handleGroupingUpdate"
+              @update:sort-by="handleSortUpdate"
+              @add="handleAdd"
+              @remove="handleRemove"
+              @drag-start="handleDragStart"
+              @drag-end="handleDragEnd"
+              @drag-enter="handleDragEnter"
+              @drop="handleDrop"
+              @visibility-change="handleVisibilityChange"
+            />
+          </div>
+
+          <!-- Active Columns Panel -->
+          <div
+            class="flex-1 border rounded flex flex-col overflow-hidden bg-background"
+          >
+            <div class="p-1 border-b bg-gray-50 flex items-center justify-between">
+              <h3 class="font-medium text-sm">Active Columns</h3>
+              <div class="flex items-center gap-1 text-sm">
+                <span
+                  v-if="columnManager.activeColumns.value.length"
+                  class="text-gray-500"
                 >
-                  Filter Options
-                </FormButton>
+                  {{
+                    columnManager.activeColumns.value.filter((col) => col?.visible)
+                      .length
+                  }}/{{ columnManager.activeColumns.value.length }}
+                  visible
+                </span>
+                <Button
+                  v-if="hasHiddenColumns"
+                  icon="pi pi-eye"
+                  text
+                  severity="secondary"
+                  size="small"
+                  @click="showAllColumns"
+                >
+                  Show All
+                </Button>
               </div>
-
-              <EnhancedColumnList
-                :key="`available-${columnManager.currentView.value}-${listRefreshKey}`"
-                :items="columnManager.availableParameters.value"
-                mode="available"
-                :show-filter-options="showFilterOptions"
-                :search-term="searchTerm"
-                :is-grouped="isGrouped"
-                :sort-by="sortBy"
-                :drop-position="dropState.dropPosition"
-                @update:search-term="handleSearchUpdate"
-                @update:is-grouped="handleGroupingUpdate"
-                @update:sort-by="handleSortUpdate"
-                @add="handleAdd"
-                @remove="handleRemove"
-                @drag-start="handleDragStart"
-                @drag-end="handleDragEnd"
-                @drag-enter="handleDragEnter"
-                @drop="handleDrop"
-                @visibility-change="handleVisibilityChange"
-              />
             </div>
 
-            <!-- Active Columns Panel -->
-            <div
-              class="flex-1 border rounded flex flex-col overflow-hidden bg-background"
-            >
-              <div class="p-1 border-b bg-gray-50 flex items-center justify-between">
-                <h3 class="font-medium text-sm">Active Columns</h3>
-                <div class="flex items-center gap-1 text-sm">
-                  <span
-                    v-if="columnManager.activeColumns.value.length"
-                    class="text-gray-500"
-                  >
-                    {{
-                      columnManager.activeColumns.value.filter((col) => col?.visible)
-                        .length
-                    }}/{{ columnManager.activeColumns.value.length }}
-                    visible
-                  </span>
-                  <Button
-                    v-if="hasHiddenColumns"
-                    icon="pi pi-eye"
-                    text
-                    severity="secondary"
-                    size="small"
-                    @click="showAllColumns"
-                  >
-                    Show All
-                  </Button>
-                </div>
-              </div>
-
-              <EnhancedColumnList
-                :key="`active-${columnManager.currentView.value}-${listRefreshKey}`"
-                :items="columnManager.activeColumns.value"
-                mode="active"
-                :show-filter-options="false"
-                :drop-position="dropState.dropPosition"
-                @add="handleAdd"
-                @remove="handleRemove"
-                @drag-start="handleDragStart"
-                @drag-end="handleDragEnd"
-                @drag-enter="handleDragEnter"
-                @drop="handleDrop"
-                @visibility-change="handleVisibilityChange"
-                @reorder="handleReorder"
-              />
-            </div>
+            <EnhancedColumnList
+              :key="`active-${columnManager.currentView.value}-${listRefreshKey}`"
+              :items="columnManager.activeColumns.value"
+              mode="active"
+              :show-filter-options="false"
+              :drop-position="dropState.dropPosition"
+              @add="handleAdd"
+              @remove="handleRemove"
+              @drag-start="handleDragStart"
+              @drag-end="handleDragEnd"
+              @drag-enter="handleDragEnter"
+              @drop="handleDrop"
+              @visibility-change="handleVisibilityChange"
+              @reorder="handleReorder"
+            />
           </div>
         </div>
-      </LayoutDialog>
+        <!-- Action buttons -->
+        <div class="flex justify-end gap-2 mt-2">
+          <FormButton text size="sm" color="outline" @click="handleCancel">
+            Cancel
+          </FormButton>
+          <FormButton
+            text
+            size="sm"
+            color="primary"
+            :loading="columnManager.isUpdating.value"
+            @click="handleApply"
+          >
+            Apply
+          </FormButton>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue'
-import {
-  LayoutDialog,
-  type LayoutDialogButton,
-  FormButton
-} from '@speckle/ui-components'
+import type { FormButton } from '@speckle/ui-components'
 import Button from 'primevue/button'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import TabSelector from './TabSelector.vue'
@@ -217,7 +218,6 @@ const dropState = reactive<DropState>({
 })
 
 // Computed
-const tableName = computed(() => props.tableName)
 const isLoading = computed(
   () => tableStore.isLoading.value || parameterStore.isProcessing.value
 )
@@ -225,28 +225,6 @@ const isLoading = computed(
 const hasHiddenColumns = computed(() =>
   columnManager.activeColumns.value.some((col) => !col.visible)
 )
-
-const dialogButtons = computed<LayoutDialogButton[]>(() => [
-  {
-    text: 'Apply',
-    props: {
-      submit: false,
-      link: false,
-      loading: columnManager.isUpdating.value,
-      color: 'primary'
-    },
-    onClick: handleApply
-  },
-  {
-    text: 'Cancel',
-    props: {
-      submit: false,
-      link: false,
-      color: 'outline'
-    },
-    onClick: handleCancel
-  }
-])
 
 // Event Handlers
 const handleViewChange = (view: 'parent' | 'child') => {

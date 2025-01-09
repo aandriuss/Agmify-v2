@@ -38,10 +38,9 @@
         :open="true"
         :table-id="tableId"
         :table-name="tableName"
-        @update:open="handleColumnManagerClose"
         @cancel="handleColumnManagerClose"
-        @apply="handleColumnManagerClose"
-        @table-updated="$emit('table-updated', $event)"
+        @apply="handleColumnManagerApply"
+        @table-updated="handleTableUpdated"
       />
     </div>
   </div>
@@ -53,23 +52,36 @@ import { FormButton } from '@speckle/ui-components'
 import { ChevronRightIcon } from '@heroicons/vue/24/solid'
 import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
 import ColumnManager from '~/components/viewer/components/tables/DataTable/components/ColumnManager/index.vue'
+interface TableUpdateEvent {
+  tableId: string
+  tableName: string
+}
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const props = defineProps<{
   tableId: string
   tableName: string
 }>()
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const emit = defineEmits<{
-  'update:open': [value: boolean]
-  'table-updated': [updates: { tableId: string; tableName: string }]
+  'table-updated': [updates: TableUpdateEvent]
 }>()
 
 const currentView = ref<'categories' | 'columns'>('categories')
 
+// Event Handlers
 function handleColumnManagerClose() {
   // Don't close the menu, just switch back to categories view
   currentView.value = 'categories'
+}
+
+function handleColumnManagerApply() {
+  // Switch back to categories view after applying changes
+  currentView.value = 'categories'
+}
+
+function handleTableUpdated(updates: TableUpdateEvent) {
+  emit('table-updated', updates)
 }
 </script>
 

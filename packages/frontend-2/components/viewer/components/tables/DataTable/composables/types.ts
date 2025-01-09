@@ -1,4 +1,4 @@
-import type { TableColumn, ParameterDefinition } from '~/composables/core/types'
+import type { TableColumn } from '~/composables/core/types'
 
 // Core table types
 export interface TableState {
@@ -28,12 +28,3 @@ export interface ColumnReorderEvent {
 
 // Re-export types for convenience
 export type { TableColumn }
-export type { ParameterDefinition }
-
-// Parameter grouping
-export interface ParameterGroup {
-  name: string
-  parameters: ParameterDefinition[]
-  color?: string
-  description?: string
-}

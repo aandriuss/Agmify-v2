@@ -78,99 +78,42 @@
 
             <!-- Group Items -->
             <div v-show="isGroupExpanded(group.group)" class="space-y-1 ml-4">
-              <button
+              <ColumnListItem
                 v-for="(item, index) in group.items"
                 :key="getItemId(item)"
-                type="button"
-                class="w-full flex items-center gap-2 p-1 rounded hover:bg-gray-50 text-left"
-                draggable="true"
-                @dragstart="handleDragStart($event, item, index)"
-                @dragend="$emit('drag-end')"
-                @dragenter.prevent="$emit('drag-enter', $event, index)"
-                @drop.prevent="$emit('drop', $event, index)"
-                @dragover.prevent
-              >
-                <div class="flex-1">
-                  <div class="text-sm">{{ getItemName(item) }}</div>
-                  <div class="text-xs text-gray-500">{{ getItemType(item) }}</div>
-                </div>
-
-                <div class="flex items-center gap-1">
-                  <button
-                    type="button"
-                    class="p-1 text-blue-600 hover:text-blue-800"
-                    @click.stop="$emit('add', item)"
-                  >
-                    <PlusIcon class="w-4 h-4" />
-                    <span class="sr-only">Add {{ getItemName(item) }}</span>
-                  </button>
-                </div>
-              </button>
+                :column="item"
+                :mode="mode"
+                :index="index"
+                :drop-position="dropPosition"
+                @add="handleAdd"
+                @remove="handleRemove"
+                @drag-start="handleDragStart"
+                @drag-end="handleDragEnd"
+                @drag-enter="handleDragEnter"
+                @drop="handleDrop"
+                @visibility-change="handleVisibilityChange"
+              />
             </div>
           </div>
         </template>
 
         <!-- Active Parameters or Ungrouped Available Parameters -->
         <template v-else>
-          <button
+          <ColumnListItem
             v-for="(item, index) in items"
             :key="getItemId(item)"
-            type="button"
-            class="w-full flex items-center gap-2 p-1 rounded hover:bg-gray-50 text-left"
-            :class="{
-              'text-gray-400': mode === 'active' && isColumn(item) && !item.visible
-            }"
-            draggable="true"
-            @dragstart="handleDragStart($event, item, index)"
-            @dragend="$emit('drag-end')"
-            @dragenter.prevent="$emit('drag-enter', $event, index)"
-            @drop.prevent="$emit('drop', $event, index)"
-            @dragover.prevent
-          >
-            <div class="flex-1">
-              <div class="text-sm">{{ getItemName(item) }}</div>
-              <div v-if="mode === 'available'" class="text-xs text-gray-500">
-                {{ getItemGroup(item) }}
-              </div>
-            </div>
-
-            <div class="flex items-center gap-1">
-              <button
-                v-if="mode === 'available'"
-                type="button"
-                class="p-1 text-blue-600 hover:text-blue-800"
-                @click.stop="$emit('add', item)"
-              >
-                <PlusIcon class="w-4 h-4" />
-                <span class="sr-only">Add {{ getItemName(item) }}</span>
-              </button>
-              <button
-                v-if="mode === 'active' && isColumn(item) && item.removable"
-                type="button"
-                class="p-1 text-red-600 hover:text-red-800"
-                @click.stop="$emit('remove', item)"
-              >
-                <MinusIcon class="w-4 h-4" />
-                <span class="sr-only">Remove {{ getItemName(item) }}</span>
-              </button>
-              <button
-                v-if="mode === 'active' && isColumn(item)"
-                type="button"
-                class="p-1"
-                :class="{
-                  'text-blue-600 hover:text-blue-800': !item.visible,
-                  'text-gray-400 hover:text-gray-600': item.visible
-                }"
-                @click.stop="$emit('visibility-change', item, !item.visible)"
-              >
-                <EyeIcon v-if="item.visible" class="w-4 h-4" />
-                <EyeSlashIcon v-else class="w-4 h-4" />
-                <span class="sr-only">
-                  {{ item.visible ? 'Hide' : 'Show' }} {{ getItemName(item) }}
-                </span>
-              </button>
-            </div>
-          </button>
+            :column="item"
+            :mode="mode"
+            :index="index"
+            :drop-position="dropPosition"
+            @add="handleAdd"
+            @remove="handleRemove"
+            @drag-start="handleDragStart"
+            @drag-end="handleDragEnd"
+            @drag-enter="handleDragEnter"
+            @drop="handleDrop"
+            @visibility-change="handleVisibilityChange"
+          />
         </template>
       </div>
     </div>
@@ -179,14 +122,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import {
-  PlusIcon,
-  MinusIcon,
-  EyeIcon,
-  EyeSlashIcon,
-  ChevronRightIcon,
-  ChevronDownIcon
-} from '@heroicons/vue/24/outline'
+import { ChevronRightIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
 import type {
   TableColumn,
   AvailableBimParameter,
@@ -196,6 +132,7 @@ import {
   isAvailableBimParameter,
   isAvailableUserParameter
 } from '~/composables/core/types'
+import ColumnListItem from './ColumnListItem.vue'
 
 type AvailableParameter = AvailableBimParameter | AvailableUserParameter
 
@@ -221,8 +158,8 @@ const emit = defineEmits<{
   'update:search-term': [value: string]
   'update:is-grouped': [value: boolean]
   'update:sort-by': [value: string]
-  add: [item: AvailableParameter | TableColumn]
-  remove: [item: AvailableParameter | TableColumn]
+  add: [item: AvailableParameter]
+  remove: [item: TableColumn]
   'drag-start': [
     event: DragEvent,
     item: AvailableParameter | TableColumn,
@@ -231,7 +168,7 @@ const emit = defineEmits<{
   'drag-end': []
   'drag-enter': [event: DragEvent, index: number]
   drop: [event: DragEvent, index: number]
-  'visibility-change': [item: AvailableParameter | TableColumn, visible: boolean]
+  'visibility-change': [item: TableColumn, visible: boolean]
 }>()
 
 const localSearchTerm = ref(props.searchTerm)
@@ -266,19 +203,6 @@ function getItemGroup(item: AvailableParameter | TableColumn): string {
     return item.parameter.category || 'Uncategorized'
   }
   return getParameterGroup(item)
-}
-
-function getItemType(item: AvailableParameter | TableColumn): string {
-  if (isColumn(item)) {
-    return item.parameter.kind === 'bim' ? 'BIM Parameter' : 'User Parameter'
-  }
-  if (isAvailableBimParameter(item)) {
-    return `BIM - ${item.type}`
-  }
-  if (isAvailableUserParameter(item)) {
-    return `User - ${item.type}`
-  }
-  return 'Unknown'
 }
 
 const groupedItems = computed(() => {
@@ -318,17 +242,38 @@ const groupedItems = computed(() => {
     }))
 })
 
+// Event Handlers
+function handleAdd(item: AvailableParameter) {
+  emit('add', item)
+}
+
+function handleRemove(item: TableColumn) {
+  emit('remove', item)
+}
+
 function handleDragStart(
   event: DragEvent,
   item: AvailableParameter | TableColumn,
   index: number
 ) {
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.dropEffect = 'move'
-    event.dataTransfer.setData('text/plain', getItemId(item))
-  }
   emit('drag-start', event, item, index)
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function handleDragEnd(event: DragEvent) {
+  emit('drag-end')
+}
+
+function handleDragEnter(event: DragEvent, index: number) {
+  emit('drag-enter', event, index)
+}
+
+function handleDrop(event: DragEvent, index: number) {
+  emit('drop', event, index)
+}
+
+function handleVisibilityChange(item: TableColumn, visible: boolean) {
+  emit('visibility-change', item, visible)
 }
 
 function handleSortChange(event: Event) {
