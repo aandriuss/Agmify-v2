@@ -34,7 +34,6 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem;
   border-bottom: 1px solid var(--surface-border);
   background-color: var(--surface-section);
 }
@@ -42,7 +41,6 @@
 .table-menu {
   border-bottom: 1px solid var(--surface-border);
   background-color: var(--surface-card);
-  padding: 0.5rem 1rem;
   transition: all 0.2s ease;
 }
 

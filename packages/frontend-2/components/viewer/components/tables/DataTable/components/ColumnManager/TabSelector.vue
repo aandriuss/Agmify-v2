@@ -10,7 +10,7 @@
         ]"
         @click="$emit('update:modelValue', 'parent')"
       >
-        Parent Columns
+        Host Columns
       </button>
       <button
         :class="[

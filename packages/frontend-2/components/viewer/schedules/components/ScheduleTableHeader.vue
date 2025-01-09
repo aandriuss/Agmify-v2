@@ -28,7 +28,7 @@
             text
             size="sm"
             color="primary"
-            class="border rounded hover:bg-primary-100"
+            class="hover:bg-primary-100"
             @click="createNewTable"
           >
             <PlusIcon class="size-4" />
@@ -65,6 +65,15 @@
             <FormButton text size="sm" color="subtle" @click="cancelEdit">
               <XMarkIcon class="size-4" />
             </FormButton>
+            <FormButton
+              v-if="selectedTableId"
+              text
+              size="sm"
+              color="danger"
+              @click="handleDelete"
+            >
+              <TrashIcon class="size-4" />
+            </FormButton>
           </div>
         </div>
       </div>
@@ -82,25 +91,17 @@
           color="danger"
           @click="handleGlobalSave"
         >
-          <template #default>Save</template>
-          <template #icon-right>
-            <ArrowDownTrayIcon class="size-4" />
-          </template>
+          Save
         </FormButton>
         <FormButton
           text
-          size="sm"
+          size="lg"
           color="subtle"
           @click="tableStore.toggleCategoryOptions()"
         >
           Table Options
-          <template #icon-right>
-            <ChevronDownIcon v-if="!showCategoryOptions" class="size-4" />
-            <ChevronUpIcon v-else class="size-4" />
-          </template>
-        </FormButton>
-        <FormButton text size="sm" color="subtle" @click="emit('manage-parameters')">
-          Manage parameters
+          <ChevronDownIcon v-if="!showCategoryOptions" class="size-4" />
+          <ChevronUpIcon v-else class="size-4" />
         </FormButton>
       </div>
     </div>
@@ -115,8 +116,8 @@ import {
   PencilIcon,
   CheckIcon,
   XMarkIcon,
-  ArrowDownTrayIcon,
-  PlusIcon
+  PlusIcon,
+  TrashIcon
 } from '@heroicons/vue/24/solid'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
@@ -131,10 +132,6 @@ import type { SelectedParameter, TableColumn } from '~/composables/core/types'
 const debug = useDebug()
 const store = useStore()
 const tableStore = useTableStore()
-
-const emit = defineEmits<{
-  'manage-parameters': []
-}>()
 
 // Computed properties
 const existingTables = computed(() => {
@@ -395,6 +392,42 @@ async function createNewTable() {
     startEditing()
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to create new table:', err)
+  }
+}
+
+async function handleDelete() {
+  if (!selectedTableId.value) {
+    return
+  }
+
+  try {
+    debug.log(DebugCategories.TABLE_UPDATES, 'Deleting table', {
+      tableId: selectedTableId.value
+    })
+
+    // Delete the table from PostgreSQL and store
+    await tableStore.deleteTable(selectedTableId.value)
+
+    // Update the core store's tables array to reflect the deletion
+    const remainingTables = existingTables.value.filter(
+      (table) => table.id !== selectedTableId.value
+    )
+    store.setTablesArray([...remainingTables])
+
+    // Exit editing mode
+    isEditing.value = false
+    nameError.value = null
+
+    // If there are remaining tables, select the first one
+    if (existingTables.value.length > 0) {
+      const customEvent = { target: { value: existingTables.value[0].id } } as Event & {
+        target: { value: string }
+      }
+      await handleTableChange(customEvent)
+    }
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Failed to delete table:', err)
+    nameError.value = err instanceof Error ? err.message : 'Failed to delete table'
   }
 }
 

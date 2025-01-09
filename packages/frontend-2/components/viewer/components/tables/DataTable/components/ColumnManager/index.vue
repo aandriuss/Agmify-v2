@@ -109,21 +109,6 @@
             />
           </div>
         </div>
-        <!-- Action buttons -->
-        <div class="flex justify-end gap-2 mt-2">
-          <FormButton text size="sm" color="outline" @click="handleCancel">
-            Cancel
-          </FormButton>
-          <FormButton
-            text
-            size="sm"
-            color="primary"
-            :loading="columnManager.isUpdating.value"
-            @click="handleApply"
-          >
-            Apply
-          </FormButton>
-        </div>
       </div>
     </div>
   </div>
@@ -177,13 +162,6 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-
-const emit = defineEmits<{
-  'update:open': [value: boolean]
-  cancel: []
-  apply: []
-  'table-updated': [updates: { tableId: string; tableName: string }]
-}>()
 
 // Stores and Composables
 const tableStore = useTableStore()
@@ -383,16 +361,6 @@ const handleDrop = async (event: DragEvent, targetIndex?: number) => {
   }
 }
 
-const handleCancel = () => {
-  try {
-    emit('cancel')
-    emit('update:open', false)
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error('Failed to cancel')
-    loadingError.value = error
-  }
-}
-
 const showAllColumns = async () => {
   try {
     const promises = columnManager.activeColumns.value
@@ -404,34 +372,6 @@ const showAllColumns = async () => {
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to show all columns')
     loadingError.value = error
-  }
-}
-
-const handleApply = async () => {
-  try {
-    debug.startState(DebugCategories.PARAMETERS, 'Applying column changes')
-
-    // Save changes to table store
-    const result = await columnManager.saveChanges()
-    if (!result) {
-      throw new Error('Failed to save column changes')
-    }
-
-    // Emit events
-    emit('table-updated', {
-      tableId: props.tableId,
-      tableName: props.tableName
-    })
-
-    emit('apply')
-    emit('update:open', false)
-
-    debug.completeState(DebugCategories.PARAMETERS, 'Column changes applied')
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error('Failed to apply changes')
-    debug.error(DebugCategories.PARAMETERS, 'Failed to apply changes:', error)
-    loadingError.value = error
-    throw error
   }
 }
 

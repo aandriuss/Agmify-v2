@@ -81,7 +81,7 @@
         <div class="grid grid-cols-2 gap-4">
           <div class="bg-white p-3 rounded shadow-sm">
             <div class="flex justify-between items-center mb-2">
-              <span class="text-sm text-gray-600">Parent Columns</span>
+              <span class="text-sm text-gray-600">Host Columns</span>
               <span class="font-medium">{{ parentColumns.length }}</span>
             </div>
             <div class="text-xs text-gray-500">

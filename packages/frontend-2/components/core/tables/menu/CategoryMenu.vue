@@ -3,7 +3,7 @@
     <div class="flex flex-row justify-between">
       <!-- Parent Categories -->
       <div class="flex-1 mr-4">
-        <span class="text-body-xs text-foreground font-medium mb-2 block">
+        <span class="text-body-xs text-foreground font-large mb-2 block">
           Host Categories
         </span>
         <div class="max-h-[200px] overflow-y-auto">
@@ -138,6 +138,7 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   align-items: center;
   transition: background-color 0.2s;
   border-radius: 0.25rem;
+  border: 1px solid var(--surface-border);
   margin-bottom: 0.25rem;
 }
 
