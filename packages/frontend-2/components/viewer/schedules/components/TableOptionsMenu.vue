@@ -10,10 +10,8 @@
         :class="{ active: currentView === 'categories' }"
         @click="currentView = 'categories'"
       >
-        <template #default>Category Filters</template>
-        <template #icon-right>
-          <ChevronRightIcon v-if="currentView !== 'categories'" class="size-4" />
-        </template>
+        Category Filters
+        <ChevronRightIcon v-if="currentView == 'categories'" class="size-4" />
       </FormButton>
       <FormButton
         text
@@ -23,10 +21,8 @@
         :class="{ active: currentView === 'columns' }"
         @click="currentView = 'columns'"
       >
-        <template #default>Column Manager</template>
-        <template #icon-right>
-          <ChevronRightIcon v-if="currentView !== 'columns'" class="size-4" />
-        </template>
+        Column Manager
+        <ChevronRightIcon v-if="currentView == 'columns'" class="size-4" />
       </FormButton>
     </div>
 
@@ -68,17 +64,6 @@ const emit = defineEmits<{
 }>()
 
 const currentView = ref<'categories' | 'columns'>('categories')
-
-// Event Handlers
-function handleColumnManagerClose() {
-  // Don't close the menu, just switch back to categories view
-  currentView.value = 'categories'
-}
-
-function handleColumnManagerApply() {
-  // Switch back to categories view after applying changes
-  currentView.value = 'categories'
-}
 
 function handleTableUpdated(updates: TableUpdateEvent) {
   emit('table-updated', updates)
