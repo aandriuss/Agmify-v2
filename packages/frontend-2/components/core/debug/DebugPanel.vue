@@ -244,11 +244,11 @@
                 </div>
                 <div class="stat-item">
                   <span>Parent Parameters:</span>
-                  <span>{{ parameterStoreCounts.parent.raw }}</span>
+                  <span>{{ parameterStoreCounts.raw }}</span>
                 </div>
                 <div class="stat-item">
                   <span>Child Parameters:</span>
-                  <span>{{ parameterStoreCounts.child.raw }}</span>
+                  <span>{{ parameterStoreCounts.raw }}</span>
                 </div>
               </div>
             </div>
@@ -270,7 +270,7 @@
                 <div class="parameter-counts">
                   <div class="count-item">
                     <span>Raw:</span>
-                    <span>{{ parameterStoreCounts.parent.raw }}</span>
+                    <span>{{ parameterStoreCounts.raw }}</span>
                   </div>
                   <div class="count-item">
                     <span>Available BIM:</span>
@@ -319,7 +319,7 @@
                 <div class="parameter-counts">
                   <div class="count-item">
                     <span>Raw:</span>
-                    <span>{{ parameterStoreCounts.child.raw }}</span>
+                    <span>{{ parameterStoreCounts.raw }}</span>
                   </div>
                   <div class="count-item">
                     <span>Available BIM:</span>
@@ -391,7 +391,9 @@
                   </div>
                   <div class="count-item">
                     <span>Current Table ID:</span>
-                    <span>{{ tableStore.computed.currentTable.value?.id || 'None' }}</span>
+                    <span>
+                      {{ tableStore.computed.currentTable.value?.id || 'None' }}
+                    </span>
                   </div>
                   <div v-if="tableStore.hasError.value" class="count-item error">
                     <span>Table Store Error:</span>
@@ -484,8 +486,8 @@ const isProcessingComplete = computed(
 
 // Parameter counts from parameter store with processing check
 const parameterStoreCounts = computed(() => ({
+  raw: parameters.rawParameters?.value?.length || 0,
   parent: {
-    raw: parameters.parentRawParameters.value?.length || 0,
     availableBim: isProcessingComplete.value
       ? parameters.parentAvailableBimParameters.value?.length || 0
       : 0,
@@ -494,7 +496,6 @@ const parameterStoreCounts = computed(() => ({
       : 0
   },
   child: {
-    raw: parameters.childRawParameters.value?.length || 0,
     availableBim: isProcessingComplete.value
       ? parameters.childAvailableBimParameters.value?.length || 0
       : 0,
@@ -512,8 +513,7 @@ watch(
       // Only log if we have actual parameters
       const counts = parameterStoreCounts.value
       if (
-        counts.parent.raw > 0 ||
-        counts.child.raw > 0 ||
+        counts.raw > 0 ||
         counts.parent.availableBim > 0 ||
         counts.child.availableBim > 0
       ) {
@@ -575,14 +575,12 @@ const safeValue = <T>(value: { value?: T | null } | undefined | null) => value?.
 
 interface ParameterCounts {
   parent: {
-    raw: number
     availableBim: number
     availableUser: number
     selected: number
     columns: number
   }
   child: {
-    raw: number
     availableBim: number
     availableUser: number
     selected: number
@@ -596,15 +594,14 @@ const parameterCounts = computed<ParameterCounts>(() => {
   const tableCounts = tableStoreCounts.value
 
   return {
+    raw: storeCounts.raw,
     parent: {
-      raw: storeCounts.parent.raw,
       availableBim: storeCounts.parent.availableBim,
       availableUser: storeCounts.parent.availableUser,
       selected: tableCounts.parent.selected,
       columns: tableCounts.parent.columns
     },
     child: {
-      raw: storeCounts.child.raw,
       availableBim: storeCounts.child.availableBim,
       availableUser: storeCounts.child.availableUser,
       selected: tableCounts.child.selected,
@@ -785,8 +782,8 @@ const dataStructure = computed<{
     childColumns: number
   }
   parameters: {
+    // raw: number
     parent: {
-      raw: number
       available: {
         bim: number
         user: number
@@ -796,7 +793,6 @@ const dataStructure = computed<{
       groups: ParameterGroups
     }
     child: {
-      raw: number
       available: {
         bim: number
         user: number
@@ -823,8 +819,8 @@ const dataStructure = computed<{
     childColumns: props.childParameterColumns?.length || 0
   },
   parameters: {
+    // raw: parameterCounts.value.raw,
     parent: {
-      raw: parameterCounts.value.parent.raw,
       available: {
         bim: parameterCounts.value.parent.availableBim,
         user: parameterCounts.value.parent.availableUser
@@ -834,7 +830,6 @@ const dataStructure = computed<{
       groups: parameterGroups.value.parent
     },
     child: {
-      raw: parameterCounts.value.child.raw,
       available: {
         bim: parameterCounts.value.child.availableBim,
         user: parameterCounts.value.child.availableUser

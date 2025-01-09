@@ -43,18 +43,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import { useParameters } from '~/composables/core/parameters/useParameters'
-import type {
-  ElementData,
-  SelectedParameter,
-  TableColumn,
-  ParameterValue
-} from '~/composables/core/types'
+import type { ElementData, TableColumn, ParameterValue } from '~/composables/core/types'
 import { isEquationValue } from '~/composables/core/types'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
@@ -75,64 +69,10 @@ const store = useStore()
 const tableStore = useTableStore()
 const parameterStore = useParameterStore()
 
-// Initialize parameter system
-const parameters = useParameters({
-  selectedParentCategories: computed(
-    () =>
-      tableStore.computed.currentTable.value?.categoryFilters
-        .selectedParentCategories || []
-  ),
-  selectedChildCategories: computed(
-    () =>
-      tableStore.computed.currentTable.value?.categoryFilters.selectedChildCategories ||
-      []
-  )
-})
-
 // Column management
-const parentColumns = computed(
-  () => tableStore.computed.currentTable.value?.parentColumns || []
-)
-const childColumns = computed(
-  () => tableStore.computed.currentTable.value?.childColumns || []
-)
-
-// Watch for column changes to sync with parameter visibility
-watch(
-  () => tableStore.computed.currentTable.value?.parentColumns,
-  (newColumns) => {
-    if (!newColumns) return
-    newColumns.forEach((col) => {
-      const param = col.parameter as SelectedParameter | undefined
-      if (param) {
-        parameters.updateParameterVisibility(
-          param.id,
-          col.visible,
-          param.kind === 'bim'
-        )
-      }
-    })
-  },
-  { deep: true }
-)
-
-watch(
-  () => tableStore.computed.currentTable.value?.childColumns,
-  (newColumns) => {
-    if (!newColumns) return
-    newColumns.forEach((col) => {
-      const param = col.parameter as SelectedParameter | undefined
-      if (param) {
-        parameters.updateParameterVisibility(
-          param.id,
-          col.visible,
-          param.kind === 'bim'
-        )
-      }
-    })
-  },
-  { deep: true }
-)
+const currentTable = computed(() => tableStore.computed.currentTable.value)
+const parentColumns = computed(() => currentTable.value?.parentColumns || [])
+const childColumns = computed(() => currentTable.value?.childColumns || [])
 
 // Category filtering
 const selectedParentCategories = computed(
@@ -177,16 +117,12 @@ const tableData = computed(() => {
       {
         details: filteredChildren,
         type: 'ungrouped',
-        mark: 'Ungrouped',
-        category: 'Ungrouped',
-        parameters: {
-          mark: 'Ungrouped'
-        } as Record<string, ParameterValue>,
+        parameters: {} as Record<string, ParameterValue>,
         metadata: { isParent: true } as Record<string, unknown>,
         _visible: true,
-        id: 'ungrouped',
+        id: '__ungrouped',
         name: 'Ungrouped',
-        field: 'ungrouped',
+        field: '__ungrouped',
         header: 'Ungrouped',
         visible: true,
         order: 0,
@@ -274,16 +210,12 @@ const tableData = computed(() => {
     result.push({
       details: ungroupedChildren,
       type: 'ungrouped',
-      mark: 'Ungrouped',
-      category: 'Ungrouped',
-      parameters: {
-        mark: 'Ungrouped'
-      } as Record<string, ParameterValue>,
+      parameters: {} as Record<string, ParameterValue>,
       metadata: { isParent: true } as Record<string, unknown>,
       _visible: true,
-      id: 'ungrouped',
+      id: '__ungrouped',
       name: 'Ungrouped',
-      field: 'ungrouped',
+      field: '__ungrouped',
       header: 'Ungrouped',
       visible: true,
       order: result.length,
@@ -363,49 +295,33 @@ async function handleColumnVisibilityChange(event: {
   visible: boolean
 }): Promise<void> {
   try {
-    const currentTable = tableStore.computed.currentTable.value
-    if (!currentTable) return
+    if (!currentTable.value) return
 
-    // Update parameter visibility
-    const param = event.column.parameter as SelectedParameter | undefined
-    if (param) {
-      parameters.updateParameterVisibility(
-        param.id,
-        event.visible,
-        param.kind === 'bim'
-      )
-    }
+    const updatedParentColumns = [...currentTable.value.parentColumns]
+    const updatedChildColumns = [...currentTable.value.childColumns]
 
-    // Update column visibility in store
-    const isParentColumn = parentColumns.value.some((col) => col.id === event.column.id)
-    const updatedParentColumns = [...parentColumns.value]
-    const updatedChildColumns = [...childColumns.value]
-
+    const isParentColumn = updatedParentColumns.some(
+      (col) => col.id === event.column.id
+    )
     if (isParentColumn) {
-      const columnIndex = updatedParentColumns.findIndex(
-        (col) => col.id === event.column.id
-      )
-      if (columnIndex !== -1) {
-        updatedParentColumns[columnIndex] = {
-          ...updatedParentColumns[columnIndex],
+      const index = updatedParentColumns.findIndex((col) => col.id === event.column.id)
+      if (index !== -1) {
+        updatedParentColumns[index] = {
+          ...updatedParentColumns[index],
           visible: event.visible
         }
       }
     } else {
-      const columnIndex = updatedChildColumns.findIndex(
-        (col) => col.id === event.column.id
-      )
-      if (columnIndex !== -1) {
-        updatedChildColumns[columnIndex] = {
-          ...updatedChildColumns[columnIndex],
+      const index = updatedChildColumns.findIndex((col) => col.id === event.column.id)
+      if (index !== -1) {
+        updatedChildColumns[index] = {
+          ...updatedChildColumns[index],
           visible: event.visible
         }
       }
     }
 
     await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
-    emit('column-visibility-change', event)
-    emit('table-updated')
   } catch (err) {
     handleError(err)
   }

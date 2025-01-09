@@ -1,236 +1,142 @@
 import type {
-  Parameter,
-  BimParameter,
-  UserParameter,
-  PrimitiveValue,
-  ParameterValue,
-  BimValueType,
-  UserValueType
-} from '../parameters'
+  RawParameter,
+  AvailableBimParameter,
+  AvailableUserParameter,
+  SelectedParameter
+} from '../parameters/parameter-states'
+import type { TableColumn } from '../tables/table-column'
 
 /**
- * Store parameter value state
+ * Parameter store state interface
  */
-export interface StoreParameterValueState {
-  readonly id: string
-  name: string
-  type: BimValueType | UserValueType
-  value: ParameterValue | null
-  currentValue?: ParameterValue | null
-  previousValue?: ParameterValue | null
-  userValue?: ParameterValue | null
-  fetchedValue?: PrimitiveValue | null
-  isValid: boolean
-  error?: string
-}
+export interface ParameterStoreState {
+  // Raw parameters from BIM data
+  raw: RawParameter[]
 
-/**
- * Store BIM parameter
- */
-export interface StoreBimParameter extends StoreParameterValueState {
-  kind: 'bim'
-  type: BimValueType
-  sourceValue: PrimitiveValue | null
-  fetchedGroup: string
-  currentGroup: string
-  group?: never
-  equation?: never
-}
-
-/**
- * Store user parameter
- */
-export interface StoreUserParameter extends StoreParameterValueState {
-  kind: 'user'
-  type: UserValueType
-  group: string
-  equation?: string
-  sourceValue?: never
-  fetchedGroup?: never
-  currentGroup?: never
-}
-
-/**
- * Store parameter value union type
- */
-export type StoreParameterValue = StoreBimParameter | StoreUserParameter
-
-/**
- * Store parameter definition base
- */
-export interface BaseStoreParameterDefinition {
-  readonly id: string
-  field: string
-  name: string
-  type: string
-  header: string
-  visible: boolean
-  removable: boolean
-  order?: number
-  category?: string
-  description?: string
-  metadata?: Record<string, unknown>
-}
-
-/**
- * Store BIM parameter definition
- */
-export interface StoreBimParameterDefinition extends BaseStoreParameterDefinition {
-  kind: 'bim'
-  type: BimValueType
-  currentGroup: string
-  fetchedGroup: string
-  group?: never
-  equation?: never
-}
-
-/**
- * Store user parameter definition
- */
-export interface StoreUserParameterDefinition extends BaseStoreParameterDefinition {
-  kind: 'user'
-  type: UserValueType
-  group: string
-  equation?: string
-  currentGroup?: never
-  fetchedGroup?: never
-}
-
-/**
- * Store parameter definition union type
- */
-export type StoreParameterDefinition =
-  | StoreBimParameterDefinition
-  | StoreUserParameterDefinition
-
-/**
- * Type guards
- */
-export function isStoreBimParameter(
-  param: StoreParameterValue
-): param is StoreBimParameter {
-  return param.kind === 'bim'
-}
-
-export function isStoreUserParameter(
-  param: StoreParameterValue
-): param is StoreUserParameter {
-  return param.kind === 'user'
-}
-
-export function isStoreBimDefinition(
-  def: StoreParameterDefinition
-): def is StoreBimParameterDefinition {
-  return def.kind === 'bim'
-}
-
-export function isStoreUserDefinition(
-  def: StoreParameterDefinition
-): def is StoreUserParameterDefinition {
-  return def.kind === 'user'
-}
-
-/**
- * Conversion utilities
- */
-export function convertToStoreParameter(param: Parameter): StoreParameterValue {
-  if (param.kind === 'bim') {
-    return {
-      id: param.id,
-      kind: 'bim',
-      name: param.name,
-      type: param.type,
-      value: param.value ?? null,
-      currentValue: param.value ?? null,
-      sourceValue: param.sourceValue ?? null,
-      fetchedGroup: param.fetchedGroup,
-      currentGroup: param.currentGroup,
-      isValid: true
+  // Available parameters after processing and parent/child categorization
+  available: {
+    parent: {
+      bim: AvailableBimParameter[]
+      user: AvailableUserParameter[]
     }
-  } else {
-    return {
-      id: param.id,
-      kind: 'user',
-      name: param.name,
-      type: param.type,
-      value: param.value ?? null,
-      currentValue: param.value ?? null,
-      group: param.group,
-      equation: param.equation,
-      isValid: true
+    child: {
+      bim: AvailableBimParameter[]
+      user: AvailableUserParameter[]
     }
+  }
+
+  // Selected parameters for tables
+  selected: {
+    parent: SelectedParameter[]
+    child: SelectedParameter[]
+  }
+
+  // Store metadata
+  metadata: {
+    lastUpdated: number
+    processingStatus: 'idle' | 'processing' | 'error'
+    error: Error | null
   }
 }
 
-export function convertToStoreDefinition(param: Parameter): StoreParameterDefinition {
-  if (param.kind === 'bim') {
-    return {
-      id: param.id,
-      kind: 'bim',
-      field: param.field,
-      name: param.name,
-      type: param.type,
-      header: param.header,
-      visible: param.visible,
-      removable: param.removable,
-      order: param.order,
-      category: param.category,
-      description: param.description,
-      metadata: param.metadata,
-      currentGroup: param.currentGroup,
-      fetchedGroup: param.fetchedGroup
-    }
-  } else {
-    return {
-      id: param.id,
-      kind: 'user',
-      field: param.field,
-      name: param.name,
-      type: param.type,
-      header: param.header,
-      visible: param.visible,
-      removable: param.removable,
-      order: param.order,
-      category: param.category,
-      description: param.description,
-      metadata: param.metadata,
-      group: param.group,
-      equation: param.equation
-    }
-  }
+/**
+ * Parameter store mutations interface
+ */
+export interface ParameterStoreMutations {
+  // Raw parameter mutations
+  setRawParameters: (params: RawParameter[]) => void
+
+  // Available parameter mutations
+  setAvailableBimParameters: (
+    params: AvailableBimParameter[],
+    isParent: boolean
+  ) => void
+  setAvailableUserParameters: (
+    params: AvailableUserParameter[],
+    isParent: boolean
+  ) => void
+
+  // Selected parameter mutations
+  setSelectedParameters: (params: SelectedParameter[], isParent: boolean) => void
+  updateParameterVisibility: (id: string, visible: boolean) => void
+  updateParameterOrder: (id: string, newOrder: number) => void
+
+  // Column mutations
+  setColumns: (columns: TableColumn[], isParent: boolean) => void
+  updateColumnWidth: (id: string, width: number) => void
+
+  // Status mutations
+  setProcessingStatus: (status: 'idle' | 'processing' | 'error') => void
+  setError: (error: Error | null) => void
+
+  // Bulk operations
+  reset: () => void
 }
 
-export function convertToParameter(
-  store: StoreParameterValue | StoreParameterDefinition
-): Parameter {
-  if (store.kind === 'bim') {
-    return {
-      id: store.id,
-      kind: 'bim',
-      name: store.name,
-      field: 'field' in store ? store.field : store.id,
-      type: store.type,
-      header: 'header' in store ? store.header : store.name,
-      visible: 'visible' in store ? store.visible : true,
-      removable: 'removable' in store ? store.removable : true,
-      value: 'value' in store ? store.value ?? null : null,
-      sourceValue: 'sourceValue' in store ? store.sourceValue ?? null : null,
-      fetchedGroup: store.fetchedGroup,
-      currentGroup: store.currentGroup
-    } as BimParameter
-  } else {
-    return {
-      id: store.id,
-      kind: 'user',
-      name: store.name,
-      field: 'field' in store ? store.field : store.id,
-      type: store.type,
-      header: 'header' in store ? store.header : store.name,
-      visible: 'visible' in store ? store.visible : true,
-      removable: 'removable' in store ? store.removable : true,
-      value: 'value' in store ? store.value ?? null : null,
-      group: store.group,
-      equation: store.equation
-    } as UserParameter
-  }
+/**
+ * Parameter store getters interface
+ */
+export interface ParameterStoreGetters {
+  // Raw parameter getters
+  rawParameters: RawParameter[]
+
+  // Available parameter getters
+  parentAvailableBimParameters: AvailableBimParameter[]
+  parentAvailableUserParameters: AvailableUserParameter[]
+  childAvailableBimParameters: AvailableBimParameter[]
+  childAvailableUserParameters: AvailableUserParameter[]
+
+  // Selected parameter getters
+  parentSelectedParameters: SelectedParameter[]
+  childSelectedParameters: SelectedParameter[]
+
+  // Column getters
+  parentColumns: TableColumn[]
+  childColumns: TableColumn[]
+
+  // Filtered getters
+  visibleParentColumns: TableColumn[]
+  visibleChildColumns: TableColumn[]
+  systemParameters: AvailableBimParameter[]
+  userParameters: AvailableUserParameter[]
+
+  // Status getters
+  isProcessing: boolean
+  hasError: boolean
+  lastUpdated: number
 }
+
+/**
+ * Parameter store interface
+ */
+export interface ParameterStore {
+  state: ParameterStoreState
+  mutations: ParameterStoreMutations
+  getters: ParameterStoreGetters
+}
+
+/**
+ * Default state factory
+ */
+export const createDefaultParameterStoreState = (): ParameterStoreState => ({
+  raw: [],
+  available: {
+    parent: {
+      bim: [],
+      user: []
+    },
+    child: {
+      bim: [],
+      user: []
+    }
+  },
+  selected: {
+    parent: [],
+    child: []
+  },
+  metadata: {
+    lastUpdated: Date.now(),
+    processingStatus: 'idle',
+    error: null
+  }
+})

@@ -253,19 +253,37 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
 
       // Fetch tables from PostgreSQL
       const tables = await graphqlOps.fetchTables()
-      const table = tables[tableId]
+      const loadedTable = tables[tableId]
 
-      if (!table) {
-        throw new Error(`Table ${tableId} not found`)
-      }
+      // If table exists, ensure it has required columns
+      const table = loadedTable
+        ? {
+            ...loadedTable,
+            parentColumns:
+              loadedTable.parentColumns?.length > 0
+                ? loadedTable.parentColumns
+                : createTableColumns(defaultSelectedParameters.parent),
+            childColumns:
+              loadedTable.childColumns?.length > 0
+                ? loadedTable.childColumns
+                : createTableColumns(defaultSelectedParameters.child)
+          }
+        : {
+            ...defaultTableConfig,
+            id: tableId,
+            name: `Table ${tableId}`,
+            displayName: `Table ${tableId}`,
+            lastUpdateTimestamp: Date.now()
+          }
 
       // Update store with table
       state.value.tables.set(tableId, table)
       setCurrentTable(tableId)
       state.value.lastUpdated = Date.now()
 
-      debug.log(DebugCategories.STATE, 'Table loaded from server', {
+      debug.log(DebugCategories.STATE, 'Table loaded', {
         tableId,
+        fromServer: !!loadedTable,
         table
       })
     } catch (err) {

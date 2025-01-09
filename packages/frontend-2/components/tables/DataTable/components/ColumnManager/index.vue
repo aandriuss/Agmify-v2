@@ -5,7 +5,6 @@
     :hide-closer="false"
     mode="out-in"
     :title="tableName"
-    :buttons="dialogButtons"
     @update:open="$emit('update:open', $event)"
   >
     <div class="flex flex-col gap-2">
@@ -31,7 +30,7 @@
 
           <ColumnList
             :key="`available-${currentView}-${listRefreshKey}`"
-            :items="availableColumns"
+            :items="availableParameters"
             mode="available"
             :show-filter-options="showFilterOptions"
             :search-term="searchTerm"
@@ -99,29 +98,26 @@ import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/vue/24/solid'
 import Button from 'primevue/button'
 import TabSelector from './TabSelector.vue'
 import ColumnList from './ColumnList.vue'
-import type { TableColumn } from '~/composables/core/types'
-import type { LayoutDialogButton } from '@speckle/ui-components'
+import type { TableColumn, AvailableParameter } from '~/composables/core/types'
+import { useTableStore } from '~/composables/core/tables/store/store'
+import { useParameterStore } from '~/composables/core/parameters/store/store'
+import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
 
 interface Props {
   open: boolean
-  tableId: string
   tableName: string
-  columns: TableColumn[]
-  detailColumns?: TableColumn[]
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  detailColumns: () => []
-})
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  'update:columns': [
-    updates: { parentColumns: TableColumn[]; childColumns: TableColumn[] }
-  ]
-  cancel: []
-  apply: []
 }>()
+
+// Initialize stores
+const tableStore = useTableStore()
+const parameterStore = useParameterStore()
 
 // State
 const currentView = ref<'parent' | 'child'>('parent')
@@ -132,46 +128,44 @@ const sortBy = ref<'name' | 'category' | 'type'>('category')
 const listRefreshKey = ref(0)
 const dropPosition = ref<'above' | 'below' | null>(null)
 
-// Local column state
-const localColumns = ref<TableColumn[]>([...props.columns])
-const localDetailColumns = ref<TableColumn[]>([...(props.detailColumns || [])])
-
 // Computed
-const activeColumns = computed(() => {
-  return currentView.value === 'parent' ? localColumns.value : localDetailColumns.value
+const currentTable = computed(() => {
+  if (!props.open) return null
+  return tableStore.computed.currentTable.value
 })
 
-const availableColumns = computed(() => {
-  const allColumns =
-    currentView.value === 'parent' ? props.columns : props.detailColumns || []
+const activeColumns = computed(() => {
+  if (!currentTable.value) return []
+  return currentView.value === 'parent'
+    ? currentTable.value.parentColumns
+    : currentTable.value.childColumns
+})
+
+const availableParameters = computed(() => {
+  if (!currentTable.value) return []
+
+  // Get active parameter IDs to filter out
   const activeIds = new Set(activeColumns.value.map((col) => col.id))
-  return allColumns.filter((col) => !activeIds.has(col.id))
+
+  // Get available parameters based on current view
+  const parameters =
+    currentView.value === 'parent'
+      ? [
+          ...parameterStore.parentAvailableBimParameters.value,
+          ...parameterStore.parentAvailableUserParameters.value
+        ]
+      : [
+          ...parameterStore.childAvailableBimParameters.value,
+          ...parameterStore.childAvailableUserParameters.value
+        ]
+
+  // Filter out already active parameters
+  return parameters.filter((param) => !activeIds.has(param.id))
 })
 
 const hasHiddenColumns = computed(() => {
   return activeColumns.value.some((col) => !col.visible)
 })
-
-const dialogButtons = computed<LayoutDialogButton[]>(() => [
-  {
-    text: 'Apply',
-    props: {
-      submit: false,
-      link: false,
-      color: 'primary'
-    },
-    onClick: handleApply
-  },
-  {
-    text: 'Cancel',
-    props: {
-      submit: false,
-      link: false,
-      color: 'outline'
-    },
-    onClick: handleCancel
-  }
-])
 
 // Event Handlers
 function handleViewChange(view: 'parent' | 'child'): void {
@@ -195,38 +189,119 @@ function handleSortUpdate(value: 'name' | 'category' | 'type'): void {
   sortBy.value = value
 }
 
-function handleAdd(column: TableColumn): void {
-  const target = currentView.value === 'parent' ? localColumns : localDetailColumns
-  target.value.push({ ...column })
-  listRefreshKey.value++
-}
+async function handleAdd(param: AvailableParameter): Promise<void> {
+  try {
+    if (!currentTable.value) return
 
-function handleRemove(column: TableColumn): void {
-  const target = currentView.value === 'parent' ? localColumns : localDetailColumns
-  const index = target.value.findIndex((col) => col.id === column.id)
-  if (index !== -1) {
-    target.value.splice(index, 1)
+    const updatedParentColumns = [...currentTable.value.parentColumns]
+    const updatedChildColumns = [...currentTable.value.childColumns]
+
+    // Get next order number
+    const currentColumns =
+      currentView.value === 'parent' ? updatedParentColumns : updatedChildColumns
+    const nextOrder = Math.max(0, ...currentColumns.map((col) => col.order)) + 1
+
+    // Create selected parameter and convert to column
+    const selectedParam = createSelectedParameter(param, nextOrder)
+    const newColumn = createTableColumn(selectedParam)
+
+    // For user parameters, save to store first
+    if (param.kind === 'user') {
+      const userParams =
+        currentView.value === 'parent'
+          ? parameterStore.parentAvailableUserParameters.value
+          : parameterStore.childAvailableUserParameters.value
+
+      if (!userParams.find((p) => p.id === param.id)) {
+        userParams.push(param)
+      }
+    }
+
+    // Add to appropriate columns list
+    if (currentView.value === 'parent') {
+      updatedParentColumns.push(newColumn)
+    } else {
+      updatedChildColumns.push(newColumn)
+    }
+
+    // Update table
+    await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
     listRefreshKey.value++
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to add parameter:', err)
   }
 }
 
-function handleVisibilityChange(column: TableColumn, visible: boolean): void {
-  const target = currentView.value === 'parent' ? localColumns : localDetailColumns
-  const index = target.value.findIndex((col) => col.id === column.id)
-  if (index !== -1) {
-    target.value[index] = { ...target.value[index], visible }
+async function handleRemove(column: TableColumn): Promise<void> {
+  try {
+    if (!currentTable.value) return
+
+    const updatedParentColumns = [...currentTable.value.parentColumns]
+    const updatedChildColumns = [...currentTable.value.childColumns]
+
+    if (currentView.value === 'parent') {
+      const index = updatedParentColumns.findIndex((col) => col.id === column.id)
+      if (index !== -1) {
+        updatedParentColumns.splice(index, 1)
+      }
+    } else {
+      const index = updatedChildColumns.findIndex((col) => col.id === column.id)
+      if (index !== -1) {
+        updatedChildColumns.splice(index, 1)
+      }
+    }
+
+    await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
+    listRefreshKey.value++
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to remove column:', err)
   }
 }
 
-function handleDragStart(event: DragEvent, column: TableColumn): void {
+async function handleVisibilityChange(
+  column: TableColumn,
+  visible: boolean
+): Promise<void> {
+  try {
+    if (!currentTable.value) return
+
+    const updatedParentColumns = [...currentTable.value.parentColumns]
+    const updatedChildColumns = [...currentTable.value.childColumns]
+
+    if (currentView.value === 'parent') {
+      const index = updatedParentColumns.findIndex((col) => col.id === column.id)
+      if (index !== -1) {
+        updatedParentColumns[index] = { ...updatedParentColumns[index], visible }
+      }
+    } else {
+      const index = updatedChildColumns.findIndex((col) => col.id === column.id)
+      if (index !== -1) {
+        updatedChildColumns[index] = { ...updatedChildColumns[index], visible }
+      }
+    }
+
+    await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to update column visibility:', err)
+  }
+}
+
+function handleDragStart(
+  event: DragEvent,
+  item: TableColumn | AvailableParameter
+): void {
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', column.id)
+    event.dataTransfer.setData('text/plain', item.id)
   }
 }
 
 function handleDragEnd(): void {
   dropPosition.value = null
+  emit('update:open', false)
 }
 
 function handleDragEnter(event: DragEvent): void {
@@ -243,27 +318,35 @@ function handleDragEnter(event: DragEvent): void {
 function handleDrop(event: DragEvent): void {
   event.preventDefault()
   dropPosition.value = null
+
+  const paramId = event.dataTransfer?.getData('text/plain')
+  if (!paramId) return
+
+  const param = availableParameters.value.find((p) => p.id === paramId)
+  if (param) {
+    handleAdd(param)
+  }
 }
 
-function showAllColumns(): void {
-  const target = currentView.value === 'parent' ? localColumns : localDetailColumns
-  target.value = target.value.map((col) => ({ ...col, visible: true }))
-}
+async function showAllColumns(): Promise<void> {
+  try {
+    if (!currentTable.value) return
 
-function handleApply(): void {
-  emit('update:columns', {
-    parentColumns: localColumns.value,
-    childColumns: localDetailColumns.value
-  })
-  emit('apply')
-  emit('update:open', false)
-}
+    const updatedParentColumns =
+      currentView.value === 'parent'
+        ? currentTable.value.parentColumns.map((col) => ({ ...col, visible: true }))
+        : [...currentTable.value.parentColumns]
 
-function handleCancel(): void {
-  localColumns.value = [...props.columns]
-  localDetailColumns.value = [...(props.detailColumns || [])]
-  emit('cancel')
-  emit('update:open', false)
+    const updatedChildColumns =
+      currentView.value === 'child'
+        ? currentTable.value.childColumns.map((col) => ({ ...col, visible: true }))
+        : [...currentTable.value.childColumns]
+
+    await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to show all columns:', err)
+  }
 }
 </script>
 

@@ -8,8 +8,7 @@ import { debug, DebugCategories } from '~/composables/core/utils/debug'
 export type LoadingPhase =
   | 'initial'
   | 'core_store'
-  | 'parameter_store'
-  | 'table_store'
+  | 'store_initialization'
   | 'world_tree'
   | 'bim_elements'
   | 'data_sync'
@@ -56,17 +55,14 @@ export function useLoadingState() {
     const scheduleData = store.scheduleData.value
     const tableData = store.tableData.value
     const evaluatedData = store.evaluatedData.value
-    const parentParams = parameterStore.parentRawParameters.value
-    const childParams = parameterStore.childRawParameters.value
+    const rawParams = parameterStore.rawParameters.value
     const currentTable = tableStore.computed.currentTable.value
 
     // Basic presence checks
     const hasScheduleData = Array.isArray(scheduleData) && scheduleData.length > 0
     const hasTableData = Array.isArray(tableData) && tableData.length > 0
     const hasEvaluatedData = Array.isArray(evaluatedData) && evaluatedData.length > 0
-    const hasParameters =
-      (Array.isArray(parentParams) && parentParams.length > 0) ||
-      (Array.isArray(childParams) && childParams.length > 0)
+    const hasParameters = Array.isArray(rawParams) && rawParams.length > 0
 
     // Data consistency checks
     const lengthsMatch =
@@ -90,7 +86,7 @@ export function useLoadingState() {
     // Ensure we have some data to display
     const hasMinimumData =
       (scheduleData?.length ?? 0) > 0 &&
-      (parameterStore.parentRawParameters.value?.length ?? 0) > 0
+      (parameterStore.rawParameters.value?.length ?? 0) > 0
 
     const dataConsistent = dataIntegrity && hasMinimumData
 
@@ -101,7 +97,7 @@ export function useLoadingState() {
         scheduleData: scheduleData?.length ?? 0,
         tableData: tableData?.length ?? 0,
         evaluatedData: evaluatedData?.length ?? 0,
-        parameters: parameterStore.parentRawParameters.value?.length ?? 0
+        parameters: parameterStore.rawParameters.value?.length ?? 0
       }
     })
 
@@ -144,10 +140,8 @@ export function useLoadingState() {
         return 'Initializing...'
       case 'core_store':
         return 'Initializing core store...'
-      case 'parameter_store':
-        return 'Initializing parameter store...'
-      case 'table_store':
-        return 'Initializing table store...'
+      case 'store_initialization':
+        return 'Initializing stores...'
       case 'world_tree':
         return 'Loading world tree...'
       case 'bim_elements':

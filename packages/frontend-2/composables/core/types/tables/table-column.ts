@@ -40,6 +40,8 @@ export function createBaseColumn(
     filterable: true,
     order,
     parameter: {
+      header,
+      removable: true,
       id,
       name: header,
       kind: 'bim' as const,
@@ -51,7 +53,11 @@ export function createBaseColumn(
       category: 'Base',
       metadata: {
         isSystem: true
-      }
+      },
+      sourceValue: '',
+      fetchedGroup: '',
+      currentGroup: '',
+      field: ''
     }
   }
 }
@@ -76,21 +82,13 @@ export function createTableColumn(param: SelectedParameter): TableColumn {
  * Convert an array of SelectedParameters to TableColumns
  */
 export function createTableColumns(params: SelectedParameter[]): TableColumn[] {
-  // Create base columns first
-  const baseColumns = [
-    createBaseColumn('id', 'ID', 0),
-    createBaseColumn('name', 'Name', 1),
-    createBaseColumn('type', 'Type', 2),
-    createBaseColumn('category', 'Category', 3)
-  ]
-
   // Add parameter columns after base columns
   const paramColumns = params.map((param, index) =>
     createTableColumn({
       ...param,
-      order: index + baseColumns.length // Adjust order to start after base columns
+      order: index + 1
     })
   )
 
-  return [...baseColumns, ...paramColumns]
+  return [...paramColumns]
 }

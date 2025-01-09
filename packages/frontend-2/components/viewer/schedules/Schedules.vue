@@ -28,7 +28,6 @@
             <ScheduleMainView
               @error="handleError"
               @table-updated="handleTableDataUpdate"
-              @column-visibility-change="handleColumnVisibilityChange"
             />
           </div>
         </template>
@@ -48,7 +47,6 @@ import { useScheduleInitialization } from './composables/useScheduleInitializati
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 import { useParameterStore } from '~/composables/core/parameters/store'
 import type { TableColumn } from '~/composables/core/types'
-import type { ColumnVisibilityPayload } from '~/composables/core/types/tables/table-events'
 import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 import ScheduleMainView from './components/ScheduleMainView.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
@@ -64,7 +62,6 @@ import { useLoadingState } from '~/composables/core/tables/state/useLoadingState
 import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
 import { childCategories } from '~/composables/core/config/categories'
 import ScheduleTableHeader from './components/ScheduleTableHeader.vue'
-import { isTableColumn } from '~/composables/core/tables/store/types'
 
 // Type-safe error handling utility
 function createSafeError(err: unknown): Error {
@@ -188,65 +185,6 @@ function handleTableDataUpdate(): void {
   updateErrorState(null)
 }
 
-async function handleColumnVisibilityChange(
-  payload: ColumnVisibilityPayload
-): Promise<void> {
-  try {
-    debug.log(DebugCategories.COLUMNS, 'Column visibility changed', {
-      field: payload.column.id,
-      visible: payload.visible
-    })
-
-    // Map and validate columns
-    const currentParentColumns =
-      tableStore.computed.currentTable.value?.parentColumns || []
-    const updatedParentColumns = currentParentColumns.map((col): TableColumn => {
-      if (!isTableColumn(col)) {
-        throw new Error('Invalid parent column structure')
-      }
-      return {
-        ...col,
-        visible: col.id === payload.column.id ? payload.visible : col.visible,
-        parameter: {
-          ...col.parameter,
-          visible:
-            col.id === payload.column.id ? payload.visible : col.parameter.visible
-        }
-      }
-    })
-
-    const currentChildColumns =
-      tableStore.computed.currentTable.value?.childColumns || []
-    const updatedChildColumns = currentChildColumns.map((col): TableColumn => {
-      if (!isTableColumn(col)) {
-        throw new Error('Invalid child column structure')
-      }
-      return {
-        ...col,
-        visible: col.id === payload.column.id ? payload.visible : col.visible,
-        parameter: {
-          ...col.parameter,
-          visible:
-            col.id === payload.column.id ? payload.visible : col.parameter.visible
-        }
-      }
-    })
-
-    // Update column visibility in table store
-    await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
-
-    debug.log(DebugCategories.COLUMNS, 'Column visibility updated', {
-      columnId: payload.column.id,
-      visible: payload.visible,
-      type: payload.column.parameter.kind
-    })
-
-    debug.log(DebugCategories.COLUMNS, 'Column visibility updated in stores')
-  } catch (err) {
-    updateErrorState(createSafeError(err))
-  }
-}
-
 // Type-safe error handling with proper type guards
 function updateErrorState(newError: Error | null): void {
   const currentError = error.value
@@ -275,7 +213,7 @@ function updateErrorState(newError: Error | null): void {
         phase: currentPhase.value,
         isLoading: isLoading.value,
         hasElements: bimElements.allElements.value?.length || 0,
-        hasParameters: parameterStore.parentRawParameters.value?.length || 0,
+        hasParameters: parameterStore.rawParameters.value?.length || 0,
         hasTable: !!tableStore.computed.currentTable.value
       }
     })
@@ -295,7 +233,7 @@ function handleError(err: unknown): void {
       phase: currentPhase.value,
       isLoading: isLoading.value,
       hasElements: bimElements.allElements.value?.length || 0,
-      hasParameters: parameterStore.parentRawParameters.value?.length || 0,
+      hasParameters: parameterStore.rawParameters.value?.length || 0,
       hasTable: !!tableStore.computed.currentTable.value
     }
   })
@@ -395,70 +333,82 @@ onMounted(async () => {
     }
     debug.log(DebugCategories.INITIALIZATION, 'Core store initialized')
 
-    // 3. Initialize parameter store
-    transitionPhase('parameter_store')
-    debug.log(DebugCategories.INITIALIZATION, 'Initializing parameter store')
-    await parameterStore.init()
-    if (!parameterStore.state.value.initialized) {
-      debug.error(DebugCategories.ERROR, 'Parameter store failed to initialize', {
-        parameterState: parameterStore.state.value
-      })
-      throw new Error('Parameter store failed to initialize')
-    }
-    debug.log(DebugCategories.INITIALIZATION, 'Parameter store initialized')
+    // 3. Initialize stores
+    transitionPhase('store_initialization')
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing stores')
 
-    // 4. Initialize table store
-    transitionPhase('table_store')
-    debug.log(DebugCategories.INITIALIZATION, 'Initializing table store')
-    await initComponent.initialize()
-    if (!tableStore.computed.currentTable.value) {
-      debug.error(DebugCategories.ERROR, 'Table store failed to initialize', {
-        tableState: tableStore.state.value,
-        currentTable: tableStore.computed.currentTable.value
-      })
-      throw new Error('Table store failed to initialize')
-    }
-    debug.log(DebugCategories.INITIALIZATION, 'Table store initialized')
-
-    // 5. Wait for auth
-    const waitForUser = useWaitForActiveUser()
-    const userResult = await waitForUser()
-    if (!userResult?.data?.activeUser) {
-      throw new Error('Authentication required')
-    }
-
-    // 6. Initialize world tree
-    transitionPhase('world_tree')
-    await waitForWorldTree()
-    if (!worldTree.value) {
-      throw new Error('World tree not available')
-    }
-
-    // 7. Initialize BIM elements
-    transitionPhase('bim_elements')
-    const treeRoot: WorldTreeRoot = {
-      _root: {
-        children: hasValidChildren(worldTree.value)
-          ? worldTree.value._root.children
-          : []
+    try {
+      // Initialize parameter store first
+      debug.log(DebugCategories.INITIALIZATION, 'Initializing parameter store')
+      await parameterStore.init()
+      if (!parameterStore.state.value.initialized) {
+        throw new Error('Parameter store failed to initialize')
       }
+      debug.log(DebugCategories.INITIALIZATION, 'Parameter store initialized')
+
+      // Then initialize table store
+      debug.log(DebugCategories.INITIALIZATION, 'Initializing table store')
+      await initComponent.initialize()
+      if (!tableStore.computed.currentTable.value) {
+        throw new Error('Table store failed to initialize')
+      }
+      debug.log(DebugCategories.INITIALIZATION, 'Table store initialized')
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Store initialization failed:', err)
+      throw err
     }
 
-    await bimElements.initializeElements(treeRoot)
-    const elementsWithParams =
-      bimElements.allElements.value?.filter(
-        (el) => el.parameters && Object.keys(el.parameters).length > 0
-      ) || []
+    // 4. Initialize world tree and BIM elements
+    transitionPhase('world_tree')
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing world tree')
 
-    if (elementsWithParams.length === 0) {
-      throw new Error('No parameters found in BIM elements')
-    }
+    try {
+      // Wait for auth
+      const waitForUser = useWaitForActiveUser()
+      const userResult = await waitForUser()
+      if (!userResult?.data?.activeUser) {
+        throw new Error('Authentication required')
+      }
 
-    // Process parameters
-    await parameterStore.processParameters(elementsWithParams)
-    const validation = validateData()
-    if (!validation.hasParameters) {
-      throw new Error('Parameter processing failed')
+      // Wait for world tree
+      await waitForWorldTree()
+      if (!worldTree.value) {
+        throw new Error('World tree not available')
+      }
+
+      // Initialize BIM elements
+      const treeRoot: WorldTreeRoot = {
+        _root: {
+          children: hasValidChildren(worldTree.value)
+            ? worldTree.value._root.children
+            : []
+        }
+      }
+
+      await bimElements.initializeElements(treeRoot)
+      const elementsWithParams =
+        bimElements.allElements.value?.filter(
+          (el) => el.parameters && Object.keys(el.parameters).length > 0
+        ) || []
+
+      if (elementsWithParams.length === 0) {
+        throw new Error('No parameters found in BIM elements')
+      }
+
+      // Process parameters
+      await parameterStore.processParameters(elementsWithParams)
+      const validation = validateData()
+      if (!validation.hasParameters) {
+        throw new Error('Parameter processing failed')
+      }
+
+      debug.log(
+        DebugCategories.INITIALIZATION,
+        'World tree and BIM elements initialized'
+      )
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'World tree initialization failed:', err)
+      throw err
     }
 
     // 8. Load tables and initialize data

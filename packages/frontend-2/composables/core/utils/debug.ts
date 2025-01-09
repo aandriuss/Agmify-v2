@@ -33,7 +33,10 @@ export enum DebugCategories {
   CATEGORY_UPDATES = 'category-updates',
 
   // Relationships
-  RELATIONSHIPS = 'relationships'
+  RELATIONSHIPS = 'relationships',
+
+  // UI
+  UI = 'ui'
 }
 
 interface DebugLog {
@@ -286,6 +289,12 @@ class Debug {
     if (category === DebugCategories.DATA) {
       // Include parameter logs for data operations
       const parameterLogs = this.groupedLogs.value.get(DebugCategories.PARAMETERS) || []
+      logs.push(...parameterLogs)
+    }
+
+    if (category === DebugCategories.UI) {
+      // Include parameter logs for data operations
+      const parameterLogs = this.groupedLogs.value.get(DebugCategories.UI) || []
       logs.push(...parameterLogs)
     }
 

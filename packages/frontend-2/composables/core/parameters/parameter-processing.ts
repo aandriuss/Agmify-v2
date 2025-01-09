@@ -171,14 +171,18 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
 /**
  * Process raw parameters into available parameters
  */
-export function processRawParameters(
-  rawParams: RawParameter[]
-): AvailableBimParameter[] {
+export function processRawParameters(rawParams: RawParameter[]): {
+  parent: AvailableBimParameter[]
+  child: AvailableBimParameter[]
+} {
   debug.startState(DebugCategories.PARAMETERS, 'Processing raw parameters')
 
   try {
-    const processed = rawParams
-      .map((param) => {
+    const { parent, child } = rawParams.reduce<{
+      parent: AvailableBimParameter[]
+      child: AvailableBimParameter[]
+    }>(
+      (acc, param) => {
         try {
           // Convert value
           const value = convertToParameterValue(param.value)
@@ -187,7 +191,7 @@ export function processRawParameters(
           const type = inferParameterType(value)
 
           // Create BIM parameter with proper group handling
-          return createAvailableBimParameter(
+          const processedParam = createAvailableBimParameter(
             {
               ...param,
               name: param.metadata?.displayName || param.name,
@@ -204,30 +208,48 @@ export function processRawParameters(
             type,
             value
           )
+
+          // Categorize into parent/child
+          const isParent =
+            param.metadata?.isParent ||
+            (param.metadata?.category &&
+              parentCategories.includes(param.metadata.category))
+
+          if (isParent) {
+            acc.parent.push(processedParam)
+          } else {
+            acc.child.push(processedParam)
+          }
         } catch (err) {
           debug.warn(
             DebugCategories.PARAMETERS,
             `Failed to process parameter ${param.id}:`,
             err
           )
-          return null
         }
-      })
-      .filter((param): param is AvailableBimParameter => param !== null)
+        return acc
+      },
+      { parent: [], child: [] }
+    )
 
     debug.completeState(DebugCategories.PARAMETERS, 'Parameters processed', {
       rawCount: rawParams.length,
-      processedCount: processed.length,
-      sample: processed[0]
-        ? {
-            id: processed[0].id,
-            kind: processed[0].kind,
-            category: processed[0].metadata?.category
-          }
-        : null
+      processedCount: {
+        parent: parent.length,
+        child: child.length
+      },
+      sample:
+        parent[0] || child[0]
+          ? {
+              id: (parent[0] || child[0]).id,
+              kind: (parent[0] || child[0]).kind,
+              category: (parent[0] || child[0]).metadata?.category,
+              isParent: !!parent[0]
+            }
+          : null
     })
 
-    return processed
+    return { parent, child }
   } catch (err) {
     debug.error(DebugCategories.PARAMETERS, 'Failed to process parameters:', err)
     throw err

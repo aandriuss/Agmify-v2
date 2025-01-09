@@ -31,7 +31,9 @@
                 text
                 size="sm"
                 color="subtle"
-                :icon-right="showFilterOptions ? ChevronUpIcon : ChevronDownIcon"
+                :icon-right="
+                  coreStore.showCategoryOptions.value ? ChevronUpIcon : ChevronDownIcon
+                "
                 @click="toggleFilterOptions"
               >
                 Filter Options
@@ -42,7 +44,7 @@
               :key="`available-${columnManager.currentView.value}-${listRefreshKey}`"
               :items="columnManager.availableParameters.value"
               mode="available"
-              :show-filter-options="showFilterOptions"
+              :show-filter-options="coreStore.showCategoryOptions.value"
               :search-term="searchTerm"
               :is-grouped="isGrouped"
               :sort-by="sortBy"
@@ -137,6 +139,7 @@ import EnhancedColumnList from './shared/EnhancedColumnList.vue'
 import { useColumnManager } from '~/components/viewer/components/tables/DataTable/composables/columns/useColumnManager'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
+import { useStore } from '~/composables/core/store'
 import type {
   AvailableBimParameter,
   AvailableUserParameter
@@ -185,6 +188,7 @@ const emit = defineEmits<{
 // Stores and Composables
 const tableStore = useTableStore()
 const parameterStore = useParameterStore()
+const coreStore = useStore()
 
 // State
 const isInitialized = ref(false)
@@ -193,7 +197,6 @@ const listRefreshKey = ref(0)
 const searchTerm = ref('')
 const isGrouped = ref(true)
 const sortBy = ref<'name' | 'category' | 'type' | 'fixed'>('category')
-const showFilterOptions = ref(false)
 
 // Column Manager
 const columnManager = useColumnManager({
@@ -254,7 +257,7 @@ const handleSortUpdate = (value: string) => {
 }
 
 const toggleFilterOptions = () => {
-  showFilterOptions.value = !showFilterOptions.value
+  coreStore.setShowCategoryOptions(!coreStore.showCategoryOptions.value)
 }
 
 const handleAdd = async (

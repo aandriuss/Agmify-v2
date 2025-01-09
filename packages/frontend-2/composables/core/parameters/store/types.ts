@@ -1,11 +1,11 @@
+import type { ElementData } from '~/composables/core/types'
+import type { ComputedRef } from 'vue'
 import type {
-  ElementData,
   RawParameter,
   AvailableBimParameter,
   AvailableUserParameter,
-  SelectedParameter,
-  BaseParameterCollections
-} from '~/composables/core/types'
+  SelectedParameter
+} from '~/composables/core/types/parameters/parameter-states'
 
 // Re-export types from centralized location
 export type {
@@ -20,7 +20,7 @@ export {
   createAvailableBimParameter,
   createAvailableUserParameter,
   createSelectedParameter
-} from '~/composables/core/types/parameters'
+} from '~/composables/core/types/parameters/parameter-states'
 
 /**
  * Available parameter union type
@@ -58,9 +58,39 @@ export type ParameterDebugCategory =
   (typeof ParameterDebugCategories)[keyof typeof ParameterDebugCategories]
 
 /**
+ * Parameter collections interface
+ */
+export interface ParameterCollections {
+  // Available parameters after processing and parent/child categorization
+  available: {
+    parent: {
+      bim: AvailableBimParameter[]
+      user: AvailableUserParameter[]
+    }
+    child: {
+      bim: AvailableBimParameter[]
+      user: AvailableUserParameter[]
+    }
+  }
+
+  // Selected parameters for tables
+  selected: {
+    parent: SelectedParameter[]
+    child: SelectedParameter[]
+  }
+}
+
+/**
  * Parameter store state
  */
-export interface ParameterStoreState extends BaseParameterCollections {
+export interface ParameterStoreState {
+  // Raw parameters from BIM data (before parent/child categorization)
+  raw: RawParameter[]
+
+  // Processed parameters
+  collections: ParameterCollections
+
+  // Processing state
   processing: {
     status: 'idle' | 'processing' | 'complete' | 'error'
     error: Error | null
@@ -78,14 +108,17 @@ export interface ParameterStore {
   state: ComputedRef<ParameterStoreState>
 
   // Raw parameters
-  parentRawParameters: ComputedRef<RawParameter[]>
-  childRawParameters: ComputedRef<RawParameter[]>
+  rawParameters: ComputedRef<RawParameter[]>
 
   // Available parameters
   parentAvailableBimParameters: ComputedRef<AvailableBimParameter[]>
   parentAvailableUserParameters: ComputedRef<AvailableUserParameter[]>
   childAvailableBimParameters: ComputedRef<AvailableBimParameter[]>
   childAvailableUserParameters: ComputedRef<AvailableUserParameter[]>
+
+  // Selected parameters
+  parentSelectedParameters: ComputedRef<SelectedParameter[]>
+  childSelectedParameters: ComputedRef<SelectedParameter[]>
 
   // Status
   isProcessing: ComputedRef<boolean>

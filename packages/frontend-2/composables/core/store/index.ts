@@ -48,6 +48,8 @@ const initialState: StoreState = {
   selectedTableId: '',
   currentTableId: '',
   tableKey: '',
+  // UI State
+  showCategoryOptions: false,
   // State
   initialized: false,
   loading: false,
@@ -251,20 +253,78 @@ export class CoreStore implements Store {
     }
   }
 
-  // Core mutations with optimized updates
+  // Core mutations with optimized updates and schedule integration
   public setProjectId = (id: string | null) => this.lifecycle.update({ projectId: id })
-  public setScheduleData = (data: ElementData[]) =>
-    this.lifecycle.update({ scheduleData: data })
-  public setEvaluatedData = (data: ElementData[]) =>
-    this.lifecycle.update({ evaluatedData: data })
-  public setTableData = (data: TableRow[]) => this.lifecycle.update({ tableData: data })
 
-  // Column mutations
-  public setCurrentColumns = (table: TableColumn[], detail: TableColumn[]) =>
-    this.lifecycle.update({
-      currentTableColumns: table,
-      currentDetailColumns: detail
-    })
+  public setScheduleData = async (data: ElementData[]) => {
+    debug.startState(DebugCategories.DATA_TRANSFORM, 'Setting schedule data')
+    try {
+      await this.lifecycle.update({ scheduleData: data })
+      debug.completeState(DebugCategories.DATA_TRANSFORM, 'Schedule data updated', {
+        count: data.length,
+        sample: data[0] ? { id: data[0].id, type: data[0].type } : null
+      })
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to set schedule data:', err)
+      throw err
+    }
+  }
+
+  public setEvaluatedData = async (data: ElementData[]) => {
+    debug.startState(DebugCategories.DATA_TRANSFORM, 'Setting evaluated data')
+    try {
+      await this.lifecycle.update({ evaluatedData: data })
+      debug.completeState(DebugCategories.DATA_TRANSFORM, 'Evaluated data updated', {
+        count: data.length,
+        sample: data[0] ? { id: data[0].id, type: data[0].type } : null
+      })
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to set evaluated data:', err)
+      throw err
+    }
+  }
+
+  public setTableData = async (data: TableRow[]) => {
+    debug.startState(DebugCategories.DATA_TRANSFORM, 'Setting table data')
+    try {
+      await this.lifecycle.update({ tableData: data })
+      debug.completeState(DebugCategories.DATA_TRANSFORM, 'Table data updated', {
+        count: data.length,
+        sample: data[0] ? { id: data[0].id, type: data[0].type } : null
+      })
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to set table data:', err)
+      throw err
+    }
+  }
+
+  // Column mutations with validation
+  public setCurrentColumns = async (table: TableColumn[], detail: TableColumn[]) => {
+    debug.startState(DebugCategories.COLUMN_UPDATES, 'Setting current columns')
+    try {
+      const validTable = table.filter(isValidColumn)
+      const validDetail = detail.filter(isValidColumn)
+
+      await this.lifecycle.update({
+        currentTableColumns: validTable,
+        currentDetailColumns: validDetail
+      })
+
+      debug.completeState(DebugCategories.COLUMN_UPDATES, 'Current columns updated', {
+        table: {
+          total: table.length,
+          valid: validTable.length
+        },
+        detail: {
+          total: detail.length,
+          valid: validDetail.length
+        }
+      })
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to set current columns:', err)
+      throw err
+    }
+  }
 
   public setColumnVisibility = (columnId: string, visible: boolean) => {
     const currentColumns = this.internalState.value.currentTableColumns
@@ -346,6 +406,17 @@ export class CoreStore implements Store {
     this.lifecycle.update({ initialized: value })
   public setLoading = (value: boolean) => this.lifecycle.update({ loading: value })
   public setError = (error: Error | null) => this.lifecycle.update({ error })
+
+  // UI mutations
+  public setShowCategoryOptions = (show: boolean) => {
+    debug.log(DebugCategories.UI, 'Setting category options visibility', { show })
+    return this.lifecycle.update({ showCategoryOptions: show })
+  }
+
+  // UI state
+  public readonly showCategoryOptions = computed(
+    () => this.internalState.value.showCategoryOptions
+  )
 
   public reset = () => {
     debug.log(DebugCategories.STATE, 'Resetting store')

@@ -51,14 +51,13 @@ const coreState = computed(() => {
 
 const parameterState = computed(() => {
   const paramState = parameterStore.state.value
-  const hasParameters =
-    parameterStore.parentRawParameters.value?.length > 0 ||
-    parameterStore.childRawParameters.value?.length > 0
+  const hasParameters = parameterStore.rawParameters.value?.length > 0
+  const processingError = paramState.processing.error
   return {
     initialized: paramState.initialized,
     hasParameters,
     isProcessing: paramState.processing.status === 'processing',
-    error: paramState.processing.error
+    error: processingError instanceof Error ? processingError : null
   }
 })
 

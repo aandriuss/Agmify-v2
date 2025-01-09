@@ -63,12 +63,12 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     )
 
     const bimParams = isParent
-      ? parameterStore.parentAvailableBimParameters.value
-      : parameterStore.childAvailableBimParameters.value
+      ? parameterStore.state.value.collections.available.parent.bim
+      : parameterStore.state.value.collections.available.child.bim
 
     const userParams = isParent
-      ? parameterStore.parentAvailableUserParameters.value
-      : parameterStore.childAvailableUserParameters.value
+      ? parameterStore.state.value.collections.available.parent.user
+      : parameterStore.state.value.collections.available.child.user
 
     return [...bimParams, ...userParams].filter((param) => !selectedIds.has(param.id))
   })

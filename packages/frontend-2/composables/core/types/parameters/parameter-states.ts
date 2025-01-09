@@ -116,50 +116,6 @@ export interface UserSelectedParameter extends BaseSelectedParameter {
 
 export type SelectedParameter = BimSelectedParameter | UserSelectedParameter
 
-/**
- * Base parameter collections without selected parameters
- * (used by parameter store)
- */
-export interface BaseParameterCollections {
-  parent: {
-    raw: RawParameter[]
-    available: {
-      bim: AvailableBimParameter[]
-      user: AvailableUserParameter[]
-    }
-  }
-  child: {
-    raw: RawParameter[]
-    available: {
-      bim: AvailableBimParameter[]
-      user: AvailableUserParameter[]
-    }
-  }
-}
-
-/**
- * Parameter collections with selected parameters
- * (used by table store)
- */
-export interface ParameterCollections extends BaseParameterCollections {
-  parent: {
-    raw: RawParameter[]
-    available: {
-      bim: AvailableBimParameter[]
-      user: AvailableUserParameter[]
-    }
-    selected: SelectedParameter[]
-  }
-  child: {
-    raw: RawParameter[]
-    available: {
-      bim: AvailableBimParameter[]
-      user: AvailableUserParameter[]
-    }
-    selected: SelectedParameter[]
-  }
-}
-
 // Type guards
 export const isRawParameter = (param: unknown): param is RawParameter => {
   if (!param || typeof param !== 'object') return false

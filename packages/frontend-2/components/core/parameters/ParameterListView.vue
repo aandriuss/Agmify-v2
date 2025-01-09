@@ -250,80 +250,80 @@ async function handleRetry(): Promise<void> {
   }
 }
 
-// Initialize component ( do we need these if we have default selected parameters)
-async function initialize(): Promise<void> {
-  try {
-    isLoading.value = true
-    // Load initial data
-    await new Promise((resolve) => setTimeout(resolve, 100)) // Placeholder for actual API call
+// // Initialize component ( do we need these if we have default selected parameters)
+// async function initialize(): Promise<void> {
+//   try {
+//     isLoading.value = true
+//     // Load initial data
+//     await new Promise((resolve) => setTimeout(resolve, 100)) // Placeholder for actual API call
 
-    // Set initial columns
-    columns.value = [
-      createTableColumns({
-        id: 'name',
-        name: 'Name',
-        field: 'name',
-        header: 'Name',
-        type: 'fixed',
-        visible: true,
-        group: 'default',
-        removable: false,
-        order: 0
-      }),
-      createTableColumns({
-        id: 'category',
-        name: 'Category',
-        field: 'category',
-        header: 'Category',
-        type: 'fixed',
-        visible: true,
-        group: 'default',
-        removable: true,
-        order: 1
-      }),
-      createTableColumns({
-        id: 'kind',
-        name: 'Kind',
-        field: 'kind',
-        header: 'Kind',
-        type: 'fixed',
-        visible: true,
-        group: 'default',
-        removable: true,
-        order: 2
-      }),
-      createTableColumns({
-        id: 'sourceValue',
-        name: 'Source Value',
-        field: 'sourceValue',
-        header: 'Source Value',
-        type: 'fixed',
-        visible: true,
-        group: 'default',
-        removable: true,
-        order: 3
-      }),
-      createTableColumns({
-        id: 'equation',
-        name: 'Equation',
-        field: 'equation',
-        header: 'Equation',
-        type: 'equation',
-        visible: true,
-        group: 'default',
-        removable: true,
-        order: 4
-      })
-    ]
+//     // Set initial columns
+//     columns.value = [
+//       createTableColumns({
+//         id: 'name',
+//         name: 'Name',
+//         field: 'name',
+//         header: 'Name',
+//         type: 'fixed',
+//         visible: true,
+//         group: 'default',
+//         removable: false,
+//         order: 0
+//       }),
+//       createTableColumns({
+//         id: 'category',
+//         name: 'Category',
+//         field: 'category',
+//         header: 'Category',
+//         type: 'fixed',
+//         visible: true,
+//         group: 'default',
+//         removable: true,
+//         order: 1
+//       }),
+//       createTableColumns({
+//         id: 'kind',
+//         name: 'Kind',
+//         field: 'kind',
+//         header: 'Kind',
+//         type: 'fixed',
+//         visible: true,
+//         group: 'default',
+//         removable: true,
+//         order: 2
+//       }),
+//       createTableColumns({
+//         id: 'sourceValue',
+//         name: 'Source Value',
+//         field: 'sourceValue',
+//         header: 'Source Value',
+//         type: 'fixed',
+//         visible: true,
+//         group: 'default',
+//         removable: true,
+//         order: 3
+//       }),
+//       createTableColumns({
+//         id: 'equation',
+//         name: 'Equation',
+//         field: 'equation',
+//         header: 'Equation',
+//         type: 'equation',
+//         visible: true,
+//         group: 'default',
+//         removable: true,
+//         order: 4
+//       })
+//     ]
 
-    // Set initial data
-    parameterData.value = []
-  } catch (err) {
-    handleError(err)
-  } finally {
-    isLoading.value = false
-  }
-}
+//     // Set initial data
+//     parameterData.value = []
+//   } catch (err) {
+//     handleError(err)
+//   } finally {
+//     isLoading.value = false
+//   }
+// }
 
 // Call initialize on component mount
 initialize()

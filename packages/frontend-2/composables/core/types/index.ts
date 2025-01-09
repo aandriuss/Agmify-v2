@@ -96,8 +96,6 @@ export type {
   AvailableUserParameter,
   AvailableParameter,
   SelectedParameter,
-  ParameterCollections,
-  BaseParameterCollections,
 
   // Value Types
   PrimitiveValue,
@@ -150,16 +148,6 @@ export {
 
 // Store types
 export type {
-  // Parameter Store Types
-  StoreParameterValueState,
-  StoreBimParameter,
-  StoreUserParameter,
-  StoreParameterValue,
-  BaseStoreParameterDefinition,
-  StoreBimParameterDefinition,
-  StoreUserParameterDefinition,
-  StoreParameterDefinition,
-
   // Parameter Store State Types
   ParameterStoreState,
   ParameterStoreMutations,
@@ -179,17 +167,6 @@ export type {
 
 // Store utilities and functions
 export {
-  // Type Guards
-  isStoreBimParameter,
-  isStoreUserParameter,
-  isStoreBimDefinition,
-  isStoreUserDefinition,
-
-  // Conversion Utilities
-  convertToStoreParameter,
-  convertToStoreDefinition,
-  convertToParameter,
-
   // State Factory
   createDefaultParameterStoreState
 } from './store'
