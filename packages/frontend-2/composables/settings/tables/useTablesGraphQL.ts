@@ -10,6 +10,12 @@ import type {
   BimValueType,
   UserValueType
 } from '~/composables/core/types/parameters/value-types'
+import type { GraphQLError } from 'graphql'
+
+interface GraphQLResponse<T> {
+  data?: T
+  errors?: readonly GraphQLError[]
+}
 
 interface GetTablesResponse {
   activeUser: {
@@ -345,7 +351,7 @@ export async function useTablesGraphQL() {
                           group: param.group,
                           category: param.category,
                           description: param.description,
-                          metadata: param.metadata,
+                          metadata: param.metadata || {},
                           sourceValue: param.value === null ? '' : String(param.value),
                           fetchedGroup: param.fetchedGroup || 'Parameters',
                           currentGroup: param.currentGroup || 'Parameters'
@@ -364,7 +370,7 @@ export async function useTablesGraphQL() {
                           group: param.group,
                           category: param.category,
                           description: param.description,
-                          metadata: param.metadata,
+                          metadata: param.metadata || {},
                           equation: param.equation,
                           isCustom: param.isCustom
                         }
@@ -385,7 +391,7 @@ export async function useTablesGraphQL() {
                           group: param.group,
                           category: param.category,
                           description: param.description,
-                          metadata: param.metadata,
+                          metadata: param.metadata || {},
                           sourceValue: param.value === null ? '' : String(param.value),
                           fetchedGroup: param.fetchedGroup || 'Parameters',
                           currentGroup: param.currentGroup || 'Parameters'
@@ -404,7 +410,7 @@ export async function useTablesGraphQL() {
                           group: param.group,
                           category: param.category,
                           description: param.description,
-                          metadata: param.metadata,
+                          metadata: param.metadata || {},
                           equation: param.equation,
                           isCustom: param.isCustom
                         }
@@ -412,7 +418,7 @@ export async function useTablesGraphQL() {
                 },
                 filters: table.filters,
                 lastUpdateTimestamp: table.lastUpdateTimestamp,
-                metadata: table.metadata
+                metadata: table.metadata || {}
               }
             })
           )
@@ -442,37 +448,67 @@ export async function useTablesGraphQL() {
             })
           }
 
-          const mutationResponse = await mutate({
-            input: {
-              tables: tableEntries
+          try {
+            const mutationResponse = await mutate({
+              input: {
+                tables: tableEntries
+              }
+            })
+
+            // Type-safe response handling
+            const response = mutationResponse as GraphQLResponse<UpdateTablesResponse>
+
+            // Log detailed response for debugging
+            debug.log(DebugCategories.STATE, 'GraphQL Mutation Response', {
+              success: !!response.data?.userTablesUpdate,
+              hasData: !!response.data,
+              hasErrors: !!response.errors,
+              errors: response.errors,
+              data: response.data
+            })
+
+            // Check for GraphQL errors
+            if (response.errors?.length) {
+              const errorMessages = response.errors.map((e) => e.message).join(', ')
+              throw new Error(`GraphQL errors: ${errorMessages}`)
             }
-          })
 
-          // Log the response
-          /* eslint-disable no-console */
-          console.log('GraphQL Mutation Response:', {
-            success: !!(mutationResponse?.data as UpdateTablesResponse | undefined)
-              ?.userTablesUpdate,
-            hasData: !!mutationResponse?.data,
-            hasErrors: !!mutationResponse?.errors
-          })
+            // Check for successful update
+            const success = response.data?.userTablesUpdate ?? false
 
-          const success = !!(mutationResponse?.data as UpdateTablesResponse | undefined)
-            ?.userTablesUpdate
+            if (!success) {
+              throw new Error('Tables update returned false')
+            }
 
-          debug.log(DebugCategories.STATE, 'Received mutation response', {
-            success
-          })
-
-          return success
+            debug.log(DebugCategories.STATE, 'Mutation completed successfully')
+            return success
+          } catch (err) {
+            debug.error(DebugCategories.ERROR, 'Mutation failed', err)
+            throw err
+          }
         })
 
         if (!result) {
           throw new Error('Tables update returned false')
         }
 
-        // Manually trigger a refetch to ensure we have the latest data
-        await refetch()
+        try {
+          // Manually trigger a refetch and wait for it to complete
+          const refetchResult = await refetch()
+          if (!refetchResult?.data) {
+            throw new Error('Refetch returned no data')
+          }
+
+          const tables = refetchResult.data.activeUser?.tables
+          debug.log(DebugCategories.STATE, 'Tables refetched', {
+            success: true,
+            tableCount: tables ? Object.keys(tables).length : 0,
+            hasData: !!tables
+          })
+        } catch (err) {
+          debug.error(DebugCategories.ERROR, 'Failed to refetch tables', err)
+          // Don't throw here - the update was successful even if refetch failed
+        }
 
         debug.completeState(DebugCategories.STATE, 'Tables update complete')
         return true

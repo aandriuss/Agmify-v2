@@ -121,6 +121,7 @@ import {
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
 
 const debug = useDebug()
 const store = useStore()
@@ -238,8 +239,16 @@ async function handleSave() {
       lastUpdateTimestamp: Date.now()
     }
 
-    // Save to store
+    // Update local store
+    tableStore.updateTable(updated)
+
+    // Save to PostgreSQL
     await tableStore.saveTable(updated)
+
+    // Update tables array in core store
+    const tables = Array.from(tableStore.state.value.tables.values())
+    store.setTablesArray(tables)
+
     isEditing.value = false
     nameError.value = null
   } catch (err) {
@@ -262,8 +271,12 @@ async function handleGlobalSave() {
   }
 
   try {
-    // Save current state to store
+    // Save current state to PostgreSQL
     await tableStore.saveTable(current)
+
+    // Update tables array in core store
+    const tables = Array.from(tableStore.state.value.tables.values())
+    store.setTablesArray(tables)
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to save:', err)
     nameError.value = err instanceof Error ? err.message : 'Failed to save table'
@@ -288,26 +301,82 @@ async function createNewTable() {
   debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table')
 
   try {
+    // Get current store state
+    const currentState = tableStore.state.value
+    const currentTable = tableStore.computed.currentTable.value
+
+    // Create new table using current store state
     const newTable = {
       id: `table-${Date.now()}`,
       name: 'New Table',
       displayName: 'New Table',
-      parentColumns: [],
-      childColumns: [],
+      // Use current table's state if available, otherwise use first table from store
+      // Create columns from parameters to ensure proper structure
+      parentColumns: currentTable
+        ? currentTable.selectedParameters.parent.map((param) =>
+            createTableColumn(param)
+          )
+        : currentState.tables
+            .values()
+            .next()
+            .value?.selectedParameters.parent.map((param) =>
+              createTableColumn(param)
+            ) || [],
+      childColumns: currentTable
+        ? currentTable.selectedParameters.child.map((param) => createTableColumn(param))
+        : currentState.tables
+            .values()
+            .next()
+            .value?.selectedParameters.child.map((param) => createTableColumn(param)) ||
+          [],
       categoryFilters: {
-        selectedParentCategories: [],
-        selectedChildCategories: []
+        selectedParentCategories: currentTable
+          ? [...currentTable.categoryFilters.selectedParentCategories]
+          : currentState.tables.values().next().value?.categoryFilters
+              .selectedParentCategories || [],
+        selectedChildCategories: currentTable
+          ? [...currentTable.categoryFilters.selectedChildCategories]
+          : currentState.tables.values().next().value?.categoryFilters
+              .selectedChildCategories || []
       },
+      // Deep clone parameters to ensure metadata is properly copied
       selectedParameters: {
-        parent: [],
-        child: []
+        parent: currentTable
+          ? currentTable.selectedParameters.parent.map((param) => ({
+              ...param,
+              metadata: { ...param.metadata }
+            }))
+          : currentState.tables
+              .values()
+              .next()
+              .value?.selectedParameters.parent.map((param) => ({
+                ...param,
+                metadata: { ...param.metadata }
+              })) || [],
+        child: currentTable
+          ? currentTable.selectedParameters.child.map((param) => ({
+              ...param,
+              metadata: { ...param.metadata }
+            }))
+          : currentState.tables
+              .values()
+              .next()
+              .value?.selectedParameters.child.map((param) => ({
+                ...param,
+                metadata: { ...param.metadata }
+              })) || []
       },
       filters: [],
+      metadata: {},
       lastUpdateTimestamp: Date.now()
     }
 
-    // Create new table in store
-    await tableStore.updateTable(newTable)
+    // Update local store only
+    tableStore.updateTable(newTable)
+
+    // Update tables array in core store
+    const tables = Array.from(tableStore.state.value.tables.values())
+    store.setTablesArray(tables)
 
     // Start editing mode
     await nextTick()

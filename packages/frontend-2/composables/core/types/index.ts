@@ -190,7 +190,7 @@ export type {
   ExpandableTableRow
 } from './tables'
 
-export { createTableColumns } from './tables'
+export { createTableColumns, createTableColumn } from './tables'
 // Table Functions
 export { createTableConfig } from '../tables/utils/'
 

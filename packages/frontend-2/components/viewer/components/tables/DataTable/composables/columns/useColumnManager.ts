@@ -117,13 +117,28 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             selectedParams.length
           )
 
-          const updatedParams = {
-            ...currentTable.selectedParameters,
-            [isParent ? 'parent' : 'child']: [...selectedParams, newSelectedParam]
-          }
+          // Create new columns array with existing and new parameter
+          const newColumns = isParent
+            ? [...currentTable.parentColumns, createTableColumn(newSelectedParam)]
+            : [...currentTable.childColumns, createTableColumn(newSelectedParam)]
 
+          // Update both columns and parameters to keep them in sync
           await tableStore.updateTable({
-            selectedParameters: updatedParams
+            ...(isParent
+              ? {
+                  parentColumns: newColumns,
+                  selectedParameters: {
+                    ...currentTable.selectedParameters,
+                    parent: [...selectedParams, newSelectedParam]
+                  }
+                }
+              : {
+                  childColumns: newColumns,
+                  selectedParameters: {
+                    ...currentTable.selectedParameters,
+                    child: [...selectedParams, newSelectedParam]
+                  }
+                })
           })
 
           columnState.value.pendingChanges.push(operation)
@@ -137,15 +152,38 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             ? currentTable.selectedParameters.parent
             : currentTable.selectedParameters.child
 
-          const updatedParams = {
-            ...currentTable.selectedParameters,
-            [isParent ? 'parent' : 'child']: selectedParams.filter(
-              (param) => param.id !== operation.column.id
-            )
-          }
+          // Filter out removed parameter
+          const filteredParams = selectedParams.filter(
+            (param) => param.id !== operation.column.id
+          )
 
+          // Update order values
+          filteredParams.forEach((param, index) => {
+            param.order = index
+          })
+
+          // Filter columns to match parameters
+          const filteredColumns = (
+            isParent ? currentTable.parentColumns : currentTable.childColumns
+          ).filter((col) => col.id !== operation.column.id)
+
+          // Update both columns and parameters to keep them in sync
           await tableStore.updateTable({
-            selectedParameters: updatedParams
+            ...(isParent
+              ? {
+                  parentColumns: filteredColumns,
+                  selectedParameters: {
+                    ...currentTable.selectedParameters,
+                    parent: filteredParams
+                  }
+                }
+              : {
+                  childColumns: filteredColumns,
+                  selectedParameters: {
+                    ...currentTable.selectedParameters,
+                    child: filteredParams
+                  }
+                })
           })
           columnState.value.pendingChanges.push(operation)
           break
@@ -158,17 +196,38 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             ? currentTable.selectedParameters.parent
             : currentTable.selectedParameters.child
 
-          const updatedParams = {
-            ...currentTable.selectedParameters,
-            [isParent ? 'parent' : 'child']: selectedParams.map((param) =>
-              param.id === operation.column.id
-                ? { ...param, visible: operation.visible }
-                : param
-            )
-          }
+          // Update both parameters and columns visibility
+          const updatedParams = selectedParams.map((param) =>
+            param.id === operation.column.id
+              ? { ...param, visible: operation.visible }
+              : param
+          )
 
+          const updatedColumns = (
+            isParent ? currentTable.parentColumns : currentTable.childColumns
+          ).map((col) =>
+            col.id === operation.column.id
+              ? { ...col, visible: operation.visible }
+              : col
+          )
+
+          // Update both arrays to keep them in sync
           await tableStore.updateTable({
-            selectedParameters: updatedParams
+            ...(isParent
+              ? {
+                  parentColumns: updatedColumns,
+                  selectedParameters: {
+                    ...currentTable.selectedParameters,
+                    parent: updatedParams
+                  }
+                }
+              : {
+                  childColumns: updatedColumns,
+                  selectedParameters: {
+                    ...currentTable.selectedParameters,
+                    child: updatedParams
+                  }
+                })
           })
           columnState.value.pendingChanges.push(operation)
           break
@@ -208,14 +267,30 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             param.order = index
           })
 
-          // Update the table
-          const updatedParams = {
-            ...currentTable.selectedParameters,
-            [isParent ? 'parent' : 'child']: reorderedParams
-          }
+          // Create reordered columns array to match parameters
+          const reorderedColumns = (
+            isParent ? currentTable.parentColumns : currentTable.childColumns
+          ).slice()
+          const [movedColumn] = reorderedColumns.splice(operation.fromIndex, 1)
+          reorderedColumns.splice(operation.toIndex, 0, movedColumn)
 
+          // Update both arrays to keep them in sync
           await tableStore.updateTable({
-            selectedParameters: updatedParams
+            ...(isParent
+              ? {
+                  parentColumns: reorderedColumns,
+                  selectedParameters: {
+                    ...currentTable.selectedParameters,
+                    parent: reorderedParams
+                  }
+                }
+              : {
+                  childColumns: reorderedColumns,
+                  selectedParameters: {
+                    ...currentTable.selectedParameters,
+                    child: reorderedParams
+                  }
+                })
           })
           columnState.value.pendingChanges.push(operation)
           break

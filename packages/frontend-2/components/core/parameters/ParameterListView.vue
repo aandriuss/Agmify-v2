@@ -95,7 +95,6 @@ import type { TableState } from '~/components/viewer/components/tables/DataTable
 import { TableError } from '~/components/tables/DataTable/utils'
 import type { ScheduleRow } from '../../viewer/schedules/types'
 import type { TableColumn } from '~/composables/core/types'
-import { createTableColumns } from '~/composables/core/types/tables/table-column'
 
 // Props
 interface Props {

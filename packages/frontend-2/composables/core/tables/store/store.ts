@@ -30,7 +30,7 @@ import type {
   TableUIState
 } from './types'
 import type { TableColumn, TableCategoryFilters } from '~/composables/core/types'
-import { createTableColumns } from '~/composables/core/types'
+import { createTableColumns, createTableColumn } from '~/composables/core/types'
 import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { defaultSelectedParameters, defaultTableConfig } from '../config/defaults'
@@ -273,6 +273,12 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
             id: tableId,
             name: `Table ${tableId}`,
             displayName: `Table ${tableId}`,
+            parentColumns: createTableColumns(defaultSelectedParameters.parent),
+            childColumns: createTableColumns(defaultSelectedParameters.child),
+            selectedParameters: {
+              parent: [...defaultSelectedParameters.parent],
+              child: [...defaultSelectedParameters.child]
+            },
             lastUpdateTimestamp: Date.now()
           }
 
@@ -356,14 +362,36 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
    * Update current table
    */
   function updateTable(updates: Partial<TableSettings>) {
-    // If this is a new table, create it
+    // If this is a new table, create it with default columns
     if (updates.id && !state.value.tables.has(updates.id)) {
       debug.log(DebugCategories.STATE, 'Creating new table', {
         tableId: updates.id,
         updates
       })
+
+      // Create default columns if none provided
+      const parentColumns =
+        updates.parentColumns || createTableColumns(defaultSelectedParameters.parent)
+      const childColumns =
+        updates.childColumns || createTableColumns(defaultSelectedParameters.child)
+
+      const newTable: TableSettings = {
+        ...defaultTableConfig,
+        ...updates,
+        parentColumns,
+        childColumns,
+        selectedParameters: {
+          parent: updates.selectedParameters?.parent || [
+            ...defaultSelectedParameters.parent
+          ],
+          child: updates.selectedParameters?.child || [
+            ...defaultSelectedParameters.child
+          ]
+        },
+        lastUpdateTimestamp: Date.now()
+      }
+
       setCurrentTable(updates.id)
-      const newTable = updates as TableSettings
       state.value.tables.set(updates.id, newTable)
       state.value.originalTable = { ...newTable }
       state.value.lastUpdated = Date.now()
@@ -388,26 +416,54 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       return
     }
 
-    // If selected parameters are being updated, ensure columns are created
+    // If selected parameters are being updated, merge with existing columns
     let updated = { ...current, ...updates }
     if (updates.selectedParameters) {
-      const parentColumns = createTableColumns(updates.selectedParameters.parent)
-      const childColumns = createTableColumns(updates.selectedParameters.child)
+      // Get existing column maps for quick lookup
+      const existingParentColumns = new Map(
+        current.parentColumns.map((col) => [col.id, col])
+      )
+      const existingChildColumns = new Map(
+        current.childColumns.map((col) => [col.id, col])
+      )
+
+      // Create new columns only for new parameters
+      const newParentColumns: TableColumn[] = updates.selectedParameters.parent
+        .filter((param) => !existingParentColumns.has(param.id))
+        .map((param) => createTableColumn(param))
+      const newChildColumns: TableColumn[] = updates.selectedParameters.child
+        .filter((param) => !existingChildColumns.has(param.id))
+        .map((param) => createTableColumn(param))
+
+      // Merge existing and new columns
+      const mergedParentColumns: TableColumn[] = [
+        ...current.parentColumns,
+        ...newParentColumns
+      ]
+      const mergedChildColumns: TableColumn[] = [
+        ...current.childColumns,
+        ...newChildColumns
+      ]
+
       updated = {
         ...updated,
-        parentColumns,
-        childColumns
+        parentColumns: mergedParentColumns,
+        childColumns: mergedChildColumns
       }
 
-      debug.log(DebugCategories.STATE, 'Table updated with new columns', {
+      debug.log(DebugCategories.STATE, 'Table updated with merged columns', {
         tableId: current.id,
         selectedParameters: {
           parent: updates.selectedParameters.parent.length,
           child: updates.selectedParameters.child.length
         },
         columns: {
-          parent: parentColumns.length,
-          child: childColumns.length
+          parent: updated.parentColumns.length,
+          child: updated.childColumns.length
+        },
+        newColumns: {
+          parent: newParentColumns.length,
+          child: newChildColumns.length
         }
       })
     }
