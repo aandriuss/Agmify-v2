@@ -14,14 +14,22 @@
  *    - Own table columns using TableColumn type
  *    - Manage column visibility and order
  *
+ * 4. UI State
+ *    - Manage table-related UI state
+ *    - Handle category visibility
+ *
  * Does NOT handle:
  * - Raw parameters (managed by Parameter Store)
  * - Available parameters (managed by Parameter Store)
- * - UI state (managed by Core Store)
+ * - General UI state (managed by Core Store)
  */
 
 import type { Ref } from 'vue'
-import type { BaseTableConfig, TableColumn } from '~/composables/core/types'
+import type {
+  BaseTableConfig,
+  TableColumn,
+  TableCategoryFilters
+} from '~/composables/core/types'
 
 /**
  * Sort configuration for tables
@@ -56,11 +64,20 @@ export interface TableSettings extends BaseTableConfig {
 }
 
 /**
+ * Table UI state
+ * Manages table-specific UI state
+ */
+export interface TableUIState {
+  showCategoryOptions: boolean
+}
+
+/**
  * Table store state
  * Internal state of the table store including:
  * - Map of all loaded tables
  * - Current table ID
  * - Loading/error state
+ * - UI state
  */
 export interface TableStoreState {
   tables: Map<string, TableSettings>
@@ -70,6 +87,7 @@ export interface TableStoreState {
   error: Error | null
   currentView: 'parent' | 'child'
   lastUpdated: number
+  ui: TableUIState
 }
 
 /**
@@ -87,6 +105,7 @@ export interface TableComputedState {
  * - Table operations (load, save, update, delete)
  * - Parameter management (update selected parameters)
  * - Column management (update column definitions)
+ * - UI state management
  */
 export interface TableStore {
   // State
@@ -113,6 +132,14 @@ export interface TableStore {
 
   // View management
   toggleView(): void
+
+  // Category management
+  updateCategories(categories: TableCategoryFilters): void
+  resetCategories(): void
+
+  // UI state management
+  setShowCategoryOptions(show: boolean): void
+  toggleCategoryOptions(): void
 
   // Store management
   initialize(): Promise<void>

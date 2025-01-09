@@ -2,25 +2,16 @@
   <div class="viewer-container">
     <!-- Debug Info -->
     <div v-if="debug.isEnabled.value" class="mb-2 p-2 bg-gray-100">
-      <pre class="text-xs">{{
-        {
-          tableId: selectedTableId,
-          tableName,
-          dataLength: tableData?.length || 0,
-          columnsLength: tableColumns?.length || 0,
-          detailColumnsLength: detailColumns?.length || 0,
-          error: error?.message
-        }
-      }}</pre>
+      <pre class="text-xs">{{ debugInfo }}</pre>
     </div>
 
     <!-- Data Table -->
     <BaseDataTable
-      :table-id="selectedTableId"
-      :table-name="tableName"
+      :table-id="tableStore.computed.currentTable.value?.id || ''"
+      :table-name="tableStore.computed.currentTable.value?.name || ''"
       :data="tableData"
-      :columns="tableColumns"
-      :detail-columns="detailColumns"
+      :columns="parentColumns"
+      :detail-columns="childColumns"
       :loading="!hasData"
       :error="error"
       @row-expand="handleRowExpand"
@@ -40,8 +31,8 @@
       :table-data="store.tableData.value"
       :parent-elements="parentElements"
       :child-elements="childElements"
-      :parent-columns="tableStore.computed.currentTable.value?.parentColumns || []"
-      :child-columns="tableStore.computed.currentTable.value?.childColumns || []"
+      :parent-columns="parentColumns"
+      :child-columns="childColumns"
       :show-parameter-stats="true"
       :show-bim-data="true"
       :show-parameter-categories="true"
@@ -52,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
@@ -60,50 +51,22 @@ import { useParameterStore } from '~/composables/core/parameters/store'
 import { useParameters } from '~/composables/core/parameters/useParameters'
 import type {
   ElementData,
-  TableSettings,
   SelectedParameter,
-  AvailableParameter,
   TableColumn,
-  BaseItem,
   ParameterValue
 } from '~/composables/core/types'
 import { isEquationValue } from '~/composables/core/types'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 
-// Props with destructuring for used values
-const props = defineProps<{
-  selectedTableId: string
-  currentTable: TableSettings | null
-  tableName: string
-  showParameterManager: boolean
-  showCategoryOptions: boolean
-  hasChanges: boolean
-}>()
-
 // Emits with type safety
 const emit = defineEmits<{
   (e: 'error', payload: { error: Error }): void
-  (e: 'parameter-visibility-change', payload: { parameter: SelectedParameter }): void
-  (e: 'parameter-select', payload: { parameter: SelectedParameter }): void
-  (e: 'parameter-deselect', payload: { parameter: AvailableParameter }): void
-  (e: 'parameter-create', payload: { timestamp: number }): void
-  (e: 'parameter-click', payload: { parameter: BaseItem }): void
+  (e: 'table-updated'): void
   (
     e: 'column-visibility-change',
     payload: { column: TableColumn; visible: boolean }
   ): void
-  (e: 'column-reorder', payload: { dragIndex: number; dropIndex: number }): void
-  (e: 'column-resize', payload: { element: HTMLElement; delta: number }): void
-  (e: 'row-expand', payload: { row: ElementData }): void
-  (e: 'row-collapse', payload: { row: ElementData }): void
-  (e: 'retry', payload: { timestamp: number }): void
-  // Table operations
-  (e: 'update:selected-table-id', value: string): void
-  (e: 'update:table-name', value: string): void
-  (e: 'table-change'): void
-  (e: 'save'): void
-  (e: 'toggle-category-options'): void
 }>()
 
 // Initialize stores
@@ -112,72 +75,161 @@ const store = useStore()
 const tableStore = useTableStore()
 const parameterStore = useParameterStore()
 
-// Watch for table selection changes
-watch(
-  () => props.selectedTableId,
-  (newId, oldId) => {
-    debug.log(DebugCategories.STATE, 'Table selection changed in MainView', {
-      from: oldId,
-      to: newId,
-      currentTable: tableStore.computed.currentTable.value?.id
-    })
-
-    // Force a reactivity update
-    if (newId !== oldId) {
-      tableStore.state.value.lastUpdated = Date.now()
-    }
-  },
-  { immediate: true }
-)
-
 // Initialize parameter system
 const parameters = useParameters({
-  selectedParentCategories: computed(() => store.selectedParentCategories.value),
-  selectedChildCategories: computed(() => store.selectedChildCategories.value)
+  selectedParentCategories: computed(
+    () =>
+      tableStore.computed.currentTable.value?.categoryFilters
+        .selectedParentCategories || []
+  ),
+  selectedChildCategories: computed(
+    () =>
+      tableStore.computed.currentTable.value?.categoryFilters.selectedChildCategories ||
+      []
+  )
 })
 
-// Computed properties
-const tableColumns = computed(() => tableStore.computed.currentTable.value?.parentColumns || [])
-const detailColumns = computed(() => tableStore.computed.currentTable.value?.childColumns || [])
-const hasSelectedCategories = computed(() => {
-  const parentCats = store.selectedParentCategories.value
-  const childCats = store.selectedChildCategories.value
-  return (parentCats?.length ?? 0) > 0 || (childCats?.length ?? 0) > 0
+// Column management
+const parentColumns = computed(
+  () => tableStore.computed.currentTable.value?.parentColumns || []
+)
+const childColumns = computed(
+  () => tableStore.computed.currentTable.value?.childColumns || []
+)
+
+// Watch for column changes to sync with parameter visibility
+watch(
+  () => tableStore.computed.currentTable.value?.parentColumns,
+  (newColumns) => {
+    if (!newColumns) return
+    newColumns.forEach((col) => {
+      const param = col.parameter as SelectedParameter | undefined
+      if (param) {
+        parameters.updateParameterVisibility(
+          param.id,
+          col.visible,
+          param.kind === 'bim'
+        )
+      }
+    })
+  },
+  { deep: true }
+)
+
+watch(
+  () => tableStore.computed.currentTable.value?.childColumns,
+  (newColumns) => {
+    if (!newColumns) return
+    newColumns.forEach((col) => {
+      const param = col.parameter as SelectedParameter | undefined
+      if (param) {
+        parameters.updateParameterVisibility(
+          param.id,
+          col.visible,
+          param.kind === 'bim'
+        )
+      }
+    })
+  },
+  { deep: true }
+)
+
+// Category filtering
+const selectedParentCategories = computed(
+  () =>
+    tableStore.computed.currentTable.value?.categoryFilters.selectedParentCategories ||
+    []
+)
+
+const selectedChildCategories = computed(
+  () =>
+    tableStore.computed.currentTable.value?.categoryFilters.selectedChildCategories ||
+    []
+)
+
+// Element filtering
+const parentElements = computed<ElementData[]>(() => {
+  return (store.scheduleData.value || []).filter((el) => el.metadata?.isParent)
 })
 
+const childElements = computed<ElementData[]>(() => {
+  return (store.scheduleData.value || []).filter((el) => !el.metadata?.isParent)
+})
+
+// Data table structure
 const tableData = computed(() => {
   const scheduleData = store.scheduleData.value || []
+  const hasParentCategories = selectedParentCategories.value.length > 0
+  const hasChildCategories = selectedChildCategories.value.length > 0
 
-  // If no categories selected, show all elements as a flat list
-  if (!hasSelectedCategories.value) {
+  // Case 1: No categories selected -> show all elements
+  if (!hasParentCategories && !hasChildCategories) {
     return scheduleData
   }
 
-  // If only parent categories selected, show parent elements
-  if (
-    (store.selectedParentCategories.value?.length ?? 0) > 0 &&
-    (store.selectedChildCategories.value?.length ?? 0) === 0
-  ) {
-    return parentElements.value
+  // Case 2: Only child categories -> show filtered children as ungrouped
+  if (!hasParentCategories && hasChildCategories) {
+    const filteredChildren = childElements.value.filter(
+      (el) => el.category && selectedChildCategories.value.includes(el.category)
+    )
+
+    return [
+      {
+        details: filteredChildren,
+        type: 'ungrouped',
+        mark: 'Ungrouped',
+        category: 'Ungrouped',
+        parameters: {
+          mark: 'Ungrouped'
+        } as Record<string, ParameterValue>,
+        metadata: { isParent: true } as Record<string, unknown>,
+        _visible: true,
+        id: 'ungrouped',
+        name: 'Ungrouped',
+        field: 'ungrouped',
+        header: 'Ungrouped',
+        visible: true,
+        order: 0,
+        removable: false,
+        description: 'Elements without parent'
+      }
+    ]
   }
 
-  // If parent/child relationship is needed
-  const parentData = parentElements.value
+  // Case 3: Only parent categories -> show filtered parents
+  if (hasParentCategories && !hasChildCategories) {
+    return parentElements.value
+      .filter(
+        (el) => el.category && selectedParentCategories.value.includes(el.category)
+      )
+      .map((parent) => ({
+        ...parent,
+        details: []
+      }))
+  }
+
+  // Case 4: Both categories -> show filtered parents with nested filtered children
+  const filteredParents = parentElements.value.filter(
+    (el) => el.category && selectedParentCategories.value.includes(el.category)
+  )
+
+  const filteredChildren = childElements.value.filter(
+    (el) => el.category && selectedChildCategories.value.includes(el.category)
+  )
+
   const childrenByParent = new Map<string, ElementData[]>()
   const ungroupedChildren: ElementData[] = []
 
-  // Group children by matching mark/host parameters
-  childElements.value.forEach((child) => {
+  // Group children by parent
+  filteredChildren.forEach((child) => {
     const hostParam = child.parameters?.['host'] as ParameterValue | undefined
     let hostValue: string | undefined
 
     if (hostParam) {
       if (isEquationValue(hostParam)) {
-        // For equation values, use the computed result
         hostValue =
           hostParam.computed !== undefined ? String(hostParam.computed) : undefined
       } else {
-        // For primitive values, convert directly to string
         hostValue = String(hostParam)
       }
     }
@@ -185,8 +237,8 @@ const tableData = computed(() => {
     let matched = false
 
     if (hostValue) {
-      // Try to find parent with matching mark parameter
-      const matchingParent = parentData.find((parent) => {
+      // Find matching parent
+      const matchingParent = filteredParents.find((parent) => {
         const markParam = parent.parameters?.['mark'] as ParameterValue | undefined
         if (!markParam) return false
 
@@ -206,27 +258,20 @@ const tableData = computed(() => {
       }
     }
 
-    // If no match found or no host value, add to ungrouped
     if (!matched) {
       ungroupedChildren.push(child)
     }
   })
 
-  // Create result with both matched and ungrouped children
-  const result = parentData.map((parent) => {
-    // Extract all properties except details to avoid spreading undefined
-    const { details: _, ...parentWithoutDetails } = parent
-    return {
-      ...parentWithoutDetails,
-      details:
-        typeof parent.id === 'string' ? childrenByParent.get(parent.id) || [] : []
-    }
-  })
+  // Create result with parents and their children
+  const result = filteredParents.map((parent) => ({
+    ...parent,
+    details: typeof parent.id === 'string' ? childrenByParent.get(parent.id) || [] : []
+  }))
 
-  // Add ungrouped section if there are any ungrouped children
+  // Add ungrouped section if needed
   if (ungroupedChildren.length > 0) {
-    // Create a constant for the ungrouped section to ensure type safety
-    const ungroupedSection = {
+    result.push({
       details: ungroupedChildren,
       type: 'ungrouped',
       mark: 'Ungrouped',
@@ -243,13 +288,44 @@ const tableData = computed(() => {
       visible: true,
       order: result.length,
       removable: false,
-      description: 'Elements without matching parent'
-    }
-    result.push(ungroupedSection)
+      description: 'Elements without parent'
+    })
   }
+
+  debug.log(DebugCategories.DATA, 'Table data updated', {
+    selectedCategories: {
+      parent: selectedParentCategories.value,
+      child: selectedChildCategories.value
+    },
+    elementCounts: {
+      allParents: parentElements.value.length,
+      allChildren: childElements.value.length,
+      filteredParents: filteredParents.length,
+      filteredChildren: filteredChildren.length,
+      ungrouped: ungroupedChildren.length
+    }
+  })
 
   return result
 })
+
+// Debug info computed property
+const debugInfo = computed(() => ({
+  tableId: tableStore.computed.currentTable.value?.id,
+  tableName: tableStore.computed.currentTable.value?.name,
+  dataLength: tableData.value?.length || 0,
+  parentColumnsLength: parentColumns.value?.length || 0,
+  childColumnsLength: childColumns.value?.length || 0,
+  selectedCategories: {
+    parent: selectedParentCategories.value,
+    child: selectedChildCategories.value
+  },
+  // filteredCounts: {
+  //   parents: filteredParentElements.value.length,
+  //   children: filteredChildElements.value.length
+  // },
+  error: error.value?.message
+}))
 
 const isInitialized = computed(() => {
   const storesReady =
@@ -258,39 +334,12 @@ const isInitialized = computed(() => {
     tableStore.computed.currentTable.value !== null
 
   const hasData = (store.scheduleData.value?.length ?? 0) > 0
-  const hasColumns = tableColumns.value?.length > 0 || detailColumns.value?.length > 0
-
-  debug.log(DebugCategories.STATE, 'Initialization check:', {
-    storesReady,
-    hasData,
-    hasColumns,
-    hasCategories: hasSelectedCategories.value,
-    counts: {
-      total: store.scheduleData.value?.length ?? 0,
-      parents: parentElements.value.length,
-      children: childElements.value.length,
-      parentColumns: tableColumns.value?.length ?? 0,
-      childColumns: detailColumns.value?.length ?? 0
-    },
-    stores: {
-      core: store.initialized.value,
-      parameters: parameterStore.state.value.initialized,
-      table: tableStore.computed.currentTable.value !== null
-    }
-  })
+  const hasColumns = parentColumns.value?.length > 0 || childColumns.value?.length > 0
 
   return storesReady && hasData && hasColumns
 })
 
 const hasData = computed(() => isInitialized.value)
-
-const parentElements = computed<ElementData[]>(() => {
-  return (store.scheduleData.value || []).filter((el) => el.metadata?.isParent)
-})
-
-const childElements = computed<ElementData[]>(() => {
-  return (store.scheduleData.value || []).filter((el) => el.isChild)
-})
 
 // Error handling
 const error = computed(() => {
@@ -309,52 +358,128 @@ function handleError(err: unknown): void {
   emit('error', { error: safeError })
 }
 
-function handleColumnVisibilityChange(event: {
+async function handleColumnVisibilityChange(event: {
   column: TableColumn
   visible: boolean
-}): void {
-  const param = event.column.parameter as SelectedParameter | undefined
-  if (param) {
-    parameters.updateParameterVisibility(param.id, event.visible, param.kind === 'bim')
-    emit('column-visibility-change', event)
-  }
-}
-
-function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
+}): Promise<void> {
   try {
     const currentTable = tableStore.computed.currentTable.value
     if (!currentTable) return
 
-    const parentColumns = [...(currentTable.parentColumns || [])]
-    const childColumns = [...(currentTable.childColumns || [])]
+    // Update parameter visibility
+    const param = event.column.parameter as SelectedParameter | undefined
+    if (param) {
+      parameters.updateParameterVisibility(
+        param.id,
+        event.visible,
+        param.kind === 'bim'
+      )
+    }
 
-    const [movedParentColumn] = parentColumns.splice(event.dragIndex, 1)
-    parentColumns.splice(event.dropIndex, 0, movedParentColumn)
+    // Update column visibility in store
+    const isParentColumn = parentColumns.value.some((col) => col.id === event.column.id)
+    const updatedParentColumns = [...parentColumns.value]
+    const updatedChildColumns = [...childColumns.value]
 
-    const [movedChildColumn] = childColumns.splice(event.dragIndex, 1)
-    childColumns.splice(event.dropIndex, 0, movedChildColumn)
+    if (isParentColumn) {
+      const columnIndex = updatedParentColumns.findIndex(
+        (col) => col.id === event.column.id
+      )
+      if (columnIndex !== -1) {
+        updatedParentColumns[columnIndex] = {
+          ...updatedParentColumns[columnIndex],
+          visible: event.visible
+        }
+      }
+    } else {
+      const columnIndex = updatedChildColumns.findIndex(
+        (col) => col.id === event.column.id
+      )
+      if (columnIndex !== -1) {
+        updatedChildColumns[columnIndex] = {
+          ...updatedChildColumns[columnIndex],
+          visible: event.visible
+        }
+      }
+    }
 
-    tableStore.updateColumns(parentColumns, childColumns)
-    emit('column-reorder', event)
+    await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
+    emit('column-visibility-change', event)
+    emit('table-updated')
+  } catch (err) {
+    handleError(err)
+  }
+}
+
+async function handleColumnReorder(event: {
+  dragIndex: number
+  dropIndex: number
+}): Promise<void> {
+  try {
+    const currentTable = tableStore.computed.currentTable.value
+    if (!currentTable) return
+
+    // Determine if we're reordering parent or child columns
+    const draggedColumn = [...parentColumns.value, ...childColumns.value][
+      event.dragIndex
+    ]
+    const isParentColumn = parentColumns.value.some(
+      (col) => col.id === draggedColumn.id
+    )
+
+    const updatedParentColumns = [...parentColumns.value]
+    const updatedChildColumns = [...childColumns.value]
+
+    if (isParentColumn) {
+      const [movedColumn] = updatedParentColumns.splice(event.dragIndex, 1)
+      updatedParentColumns.splice(event.dropIndex, 0, movedColumn)
+    } else {
+      // Adjust index for child columns since they come after parent columns
+      const childDragIndex = event.dragIndex - parentColumns.value.length
+      const childDropIndex = event.dropIndex - parentColumns.value.length
+      const [movedColumn] = updatedChildColumns.splice(childDragIndex, 1)
+      updatedChildColumns.splice(childDropIndex, 0, movedColumn)
+    }
+
+    await tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
+    emit('table-updated')
+
+    debug.log(DebugCategories.TABLE_UPDATES, 'Column reordered', {
+      dragIndex: event.dragIndex,
+      dropIndex: event.dropIndex,
+      isParentColumn,
+      parentColumnsCount: updatedParentColumns.length,
+      childColumnsCount: updatedChildColumns.length
+    })
   } catch (err) {
     handleError(err)
   }
 }
 
 function handleColumnResize(event: { element: HTMLElement; delta: number }): void {
-  emit('column-resize', event)
+  debug.log(DebugCategories.TABLE_UPDATES, 'Column resized', {
+    elementId: event.element.id,
+    delta: event.delta
+  })
 }
 
 function handleRowExpand(event: { data: ElementData }): void {
-  emit('row-expand', { row: event.data })
+  debug.log(DebugCategories.TABLE_UPDATES, 'Row expanded', {
+    elementId: event.data.id,
+    elementType: event.data.type
+  })
 }
 
 function handleRowCollapse(event: { data: ElementData }): void {
-  emit('row-collapse', { row: event.data })
+  debug.log(DebugCategories.TABLE_UPDATES, 'Row collapsed', {
+    elementId: event.data.id,
+    elementType: event.data.type
+  })
 }
 
 function handleRetry(): void {
-  emit('retry', { timestamp: Date.now() })
+  debug.log(DebugCategories.TABLE_UPDATES, 'Retry requested')
+  // Implement retry logic if needed
 }
 
 function handleTestModeUpdate(value: boolean): void {

@@ -1,12 +1,35 @@
+/**
+ * Table Store
+ *
+ * Responsibilities:
+ * 1. Table Management
+ * - Load/save tables from/to PostgreSQL
+ * - Manage current table state
+ *
+ * 2. Selected Parameters
+ * - Owns selected parameters (both parent and child)
+ * - Manages parameter visibility and order
+ *
+ * 3. Column Management
+ * - Owns table columns (using TableColumn type)
+ * - Manages column visibility and order
+ *
+ * Does NOT handle:
+ * - Raw parameters (managed by Parameter Store)
+ * - Available parameters (managed by Parameter Store)
+ * - UI state (managed by Core Store)
+ */
+
 import { ref, computed } from 'vue'
 import { isEqual } from 'lodash'
 import type {
   TableStore,
   TableStoreState,
   TableSettings,
-  TableStoreOptions
+  TableStoreOptions,
+  TableUIState
 } from './types'
-import type { TableColumn } from '~/composables/core/types'
+import type { TableColumn, TableCategoryFilters } from '~/composables/core/types'
 import { createTableColumns } from '~/composables/core/types'
 import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
@@ -44,26 +67,11 @@ const storage = {
 }
 
 /**
- * Table Store
- *
- * Responsibilities:
- * 1. Table Management
- * - Load/save tables from/to PostgreSQL
- * - Manage current table state
- *
- * 2. Selected Parameters
- * - Owns selected parameters (both parent and child)
- * - Manages parameter visibility and order
- *
- * 3. Column Management
- * - Owns table columns (using TableColumn type)
- * - Manages column visibility and order
- *
- * Does NOT handle:
- * - Raw parameters (managed by Parameter Store)
- * - Available parameters (managed by Parameter Store)
- * - UI state (managed by Core Store)
+ * Default UI state
  */
+const defaultUIState: TableUIState = {
+  showCategoryOptions: false
+}
 
 /**
  * Create initial store state
@@ -76,7 +84,8 @@ function createInitialState(): TableStoreState {
     loading: false,
     error: null,
     currentView: 'parent',
-    lastUpdated: Date.now()
+    lastUpdated: Date.now(),
+    ui: { ...defaultUIState }
   }
 }
 
@@ -169,8 +178,9 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       )
     } catch (err) {
       debug.error(DebugCategories.ERROR, 'Failed to initialize GraphQL', err)
-      const error =
-        err instanceof Error ? err : new Error('Failed to initialize GraphQL')
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to initialize GraphQL'
+      const error = new Error(errorMessage)
       state.value.error = error
       throw error
     }
@@ -572,6 +582,110 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     }
   }
 
+  /**
+   * Update table categories
+   */
+  function updateCategories(categories: TableCategoryFilters): void {
+    debug.startState(DebugCategories.STATE, 'Updating categories', { categories })
+
+    if (!state.value.currentTableId) {
+      const error = new Error('Cannot update categories: No current table selected')
+      debug.error(DebugCategories.ERROR, error.message)
+      return
+    }
+
+    const current = state.value.tables.get(state.value.currentTableId)
+    if (!current) {
+      const error = new Error(
+        'Cannot update categories: Current table not found in store'
+      )
+      debug.error(DebugCategories.ERROR, error.message)
+      return
+    }
+
+    // Update table with new categories
+    const updated = {
+      ...current,
+      categoryFilters: categories,
+      lastUpdateTimestamp: Date.now()
+    }
+
+    state.value.tables.set(current.id, updated)
+    state.value.lastUpdated = Date.now()
+
+    debug.log(DebugCategories.STATE, 'Categories updated', {
+      tableId: current.id,
+      categories
+    })
+  }
+
+  /**
+   * Reset categories to default state
+   */
+  function resetCategories(): void {
+    debug.startState(DebugCategories.STATE, 'Resetting categories')
+
+    if (!state.value.currentTableId) {
+      const error = new Error('Cannot reset categories: No current table selected')
+      debug.error(DebugCategories.ERROR, error.message)
+      return
+    }
+
+    const current = state.value.tables.get(state.value.currentTableId)
+    if (!current) {
+      const error = new Error(
+        'Cannot reset categories: Current table not found in store'
+      )
+      debug.error(DebugCategories.ERROR, error.message)
+      return
+    }
+
+    // Reset to default categories
+    const updated = {
+      ...current,
+      categoryFilters: {
+        selectedParentCategories: [],
+        selectedChildCategories: []
+      },
+      lastUpdateTimestamp: Date.now()
+    }
+
+    state.value.tables.set(current.id, updated)
+    state.value.lastUpdated = Date.now()
+
+    debug.log(DebugCategories.STATE, 'Categories reset', {
+      tableId: current.id
+    })
+  }
+
+  /**
+   * Set category options visibility
+   */
+  function setShowCategoryOptions(show: boolean): void {
+    debug.startState(DebugCategories.STATE, 'Setting category options visibility', {
+      show
+    })
+
+    state.value.ui.showCategoryOptions = show
+    state.value.lastUpdated = Date.now()
+
+    debug.completeState(DebugCategories.STATE, 'Category options visibility set')
+  }
+
+  /**
+   * Toggle category options visibility
+   */
+  function toggleCategoryOptions(): void {
+    debug.startState(DebugCategories.STATE, 'Toggling category options')
+
+    state.value.ui.showCategoryOptions = !state.value.ui.showCategoryOptions
+    state.value.lastUpdated = Date.now()
+
+    debug.completeState(DebugCategories.STATE, 'Category options toggled', {
+      show: state.value.ui.showCategoryOptions
+    })
+  }
+
   // Create lastUpdated ref
   const lastUpdated = computed(() => state.value.lastUpdated)
 
@@ -594,6 +708,14 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
 
     // View management
     toggleView,
+
+    // Category management
+    updateCategories,
+    resetCategories,
+
+    // UI state management
+    setShowCategoryOptions,
+    toggleCategoryOptions,
 
     // Store management
     initialize,

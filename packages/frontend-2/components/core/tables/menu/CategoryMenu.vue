@@ -24,7 +24,6 @@
                   ? CheckCircleIconSolid
                   : CheckCircleIconOutline
               "
-              :disabled="isUpdating"
               @click="() => handleCategoryToggle('parent', category)"
             >
               <span class="category-text">{{ category }}</span>
@@ -56,7 +55,6 @@
                   ? CheckCircleIconSolid
                   : CheckCircleIconOutline
               "
-              :disabled="isUpdating"
               @click="() => handleCategoryToggle('child', category)"
             >
               <span class="category-text">{{ category }}</span>
@@ -68,61 +66,60 @@
 
     <!-- Error Alert -->
     <div
-      v-if="error"
+      v-if="store.error.value"
       class="mt-2 p-2 bg-error-light text-error-dark rounded text-body-xs"
     >
-      {{ error.message }}
+      {{ store.error.value.message }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import { CheckCircleIcon as CheckCircleIconSolid } from '@heroicons/vue/24/solid'
 import { CheckCircleIcon as CheckCircleIconOutline } from '@heroicons/vue/24/outline'
-import { useTableCategories } from '~/composables/core/tables/categories/useTableCategories'
 import { parentCategories, childCategories } from '~/composables/core/config/categories'
-import { watch } from 'vue'
+import { useTableStore } from '~/composables/core/tables/store/store'
 
-const props = defineProps<{
-  isUpdating?: boolean
-  error?: Error | null
-  selectedParentCategories: string[]
-  selectedChildCategories: string[]
-}>()
+const store = useTableStore()
+const currentTable = computed(() => store.computed.currentTable.value)
 
-const emit = defineEmits<{
-  (e: 'update', payload: { type: 'parent' | 'child'; categories: string[] }): void
-}>()
-
-// Initialize categories with reactive props
-const { selectedParentCategories, selectedChildCategories, handleCategoryToggle, loadCategories } =
-  useTableCategories({
-    initialState: {
-      selectedParentCategories: props.selectedParentCategories,
-      selectedChildCategories: props.selectedChildCategories
-    },
-    onUpdate: (state) => {
-      emit('update', {
-        type: 'parent',
-        categories: state.selectedParentCategories
-      })
-      emit('update', {
-        type: 'child',
-        categories: state.selectedChildCategories
-      })
-      return Promise.resolve()
-    }
-  })
-
-// Watch for prop changes and update internal state
-watch(
-  () => [props.selectedParentCategories, props.selectedChildCategories],
-  ([newParent, newChild]) => {
-    loadCategories(newParent, newChild)
-  },
-  { immediate: true }
+// Get categories from store
+const selectedParentCategories = computed(
+  () => currentTable.value?.categoryFilters.selectedParentCategories || []
 )
+const selectedChildCategories = computed(
+  () => currentTable.value?.categoryFilters.selectedChildCategories || []
+)
+
+// Handle category toggle
+function handleCategoryToggle(type: 'parent' | 'child', category: string) {
+  if (!currentTable.value) return
+
+  const newCategories = {
+    selectedParentCategories: [...selectedParentCategories.value],
+    selectedChildCategories: [...selectedChildCategories.value]
+  }
+
+  if (type === 'parent') {
+    const index = newCategories.selectedParentCategories.indexOf(category)
+    if (index === -1) {
+      newCategories.selectedParentCategories.push(category)
+    } else {
+      newCategories.selectedParentCategories.splice(index, 1)
+    }
+  } else {
+    const index = newCategories.selectedChildCategories.indexOf(category)
+    if (index === -1) {
+      newCategories.selectedChildCategories.push(category)
+    } else {
+      newCategories.selectedChildCategories.splice(index, 1)
+    }
+  }
+
+  store.updateCategories(newCategories)
+}
 </script>
 
 <style scoped>

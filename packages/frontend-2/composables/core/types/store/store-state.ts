@@ -74,6 +74,9 @@ export interface StoreState {
   currentTableId: string
   tableKey: string
 
+  // UI State
+  showCategoryOptions: boolean
+
   // Status
   initialized: boolean
   loading: boolean
@@ -109,6 +112,9 @@ export interface StoreMutations {
 
   // Element mutations
   setElementVisibility: (elementId: string, visible: boolean) => void
+
+  // UI mutations
+  setShowCategoryOptions: (show: boolean) => void
 
   // Status mutations
   setInitialized: (value: boolean) => void
@@ -162,6 +168,9 @@ export interface Store extends StoreMutations {
   selectedTableId: ComputedRef<string>
   currentTableId: ComputedRef<string>
   tableKey: ComputedRef<string>
+
+  // UI state
+  showCategoryOptions: ComputedRef<boolean>
 
   // Status
   initialized: ComputedRef<boolean>

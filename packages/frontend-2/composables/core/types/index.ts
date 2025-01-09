@@ -202,7 +202,6 @@ export type {
   TableCategoryFilters,
   TableSelectedParameters,
   BaseTableConfig,
-  DataTableState,
 
   // Table Events
   ColumnVisibilityPayload,

@@ -6,8 +6,8 @@
         <div class="flex items-center gap-2">
           <select
             id="table-select"
-            :value="props.selectedTableId"
-            :disabled="props.isLoading"
+            :value="selectedTableId"
+            :disabled="isLoading"
             class="px-2 py-1 rounded border bg-background text-sm h-7 min-w-[180px]"
             @change="handleTableChange($event)"
           >
@@ -16,7 +16,7 @@
             </option>
           </select>
           <FormButton
-            v-if="props.selectedTableId"
+            v-if="selectedTableId"
             text
             size="sm"
             color="subtle"
@@ -76,7 +76,7 @@
       <!-- Action Buttons -->
       <div class="flex items-center gap-2">
         <FormButton
-          v-if="props.hasChanges"
+          v-if="hasChanges"
           text
           size="sm"
           color="danger"
@@ -91,11 +91,11 @@
           text
           size="sm"
           color="subtle"
-          @click="emit('toggle-category-options')"
+          @click="tableStore.toggleCategoryOptions()"
         >
           Category filter options
           <template #icon-right>
-            <ChevronDownIcon v-if="!props.showCategoryOptions" class="size-4" />
+            <ChevronDownIcon v-if="!showCategoryOptions" class="size-4" />
             <ChevronUpIcon v-else class="size-4" />
           </template>
         </FormButton>
@@ -119,51 +119,48 @@ import {
   PlusIcon
 } from '@heroicons/vue/24/solid'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
+import { useStore } from '~/composables/core/store'
+import { useTableStore } from '~/composables/core/tables/store/store'
 
 const debug = useDebug()
+const store = useStore()
+const tableStore = useTableStore()
 
-const props = defineProps<{
-  selectedTableId: string
-  tableName: string
-  tables: { id: string; name: string }[]
-  showCategoryOptions: boolean
-  hasChanges?: boolean
-  isLoading?: boolean
+const emit = defineEmits<{
+  'manage-parameters': []
 }>()
 
 // Computed properties
 const existingTables = computed(() => {
-  return props.tables.filter(
-    (table) => table.id !== 'new-table' && table.name !== 'Create New Table'
+  return (
+    store.tablesArray.value?.filter(
+      (table) => table.id !== 'new-table' && table.name !== 'Create New Table'
+    ) || []
   )
 })
 
-const selectedTable = computed(() => {
-  return existingTables.value.find((table) => table.id === props.selectedTableId)
-})
-
-const emit = defineEmits<{
-  'update:selectedTableId': [value: string]
-  'update:tableName': [value: string]
-  'table-change': []
-  save: []
-  'toggle-category-options': []
-  'manage-parameters': []
-}>()
+const selectedTable = computed(() => tableStore.computed.currentTable.value)
+const selectedTableId = computed(() => selectedTable.value?.id || '')
+const tableName = computed(() => selectedTable.value?.name || '')
+const hasChanges = computed(() => tableStore.computed.hasChanges.value)
+const isLoading = computed(() => tableStore.isLoading.value)
+const showCategoryOptions = computed(
+  () => tableStore.state.value.ui.showCategoryOptions
+)
 
 const isEditing = ref(false)
-const editingName = ref(props.tableName)
+const editingName = ref(tableName.value)
 const nameInput = ref<HTMLInputElement | null>(null)
 const nameError = ref<string | null>(null)
 
 // Watch for table selection changes
 watch(
-  () => props.selectedTableId,
+  selectedTableId,
   (newId) => {
     debug.log(DebugCategories.TABLE_UPDATES, 'Selected table ID changed', {
       newId,
-      availableTables: props.tables,
-      foundTable: props.tables.find((t) => t.id === newId),
+      availableTables: existingTables.value,
+      foundTable: existingTables.value.find((t) => t.id === newId),
       isEditing: isEditing.value
     })
 
@@ -181,38 +178,21 @@ watch(
   { immediate: true }
 )
 
-// Debug watcher for tables prop
-watch(
-  () => props.tables,
-  (newTables) => {
-    debug.log(DebugCategories.TABLE_UPDATES, 'Tables array changed', {
-      tableCount: newTables.length,
-      tableIds: newTables.map((t) => t.id),
-      currentSelectedId: props.selectedTableId,
-      matchingTable: newTables.find((t) => t.id === props.selectedTableId)
-    })
-  },
-  { immediate: true }
-)
-
 // Watch for table name changes
-watch(
-  () => props.tableName,
-  (newName) => {
-    if (!isEditing.value) {
-      editingName.value = newName
-    }
+watch(tableName, (newName) => {
+  if (!isEditing.value) {
+    editingName.value = newName
   }
-)
+})
 
 function startEditing() {
   debug.log(DebugCategories.TABLE_UPDATES, 'Starting edit mode', {
-    currentName: props.tableName,
-    selectedId: props.selectedTableId,
+    currentName: tableName.value,
+    selectedId: selectedTableId.value,
     selectedTable: selectedTable.value
   })
 
-  editingName.value = props.tableName
+  editingName.value = tableName.value
   isEditing.value = true
   nameError.value = null
   nextTick(() => {
@@ -242,16 +222,24 @@ async function handleSave() {
   try {
     debug.log(DebugCategories.TABLE_UPDATES, 'Saving table with name:', {
       name,
-      selectedId: props.selectedTableId
+      selectedId: selectedTableId.value
     })
 
-    // Update the name first
-    emit('update:tableName', name)
-    // Wait for next tick to ensure name is updated
-    await nextTick()
-    // Then trigger save
-    emit('save')
+    const current = selectedTable.value
+    if (!current) {
+      throw new Error('No table selected')
+    }
 
+    // Update table with new name
+    const updated = {
+      ...current,
+      name,
+      displayName: name,
+      lastUpdateTimestamp: Date.now()
+    }
+
+    // Save to store
+    await tableStore.saveTable(updated)
     isEditing.value = false
     nameError.value = null
   } catch (err) {
@@ -261,48 +249,34 @@ async function handleSave() {
   }
 }
 
-function handleGlobalSave() {
+async function handleGlobalSave() {
   debug.log(DebugCategories.TABLE_UPDATES, 'Global save requested', {
-    currentName: props.tableName,
+    currentName: tableName.value,
     isEditing: isEditing.value
   })
 
-  // If no name or empty name, start editing
-  if (!props.tableName?.trim()) {
-    debug.log(DebugCategories.TABLE_UPDATES, 'No table name, starting edit mode')
-    startEditing()
+  const current = selectedTable.value
+  if (!current) {
+    debug.log(DebugCategories.TABLE_UPDATES, 'No table selected')
     return
   }
 
   try {
-    // Validate current name
-    if (!validateName(props.tableName)) {
-      debug.log(DebugCategories.TABLE_UPDATES, 'Invalid table name, starting edit mode')
-      startEditing()
-      return
-    }
-
-    debug.log(DebugCategories.TABLE_UPDATES, 'Emitting save with valid name')
-    emit('save')
+    // Save current state to store
+    await tableStore.saveTable(current)
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to save:', err)
     nameError.value = err instanceof Error ? err.message : 'Failed to save table'
-    // Start editing if save fails
-    startEditing()
   }
 }
 
 function cancelEdit() {
   // Restore the name from the selected table
-  if (props.selectedTableId) {
-    const table = selectedTable.value
-    editingName.value = table ? table.name : props.tableName
-  } else {
-    editingName.value = props.tableName
-  }
+  const table = selectedTable.value
+  editingName.value = table?.name || 'New Table'
 
   debug.log(DebugCategories.TABLE_UPDATES, 'Canceling edit', {
-    selectedId: props.selectedTableId,
+    selectedId: selectedTableId.value,
     restoredName: editingName.value
   })
 
@@ -314,13 +288,26 @@ async function createNewTable() {
   debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table')
 
   try {
-    // Clear selection and set default name
-    emit('update:selectedTableId', '')
-    emit('update:tableName', 'New Table')
+    const newTable = {
+      id: `table-${Date.now()}`,
+      name: 'New Table',
+      displayName: 'New Table',
+      parentColumns: [],
+      childColumns: [],
+      categoryFilters: {
+        selectedParentCategories: [],
+        selectedChildCategories: []
+      },
+      selectedParameters: {
+        parent: [],
+        child: []
+      },
+      filters: [],
+      lastUpdateTimestamp: Date.now()
+    }
 
-    // Wait for updates to propagate
-    await nextTick()
-    emit('table-change')
+    // Create new table in store
+    await tableStore.updateTable(newTable)
 
     // Start editing mode
     await nextTick()
@@ -335,25 +322,15 @@ async function handleTableChange(event: Event) {
   const newValue = target.value
 
   debug.log(DebugCategories.TABLE_UPDATES, 'Table selection changing', {
-    from: props.selectedTableId,
+    from: selectedTableId.value,
     to: newValue,
-    currentName: props.tableName,
+    currentName: tableName.value,
     isEditing: isEditing.value
   })
 
   try {
-    // Update selected table ID first
-    emit('update:selectedTableId', newValue)
-
-    // Then update name based on selection
-    const table = props.tables.find((t) => t.id === newValue)
-    if (table) {
-      emit('update:tableName', table.name)
-    }
-
-    // Wait for updates to propagate
-    await nextTick()
-    emit('table-change')
+    // Load selected table
+    await tableStore.loadTable(newValue)
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to change table:', err)
   }
