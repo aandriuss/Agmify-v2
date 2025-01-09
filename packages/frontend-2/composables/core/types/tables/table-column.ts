@@ -82,13 +82,15 @@ export function createTableColumn(param: SelectedParameter): TableColumn {
  * Convert an array of SelectedParameters to TableColumns
  */
 export function createTableColumns(params: SelectedParameter[]): TableColumn[] {
-  // Add parameter columns after base columns
-  const paramColumns = params.map((param, index) =>
-    createTableColumn({
-      ...param,
-      order: index + 1
-    })
-  )
-
-  return [...paramColumns]
+  // Create columns while preserving all parameter data
+  return params.map((param) => ({
+    id: param.id,
+    field: param.id,
+    header: param.name,
+    visible: param.visible,
+    sortable: true,
+    filterable: true,
+    order: param.order,
+    parameter: param // Keep original parameter data intact
+  }))
 }

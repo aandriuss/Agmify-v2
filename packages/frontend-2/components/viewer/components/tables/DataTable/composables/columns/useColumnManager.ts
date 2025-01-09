@@ -117,10 +117,16 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             selectedParams.length
           )
 
-          // Create new columns array with existing and new parameter
+          // Create new column with parameter data preserved
+          const newColumn = {
+            ...createTableColumn(newSelectedParam),
+            parameter: newSelectedParam
+          }
+
+          // Create new columns array with existing and new column
           const newColumns = isParent
-            ? [...currentTable.parentColumns, createTableColumn(newSelectedParam)]
-            : [...currentTable.childColumns, createTableColumn(newSelectedParam)]
+            ? [...currentTable.parentColumns, newColumn]
+            : [...currentTable.childColumns, newColumn]
 
           // Update both columns and parameters to keep them in sync
           await tableStore.updateTable({
@@ -329,16 +335,44 @@ export function useColumnManager(options: UseColumnManagerOptions) {
       const currentTable = tableStore.computed.currentTable.value
       if (!currentTable) return false
 
-      // Convert selected parameters to column definitions
-      const parentColumns = currentTable.selectedParameters.parent.map((param) =>
-        createTableColumn(param)
-      )
+      // Keep existing columns and only update changed ones
+      const parentColumns = currentTable.selectedParameters.parent.map((param) => {
+        // Find existing column for this parameter
+        const existingColumn = currentTable.parentColumns.find(
+          (col) => col.id === param.id
+        )
+        if (existingColumn) {
+          // Keep existing column data but update parameter-related fields
+          return {
+            ...existingColumn,
+            parameter: param,
+            visible: param.visible,
+            order: param.order
+          }
+        }
+        // Create new column only for new parameters
+        return createTableColumn(param)
+      })
 
-      const childColumns = currentTable.selectedParameters.child.map((param) =>
-        createTableColumn(param)
-      )
+      const childColumns = currentTable.selectedParameters.child.map((param) => {
+        // Find existing column for this parameter
+        const existingColumn = currentTable.childColumns.find(
+          (col) => col.id === param.id
+        )
+        if (existingColumn) {
+          // Keep existing column data but update parameter-related fields
+          return {
+            ...existingColumn,
+            parameter: param,
+            visible: param.visible,
+            order: param.order
+          }
+        }
+        // Create new column only for new parameters
+        return createTableColumn(param)
+      })
 
-      // Update table store with new columns
+      // Update table store with merged columns
       await tableStore.updateTable({
         ...currentTable,
         parentColumns,

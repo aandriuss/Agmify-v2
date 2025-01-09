@@ -72,17 +72,33 @@ export interface TableUIState {
 }
 
 /**
+ * Table metadata for dropdown list
+ * Lightweight version of table settings
+ */
+export interface TableMetadata {
+  id: string
+  name: string
+  displayName: string
+}
+
+/**
  * Table store state
  * Internal state of the table store including:
- * - Map of all loaded tables
- * - Current table ID
+ * - List of available tables (lightweight metadata)
+ * - Current active table data
  * - Loading/error state
  * - UI state
  */
 export interface TableStoreState {
-  tables: Map<string, TableSettings>
+  // Available tables for dropdown
+  availableTables: TableMetadata[]
+
+  // Active table data
   currentTableId: string | null
+  currentTable: TableSettings | null // Working copy
   originalTable: TableSettings | null // Original state from PostgreSQL
+
+  // State
   loading: boolean
   error: Error | null
   currentView: 'parent' | 'child'
@@ -121,7 +137,7 @@ export interface TableStore {
   lastUpdated: Ref<number>
 
   // Core operations
-  loadTable(tableId: string): Promise<void> // Load from PostgreSQL
+  loadTable(tableId: string): Promise<void> // Load full table data from PostgreSQL
   saveTable(settings: TableSettings): Promise<void> // Save to PostgreSQL
   updateTable(updates: Partial<TableSettings>): void // Update working copy
   deleteTable(tableId: string): Promise<void>
@@ -129,6 +145,10 @@ export interface TableStore {
     parentColumns: TableColumn[],
     childColumns: TableColumn[]
   ): Promise<void>
+
+  // Table list management
+  refreshTableList(): Promise<void> // Refresh available tables list
+  getAvailableTables(): TableMetadata[] // Get list of available tables
 
   // View management
   toggleView(): void

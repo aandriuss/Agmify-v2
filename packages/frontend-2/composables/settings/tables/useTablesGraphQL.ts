@@ -219,37 +219,12 @@ export async function useTablesGraphQL() {
                     order: col.order,
                     headerComponent: col.headerComponent,
                     parameter:
-                      col.parameter.kind === 'bim'
+                      col.parameter?.kind === 'user'
                         ? {
                             id: col.parameter.id,
                             name: col.parameter.name,
-                            kind: 'bim' as const,
-                            type: col.parameter.type as BimValueType,
-                            value:
-                              col.parameter.value === null
-                                ? ''
-                                : String(col.parameter.value),
-                            visible: col.parameter.visible,
-                            order: col.parameter.order,
-                            field: col.parameter.field || col.parameter.id,
-                            header: col.parameter.header || col.parameter.name,
-                            removable: col.parameter.removable ?? true,
-                            group: col.parameter.group,
-                            category: col.parameter.category,
-                            description: col.parameter.description,
-                            metadata: col.parameter.metadata,
-                            sourceValue:
-                              col.parameter.value === null
-                                ? ''
-                                : String(col.parameter.value),
-                            fetchedGroup: col.parameter.fetchedGroup || 'Parameters',
-                            currentGroup: col.parameter.currentGroup || 'Parameters'
-                          }
-                        : {
-                            id: col.parameter.id,
-                            name: col.parameter.name,
                             kind: 'user' as const,
-                            type: col.parameter.type as UserValueType,
+                            type: col.parameter.type,
                             value:
                               col.parameter.value === null
                                 ? ''
@@ -262,9 +237,35 @@ export async function useTablesGraphQL() {
                             group: col.parameter.group,
                             category: col.parameter.category,
                             description: col.parameter.description,
-                            metadata: col.parameter.metadata,
+                            metadata: col.parameter.metadata || {},
                             equation: col.parameter.equation,
                             isCustom: col.parameter.isCustom
+                          }
+                        : {
+                            id: col.parameter?.id || col.id,
+                            name: col.parameter?.name || col.header || '',
+                            kind: 'bim' as const,
+                            type: (col.parameter?.type || 'string') as BimValueType,
+                            value:
+                              col.parameter?.value === null
+                                ? ''
+                                : String(col.parameter?.value || ''),
+                            visible: col.parameter?.visible ?? col.visible,
+                            order: col.parameter?.order || col.order || 0,
+                            field: col.parameter?.field || col.id,
+                            header: col.parameter?.header || col.header || '',
+                            removable:
+                              col.parameter?.removable ?? col.removable ?? true,
+                            group: col.parameter?.group || 'Parameters',
+                            category: col.parameter?.category,
+                            description: col.parameter?.description,
+                            metadata: col.parameter?.metadata || {},
+                            sourceValue:
+                              col.parameter?.value === null
+                                ? ''
+                                : String(col.parameter?.value || ''),
+                            fetchedGroup: col.parameter?.fetchedGroup || 'Parameters',
+                            currentGroup: col.parameter?.currentGroup || 'Parameters'
                           }
                   }
                   return column
