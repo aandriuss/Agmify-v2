@@ -1,18 +1,20 @@
 import { ref, computed } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
 import type {
-  ProcessedHeader,
   TreeItemComponentModel,
-  AvailableParameter
+  AvailableParameter,
+  AvailableBimParameter,
+  BimValueType,
+  ParameterValue,
+  BIMNodeData
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { processedHeaderToParameter } from '~/composables/core/utils/conversion/header-conversion'
 import { isValidBIMNodeData } from '~/composables/core/types/viewer/viewer-base'
 import {
-  processInChunks,
-  extractParametersFromObject,
-  extractMetadataParameters
-} from '../../parameters/utils/parameter-processing'
+  extractRawParameters,
+  extractParameterGroups
+} from '../../parameters/utils/parameter-extraction'
+import { createAvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
 import type {
   BaseParameterDiscoveryOptions,
   BaseParameterDiscoveryState,
@@ -23,6 +25,7 @@ import type {
 interface UseParameterDiscoveryOptions extends BaseParameterDiscoveryOptions {
   selectedParentCategories: Ref<string[]>
   selectedChildCategories: Ref<string[]>
+  userParameters?: AvailableParameter[] // Optional user-defined parameters
 }
 
 interface ParameterDiscoveryState extends BaseParameterDiscoveryState {
@@ -45,8 +48,6 @@ interface ParameterDiscoveryReturn {
   // Methods
   discoverParameters: (root: TreeItemComponentModel) => Promise<void>
 }
-
-const DEFAULT_CHUNK_SIZE = 50
 
 /**
  * Parameter discovery composable for BIM data
@@ -74,15 +75,21 @@ export function useParameterDiscovery(
 
   // Computed properties
   const availableParentHeaders = computed(() =>
-    state.value.discoveredParameters.parent.filter((param) =>
-      options.selectedParentCategories.value.includes(param.category || 'Uncategorized')
-    )
+    state.value.discoveredParameters.parent.filter((param) => {
+      const elementType = param.metadata?.elementType as string
+      return options.selectedParentCategories.value.includes(
+        elementType || 'Uncategorized'
+      )
+    })
   )
 
   const availableChildHeaders = computed(() =>
-    state.value.discoveredParameters.child.filter((param) =>
-      options.selectedChildCategories.value.includes(param.category || 'Uncategorized')
-    )
+    state.value.discoveredParameters.child.filter((param) => {
+      const elementType = param.metadata?.elementType as string
+      return options.selectedChildCategories.value.includes(
+        elementType || 'Uncategorized'
+      )
+    })
   )
 
   const isDiscovering = computed(() => state.value.discovering)
@@ -92,85 +99,74 @@ export function useParameterDiscovery(
   /**
    * Process a single BIM node
    */
-  async function processNode(
-    node: TreeItemComponentModel,
-    isParent: boolean
-  ): Promise<ProcessedHeader[]> {
+  /**
+   * Extract elements from node data
+   */
+  function extractElements(node: TreeItemComponentModel): BIMNodeData[] {
     if (!node.rawNode?.data || !isValidBIMNodeData(node.rawNode.data)) {
       debug.warn(DebugCategories.PARAMETERS, 'Invalid node data', { node })
       return []
     }
 
+    const elements: BIMNodeData[] = []
     const nodeData = node.rawNode.data
-    const category = nodeData.type || (isParent ? 'Parent' : 'Child')
 
-    try {
-      // Extract parameters from main data
-      const paramHeaders = extractParametersFromObject(
-        nodeData.parameters,
-        [],
-        category
-      )
-
-      // Extract metadata if available
-      if (nodeData.metadata) {
-        const metadataHeaders = extractMetadataParameters(nodeData.metadata, category)
-        paramHeaders.push(...metadataHeaders)
-      }
-
-      return paramHeaders
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to process node:', err)
-      return []
+    // Add root node if it has parameters
+    if (nodeData.parameters) {
+      elements.push(nodeData)
     }
+
+    // Add child nodes recursively
+    if (node.children?.length) {
+      node.children.forEach((child) => {
+        elements.push(...extractElements(child))
+      })
+    }
+
+    return elements
   }
 
   /**
-   * Process nodes recursively with chunking
+   * Convert extracted parameters to available parameters
    */
-  async function processNodes(
-    root: TreeItemComponentModel,
-    isParent: boolean
-  ): Promise<ProcessedHeader[]> {
-    const nodesToProcess: TreeItemComponentModel[] = [root]
-    const allHeaders: ProcessedHeader[] = []
+  async function convertToAvailableParameters(
+    elements: BIMNodeData[]
+  ): Promise<AvailableBimParameter[]> {
+    // Extract raw parameters
+    const rawParams = extractRawParameters(elements)
+    const _groups = await extractParameterGroups(elements)
 
-    try {
-      // Process nodes in chunks
-      await processInChunks(
-        nodesToProcess,
-        async (node) => {
-          const headers = await processNode(node, isParent)
-          allHeaders.push(...headers)
+    // Create raw parameters with proper metadata
+    const processedRawParams = rawParams.map((param) => ({
+      id: param.id,
+      name: param.name,
+      value: param.value as ParameterValue,
+      fetchedGroup: param.group || 'Parameters',
+      metadata: {
+        ...param.metadata,
+        category: param.category,
+        group: param.group
+      }
+    }))
 
-          // Handle children
-          if (node.children?.length) {
-            if (!isParent) {
-              // For child processing, add all children
-              nodesToProcess.push(...node.children)
-            } else {
-              // For parent processing, only process the root
-              const childHeaders = await Promise.all(
-                node.children.map((child) => processNode(child, false))
-              )
-              allHeaders.push(...childHeaders.flat())
-            }
-          }
+    // Convert to BIM parameters
+    return processedRawParams.map((raw) => {
+      const type = inferParameterType(raw.value)
+      return createAvailableBimParameter(raw, type, raw.value)
+    })
+  }
 
-          return headers
-        },
-        options.chunkSize || DEFAULT_CHUNK_SIZE,
-        (progress) => {
-          state.value.progress = progress
-          events?.onProgress?.(progress)
-        }
-      )
-
-      return allHeaders
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to process nodes:', err)
-      throw err
-    }
+  /**
+   * Infer parameter type from value
+   */
+  function inferParameterType(value: unknown): BimValueType {
+    if (value === null || value === undefined) return 'string'
+    if (typeof value === 'boolean') return 'boolean'
+    if (typeof value === 'number') return 'number'
+    if (value instanceof Date) return 'date'
+    if (Array.isArray(value)) return 'array'
+    if (typeof value === 'object') return 'object'
+    return 'string'
   }
 
   /**
@@ -182,17 +178,54 @@ export function useParameterDiscovery(
       state.value.discovering = true
       events?.onStart?.()
 
-      // Process parent parameters
-      const parentHeaders = await processNodes(root, true)
-      const parentParams = await Promise.all(
-        parentHeaders.map(processedHeaderToParameter)
-      )
+      // Extract all elements from the tree
+      const elements = extractElements(root)
 
-      // Process child parameters
-      const childHeaders = await processNodes(root, false)
-      const childParams = await Promise.all(
-        childHeaders.map(processedHeaderToParameter)
-      )
+      // Convert to available parameters
+      const availableParams = await convertToAvailableParameters(elements)
+
+      // Split parameters by category
+      const parentParams: AvailableParameter[] = []
+      const childParams: AvailableParameter[] = []
+
+      // Sort parameters by element type while preserving groups
+      availableParams.forEach((param) => {
+        const elementType = (param.metadata?.elementType as string) || 'Uncategorized'
+        const group = String(
+          param.metadata?.originalGroup || param.fetchedGroup || 'Parameters'
+        )
+
+        // Create parameter with proper group assignments
+        const paramWithGroups: AvailableParameter = {
+          ...param,
+          fetchedGroup: group,
+          currentGroup: group,
+          metadata: {
+            ...param.metadata,
+            elementType,
+            originalGroup: group
+          }
+        }
+
+        // Add to appropriate list based on element type
+        if (options.selectedParentCategories.value.includes(elementType)) {
+          parentParams.push(paramWithGroups)
+        } else if (options.selectedChildCategories.value.includes(elementType)) {
+          childParams.push(paramWithGroups)
+        }
+      })
+
+      // Add user parameters if provided
+      if (options.userParameters) {
+        options.userParameters.forEach((param) => {
+          const category = param.category || 'Uncategorized'
+          if (options.selectedParentCategories.value.includes(category)) {
+            parentParams.push(param)
+          } else if (options.selectedChildCategories.value.includes(category)) {
+            childParams.push(param)
+          }
+        })
+      }
 
       // Update state
       state.value.discoveredParameters = {
@@ -204,7 +237,8 @@ export function useParameterDiscovery(
 
       debug.completeState(DebugCategories.PARAMETERS, 'Parameter discovery complete', {
         parentCount: parentParams.length,
-        childCount: childParams.length
+        childCount: childParams.length,
+        userParameters: options.userParameters?.length || 0
       })
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Parameter discovery failed')

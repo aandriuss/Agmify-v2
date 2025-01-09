@@ -1,20 +1,21 @@
-import type { ElementData, BIMNodeRaw, PrimitiveValue } from '~/composables/core/types'
+import type { PrimitiveValue, ParameterValue } from '~/composables/core/types'
 import type { BimValueType } from '~/composables/core/types/parameters'
 import type { AvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
+import type {
+  ParameterGroup,
+  GroupedParameter
+} from '~/composables/core/types/parameters/parameter-groups'
+import type { BIMNodeData } from '~/composables/core/types/viewer/viewer-base'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { getParameterGroup } from '../../config/parameters'
 import { createAvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
+import type { ExtractedParameter } from '~/composables/core/parameters/utils/parameter-extraction'
+import {
+  extractRawParameters,
+  extractParameterGroups
+} from '~/composables/core/parameters/utils/parameter-extraction'
 
 // Parameter discovery interface
-export interface DiscoveredParameter {
-  field: string
-  name: string
-  type: BimValueType
-  header: string
-  category: string // Element category
-  group: string // Parameter group from raw data
-  description: string
-  visible: boolean
+export interface DiscoveredParameter extends GroupedParameter {
   frequency: number
   sourceValue: PrimitiveValue
 }
@@ -25,18 +26,20 @@ export interface DiscoveryOptions {
   minFrequency?: number
   excludeParams?: Set<string>
   batchSize?: number
+  userGroups?: ParameterGroup[] // Allow user-defined groups
 }
 
 const defaultOptions: Required<DiscoveryOptions> = {
   sampleSize: 100,
   minFrequency: 0.1,
   excludeParams: new Set(),
-  batchSize: 20
+  batchSize: 20,
+  userGroups: []
 }
 
-// Discover parameters from element data
+// Discover parameters from element data with group handling
 export async function discoverParameters(
-  elements: ElementData[],
+  elements: BIMNodeData[],
   options: DiscoveryOptions = {}
 ): Promise<AvailableBimParameter[]> {
   debug.log(DebugCategories.PARAMETERS, 'Starting parameter discovery', {
@@ -47,14 +50,20 @@ export async function discoverParameters(
   try {
     const opts = { ...defaultOptions, ...options }
     const sample = await getSampleElements(elements, opts.sampleSize)
-    const discovered = await analyzeParameters(sample, opts.batchSize)
+
+    // Extract parameters and groups
+    const rawParams = extractRawParameters(sample)
+    const groups = extractParameterGroups(sample)
+
+    // Process parameters with group information
+    const discovered = await analyzeGroupedParameters(rawParams, opts.batchSize)
     const filtered = await filterParameters(discovered, opts)
-    const parameters = convertToParameters(filtered)
+    const parameters = convertToParameters(filtered, groups)
 
     debug.log(DebugCategories.PARAMETERS, 'Parameter discovery complete', {
       discoveredCount: parameters.length,
-      groups: [...new Set(parameters.map((p) => p.currentGroup))],
-      parameterGroups: [...new Set(filtered.map((p) => p.group))]
+      groups: groups.map((g: ParameterGroup) => g.name),
+      parameters: parameters.length
     })
 
     return parameters
@@ -70,9 +79,9 @@ export async function discoverParameters(
 
 // Get a representative sample of elements
 async function getSampleElements(
-  elements: ElementData[],
+  elements: BIMNodeData[],
   sampleSize: number
-): Promise<ElementData[]> {
+): Promise<BIMNodeData[]> {
   await new Promise((resolve) => setTimeout(resolve, 0)) // Yield to event loop
 
   if (elements.length <= sampleSize) return elements
@@ -94,70 +103,58 @@ function toPrimitiveValue(value: unknown): PrimitiveValue {
   return String(value)
 }
 
-// Analyze parameters across elements in batches
-async function analyzeParameters(
-  elements: ElementData[],
+// Analyze grouped parameters across elements in batches
+async function analyzeGroupedParameters(
+  parameters: ExtractedParameter[],
   batchSize: number
 ): Promise<Map<string, DiscoveredParameter>> {
-  debug.log(DebugCategories.PARAMETERS, 'Analyzing parameters', {
-    elementCount: elements.length,
+  debug.log(DebugCategories.PARAMETERS, 'Analyzing grouped parameters', {
+    parameterCount: parameters.length,
     batchSize
   })
 
   const discovered = new Map<string, DiscoveredParameter>()
-  const batches = chunk(elements, batchSize)
+  const batches = chunk(parameters, batchSize)
 
   for (const batch of batches) {
     await new Promise((resolve) => setTimeout(resolve, 0)) // Yield to event loop
 
-    for (const element of batch) {
-      const params = (element.parameters || {}) as Record<string, unknown>
-      const groups =
-        (Object.getOwnPropertyDescriptor(params, '_groups')?.value as Record<
-          string,
-          string
-        >) || {}
+    for (const param of batch) {
+      const paramValue = param.value as ParameterValue
+      const nameParts = param.name.split('.')
+      const group = nameParts.length > 1 ? nameParts[0] : param.group
+      const name = nameParts.length > 1 ? nameParts.slice(1).join('.') : param.name
 
-      // Get raw data for parameter group determination
-      const rawData = Object.getOwnPropertyDescriptor(element, '_raw')?.value as
-        | BIMNodeRaw
-        | undefined
-
-      for (const [field, value] of Object.entries(params)) {
-        if (field === '_groups') continue
-
-        // Use group from raw data, or get it from parameter location
-        const paramGroup =
-          groups[field] || (rawData ? getParameterGroup(field, rawData) : 'Parameters')
-
-        const current = discovered.get(field) || {
-          field,
-          name: field,
-          header: field,
-          type: inferType(value),
-          category: element.category || 'Parameters', // Element category
-          group: paramGroup, // Parameter group
-          description: `${paramGroup} > ${field}`,
-          visible: true, // Default visible
-          frequency: 0,
-          sourceValue: toPrimitiveValue(value)
+      const current: DiscoveredParameter = discovered.get(param.id) || {
+        ...param,
+        name,
+        value: paramValue,
+        frequency: 0,
+        sourceValue: toPrimitiveValue(paramValue),
+        groupId: group ? `bim_${group}` : '',
+        kind: 'bim',
+        type: inferType(paramValue),
+        fetchedGroup: group || 'Parameters',
+        currentGroup: group || 'Parameters',
+        originalGroup: group,
+        isSystem: group?.startsWith('__') || false,
+        metadata: {
+          ...param.metadata,
+          displayName: name,
+          originalGroup: group
         }
-
-        // Update frequency and merge any new information
-        current.frequency++
-        if (!current.group && paramGroup) {
-          current.group = paramGroup
-          current.description = `${paramGroup} > ${field}`
-        }
-
-        discovered.set(field, current)
       }
+
+      // Update frequency
+      current.frequency++
+      discovered.set(param.id, current)
     }
   }
 
   // Convert frequencies to percentages
+  const totalCount = parameters.length
   for (const param of discovered.values()) {
-    param.frequency = param.frequency / elements.length
+    param.frequency = param.frequency / totalCount
   }
 
   return discovered
@@ -172,27 +169,39 @@ async function filterParameters(
 
   return Array.from(discovered.values()).filter(
     (param) =>
-      param.frequency >= options.minFrequency && !options.excludeParams.has(param.field)
+      param.frequency >= options.minFrequency && !options.excludeParams.has(param.id)
   )
 }
 
-// Convert discovered parameters to BimParameters
+// Convert discovered parameters to BimParameters with group information
 function convertToParameters(
-  discovered: DiscoveredParameter[]
+  discovered: DiscoveredParameter[],
+  groups: ParameterGroup[]
 ): AvailableBimParameter[] {
-  return discovered.map((param) =>
-    createAvailableBimParameter(
+  const groupMap = new Map(groups.map((g) => [g.id, g]))
+
+  return discovered.map((param) => {
+    const group = param.groupId ? groupMap.get(param.groupId) : undefined
+    const nameParts = param.name.split('.')
+    const cleanName = nameParts.length > 1 ? nameParts.slice(1).join('.') : param.name
+
+    return createAvailableBimParameter(
       {
-        id: param.field,
-        name: param.name,
+        id: param.id,
+        name: cleanName,
         value: param.sourceValue,
-        fetchedGroup: param.group,
-        metadata: {}
+        fetchedGroup: group?.name || param.originalGroup || 'Parameters',
+        metadata: {
+          ...param.metadata,
+          groupId: param.groupId,
+          originalGroup: param.originalGroup,
+          displayName: cleanName
+        }
       },
-      param.type,
+      inferType(param.value),
       param.sourceValue
     )
-  )
+  })
 }
 
 // Infer parameter type from value

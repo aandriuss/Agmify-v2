@@ -8,6 +8,7 @@ import type {
   ParameterValue
 } from '~/composables/core/types'
 import { createAvailableBimParameter } from '~/composables/core/types/parameters'
+import { inferParameterType } from '~/composables/core/parameters/utils/group-processing'
 
 /**
  * Check if value is a record object
@@ -94,21 +95,28 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
           element.metadata?.isParent ||
           (element.category && parentCategories.includes(element.category))
 
+        // Split parameter name into group and name parts
+        const nameParts = key.split('.')
+        const groupName = nameParts.length > 1 ? nameParts[0] : undefined
+        const paramName = nameParts.length > 1 ? nameParts.slice(1).join('.') : key
+
         // Create raw parameter
         const rawParam: RawParameter = {
           id: key,
-          name: key,
+          name: paramName,
           value: validatedValue,
-          fetchedGroup: element.category || 'Uncategorized',
+          fetchedGroup: groupName || element.category || 'Uncategorized',
           metadata: {
             category: element.category || 'Uncategorized',
             mappedCategory: element.category
               ? getMostSpecificCategory(element.category)
               : 'Uncategorized',
-            isSystem: false,
+            isSystem: groupName?.startsWith('__') || false,
             elementId: element.id,
             isJsonString,
-            isParent
+            isParent,
+            originalGroup: groupName,
+            displayName: paramName
           }
         }
 
@@ -175,12 +183,26 @@ export function processRawParameters(
           // Convert value
           const value = convertToParameterValue(param.value)
 
-          // Create BIM parameter
+          // Determine parameter type based on value
+          const type = inferParameterType(value)
+
+          // Create BIM parameter with proper group handling
           return createAvailableBimParameter(
-            param,
-            'string', // Default to string type for simplicity
-            value,
-            false
+            {
+              ...param,
+              name: param.metadata?.displayName || param.name,
+              fetchedGroup: param.metadata?.originalGroup || param.fetchedGroup,
+              metadata: {
+                ...param.metadata,
+                groupId: param.metadata?.originalGroup
+                  ? `bim_${param.metadata.originalGroup}`
+                  : '',
+                displayName: param.metadata?.displayName || param.name,
+                originalGroup: param.metadata?.originalGroup || ''
+              }
+            },
+            type,
+            value
           )
         } catch (err) {
           debug.warn(

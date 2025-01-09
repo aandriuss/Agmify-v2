@@ -333,13 +333,23 @@ export function useElementsData(
             // Add parent parameters
             parentParams.forEach((param) => {
               if (!element.parameters[param.id]) {
+                // Extract group from parameter name if it exists
+                const nameParts = param.name.split('.')
+                const group = nameParts.length > 1 ? nameParts[0] : param.group
+                const name =
+                  nameParts.length > 1 ? nameParts.slice(1).join('.') : param.name
+
                 const availableParam = createAvailableBimParameter(
                   {
                     id: param.id,
-                    name: param.name,
+                    name,
                     value: null,
-                    fetchedGroup: param.group,
-                    metadata: param.metadata || {}
+                    fetchedGroup: group,
+                    metadata: {
+                      ...param.metadata,
+                      originalGroup: group,
+                      displayName: name
+                    }
                   },
                   param.type as BimValueType,
                   null
@@ -351,13 +361,23 @@ export function useElementsData(
             // Add child parameters
             childParams.forEach((param) => {
               if (!element.parameters[param.id]) {
+                // Extract group from parameter name if it exists
+                const nameParts = param.name.split('.')
+                const group = nameParts.length > 1 ? nameParts[0] : param.group
+                const name =
+                  nameParts.length > 1 ? nameParts.slice(1).join('.') : param.name
+
                 const availableParam = createAvailableBimParameter(
                   {
                     id: param.id,
-                    name: param.name,
+                    name,
                     value: null,
-                    fetchedGroup: param.group,
-                    metadata: param.metadata || {}
+                    fetchedGroup: group,
+                    metadata: {
+                      ...param.metadata,
+                      originalGroup: group,
+                      displayName: name
+                    }
                   },
                   param.type as BimValueType,
                   null

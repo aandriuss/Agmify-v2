@@ -25,7 +25,7 @@
               type="checkbox"
               @change="$emit('update:is-grouped', !isGrouped)"
             />
-            <span>Group by category</span>
+            <span>Group parameters</span>
           </label>
         </div>
 
@@ -39,7 +39,7 @@
             @change="handleSortChange"
           >
             <option value="name">Name</option>
-            <option value="category">Category</option>
+            <option value="category">Group</option>
             <option value="type">Type</option>
             <option value="fixed">Favorite First</option>
           </select>
@@ -185,24 +185,48 @@ function getItemId(item: AvailableParameter | TableColumn): string {
 }
 
 function getItemName(item: AvailableParameter | TableColumn): string {
-  return isColumn(item) ? item.parameter.name : item.name
+  const param = isColumn(item) ? item.parameter : item
+  // Use clean name without group prefix
+  return (param.metadata?.displayName as string) || param.name
 }
 
+/**
+ * Get parameter group with proper hierarchy
+ */
 function getParameterGroup(item: AvailableParameter): string {
   if (isAvailableBimParameter(item)) {
-    return item.category || 'BIM Parameters'
+    // Use original group from metadata
+    const group = item.metadata?.originalGroup as string
+    if (group) return group
+
+    // Fallback to fetched group
+    return item.fetchedGroup || 'Other Parameters'
   }
   if (isAvailableUserParameter(item)) {
-    return item.category || 'User Parameters'
+    return item.group || 'User Parameters'
   }
-  return 'Uncategorized'
+  return 'Other Parameters'
 }
 
+/**
+ * Get group for any item type
+ */
 function getItemGroup(item: AvailableParameter | TableColumn): string {
   if (isColumn(item)) {
-    return item.parameter.category || 'Uncategorized'
+    const param = item.parameter
+    if (isAvailableBimParameter(param)) {
+      // First try to get group from metadata
+      const originalGroup = param.metadata?.originalGroup
+      if (typeof originalGroup === 'string') return originalGroup
+
+      // Then try BIM groups
+      return param.currentGroup || param.fetchedGroup || 'Other Parameters'
+    }
+    if (isAvailableUserParameter(param)) {
+      return param.group || 'User Parameters'
+    }
   }
-  return getParameterGroup(item)
+  return getParameterGroup(item as AvailableParameter)
 }
 
 const groupedItems = computed(() => {
@@ -222,12 +246,27 @@ const groupedItems = computed(() => {
     groups[group].items.push(item)
   })
 
-  // Sort groups by name, but keep essential groups at the top
+  // Sort groups by priority and name
   return Object.values(groups)
     .sort((a, b) => {
-      // BIM groups first
-      if (a.group.startsWith('BIM') && !b.group.startsWith('BIM')) return -1
-      if (!a.group.startsWith('BIM') && b.group.startsWith('BIM')) return 1
+      // System groups first
+      const aIsSystem = a.group.startsWith('__')
+      const bIsSystem = b.group.startsWith('__')
+      if (aIsSystem && !bIsSystem) return -1
+      if (!aIsSystem && bIsSystem) return 1
+
+      // User parameters last
+      const aIsUser = a.group === 'User Parameters'
+      const bIsUser = b.group === 'User Parameters'
+      if (aIsUser && !bIsUser) return 1
+      if (!aIsUser && bIsUser) return -1
+
+      // Other parameters last
+      const aIsOther = a.group === 'Other Parameters'
+      const bIsOther = b.group === 'Other Parameters'
+      if (aIsOther && !bIsOther) return 1
+      if (!aIsOther && bIsOther) return -1
+
       // Then sort alphabetically
       return a.group.localeCompare(b.group)
     })

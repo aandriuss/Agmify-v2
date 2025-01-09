@@ -121,10 +121,9 @@ function isParameter(
 
 // Computed Properties
 const getItemName = computed(() => {
-  if (isColumn(props.column)) {
-    return props.column.parameter.name
-  }
-  return props.column.name
+  const param = isColumn(props.column) ? props.column.parameter : props.column
+  // Use displayName from metadata if available, otherwise use clean name
+  return (param.metadata?.displayName as string) || param.name
 })
 
 const getItemType = computed(() => {

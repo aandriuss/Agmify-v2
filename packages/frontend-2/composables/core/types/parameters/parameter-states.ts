@@ -12,6 +12,9 @@ export interface ParameterMetadata extends Record<string, unknown> {
   isNested?: boolean
   parentKey?: string
   isJsonString?: boolean
+  displayName?: string
+  originalGroup?: string
+  groupId?: string
 }
 
 /**
@@ -224,25 +227,30 @@ export const createAvailableBimParameter = (
   processedValue: ParameterValue,
   isSystem = false
 ): AvailableBimParameter => {
-  // Handle Parameters.* format
-  const fetchedGroup = raw.id.startsWith('Parameters.')
-    ? 'Parameters'
-    : raw.fetchedGroup
-  const name = raw.id.startsWith('Parameters.')
-    ? raw.id.split('.').slice(1).join('.')
-    : raw.name
+  // Extract group and name from parameter
+  const nameParts = raw.name.split('.')
+  const groupName = nameParts.length > 1 ? nameParts[0] : undefined
+  const cleanName = nameParts.length > 1 ? nameParts.slice(1).join('.') : raw.name
+
+  // Use original group from metadata if available
+  const group = raw.metadata?.originalGroup || groupName || raw.fetchedGroup
 
   return {
     kind: 'bim',
     id: raw.id,
-    name,
+    name: cleanName,
     type,
     value: processedValue,
-    fetchedGroup,
-    currentGroup: fetchedGroup,
+    fetchedGroup: group,
+    currentGroup: group,
     visible: true,
-    isSystem: isSystem || raw.name.startsWith('__') || fetchedGroup.startsWith('__'),
-    metadata: raw.metadata
+    isSystem: isSystem || raw.metadata?.isSystem || false,
+    metadata: {
+      ...raw.metadata,
+      displayName: cleanName,
+      originalGroup: group,
+      groupId: group ? `bim_${group}` : ''
+    }
   }
 }
 
