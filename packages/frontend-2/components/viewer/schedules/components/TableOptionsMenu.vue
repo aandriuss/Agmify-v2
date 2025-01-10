@@ -24,6 +24,17 @@
         Column Manager
         <ChevronRightIcon v-if="currentView == 'columns'" class="size-4" />
       </FormButton>
+      <FormButton
+        text
+        size="sm"
+        color="subtle"
+        class="nav-button"
+        :class="{ active: currentView === 'parameters' }"
+        @click="currentView = 'parameters'"
+      >
+        Parameter Manager
+        <ChevronRightIcon v-if="currentView === 'parameters'" class="size-4" />
+      </FormButton>
     </div>
 
     <!-- Right side: Component display -->
@@ -34,9 +45,11 @@
         :open="true"
         :table-id="tableId"
         :table-name="tableName"
-        @cancel="handleColumnManagerClose"
-        @apply="handleColumnManagerApply"
         @table-updated="handleTableUpdated"
+      />
+      <ParameterManager
+        v-else-if="currentView === 'parameters'"
+        @update="handleParameterUpdate"
       />
     </div>
   </div>
@@ -48,6 +61,8 @@ import { FormButton } from '@speckle/ui-components'
 import { ChevronRightIcon } from '@heroicons/vue/24/solid'
 import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
 import ColumnManager from '~/components/viewer/components/tables/DataTable/components/ColumnManager/index.vue'
+import ParameterManager from '~/components/core/parameters/ParameterManager.vue'
+
 interface TableUpdateEvent {
   tableId: string
   tableName: string
@@ -63,10 +78,15 @@ const emit = defineEmits<{
   'table-updated': [updates: TableUpdateEvent]
 }>()
 
-const currentView = ref<'categories' | 'columns'>('categories')
+const currentView = ref<'categories' | 'columns' | 'parameters'>('categories')
 
 function handleTableUpdated(updates: TableUpdateEvent) {
   emit('table-updated', updates)
+}
+
+function handleParameterUpdate() {
+  // Parameters are managed independently of tables
+  // No need to emit table update
 }
 </script>
 
