@@ -31,18 +31,34 @@
             </FormButton>
           </div>
 
+          <!-- Parameter Creation -->
+          <div v-if="isAddingNew || showAddButton" class="p-4 border-b">
+            <div v-if="isAddingNew">
+              <ParameterCreationForm
+                @create="handleCreateParameter"
+                @cancel="handleCancelAdd"
+              />
+            </div>
+            <div v-else>
+              <FormButton
+                text
+                size="lg"
+                class="w-full text-left"
+                @click="openAddParameterDialog"
+              >
+                <PlusIcon class="size-4" />
+                Add Parameter
+              </FormButton>
+            </div>
+          </div>
+
           <!-- Parameter Groups -->
           <div class="flex-1 overflow-auto">
             <div v-for="group in groupedParameters" :key="group.name">
               <UserParameterList
-                :group-name="group.name"
                 :parameters="group.parameters"
-                :is-adding-new="isAddingNew"
-                :show-add-button="group.name === 'Custom'"
+                :group="group.name"
                 :get-current-value="(param) => param.value"
-                @add="openAddParameterDialog"
-                @cancel-add="handleCancelAdd"
-                @create="handleCreateParameter"
                 @update="handleParameterUpdate"
                 @delete="handleDelete"
               />
@@ -61,7 +77,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { FormButton } from '@speckle/ui-components'
-import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
+import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from '@heroicons/vue/24/solid'
 import { useUserParameterStore } from '~/composables/core/userparameters/store'
 import { useParameterGroups } from '../../../composables/core/userparameters/useParameterGroups'
 import { useParametersGraphQL } from '~/composables/core/userparameters/useParametersGraphQL'
@@ -73,10 +89,12 @@ import type {
 
 // Components
 import UserParameterList from './UserParameterList.vue'
+import ParameterCreationForm from './ParameterCreationForm.vue'
 
 const error = ref<string | null>(null)
 const isAddingNew = ref(false)
 const showFilterOptions = ref(false)
+const showAddButton = ref(true)
 
 // Initialize store
 const parameterStore = ref<UserParameterStore | null>(null)

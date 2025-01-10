@@ -4,7 +4,7 @@
     <div class="menu-nav">
       <FormButton
         text
-        size="sm"
+        size="lg"
         color="subtle"
         class="nav-button"
         :class="{ active: currentView === 'categories' }"
@@ -15,7 +15,7 @@
       </FormButton>
       <FormButton
         text
-        size="sm"
+        size="lg"
         color="subtle"
         class="nav-button"
         :class="{ active: currentView === 'columns' }"
@@ -26,7 +26,7 @@
       </FormButton>
       <FormButton
         text
-        size="sm"
+        size="lg"
         color="subtle"
         class="nav-button"
         :class="{ active: currentView === 'parameters' }"
@@ -107,7 +107,6 @@ function handleParameterUpdate() {
   background-color: var(--surface-section);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 }
 
 .nav-button {

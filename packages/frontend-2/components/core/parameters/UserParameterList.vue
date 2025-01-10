@@ -1,87 +1,55 @@
 <template>
   <div class="parameter-list">
-    <div class="group-header">{{ groupName }}</div>
-    <div v-for="parameter in parameters" :key="parameter.id" class="parameter-item">
-      <!-- Parameter Row -->
-      <div class="parameter-row">
-        <div class="parameter-info">
-          <span class="parameter-name">{{ parameter.name }}</span>
-          <span class="parameter-type" :class="parameter.type">
-            {{ parameter.type }}
-          </span>
-          <span
-            class="parameter-value"
-            :title="String(parameter.value)"
-            :data-parameter-id="parameter.id"
-          >
-            {{ formatValue(parameter.value) }}
-          </span>
-        </div>
-
-        <!-- Actions -->
-        <div class="parameter-actions">
-          <FormButton
-            text
-            size="sm"
-            icon="pi pi-pencil"
-            @click="$emit('update', parameter)"
-          />
-          <FormButton
-            text
-            size="sm"
-            icon="pi pi-trash"
-            @click="$emit('delete', parameter)"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- Add Parameter Button -->
-    <div v-if="showAddButton && !isAddingNew" class="add-parameter">
-      <FormButton text size="sm" icon="pi pi-plus" @click="$emit('add')">
-        Add Parameter
+    <!-- Grouped Parameters -->
+    <div class="parameter-group">
+      <FormButton
+        type="button"
+        class="group-header"
+        :class="{ collapsed: isCollapsed }"
+        :aria-expanded="!isCollapsed"
+        @click="toggleCollapse"
+        @keydown.enter="toggleCollapse"
+        @keydown.space.prevent="toggleCollapse"
+      >
+        <ChevronRightIcon class="chevron-icon" :class="{ 'rotate-90': !isCollapsed }" />
+        <span>{{ props.group || 'Default' }}</span>
+        <span class="parameter-count">({{ props.parameters.length }})</span>
       </FormButton>
-    </div>
 
-    <!-- Add Parameter Form -->
-    <div v-if="isAddingNew" class="add-parameter-form">
-      <div class="form-grid">
-        <div class="form-field">
-          <label for="param-name">Name</label>
-          <input
-            id="param-name"
-            v-model="newParameter.name"
-            type="text"
-            class="form-input"
-          />
+      <div v-show="!isCollapsed" class="group-content">
+        <div
+          v-for="parameter in props.parameters"
+          :key="parameter.id"
+          class="parameter-item"
+        >
+          <div class="parameter-row">
+            <div class="parameter-info">
+              <span class="parameter-name">{{ parameter.name }}</span>
+              <span
+                class="parameter-value"
+                :title="
+                  parameter.type === 'equation'
+                    ? parameter.equation
+                    : String(props.getCurrentValue(parameter))
+                "
+                :data-parameter-id="parameter.id"
+              >
+                {{ formatValue(props.getCurrentValue(parameter), parameter) }}
+              </span>
+              <span class="parameter-type" :class="parameter.type">
+                {{ parameter.type }}
+              </span>
+            </div>
+            <div class="parameter-actions">
+              <FormButton text size="sm" @click="emit('update', parameter)">
+                <PencilIcon class="size-4" />
+              </FormButton>
+              <FormButton text size="sm" @click="emit('delete', parameter)">
+                <TrashIcon class="size-4" />
+              </FormButton>
+            </div>
+          </div>
         </div>
-        <div class="form-field">
-          <label for="param-type">Type</label>
-          <select id="param-type" v-model="newParameter.type" class="form-input">
-            <option value="fixed">Fixed Value</option>
-            <option value="equation">Equation</option>
-          </select>
-        </div>
-        <div class="form-field">
-          <label for="param-value">
-            {{ newParameter.type === 'fixed' ? 'Value' : 'Equation' }}
-          </label>
-          <input
-            id="param-value"
-            v-model="newParameter.value"
-            type="text"
-            class="form-input"
-            :placeholder="
-              newParameter.type === 'fixed'
-                ? 'Enter value'
-                : 'Enter equation (e.g. param1 + param2)'
-            "
-          />
-        </div>
-      </div>
-      <div class="form-actions">
-        <FormButton text size="sm" @click="handleCreate">Create</FormButton>
-        <FormButton text size="sm" @click="$emit('cancel-add')">Cancel</FormButton>
       </div>
     </div>
   </div>
@@ -90,26 +58,37 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { FormButton } from '@speckle/ui-components'
+import { PencilIcon, TrashIcon, ChevronRightIcon } from '@heroicons/vue/24/solid'
 import type { AvailableUserParameter, ParameterValue } from '~/composables/core/types'
 
-defineProps<{
-  groupName: string
+const props = defineProps<{
   parameters: AvailableUserParameter[]
-  isAddingNew: boolean
-  showAddButton: boolean
+  group?: string
   getCurrentValue: (param: AvailableUserParameter) => ParameterValue
 }>()
 
 const emit = defineEmits<{
-  (e: 'add'): void
-  (e: 'cancel-add'): void
-  (e: 'create', parameter: Omit<AvailableUserParameter, 'id'>): void
   (e: 'update', parameter: AvailableUserParameter): void
   (e: 'delete', parameter: AvailableUserParameter): void
 }>()
 
+// Group collapse state
+const isCollapsed = ref(false)
+
+// Toggle group collapse state
+function toggleCollapse() {
+  isCollapsed.value = !isCollapsed.value
+}
+
 // Format parameter value for display
-function formatValue(value: ParameterValue): string {
+function formatValue(
+  value: ParameterValue,
+  parameter?: AvailableUserParameter
+): string {
+  if (parameter?.type === 'equation' && parameter.equation) {
+    return parameter.equation
+  }
+
   if (value === null || value === undefined) return '-'
   if (typeof value === 'string')
     return value.length > 20 ? value.slice(0, 20) + '...' : value
@@ -118,129 +97,121 @@ function formatValue(value: ParameterValue): string {
   if (typeof value === 'object') return '{...}'
   return String(value)
 }
-
-// New parameter form state
-type ParameterType = 'fixed' | 'equation'
-
-const newParameter = ref({
-  name: '',
-  type: 'fixed' as ParameterType,
-  value: '',
-  group: 'Custom'
-})
-
-function handleCreate() {
-  const name = newParameter.value.name
-  emit('create', {
-    name,
-    type: newParameter.value.type,
-    value: newParameter.value.type === 'fixed' ? newParameter.value.value : null,
-    equation:
-      newParameter.value.type === 'equation' ? newParameter.value.value : undefined,
-    group: newParameter.value.group,
-    visible: true,
-    kind: 'user',
-    field: name.toLowerCase().replace(/\s+/g, '_'), // Generate field from name
-    header: name, // Use name as header
-    removable: true // User parameters are always removable
-  })
-
-  // Reset form
-  newParameter.value = {
-    name: '',
-    type: 'fixed',
-    value: '',
-    group: 'Custom'
-  }
-}
 </script>
 
 <style scoped>
-.form-grid {
-  display: grid;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.form-field label {
-  font-size: 0.875rem;
-  color: var(--color-foreground-muted);
-}
-
-.form-input {
-  padding: 0.375rem 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  background: var(--color-background);
-  color: var(--color-foreground);
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 1px var(--color-primary);
-}
-
-.form-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-}
-
 .parameter-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.5rem;
+  background: var(--color-background);
 }
 
-.group-header {
-  font-weight: 600;
-  color: var(--color-foreground-muted);
-  padding: 0.25rem 0;
-}
-
-.parameter-item {
+.parameter-group {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-foreground);
   padding: 0.5rem;
-  border-radius: 0.25rem;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease;
+  width: 100%;
+  text-align: left;
+  border: transparent;
+}
+
+.group-header:hover {
+  background: var(--color-background-muted);
+}
+
+.group-header .parameter-count {
+  color: var(--color-foreground-muted);
+  font-weight: normal;
+  font-size: 0.875rem;
+}
+
+.chevron-icon {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 0.2s ease;
+}
+
+.group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-left: 1.5rem;
+}
+
+.parameter-item {
   background: var(--surface-card);
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  transition: all 0.2s ease;
+}
+
+.parameter-item:hover {
+  border-color: var(--color-primary-muted);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 5%);
 }
 
 .parameter-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  min-width: 0;
+  width: 100%;
+  padding: 0.25rem 0.5rem;
 }
 
 .parameter-info {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(150px, 2fr) minmax(120px, 1fr);
+  gap: 1rem;
   align-items: center;
-  gap: 0.5rem;
   flex: 1;
   min-width: 0;
 }
 
 .parameter-name {
-  font-weight: 500;
+  padding-left: 0.5rem;
+  color: var(--color-foreground);
+  white-space: nowrap;
+}
+
+.parameter-value {
+  color: var(--color-foreground-muted);
+  padding-left: 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  justify-self: start;
+  width: 100%;
+  margin-right: 80px;
 }
 
 .parameter-type {
-  font-size: 0.75rem;
-  padding: 0.125rem 0.375rem;
+  font-size: 0.875rem;
   border-radius: 0.25rem;
+  padding: 0.125rem 0.5rem;
   background: var(--color-background-muted);
   color: var(--color-foreground-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  position: relative;
+  right: 0;
+  justify-self: end;
 }
 
 .parameter-type.fixed {
@@ -253,32 +224,20 @@ function handleCreate() {
   color: var(--color-info);
 }
 
-.parameter-value {
-  font-size: 0.75rem;
-  color: var(--color-foreground-muted);
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .parameter-actions {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.5rem;
+  margin-left: 1rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
-.add-parameter {
-  padding: 0.5rem;
-  border-radius: 0.25rem;
-  border: 1px dashed var(--color-border);
-  display: flex;
-  justify-content: center;
+.parameter-item:hover .parameter-actions {
+  opacity: 1;
 }
 
-.add-parameter-form {
-  padding: 0.5rem;
-  border-radius: 0.25rem;
-  border: 1px solid var(--color-border);
-  background: var(--color-background);
+/* Animation classes */
+.rotate-90 {
+  transform: rotate(90deg);
 }
 </style>
