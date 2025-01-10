@@ -2,13 +2,32 @@ import { useMutation, useQuery, provideApolloClient } from '@vue/apollo-composab
 import { gql } from 'graphql-tag'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useNuxtApp } from '#app'
+import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
+import { isGraphQLAuthError } from '~/composables/core/utils/errors'
 import { ParameterError } from './errors'
 import type { AvailableUserParameter } from '~/composables/core/types'
+import type { GraphQLError } from 'graphql'
 
-// GraphQL Operations
+interface GraphQLResponse<T> {
+  data?: T
+  errors?: readonly GraphQLError[]
+}
+
+interface GetParametersResponse {
+  activeUser: {
+    id: string
+    parameters: Record<string, AvailableUserParameter>
+  }
+}
+
+interface UpdateParametersResponse {
+  userParametersUpdate: boolean
+}
+
 const GET_USER_PARAMETERS = gql`
   query GetUserParameters {
     activeUser {
+      id
       parameters
     }
   }
@@ -20,207 +39,195 @@ const UPDATE_USER_PARAMETERS = gql`
   }
 `
 
-export function useParametersGraphQL() {
+export async function useParametersGraphQL() {
   const nuxtApp = useNuxtApp()
-  const apolloClient = nuxtApp.$apollo?.default
 
-  if (!apolloClient) {
-    throw new ParameterError('Apollo client not initialized')
+  // Helper to get Apollo client with auth check
+  async function getApolloClient() {
+    try {
+      debug.startState(DebugCategories.INITIALIZATION, 'Getting Apollo client')
+
+      // Get Apollo client instance first
+      const apolloClient = nuxtApp.$apollo?.default
+      if (!apolloClient) {
+        debug.error(DebugCategories.INITIALIZATION, 'Apollo client not initialized')
+        throw new Error('Apollo client not initialized')
+      }
+
+      // Then wait for auth to be ready
+      const waitForUser = useWaitForActiveUser()
+      const userResult = await waitForUser()
+      if (!userResult?.data?.activeUser) {
+        debug.error(DebugCategories.INITIALIZATION, 'Authentication required')
+        throw new Error('Authentication required')
+      }
+
+      debug.completeState(DebugCategories.INITIALIZATION, 'Apollo client ready')
+      return apolloClient
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to get Apollo client', err)
+      throw err
+    }
   }
 
-  provideApolloClient(apolloClient)
+  // Helper to run code in Nuxt context with Apollo
+  async function runInContext<T>(fn: () => Promise<T> | T): Promise<T> {
+    const runContext = nuxtApp?.runWithContext
+    if (!runContext) {
+      throw new Error('Nuxt app context not available')
+    }
+    return runContext(async () => {
+      // Ensure Apollo client is provided
+      const apolloClient = nuxtApp.$apollo?.default
+      if (!apolloClient) {
+        throw new Error('Apollo client not initialized')
+      }
+      provideApolloClient(apolloClient)
+      return fn()
+    })
+  }
 
-  // Initialize GraphQL operations
-  const { mutate: updateParametersMutation } = useMutation<
-    { userParametersUpdate: boolean },
-    { parameters: Record<string, AvailableUserParameter> }
-  >(UPDATE_USER_PARAMETERS)
+  try {
+    debug.startState(DebugCategories.INITIALIZATION, 'Initializing GraphQL client')
 
-  const {
-    result: queryResult,
-    loading: queryLoading,
-    refetch
-  } = useQuery<{ activeUser: { parameters: Record<string, AvailableUserParameter> } }>(
-    GET_USER_PARAMETERS,
-    null,
-    {
+    // Initialize Apollo client with auth check
+    const apolloClient = await getApolloClient()
+    provideApolloClient(apolloClient)
+
+    debug.completeState(DebugCategories.INITIALIZATION, 'GraphQL client initialized')
+
+    const {
+      result,
+      loading: queryLoading,
+      refetch: queryRefetch
+    } = useQuery<GetParametersResponse>(GET_USER_PARAMETERS, null, {
       fetchPolicy: 'cache-and-network'
+    })
+
+    // Ensure refetch is available and type-safe
+    const refetch = (): ReturnType<typeof queryRefetch> => {
+      if (!queryRefetch) {
+        throw new Error('Query refetch function not available')
+      }
+      return queryRefetch()
     }
-  )
 
-  /**
-   * Fetch parameters from PostgreSQL
-   */
-  async function fetchParameters(): Promise<Record<string, AvailableUserParameter>> {
-    try {
-      debug.startState(DebugCategories.INITIALIZATION, 'Fetching parameters')
+    async function fetchParameters(): Promise<Record<string, AvailableUserParameter>> {
+      try {
+        debug.startState(DebugCategories.INITIALIZATION, 'Fetching parameters')
 
-      const response = await nuxtApp.runWithContext(() => refetch())
-      const rawParameters = response?.data?.activeUser?.parameters
+        // Ensure we have auth and Apollo client
+        await getApolloClient()
 
-      // Initialize empty parameters object
-      const parameters: Record<string, AvailableUserParameter> = {}
+        const response = await runInContext(() => refetch()).catch(async (err) => {
+          // If auth error, try to re-initialize Apollo client
+          if (isGraphQLAuthError(err)) {
+            debug.log(DebugCategories.INITIALIZATION, 'Auth error, retrying...')
+            await getApolloClient()
+            return refetch()
+          }
+          throw err
+        })
 
-      // Handle null/undefined parameters from database
-      if (!rawParameters) {
-        debug.log(DebugCategories.INITIALIZATION, 'No parameters in database')
+        // Get parameters from response
+        const parameters = response?.data?.activeUser?.parameters || {}
+
+        debug.log(DebugCategories.INITIALIZATION, 'Parameters fetched', {
+          count: Object.keys(parameters).length
+        })
+
         return parameters
+      } catch (err) {
+        debug.error(DebugCategories.ERROR, 'Failed to fetch parameters:', err)
+        throw new ParameterError(
+          err instanceof Error ? err.message : 'Failed to fetch parameters'
+        )
       }
+    }
 
-      // Validate parameters object
-      if (typeof rawParameters !== 'object') {
-        debug.error(DebugCategories.ERROR, 'Invalid parameters format:', rawParameters)
-        return parameters
-      }
+    async function updateParameters(
+      parameters: Record<string, AvailableUserParameter>
+    ): Promise<boolean> {
+      try {
+        debug.startState(DebugCategories.STATE, 'Updating parameters')
 
-      // Process each parameter
-      Object.entries(rawParameters).forEach(([id, param]) => {
-        if (!param || typeof param !== 'object') {
-          debug.warn(DebugCategories.STATE, 'Invalid parameter:', { id, param })
-          return
+        // Ensure we have auth and Apollo client
+        await getApolloClient()
+
+        // Execute mutation inside runInContext
+        const result = await runInContext(async () => {
+          const { mutate } = useMutation(UPDATE_USER_PARAMETERS)
+
+          try {
+            const mutationResponse = await mutate({
+              parameters
+            })
+
+            // Type-safe response handling
+            const response =
+              mutationResponse as GraphQLResponse<UpdateParametersResponse>
+
+            // Check for GraphQL errors
+            if (response.errors?.length) {
+              const errorMessages = response.errors.map((e) => e.message).join(', ')
+              throw new Error(`GraphQL errors: ${errorMessages}`)
+            }
+
+            // Check for successful update
+            const success = response.data?.userParametersUpdate ?? false
+
+            if (!success) {
+              throw new Error('Parameters update returned false')
+            }
+
+            debug.log(DebugCategories.STATE, 'Mutation completed successfully')
+            return success
+          } catch (err) {
+            debug.error(DebugCategories.ERROR, 'Mutation failed', err)
+            throw err
+          }
+        })
+
+        if (!result) {
+          throw new Error('Parameters update returned false')
         }
 
-        // Ensure required fields
-        if (!id.startsWith('param_')) {
-          debug.warn(DebugCategories.STATE, 'Invalid parameter ID:', id)
-          return
+        try {
+          // Manually trigger a refetch and wait for it to complete
+          const refetchResult = await refetch()
+          if (!refetchResult?.data) {
+            throw new Error('Refetch returned no data')
+          }
+
+          const parameters = refetchResult.data.activeUser?.parameters
+          debug.log(DebugCategories.STATE, 'Parameters refetched', {
+            success: true,
+            parameterCount: parameters ? Object.keys(parameters).length : 0,
+            hasData: !!parameters
+          })
+        } catch (err) {
+          debug.error(DebugCategories.ERROR, 'Failed to refetch parameters', err)
+          // Don't throw here - the update was successful even if refetch failed
         }
 
-        // Ensure all required fields are present with defaults
-        parameters[id] = {
-          // Base fields from param
-          ...param,
-          // Required fields with defaults
-          id, // Always use the ID from the key
-          kind: 'user', // Always force user kind
-          visible: param.visible ?? true, // Use param.visible if exists, otherwise true
-          field: param.field || param.name?.toLowerCase().replace(/\s+/g, '_') || id, // Use field if exists, otherwise generate from name or id
-          header: param.header || param.name || id, // Use header if exists, otherwise use name or id
-          removable: param.removable ?? true, // Use removable if exists, otherwise true
-          // Ensure these are always present
-          name: param.name || id,
-          type: param.type || 'fixed',
-          value: param.value ?? '',
-          group: param.group || 'Custom'
-        } as AvailableUserParameter
-
-        debug.log(DebugCategories.STATE, 'Processed parameter:', {
-          id,
-          parameter: parameters[id]
-        })
-      })
-
-      debug.log(DebugCategories.INITIALIZATION, 'Parameters fetched', {
-        count: Object.keys(parameters).length,
-        parameters
-      })
-
-      return parameters
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to fetch parameters:', err)
-      throw new ParameterError(
-        err instanceof Error ? err.message : 'Failed to fetch parameters'
-      )
-    }
-  }
-
-  /**
-   * Create parameter in PostgreSQL
-   */
-  async function createParameter(
-    parameter: AvailableUserParameter,
-    allParameters: Record<string, AvailableUserParameter>
-  ): Promise<AvailableUserParameter> {
-    try {
-      debug.startState(DebugCategories.STATE, 'Creating parameter')
-
-      // Save to PostgreSQL
-      const result = await nuxtApp.runWithContext(() =>
-        updateParametersMutation({
-          parameters: allParameters
-        })
-      )
-
-      if (!result?.data?.userParametersUpdate) {
-        throw new ParameterError('Failed to create parameter')
+        debug.completeState(DebugCategories.STATE, 'Parameters update complete')
+        return true
+      } catch (err) {
+        debug.error(DebugCategories.ERROR, 'Failed to update parameters:', err)
+        throw new ParameterError(
+          err instanceof Error ? err.message : 'Failed to update parameters'
+        )
       }
-
-      return parameter
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to create parameter:', err)
-      throw new ParameterError(
-        err instanceof Error ? err.message : 'Failed to create parameter'
-      )
     }
-  }
 
-  /**
-   * Update parameter in PostgreSQL
-   */
-  async function updateParameter(
-    id: string,
-    parameter: AvailableUserParameter,
-    allParameters: Record<string, AvailableUserParameter>
-  ): Promise<AvailableUserParameter> {
-    try {
-      debug.startState(DebugCategories.STATE, 'Updating parameter')
-
-      // Save to PostgreSQL
-      const result = await nuxtApp.runWithContext(() =>
-        updateParametersMutation({
-          parameters: allParameters
-        })
-      )
-
-      if (!result?.data?.userParametersUpdate) {
-        throw new ParameterError('Failed to update parameter')
-      }
-
-      return parameter
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to update parameter:', err)
-      throw new ParameterError(
-        err instanceof Error ? err.message : 'Failed to update parameter'
-      )
+    return {
+      result,
+      loading: queryLoading,
+      fetchParameters,
+      updateParameters
     }
-  }
-
-  /**
-   * Delete parameter from PostgreSQL
-   */
-  async function deleteParameter(
-    id: string,
-    remainingParameters: Record<string, AvailableUserParameter>
-  ): Promise<boolean> {
-    try {
-      debug.startState(DebugCategories.STATE, 'Deleting parameter')
-
-      // Save to PostgreSQL
-      const result = await nuxtApp.runWithContext(() =>
-        updateParametersMutation({
-          parameters: remainingParameters
-        })
-      )
-
-      if (!result?.data?.userParametersUpdate) {
-        throw new ParameterError('Failed to delete parameter')
-      }
-
-      return true
-    } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to delete parameter:', err)
-      throw new ParameterError(
-        err instanceof Error ? err.message : 'Failed to delete parameter'
-      )
-    }
-  }
-
-  return {
-    result: queryResult,
-    loading: queryLoading,
-    fetchParameters,
-    createParameter,
-    updateParameter,
-    deleteParameter
+  } catch (err) {
+    debug.error(DebugCategories.ERROR, 'Failed to initialize GraphQL', err)
+    throw err
   }
 }

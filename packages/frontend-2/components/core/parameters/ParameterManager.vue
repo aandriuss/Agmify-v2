@@ -39,7 +39,7 @@
                 :parameters="group.parameters"
                 :is-adding-new="isAddingNew"
                 :show-add-button="group.name === 'Custom'"
-                :get-current-value="evaluateParameter"
+                :get-current-value="(param) => param.value"
                 @add="openAddParameterDialog"
                 @cancel-add="handleCancelAdd"
                 @create="handleCreateParameter"
@@ -51,17 +51,25 @@
         </div>
       </div>
     </div>
+    <!-- Debug Info -->
+    <div class="mb-2 p-2 bg-gray-100">
+      <pre class="text-xs">{{ debugInfo }}</pre>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import { useUserParameterStore } from '~/composables/core/userparameters/store'
 import { useParameterGroups } from '../../../composables/core/userparameters/useParameterGroups'
-import { useParameterEvaluation } from '../../../composables/core/userparameters/useParameterEvaluation'
+import { useParametersGraphQL } from '~/composables/core/userparameters/useParametersGraphQL'
 import type { AvailableUserParameter } from '~/composables/core/types'
+import type {
+  UserParameterStore,
+  UserParameterStoreState
+} from '~/composables/core/userparameters/store/types'
 
 // Components
 import UserParameterList from './UserParameterList.vue'
@@ -70,33 +78,66 @@ const error = ref<string | null>(null)
 const isAddingNew = ref(false)
 const showFilterOptions = ref(false)
 
-// Initialize parameter store
-const parameterStore = useUserParameterStore()
-const parameters = computed(() => parameterStore.state.value.parameters)
-const isLoading = computed(() => parameterStore.isLoading.value)
+// Initialize store
+const parameterStore = ref<UserParameterStore | null>(null)
+
+// Debug info computed property
+const debugInfo = computed(() => {
+  if (!parameterStore.value) return { parameters: 0, rawParameters: {}, error: null }
+  const state = parameterStore.value.state as UserParameterStoreState
+  return {
+    parameters: Object.keys(state.parameters).length,
+    rawParameters: state.parameters,
+    error: state.error
+  }
+})
+
+// Initialize GraphQL and store
+onMounted(async () => {
+  try {
+    error.value = null
+    const graphqlOps = await useParametersGraphQL()
+    parameterStore.value = useUserParameterStore({
+      fetchParameters: graphqlOps.fetchParameters,
+      updateParameters: graphqlOps.updateParameters
+    })
+    await parameterStore.value?.loadParameters()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to load parameters'
+  }
+})
+
+const parameters = computed<Record<string, AvailableUserParameter>>(() => {
+  if (!parameterStore.value) return {}
+  const state = parameterStore.value.state as UserParameterStoreState
+  return state.parameters
+})
+
+const isLoading = computed<boolean>(() => {
+  if (!parameterStore.value) return true
+  const state = parameterStore.value.state as UserParameterStoreState
+  return state.loading
+})
 
 const emit = defineEmits<{
   (e: 'update'): void
   (e: 'parameter-update'): void
 }>()
 
-// Get raw parameters array
-const parametersList = computed(() => Object.values(parameters.value || {}))
+// Get raw parameters array and groups
+const parametersList = computed<AvailableUserParameter[]>(() =>
+  Object.values(parameters.value)
+)
 
-// Evaluation for equations
-const { evaluateParameter } = useParameterEvaluation({
-  parameters: parametersList
-})
-
-// Grouped parameters
 const { groupedParameters } = useParameterGroups({
   parameters: parametersList
 })
 
 async function handleCreateParameter(paramData: Omit<AvailableUserParameter, 'id'>) {
+  if (!parameterStore.value) return
   try {
     error.value = null
-    await parameterStore.createParameter(paramData)
+    await parameterStore.value.createParameter(paramData)
     emit('update')
     isAddingNew.value = false
   } catch (err) {
@@ -105,9 +146,10 @@ async function handleCreateParameter(paramData: Omit<AvailableUserParameter, 'id
 }
 
 async function handleParameterUpdate(parameter: AvailableUserParameter) {
+  if (!parameterStore.value) return
   try {
     error.value = null
-    await parameterStore.updateParameter(parameter.id, parameter)
+    await parameterStore.value.updateParameter(parameter.id, parameter)
     emit('update')
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to update parameter'
@@ -115,9 +157,10 @@ async function handleParameterUpdate(parameter: AvailableUserParameter) {
 }
 
 async function handleDelete(parameter: AvailableUserParameter) {
+  if (!parameterStore.value) return
   try {
     error.value = null
-    await parameterStore.deleteParameter(parameter.id)
+    await parameterStore.value.deleteParameter(parameter.id)
     emit('update')
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to delete parameter'
@@ -136,16 +179,19 @@ function toggleFilterOptions() {
   showFilterOptions.value = !showFilterOptions.value
 }
 
-// Initialize store and load parameters on mount
-onMounted(async () => {
-  try {
-    error.value = null
-    await parameterStore.initialize()
-    await parameterStore.loadParameters()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to load parameters'
-  }
-})
+// Watch for store errors
+watch(
+  () => {
+    const state = parameterStore.value?.state as UserParameterStoreState | undefined
+    return state?.error
+  },
+  (newError) => {
+    if (newError) {
+      error.value = newError instanceof Error ? newError.message : String(newError)
+    }
+  },
+  { immediate: true }
+)
 
 defineExpose({
   handleError: (err: Error | unknown) => {

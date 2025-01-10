@@ -1,3 +1,4 @@
+import type { ComputedRef } from 'vue'
 import type { AvailableUserParameter } from '~/composables/core/types'
 
 export interface UserParameterStoreState {
@@ -5,16 +6,15 @@ export interface UserParameterStoreState {
   loading: boolean
   error: Error | null
   lastUpdated: number
-  initialized: boolean
 }
 
 export interface UserParameterStore {
   // State
-  state: Ref<UserParameterStoreState>
-  isLoading: Ref<boolean>
-  error: Ref<Error | null>
-  hasError: Ref<boolean>
-  lastUpdated: Ref<number>
+  state: ComputedRef<UserParameterStoreState>
+  isLoading: ComputedRef<boolean>
+  error: ComputedRef<Error | null>
+  hasError: ComputedRef<boolean>
+  lastUpdated: ComputedRef<number>
 
   // Core operations
   createParameter(
@@ -28,10 +28,5 @@ export interface UserParameterStore {
   loadParameters(): Promise<Record<string, AvailableUserParameter>>
 
   // Store management
-  initialize(): Promise<void>
   reset(): void
-}
-
-export interface UserParameterStoreOptions {
-  initialParameters?: Record<string, AvailableUserParameter>
 }

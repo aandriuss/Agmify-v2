@@ -256,8 +256,9 @@ const resolvers = {
           throw new Error('Invalid parameters format');
         }
 
-        // Validate each parameter against GraphQL schema
-        Object.entries(parameters).forEach(([id, param]) => {
+        // Validate and normalize parameters
+        const normalizedParameters = Object.entries(parameters).reduce((acc, [id, param]) => {
+          // Basic validation
           if (!id.startsWith('param_')) {
             throw new Error(`Invalid parameter ID: ${id}`);
           }
@@ -266,7 +267,7 @@ const resolvers = {
           }
 
           // Required fields from UserParameter type
-          const requiredFields = ['name', 'type', 'group', 'field', 'visible', 'header', 'removable', 'value'];
+          const requiredFields = ['name', 'type', 'group'];
           const missingFields = requiredFields.filter(field => !(field in param));
           if (missingFields.length > 0) {
             throw new Error(`Missing required fields for parameter ${id}: ${missingFields.join(', ')}`);
@@ -281,7 +282,36 @@ const resolvers = {
           if (param.type === 'equation' && !param.equation) {
             throw new Error(`Missing equation for equation parameter: ${id}`);
           }
-        });
+
+          // Get existing parameter if available
+          const existingParam = currentUser.parameters?.[id];
+
+          // Normalize parameter with defaults
+          acc[id] = {
+            ...(existingParam || {}), // Keep existing data
+            ...param, // Override with new data
+            // Ensure required fields with defaults
+            id,
+            kind: 'user',
+            name: param.name,
+            type: param.type,
+            value: param.value ?? '',
+            group: param.group,
+            visible: param.visible ?? true,
+            field: param.field || param.name.toLowerCase().replace(/\s+/g, '_'),
+            header: param.header || param.name,
+            removable: param.removable ?? true,
+            metadata: {
+              ...(existingParam?.metadata || {}),
+              ...(param.metadata || {})
+            }
+          };
+
+          return acc;
+        }, {});
+
+        // Update user with normalized parameters
+        const updatedUser = await updateUser(userId, { parameters: normalizedParameters }, { skipClean: true });
 
         // Get existing parameters
         const existingParameters = currentUser.parameters || {};
@@ -302,7 +332,6 @@ const resolvers = {
         }, {});
 
         // Update user with validated parameters
-        const updatedUser = await updateUser(userId, { parameters: mergedParameters }, { skipClean: true });
         if (!updatedUser) throw new Error('Failed to update user parameters');
         
         console.log('Successfully updated user parameters:', { 
