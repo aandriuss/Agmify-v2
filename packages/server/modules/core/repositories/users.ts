@@ -215,11 +215,12 @@ export async function markOnboardingComplete(userId: string) {
 const cleanInputRecord = (
   update: Partial<UserRecord & { password?: string }>
 ): Partial<UserRecord> => {
-  delete update.id
-  delete update.passwordDigest
-  delete update.password
-  delete update.email
-  return update
+  const cleanedUpdate = { ...update }
+  delete cleanedUpdate.id
+  delete cleanedUpdate.passwordDigest
+  delete cleanedUpdate.password
+  delete cleanedUpdate.email
+  return cleanedUpdate
 }
 
 const validateInputRecord = (input: Partial<UserRecord>) => {
@@ -227,7 +228,13 @@ const validateInputRecord = (input: Partial<UserRecord>) => {
     throw new UserValidationError('User avatar is too big, please try a smaller one')
   }
 
-  if (!Object.values(input).length) {
+  // Allow empty parameters object
+  const hasParameters = 'parameters' in input
+  const otherFields = { ...input }
+  delete otherFields.parameters
+
+  // Check if there are any other fields to update
+  if (!hasParameters && !Object.values(otherFields).length) {
     throw new UserValidationError('User update payload empty')
   }
 }

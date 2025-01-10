@@ -4,7 +4,8 @@ const {
   getUserRole,
   deleteUser,
   searchUsers,
-  changeUserRole
+  changeUserRole,
+  updateUser
 } = require('@/modules/core/services/users')
 const { updateUserAndNotify } = require('@/modules/core/services/users/management')
 const { ActionTypes } = require('@/modules/activitystream/helpers/types')
@@ -151,6 +152,22 @@ const resolvers = {
       
       // Get tables for the user
       return await getTables(parent.id)
+    },
+
+    async parameters(parent, _args, context) {
+      // Check authentication
+      if (!context.userId) throw new Error('User not authenticated')
+      
+      // Return parameters from parent if available
+      const parameters = parent.parameters || {}
+      
+      // Ensure parameters is an object
+      if (typeof parameters !== 'object' || parameters === null) {
+        console.warn('Invalid parameters format:', parameters)
+        return {}
+      }
+      
+      return parameters
     }
   },
   
@@ -221,6 +238,87 @@ const resolvers = {
 
       await updateUserSettings(userId, settings);
       return true;
+    },
+
+    async userParametersUpdate(_parent, { parameters }, context) {
+      const userId = context.userId;
+      if (!userId) throw new Error('User not authenticated');
+
+      try {
+        console.log('Updating user parameters:', { userId });
+        
+        // Get current user
+        const currentUser = await getUser(userId);
+        if (!currentUser) throw new Error('User not found');
+
+        // Ensure parameters is an object
+        if (typeof parameters !== 'object' || parameters === null) {
+          throw new Error('Invalid parameters format');
+        }
+
+        // Validate each parameter against GraphQL schema
+        Object.entries(parameters).forEach(([id, param]) => {
+          if (!id.startsWith('param_')) {
+            throw new Error(`Invalid parameter ID: ${id}`);
+          }
+          if (!param || typeof param !== 'object') {
+            throw new Error(`Invalid parameter format for ID: ${id}`);
+          }
+
+          // Required fields from UserParameter type
+          const requiredFields = ['name', 'type', 'group', 'field', 'visible', 'header', 'removable', 'value'];
+          const missingFields = requiredFields.filter(field => !(field in param));
+          if (missingFields.length > 0) {
+            throw new Error(`Missing required fields for parameter ${id}: ${missingFields.join(', ')}`);
+          }
+
+          // Validate type
+          if (!['fixed', 'equation'].includes(param.type)) {
+            throw new Error(`Invalid parameter type for ${id}: ${param.type}`);
+          }
+
+          // Validate equation field for equation type
+          if (param.type === 'equation' && !param.equation) {
+            throw new Error(`Missing equation for equation parameter: ${id}`);
+          }
+        });
+
+        // Get existing parameters
+        const existingParameters = currentUser.parameters || {};
+
+        // Merge with existing parameters, preserving metadata
+        const mergedParameters = Object.entries(parameters).reduce((acc, [id, param]) => {
+          const existing = existingParameters[id];
+          acc[id] = {
+            ...existing, // Keep existing metadata
+            ...param, // Override with new values
+            kind: 'user', // Always force user kind
+            metadata: {
+              ...(existing?.metadata || {}),
+              ...(param.metadata || {})
+            }
+          };
+          return acc;
+        }, {});
+
+        // Update user with validated parameters
+        const updatedUser = await updateUser(userId, { parameters: mergedParameters }, { skipClean: true });
+        if (!updatedUser) throw new Error('Failed to update user parameters');
+        
+        console.log('Successfully updated user parameters:', { 
+          userId,
+          parameterCount: Object.keys(mergedParameters).length
+        });
+        return true;
+      } catch (error) {
+        console.error('Error updating user parameters:', {
+          userId,
+          error: error.message,
+          stack: error.stack,
+          parameters
+        });
+        throw error;
+      }
     },
 
     async userTablesUpdate(_parent, { input }, context) {

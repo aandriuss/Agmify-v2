@@ -53,6 +53,9 @@ export interface AvailableUserParameter {
   kind: 'user'
   id: string
   name: string
+  field: string // Required by GraphQL schema
+  header: string // Required by GraphQL schema
+  removable: boolean // Required by GraphQL schema
   type: UserValueType
   value: ParameterValue
   group: string
@@ -227,7 +230,10 @@ export const createAvailableUserParameter = (
   group,
   visible: true,
   equation,
-  metadata
+  metadata,
+  field: name.toLowerCase().replace(/\s+/g, '_'), // Generate field from name
+  header: name, // Use name as header
+  removable: true // User parameters are always removable
 })
 
 export const createSelectedParameter = (

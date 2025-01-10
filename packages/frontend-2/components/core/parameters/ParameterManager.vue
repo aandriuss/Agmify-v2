@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import { useUserParameterStore } from '~/composables/core/userparameters/store'
@@ -75,26 +75,22 @@ const parameterStore = useUserParameterStore()
 const parameters = computed(() => parameterStore.state.value.parameters)
 const isLoading = computed(() => parameterStore.isLoading.value)
 
-// Initialize store error handling
-watch(parameterStore.error, (newError) => {
-  if (newError) {
-    error.value = newError.message
-  }
-})
-
 const emit = defineEmits<{
   (e: 'update'): void
   (e: 'parameter-update'): void
 }>()
 
+// Get raw parameters array
+const parametersList = computed(() => Object.values(parameters.value || {}))
+
 // Evaluation for equations
 const { evaluateParameter } = useParameterEvaluation({
-  parameters: computed(() => Object.values(parameters.value || {}))
+  parameters: parametersList
 })
 
 // Grouped parameters
 const { groupedParameters } = useParameterGroups({
-  parameters: computed(() => Object.values(parameters.value || {}))
+  parameters: parametersList
 })
 
 async function handleCreateParameter(paramData: Omit<AvailableUserParameter, 'id'>) {
@@ -140,10 +136,12 @@ function toggleFilterOptions() {
   showFilterOptions.value = !showFilterOptions.value
 }
 
-// Initialize store on mount
+// Initialize store and load parameters on mount
 onMounted(async () => {
   try {
+    error.value = null
     await parameterStore.initialize()
+    await parameterStore.loadParameters()
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to load parameters'
   }

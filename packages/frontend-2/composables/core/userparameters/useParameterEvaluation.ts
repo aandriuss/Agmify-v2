@@ -1,13 +1,13 @@
 import { computed } from 'vue'
 import type { Ref } from 'vue'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import type { UserParameter } from '~/composables/core/types'
+import type { AvailableUserParameter } from '~/composables/core/types'
 
 interface UseParameterEvaluationOptions {
-  parameters: Ref<UserParameter[]>
+  parameters: Ref<AvailableUserParameter[]>
 }
 
-export interface EvaluatedParameter extends UserParameter {
+export interface EvaluatedParameter extends AvailableUserParameter {
   evaluatedValue: string
 }
 
@@ -23,7 +23,7 @@ export class ParameterEvaluationError extends Error {
  * Handles evaluation of parameter values and equations
  */
 export function useParameterEvaluation({ parameters }: UseParameterEvaluationOptions) {
-  const evaluateParameter = (param: UserParameter): string => {
+  const evaluateParameter = (param: AvailableUserParameter): string => {
     try {
       debug.startState(DebugCategories.PARAMETERS, 'Evaluating parameter', {
         parameterId: param.id,

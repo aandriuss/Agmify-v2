@@ -112,22 +112,30 @@ function createUserParameterStore(
       }
 
       // Fetch parameters from PostgreSQL
-      const parameters = await graphqlOps.fetchParameters()
+      const fetchedParameters = await graphqlOps.fetchParameters()
 
-      // Filter to only user parameters
+      // Filter to only user parameters and preserve existing ones
       const userParameters: Record<string, AvailableUserParameter> = {}
-      Object.entries(parameters).forEach(([id, param]) => {
+      Object.entries(fetchedParameters).forEach(([id, param]) => {
         if (param.kind === 'user') {
-          userParameters[id] = param
+          // Preserve existing parameter data if available
+          const existingParam = state.value.parameters[id]
+          userParameters[id] = existingParam ? { ...existingParam, ...param } : param
         }
       })
 
-      // Update store with parameters
-      state.value.parameters = userParameters
-      state.value.lastUpdated = Date.now()
+      // Update store with parameters in a single batch
+      state.value = {
+        ...state.value,
+        parameters: userParameters,
+        lastUpdated: Date.now(),
+        loading: false,
+        error: null
+      }
 
       debug.log(DebugCategories.STATE, 'Parameters loaded', {
-        count: Object.keys(userParameters).length
+        count: Object.keys(userParameters).length,
+        parameters: userParameters
       })
 
       return userParameters
@@ -136,8 +144,6 @@ function createUserParameterStore(
       debug.error(DebugCategories.ERROR, 'Failed to load parameters:', error)
       state.value.error = error
       throw error
-    } finally {
-      state.value.loading = false
     }
   }
 
@@ -166,17 +172,6 @@ function createUserParameterStore(
         throw new ParameterError('Fixed type parameters cannot have equation values')
       }
 
-      // Generate ID
-      const id = `param_${uuidv4()}`
-
-      // Create parameter
-      const newParameter: AvailableUserParameter = {
-        ...parameter,
-        id,
-        kind: 'user',
-        visible: true
-      }
-
       // Initialize GraphQL if not already done
       if (!graphqlOps) {
         await initGraphQL()
@@ -186,11 +181,33 @@ function createUserParameterStore(
         throw new Error('GraphQL operations not initialized')
       }
 
+      // Generate ID
+      const id = `param_${uuidv4()}`
+
+      // Create parameter with all required fields
+      const newParameter: AvailableUserParameter = {
+        ...parameter,
+        id,
+        kind: 'user',
+        visible: true,
+        field: parameter.name.toLowerCase().replace(/\s+/g, '_'), // Generate field from name
+        header: parameter.name, // Use name as header
+        removable: true, // User parameters are always removable
+        value: parameter.type === 'fixed' ? parameter.value?.toString() || '' : '', // Ensure value is string
+        metadata: {} // Initialize empty metadata
+      }
+
+      // Merge with existing parameters
+      const updatedParameters = {
+        ...state.value.parameters,
+        [id]: newParameter
+      }
+
       // Save to PostgreSQL
-      await graphqlOps.createParameter(newParameter)
+      await graphqlOps.createParameter(newParameter, updatedParameters)
 
       // Update local state
-      state.value.parameters[id] = newParameter
+      state.value.parameters = updatedParameters
       state.value.lastUpdated = Date.now()
 
       return newParameter
@@ -248,11 +265,17 @@ function createUserParameterStore(
         throw new Error('GraphQL operations not initialized')
       }
 
+      // Update parameters map
+      const updatedParameters = {
+        ...state.value.parameters,
+        [id]: updatedParameter
+      }
+
       // Save to PostgreSQL
-      await graphqlOps.updateParameter(id, updatedParameter)
+      await graphqlOps.updateParameter(id, updatedParameter, updatedParameters)
 
       // Update local state
-      state.value.parameters[id] = updatedParameter
+      state.value.parameters = updatedParameters
       state.value.lastUpdated = Date.now()
 
       return updatedParameter
@@ -287,11 +310,14 @@ function createUserParameterStore(
         throw new Error('GraphQL operations not initialized')
       }
 
+      // Create new parameters map without the deleted parameter
+      const { [id]: removed, ...remainingParameters } = state.value.parameters
+
       // Delete from PostgreSQL
-      await graphqlOps.deleteParameter(id)
+      await graphqlOps.deleteParameter(id, remainingParameters)
 
       // Update local state
-      delete state.value.parameters[id]
+      state.value.parameters = remainingParameters
       state.value.lastUpdated = Date.now()
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
@@ -317,9 +343,13 @@ function createUserParameterStore(
   async function initialize(): Promise<void> {
     debug.startState(DebugCategories.STATE, 'Initializing store')
     try {
+      // Reset state before initialization
+      state.value = createInitialState()
+
+      // Initialize GraphQL
       await initGraphQL()
-      await loadParameters()
       state.value.initialized = true
+
       debug.completeState(DebugCategories.STATE, 'Store initialized')
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))

@@ -9,8 +9,12 @@
           <span class="parameter-type" :class="parameter.type">
             {{ parameter.type }}
           </span>
-          <span class="parameter-value" :title="String(getCurrentValue(parameter))">
-            {{ formatValue(getCurrentValue(parameter)) }}
+          <span
+            class="parameter-value"
+            :title="String(parameter.value)"
+            :data-parameter-id="parameter.id"
+          >
+            {{ formatValue(parameter.value) }}
           </span>
         </div>
 
@@ -126,15 +130,19 @@ const newParameter = ref({
 })
 
 function handleCreate() {
+  const name = newParameter.value.name
   emit('create', {
-    name: newParameter.value.name,
+    name,
     type: newParameter.value.type,
     value: newParameter.value.type === 'fixed' ? newParameter.value.value : null,
     equation:
       newParameter.value.type === 'equation' ? newParameter.value.value : undefined,
     group: newParameter.value.group,
     visible: true,
-    kind: 'user'
+    kind: 'user',
+    field: name.toLowerCase().replace(/\s+/g, '_'), // Generate field from name
+    header: name, // Use name as header
+    removable: true // User parameters are always removable
   })
 
   // Reset form

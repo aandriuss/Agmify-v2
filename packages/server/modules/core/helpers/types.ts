@@ -20,6 +20,10 @@ export type UserRecord = {
    */
   passwordDigest?: Nullable<string>
   ip: Nullable<string>
+  /**
+   * User parameters configuration
+   */
+  parameters?: Record<string, unknown>
 }
 
 /**

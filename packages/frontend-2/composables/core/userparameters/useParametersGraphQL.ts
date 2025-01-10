@@ -56,10 +56,63 @@ export function useParametersGraphQL() {
       debug.startState(DebugCategories.INITIALIZATION, 'Fetching parameters')
 
       const response = await nuxtApp.runWithContext(() => refetch())
-      const parameters = response?.data?.activeUser?.parameters || {}
+      const rawParameters = response?.data?.activeUser?.parameters
+
+      // Initialize empty parameters object
+      const parameters: Record<string, AvailableUserParameter> = {}
+
+      // Handle null/undefined parameters from database
+      if (!rawParameters) {
+        debug.log(DebugCategories.INITIALIZATION, 'No parameters in database')
+        return parameters
+      }
+
+      // Validate parameters object
+      if (typeof rawParameters !== 'object') {
+        debug.error(DebugCategories.ERROR, 'Invalid parameters format:', rawParameters)
+        return parameters
+      }
+
+      // Process each parameter
+      Object.entries(rawParameters).forEach(([id, param]) => {
+        if (!param || typeof param !== 'object') {
+          debug.warn(DebugCategories.STATE, 'Invalid parameter:', { id, param })
+          return
+        }
+
+        // Ensure required fields
+        if (!id.startsWith('param_')) {
+          debug.warn(DebugCategories.STATE, 'Invalid parameter ID:', id)
+          return
+        }
+
+        // Ensure all required fields are present with defaults
+        parameters[id] = {
+          // Base fields from param
+          ...param,
+          // Required fields with defaults
+          id, // Always use the ID from the key
+          kind: 'user', // Always force user kind
+          visible: param.visible ?? true, // Use param.visible if exists, otherwise true
+          field: param.field || param.name?.toLowerCase().replace(/\s+/g, '_') || id, // Use field if exists, otherwise generate from name or id
+          header: param.header || param.name || id, // Use header if exists, otherwise use name or id
+          removable: param.removable ?? true, // Use removable if exists, otherwise true
+          // Ensure these are always present
+          name: param.name || id,
+          type: param.type || 'fixed',
+          value: param.value ?? '',
+          group: param.group || 'Custom'
+        } as AvailableUserParameter
+
+        debug.log(DebugCategories.STATE, 'Processed parameter:', {
+          id,
+          parameter: parameters[id]
+        })
+      })
 
       debug.log(DebugCategories.INITIALIZATION, 'Parameters fetched', {
-        count: Object.keys(parameters).length
+        count: Object.keys(parameters).length,
+        parameters
       })
 
       return parameters
@@ -75,24 +128,16 @@ export function useParametersGraphQL() {
    * Create parameter in PostgreSQL
    */
   async function createParameter(
-    parameter: AvailableUserParameter
+    parameter: AvailableUserParameter,
+    allParameters: Record<string, AvailableUserParameter>
   ): Promise<AvailableUserParameter> {
     try {
       debug.startState(DebugCategories.STATE, 'Creating parameter')
 
-      // Get current parameters
-      const currentParameters = await fetchParameters()
-
-      // Add new parameter
-      const updatedParameters = {
-        ...currentParameters,
-        [parameter.id]: parameter
-      }
-
       // Save to PostgreSQL
       const result = await nuxtApp.runWithContext(() =>
         updateParametersMutation({
-          parameters: updatedParameters
+          parameters: allParameters
         })
       )
 
@@ -114,24 +159,16 @@ export function useParametersGraphQL() {
    */
   async function updateParameter(
     id: string,
-    parameter: AvailableUserParameter
+    parameter: AvailableUserParameter,
+    allParameters: Record<string, AvailableUserParameter>
   ): Promise<AvailableUserParameter> {
     try {
       debug.startState(DebugCategories.STATE, 'Updating parameter')
 
-      // Get current parameters
-      const currentParameters = await fetchParameters()
-
-      // Update parameter
-      const updatedParameters = {
-        ...currentParameters,
-        [id]: parameter
-      }
-
       // Save to PostgreSQL
       const result = await nuxtApp.runWithContext(() =>
         updateParametersMutation({
-          parameters: updatedParameters
+          parameters: allParameters
         })
       )
 
@@ -151,15 +188,12 @@ export function useParametersGraphQL() {
   /**
    * Delete parameter from PostgreSQL
    */
-  async function deleteParameter(id: string): Promise<boolean> {
+  async function deleteParameter(
+    id: string,
+    remainingParameters: Record<string, AvailableUserParameter>
+  ): Promise<boolean> {
     try {
       debug.startState(DebugCategories.STATE, 'Deleting parameter')
-
-      // Get current parameters
-      const currentParameters = await fetchParameters()
-
-      // Remove parameter
-      const { [id]: removed, ...remainingParameters } = currentParameters
 
       // Save to PostgreSQL
       const result = await nuxtApp.runWithContext(() =>
