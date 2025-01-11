@@ -464,7 +464,7 @@ export type BimParameter = BaseParameter & {
   value: Scalars['String']['output'];
 };
 
-/** BIM value type enum - used for validation in resolvers */
+/** Parameter value types */
 export enum BimValueType {
   Array = 'array',
   Boolean = 'boolean',
@@ -562,6 +562,39 @@ export type CategoryFilters = {
 export type CategoryFiltersInput = {
   selectedChildCategories: Array<Scalars['String']['input']>;
   selectedParentCategories: Array<Scalars['String']['input']>;
+};
+
+/** Parameter data for table columns */
+export type ColumnParameter = {
+  __typename?: 'ColumnParameter';
+  category?: Maybe<Scalars['String']['output']>;
+  currentGroup?: Maybe<Scalars['String']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  equation?: Maybe<Scalars['String']['output']>;
+  fetchedGroup?: Maybe<Scalars['String']['output']>;
+  group: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  kind: Scalars['String']['output'];
+  metadata?: Maybe<Scalars['JSONObject']['output']>;
+  name: Scalars['String']['output'];
+  type: Scalars['String']['output'];
+  value?: Maybe<Scalars['JSON']['output']>;
+};
+
+/** Input for parameter data in table column */
+export type ColumnParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  currentGroup?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  equation?: InputMaybe<Scalars['String']['input']>;
+  fetchedGroup?: InputMaybe<Scalars['String']['input']>;
+  group: Scalars['String']['input'];
+  id: Scalars['ID']['input'];
+  kind: Scalars['String']['input'];
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
+  name: Scalars['String']['input'];
+  type: Scalars['String']['input'];
+  value?: InputMaybe<Scalars['JSON']['input']>;
 };
 
 export type Comment = {
@@ -971,6 +1004,25 @@ export type EditCommentInput = {
 
 export type EmailVerificationRequestInput = {
   id: Scalars['ID']['input'];
+};
+
+/** Equation value with references */
+export type EquationValue = {
+  __typename?: 'EquationValue';
+  computed?: Maybe<Scalars['JSON']['output']>;
+  expression: Scalars['String']['output'];
+  kind: Scalars['String']['output'];
+  references: Array<Scalars['String']['output']>;
+  resultType: BimValueType;
+};
+
+/** Equation value input */
+export type EquationValueInput = {
+  computed?: InputMaybe<Scalars['JSON']['input']>;
+  expression: Scalars['String']['input'];
+  kind: Scalars['String']['input'];
+  references: Array<Scalars['String']['input']>;
+  resultType: BimValueType;
 };
 
 export type FileUpload = {
@@ -3557,7 +3609,7 @@ export type TableColumn = {
   header: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   order: Scalars['Int']['output'];
-  parameter: Parameter;
+  parameter: ColumnParameter;
   removable: Scalars['Boolean']['output'];
   sortable: Scalars['Boolean']['output'];
   visible: Scalars['Boolean']['output'];
@@ -3574,18 +3626,7 @@ export type TableColumnInput = {
   header: Scalars['String']['input'];
   id: Scalars['ID']['input'];
   order: Scalars['Int']['input'];
-  parameterCategory?: InputMaybe<Scalars['String']['input']>;
-  parameterCurrentGroup?: InputMaybe<Scalars['String']['input']>;
-  parameterDescription?: InputMaybe<Scalars['String']['input']>;
-  parameterEquation?: InputMaybe<Scalars['String']['input']>;
-  parameterFetchedGroup?: InputMaybe<Scalars['String']['input']>;
-  parameterGroup: Scalars['String']['input'];
-  parameterId: Scalars['ID']['input'];
-  parameterKind: Scalars['String']['input'];
-  parameterMetadata?: InputMaybe<Scalars['JSONObject']['input']>;
-  parameterName: Scalars['String']['input'];
-  parameterType: Scalars['String']['input'];
-  parameterValue: Scalars['String']['input'];
+  parameter: ColumnParameterInput;
   removable: Scalars['Boolean']['input'];
   sortable: Scalars['Boolean']['input'];
   visible: Scalars['Boolean']['input'];
@@ -3597,14 +3638,14 @@ export type TableFilter = {
   __typename?: 'TableFilter';
   columnId: Scalars['String']['output'];
   operator: Scalars['String']['output'];
-  value: Scalars['String']['output'];
+  value: Scalars['JSON']['output'];
 };
 
 /** Input for table filter */
 export type TableFilterInput = {
   columnId: Scalars['String']['input'];
   operator: Scalars['String']['input'];
-  value: Scalars['String']['input'];
+  value: Scalars['JSON']['input'];
 };
 
 /**

@@ -2,6 +2,52 @@ scalar JSON
 scalar JSONObject
 
 """
+Parameter value types
+"""
+enum BimValueType {
+  string
+  number
+  boolean
+  date
+  object
+  array
+}
+
+enum UserValueType {
+  fixed
+  equation
+}
+
+"""
+Equation value with references
+"""
+type EquationValue {
+  kind: String!
+  expression: String!
+  references: [String!]!
+  resultType: BimValueType!
+  computed: JSON
+}
+
+"""
+Parameter data for table columns
+"""
+type ColumnParameter {
+  id: ID!
+  name: String!
+  kind: String! # 'bim' or 'user'
+  type: String! # BimValueType or UserValueType
+  category: String
+  description: String
+  value: JSON # Can be string, number, boolean, null, or EquationValue
+  group: String!
+  currentGroup: String # Required if kind is 'bim'
+  fetchedGroup: String # Required if kind is 'bim'
+  equation: String # Optional, only if kind is 'user'
+  metadata: JSONObject
+}
+
+"""
 Column configuration for tables
 Stores complete parameter data along with display properties
 """
@@ -10,15 +56,15 @@ type TableColumn {
   id: ID!
   field: String!
   header: String!
+  order: Int!
   width: Int
   visible: Boolean!
   removable: Boolean!
-  order: Int!
   sortable: Boolean!
   filterable: Boolean!
 
   # Complete parameter data embedded in column
-  parameter: Parameter! # Full parameter data from parameters.graphql
+  parameter: ColumnParameter!
 }
 
 """
@@ -43,7 +89,7 @@ Filter configuration for table columns
 """
 type TableFilter {
   columnId: String!
-  value: String! # String representation of value, matching parameter value format
+  value: JSON! # Can be string, number, boolean, null, or EquationValue
   operator: String!
 }
 
@@ -55,13 +101,13 @@ type TableSettings {
   id: ID!
   name: String!
   displayName: String!
+  categoryFilters: CategoryFilters!
   parentColumns: [TableColumn!]!
   childColumns: [TableColumn!]!
-  categoryFilters: CategoryFilters!
+  metadata: JSONObject
   filters: [TableFilter!]!
   sort: TableSort
   lastUpdateTimestamp: Float!
-  metadata: JSONObject
 }
 
 """
@@ -83,6 +129,35 @@ type CategoryFilters {
 # Input Types
 
 """
+Equation value input
+"""
+input EquationValueInput {
+  kind: String!
+  expression: String!
+  references: [String!]!
+  resultType: BimValueType!
+  computed: JSON
+}
+
+"""
+Input for parameter data in table column
+"""
+input ColumnParameterInput {
+  id: ID!
+  name: String!
+  kind: String! # 'bim' or 'user'
+  type: String! # BimValueType or UserValueType
+  value: JSON # Can be string, number, boolean, null, or EquationValue
+  group: String!
+  metadata: JSONObject
+  category: String
+  description: String
+  currentGroup: String # Required if kind is 'bim'
+  fetchedGroup: String # Required if kind is 'bim'
+  equation: String # Optional, only if kind is 'user'
+}
+
+"""
 Input for table column
 When adding a parameter to a table, its full data is copied into the column
 """
@@ -98,22 +173,8 @@ input TableColumnInput {
   sortable: Boolean!
   filterable: Boolean!
 
-  # Base parameter data
-  parameterId: ID!
-  parameterName: String!
-  parameterKind: String! # 'bim' or 'user'
-  parameterType: String! # BimValueType or UserValueType
-  parameterValue: String! # String representation of value
-  parameterGroup: String!
-  parameterMetadata: JSONObject
-  parameterCategory: String
-  parameterDescription: String
-
-  # BIM-specific fields
-  parameterCurrentGroup: String # Required if kind is 'bim'
-  parameterFetchedGroup: String # Required if kind is 'bim'
-  # User-specific fields
-  parameterEquation: String # Optional, only if kind is 'user'
+  # Complete parameter data
+  parameter: ColumnParameterInput!
 }
 
 """
@@ -129,7 +190,7 @@ Input for table filter
 """
 input TableFilterInput {
   columnId: String!
-  value: String! # String representation of value, matching parameter value format
+  value: JSON! # Can be string, number, boolean, null, or EquationValue
   operator: String!
 }
 

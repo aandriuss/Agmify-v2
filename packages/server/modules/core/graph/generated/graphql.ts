@@ -479,7 +479,7 @@ export type BimParameter = BaseParameter & {
   value: Scalars['String']['output'];
 };
 
-/** BIM value type enum - used for validation in resolvers */
+/** Parameter value types */
 export enum BimValueType {
   Array = 'array',
   Boolean = 'boolean',
@@ -577,6 +577,39 @@ export type CategoryFilters = {
 export type CategoryFiltersInput = {
   selectedChildCategories: Array<Scalars['String']['input']>;
   selectedParentCategories: Array<Scalars['String']['input']>;
+};
+
+/** Parameter data for table columns */
+export type ColumnParameter = {
+  __typename?: 'ColumnParameter';
+  category?: Maybe<Scalars['String']['output']>;
+  currentGroup?: Maybe<Scalars['String']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  equation?: Maybe<Scalars['String']['output']>;
+  fetchedGroup?: Maybe<Scalars['String']['output']>;
+  group: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  kind: Scalars['String']['output'];
+  metadata?: Maybe<Scalars['JSONObject']['output']>;
+  name: Scalars['String']['output'];
+  type: Scalars['String']['output'];
+  value?: Maybe<Scalars['JSON']['output']>;
+};
+
+/** Input for parameter data in table column */
+export type ColumnParameterInput = {
+  category?: InputMaybe<Scalars['String']['input']>;
+  currentGroup?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  equation?: InputMaybe<Scalars['String']['input']>;
+  fetchedGroup?: InputMaybe<Scalars['String']['input']>;
+  group: Scalars['String']['input'];
+  id: Scalars['ID']['input'];
+  kind: Scalars['String']['input'];
+  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
+  name: Scalars['String']['input'];
+  type: Scalars['String']['input'];
+  value?: InputMaybe<Scalars['JSON']['input']>;
 };
 
 export type Comment = {
@@ -986,6 +1019,25 @@ export type EditCommentInput = {
 
 export type EmailVerificationRequestInput = {
   id: Scalars['ID']['input'];
+};
+
+/** Equation value with references */
+export type EquationValue = {
+  __typename?: 'EquationValue';
+  computed?: Maybe<Scalars['JSON']['output']>;
+  expression: Scalars['String']['output'];
+  kind: Scalars['String']['output'];
+  references: Array<Scalars['String']['output']>;
+  resultType: BimValueType;
+};
+
+/** Equation value input */
+export type EquationValueInput = {
+  computed?: InputMaybe<Scalars['JSON']['input']>;
+  expression: Scalars['String']['input'];
+  kind: Scalars['String']['input'];
+  references: Array<Scalars['String']['input']>;
+  resultType: BimValueType;
 };
 
 export type FileUpload = {
@@ -3572,7 +3624,7 @@ export type TableColumn = {
   header: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   order: Scalars['Int']['output'];
-  parameter: Parameter;
+  parameter: ColumnParameter;
   removable: Scalars['Boolean']['output'];
   sortable: Scalars['Boolean']['output'];
   visible: Scalars['Boolean']['output'];
@@ -3589,18 +3641,7 @@ export type TableColumnInput = {
   header: Scalars['String']['input'];
   id: Scalars['ID']['input'];
   order: Scalars['Int']['input'];
-  parameterCategory?: InputMaybe<Scalars['String']['input']>;
-  parameterCurrentGroup?: InputMaybe<Scalars['String']['input']>;
-  parameterDescription?: InputMaybe<Scalars['String']['input']>;
-  parameterEquation?: InputMaybe<Scalars['String']['input']>;
-  parameterFetchedGroup?: InputMaybe<Scalars['String']['input']>;
-  parameterGroup: Scalars['String']['input'];
-  parameterId: Scalars['ID']['input'];
-  parameterKind: Scalars['String']['input'];
-  parameterMetadata?: InputMaybe<Scalars['JSONObject']['input']>;
-  parameterName: Scalars['String']['input'];
-  parameterType: Scalars['String']['input'];
-  parameterValue: Scalars['String']['input'];
+  parameter: ColumnParameterInput;
   removable: Scalars['Boolean']['input'];
   sortable: Scalars['Boolean']['input'];
   visible: Scalars['Boolean']['input'];
@@ -3612,14 +3653,14 @@ export type TableFilter = {
   __typename?: 'TableFilter';
   columnId: Scalars['String']['output'];
   operator: Scalars['String']['output'];
-  value: Scalars['String']['output'];
+  value: Scalars['JSON']['output'];
 };
 
 /** Input for table filter */
 export type TableFilterInput = {
   columnId: Scalars['String']['input'];
   operator: Scalars['String']['input'];
-  value: Scalars['String']['input'];
+  value: Scalars['JSON']['input'];
 };
 
 /**
@@ -4761,6 +4802,8 @@ export type ResolversTypes = {
   BranchUpdateInput: BranchUpdateInput;
   CategoryFilters: ResolverTypeWrapper<CategoryFilters>;
   CategoryFiltersInput: CategoryFiltersInput;
+  ColumnParameter: ResolverTypeWrapper<ColumnParameter>;
+  ColumnParameterInput: ColumnParameterInput;
   Comment: ResolverTypeWrapper<CommentGraphQLReturn>;
   CommentActivityMessage: ResolverTypeWrapper<Omit<CommentActivityMessage, 'comment'> & { comment: ResolversTypes['Comment'] }>;
   CommentCollection: ResolverTypeWrapper<Omit<CommentCollection, 'items'> & { items: Array<ResolversTypes['Comment']> }>;
@@ -4799,6 +4842,8 @@ export type ResolversTypes = {
   DiscoverableWorkspace: ResolverTypeWrapper<DiscoverableWorkspace>;
   EditCommentInput: EditCommentInput;
   EmailVerificationRequestInput: EmailVerificationRequestInput;
+  EquationValue: ResolverTypeWrapper<EquationValue>;
+  EquationValueInput: EquationValueInput;
   FileUpload: ResolverTypeWrapper<FileUploadGraphQLReturn>;
   Float: ResolverTypeWrapper<Scalars['Float']['output']>;
   GendoAIRender: ResolverTypeWrapper<GendoAiRender>;
@@ -4909,11 +4954,11 @@ export type ResolversTypes = {
   StreamUpdatePermissionInput: StreamUpdatePermissionInput;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
   Subscription: ResolverTypeWrapper<{}>;
-  TableColumn: ResolverTypeWrapper<Omit<TableColumn, 'parameter'> & { parameter: ResolversTypes['Parameter'] }>;
+  TableColumn: ResolverTypeWrapper<TableColumn>;
   TableColumnInput: TableColumnInput;
   TableFilter: ResolverTypeWrapper<TableFilter>;
   TableFilterInput: TableFilterInput;
-  TableSettings: ResolverTypeWrapper<Omit<TableSettings, 'childColumns' | 'parentColumns'> & { childColumns: Array<ResolversTypes['TableColumn']>, parentColumns: Array<ResolversTypes['TableColumn']> }>;
+  TableSettings: ResolverTypeWrapper<TableSettings>;
   TableSettingsEntryInput: TableSettingsEntryInput;
   TableSettingsInput: TableSettingsInput;
   TableSettingsMapInput: TableSettingsMapInput;
@@ -5045,6 +5090,8 @@ export type ResolversParentTypes = {
   BranchUpdateInput: BranchUpdateInput;
   CategoryFilters: CategoryFilters;
   CategoryFiltersInput: CategoryFiltersInput;
+  ColumnParameter: ColumnParameter;
+  ColumnParameterInput: ColumnParameterInput;
   Comment: CommentGraphQLReturn;
   CommentActivityMessage: Omit<CommentActivityMessage, 'comment'> & { comment: ResolversParentTypes['Comment'] };
   CommentCollection: Omit<CommentCollection, 'items'> & { items: Array<ResolversParentTypes['Comment']> };
@@ -5081,6 +5128,8 @@ export type ResolversParentTypes = {
   DiscoverableWorkspace: DiscoverableWorkspace;
   EditCommentInput: EditCommentInput;
   EmailVerificationRequestInput: EmailVerificationRequestInput;
+  EquationValue: EquationValue;
+  EquationValueInput: EquationValueInput;
   FileUpload: FileUploadGraphQLReturn;
   Float: Scalars['Float']['output'];
   GendoAIRender: GendoAiRender;
@@ -5176,11 +5225,11 @@ export type ResolversParentTypes = {
   StreamUpdatePermissionInput: StreamUpdatePermissionInput;
   String: Scalars['String']['output'];
   Subscription: {};
-  TableColumn: Omit<TableColumn, 'parameter'> & { parameter: ResolversParentTypes['Parameter'] };
+  TableColumn: TableColumn;
   TableColumnInput: TableColumnInput;
   TableFilter: TableFilter;
   TableFilterInput: TableFilterInput;
-  TableSettings: Omit<TableSettings, 'childColumns' | 'parentColumns'> & { childColumns: Array<ResolversParentTypes['TableColumn']>, parentColumns: Array<ResolversParentTypes['TableColumn']> };
+  TableSettings: TableSettings;
   TableSettingsEntryInput: TableSettingsEntryInput;
   TableSettingsInput: TableSettingsInput;
   TableSettingsMapInput: TableSettingsMapInput;
@@ -5612,6 +5661,22 @@ export type CategoryFiltersResolvers<ContextType = GraphQLContext, ParentType ex
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
+export type ColumnParameterResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['ColumnParameter'] = ResolversParentTypes['ColumnParameter']> = {
+  category?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  currentGroup?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  equation?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  fetchedGroup?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  group?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  kind?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  metadata?: Resolver<Maybe<ResolversTypes['JSONObject']>, ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  type?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  value?: Resolver<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
 export type CommentResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['Comment'] = ResolversParentTypes['Comment']> = {
   archived?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   author?: Resolver<ResolversTypes['LimitedUser'], ParentType, ContextType>;
@@ -5723,6 +5788,15 @@ export type DiscoverableWorkspaceResolvers<ContextType = GraphQLContext, ParentT
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   logo?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type EquationValueResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['EquationValue'] = ResolversParentTypes['EquationValue']> = {
+  computed?: Resolver<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
+  expression?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  kind?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  references?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
+  resultType?: Resolver<ResolversTypes['BimValueType'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -6456,7 +6530,7 @@ export type TableColumnResolvers<ContextType = GraphQLContext, ParentType extend
   header?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   order?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
-  parameter?: Resolver<ResolversTypes['Parameter'], ParentType, ContextType>;
+  parameter?: Resolver<ResolversTypes['ColumnParameter'], ParentType, ContextType>;
   removable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   sortable?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   visible?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
@@ -6467,7 +6541,7 @@ export type TableColumnResolvers<ContextType = GraphQLContext, ParentType extend
 export type TableFilterResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['TableFilter'] = ResolversParentTypes['TableFilter']> = {
   columnId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   operator?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  value?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  value?: Resolver<ResolversTypes['JSON'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -6871,6 +6945,7 @@ export type Resolvers<ContextType = GraphQLContext> = {
   Branch?: BranchResolvers<ContextType>;
   BranchCollection?: BranchCollectionResolvers<ContextType>;
   CategoryFilters?: CategoryFiltersResolvers<ContextType>;
+  ColumnParameter?: ColumnParameterResolvers<ContextType>;
   Comment?: CommentResolvers<ContextType>;
   CommentActivityMessage?: CommentActivityMessageResolvers<ContextType>;
   CommentCollection?: CommentCollectionResolvers<ContextType>;
@@ -6883,6 +6958,7 @@ export type Resolvers<ContextType = GraphQLContext> = {
   CountOnlyCollection?: CountOnlyCollectionResolvers<ContextType>;
   DateTime?: GraphQLScalarType;
   DiscoverableWorkspace?: DiscoverableWorkspaceResolvers<ContextType>;
+  EquationValue?: EquationValueResolvers<ContextType>;
   FileUpload?: FileUploadResolvers<ContextType>;
   GendoAIRender?: GendoAiRenderResolvers<ContextType>;
   GendoAIRenderCollection?: GendoAiRenderCollectionResolvers<ContextType>;

@@ -96,8 +96,9 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     lastUpdateTimestamp: Date.now()
   }
 
-  // Initialize state with available tables
+  // Initialize state with available tables or default
   if (options.initialTables?.length) {
+    // Initialize with loaded tables
     state.value.availableTables = options.initialTables.map((table) => ({
       id: table.id,
       name: table.name,
@@ -110,8 +111,13 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     state.value.currentTableId = initialTableId
     state.value.currentTable =
       options.initialTables.find((t) => t.id === initialTableId) || null
+
+    // Set original table for change tracking
+    if (state.value.currentTable) {
+      state.value.originalTable = { ...state.value.currentTable }
+    }
   } else {
-    // Create default table if no tables exist
+    // Initialize with default table
     state.value.availableTables = [
       {
         id: defaultTable.id,
@@ -120,12 +126,14 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       }
     ]
     state.value.currentTableId = defaultTable.id
-    state.value.currentTable = defaultTable
+    state.value.currentTable = { ...defaultTable }
+    state.value.originalTable = { ...defaultTable } // Set original to track changes
   }
 
   debug.log(DebugCategories.STATE, 'Store initialized', {
     availableTables: state.value.availableTables.length,
-    currentTableId: state.value.currentTableId
+    currentTableId: state.value.currentTableId,
+    hasOriginal: !!state.value.originalTable
   })
 
   // Computed properties for change detection
@@ -262,10 +270,17 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         id: settings.id // Explicitly include id
       }
 
-      // Save to PostgreSQL
-      const success = await graphqlOps.updateTables({
+      // Fetch existing tables first
+      const existingTables = await graphqlOps.fetchTables()
+
+      // Merge current table with existing ones
+      const updatedTables = {
+        ...existingTables,
         [settings.id]: tableSettings
-      })
+      }
+
+      // Save complete set back to PostgreSQL
+      const success = await graphqlOps.updateTables(updatedTables)
 
       if (!success) {
         throw new Error('Failed to save table')
@@ -319,128 +334,78 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
    * Update current table in store only
    * Does not save to PostgreSQL
    */
-  async function updateTable(updates: Partial<TableSettings>): Promise<void> {
+  function updateTableState(updates: Partial<TableSettings>): void {
+    debug.startState(DebugCategories.STATE, 'Updating table state')
+
+    if (!state.value.currentTableId || !state.value.currentTable) {
+      throw new Error('No table selected')
+    }
+
+    const currentTable = state.value.currentTable
+    const updatedTable: TableSettings = {
+      ...currentTable,
+      ...updates,
+      id: currentTable.id, // Ensure id is preserved
+      lastUpdateTimestamp: Date.now()
+    }
+
+    // Update store state only
+    state.value.currentTable = updatedTable
+    state.value.lastUpdated = Date.now()
+
+    // Don't update originalTable here to track changes properly
+    // originalTable should only be updated after PostgreSQL save
+
+    // Update available tables list if name changed
+    if (updates.name || updates.displayName) {
+      const index = state.value.availableTables.findIndex(
+        (t) => t.id === state.value.currentTableId
+      )
+      if (index !== -1) {
+        state.value.availableTables[index] = {
+          id: updatedTable.id,
+          name: updatedTable.name,
+          displayName: updatedTable.displayName
+        }
+      }
+    }
+
+    debug.completeState(DebugCategories.STATE, 'Table state updated', {
+      tableId: updatedTable.id,
+      updates: Object.keys(updates)
+    })
+  }
+
+  /**
+   * Save current table state to PostgreSQL
+   */
+  async function saveCurrentTable(): Promise<void> {
     try {
-      debug.startState(DebugCategories.STATE, 'Updating table')
+      debug.startState(DebugCategories.STATE, 'Saving current table')
 
       if (!state.value.currentTableId || !state.value.currentTable) {
         throw new Error('No table selected')
       }
 
-      const currentTable = state.value.currentTable
-      const updatedTable: TableSettings = {
-        ...currentTable,
-        ...updates,
-        id: currentTable.id, // Ensure id is preserved
-        lastUpdateTimestamp: Date.now()
-      }
+      await saveTable(state.value.currentTable)
 
-      // Update current table without modifying originalTable to track unsaved changes
-      state.value.currentTable = updatedTable
-
-      // Update available tables list if name changed
-      if (updates.name || updates.displayName) {
-        const index = state.value.availableTables.findIndex(
-          (t) => t.id === state.value.currentTableId
-        )
-        if (index !== -1) {
-          state.value.availableTables[index] = {
-            id: updatedTable.id,
-            name: updatedTable.name,
-            displayName: updatedTable.displayName
-          }
-        }
-      }
-
-      state.value.lastUpdated = Date.now()
-
-      debug.completeState(DebugCategories.STATE, 'Table updated in store', {
-        tableId: updatedTable.id,
-        updates: Object.keys(updates)
-      })
-
-      // Return resolved promise since this is a synchronous operation
-      return Promise.resolve()
+      debug.completeState(DebugCategories.STATE, 'Current table saved')
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to update table')
+      const error =
+        err instanceof Error ? err : new Error('Failed to save current table')
       state.value.error = error
-      debug.error(DebugCategories.ERROR, 'Failed to update table:', error)
+      debug.error(DebugCategories.ERROR, 'Failed to save current table:', error)
       throw error
-    }
-  }
-
-  /**
-   * Delete table from PostgreSQL
-   */
-  async function deleteTable(tableId: string) {
-    debug.startState(DebugCategories.STATE, 'Deleting table', { tableId })
-    state.value.loading = true
-
-    try {
-      // Initialize GraphQL if not already done
-      if (!graphqlOps) {
-        await initGraphQL()
-      }
-
-      if (!graphqlOps) {
-        throw new Error('GraphQL operations not initialized')
-      }
-
-      // Delete from PostgreSQL by saving an empty table
-      const success = await graphqlOps.updateTables({
-        [tableId]: {
-          id: tableId, // Include id
-          name: '',
-          displayName: '',
-          parentColumns: [],
-          childColumns: [],
-          categoryFilters: {
-            selectedParentCategories: [],
-            selectedChildCategories: []
-          },
-          filters: [],
-          metadata: {}, // Include empty metadata
-          lastUpdateTimestamp: Date.now()
-        }
-      })
-
-      if (!success) {
-        throw new Error('Failed to delete table')
-      }
-
-      // Remove from available tables
-      state.value.availableTables = state.value.availableTables.filter(
-        (t) => t.id !== tableId
-      )
-
-      // Clear current table if it was deleted
-      if (state.value.currentTableId === tableId) {
-        state.value.currentTableId = null
-        state.value.currentTable = null
-        state.value.originalTable = null
-        storage.removeItem(LAST_SELECTED_TABLE_KEY)
-      }
-
-      state.value.lastUpdated = Date.now()
-
-      debug.log(DebugCategories.STATE, 'Table deleted', { tableId })
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to delete table')
-      state.value.error = error
-      debug.error(DebugCategories.ERROR, 'Failed to delete table:', error)
-      throw error
-    } finally {
-      state.value.loading = false
     }
   }
 
   /**
    * Column operations
    */
-  async function addColumn(
+  function addColumn(
     parameter: AvailableBimParameter | AvailableUserParameter,
     isParent: boolean
-  ): Promise<void> {
+  ): void {
     try {
       debug.startState(DebugCategories.STATE, 'Adding column')
 
@@ -455,7 +420,8 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       const newColumn = createTableColumn(parameter, order)
       const updatedColumns = [...columns, newColumn]
 
-      await updateTable({
+      // Update store state only
+      updateTableState({
         ...(isParent
           ? { parentColumns: updatedColumns }
           : { childColumns: updatedColumns })
@@ -474,7 +440,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     }
   }
 
-  async function removeColumn(columnId: string, isParent: boolean): Promise<void> {
+  function removeColumn(columnId: string, isParent: boolean): void {
     try {
       debug.startState(DebugCategories.STATE, 'Removing column')
 
@@ -486,7 +452,8 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       const columns = isParent ? currentTable.parentColumns : currentTable.childColumns
       const updatedColumns = columns.filter((col) => col.id !== columnId)
 
-      await updateTable({
+      // Update store state only
+      updateTableState({
         ...(isParent
           ? { parentColumns: updatedColumns }
           : { childColumns: updatedColumns })
@@ -505,10 +472,10 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     }
   }
 
-  async function updateColumns(
+  function updateColumns(
     parentColumns: TableColumn[],
     childColumns: TableColumn[]
-  ): Promise<void> {
+  ): void {
     try {
       debug.startState(DebugCategories.STATE, 'Updating columns')
 
@@ -516,7 +483,8 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         throw new Error('No table selected')
       }
 
-      await updateTable({
+      // Update store state only
+      updateTableState({
         parentColumns,
         childColumns
       })
@@ -537,7 +505,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   /**
    * Category operations
    */
-  async function updateCategories(categories: TableCategoryFilters): Promise<void> {
+  function updateCategories(categories: TableCategoryFilters): void {
     try {
       debug.startState(DebugCategories.STATE, 'Updating categories')
 
@@ -545,7 +513,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         throw new Error('No table selected')
       }
 
-      await updateTable({
+      updateTableState({
         categoryFilters: categories
       })
 
@@ -562,7 +530,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     }
   }
 
-  async function resetCategories(): Promise<void> {
+  function resetCategories(): void {
     try {
       debug.startState(DebugCategories.STATE, 'Resetting categories')
 
@@ -570,7 +538,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         throw new Error('No table selected')
       }
 
-      await updateTable({
+      updateTableState({
         categoryFilters: {
           selectedParentCategories: [],
           selectedChildCategories: []
@@ -627,9 +595,65 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       }
     ]
     state.value.currentTableId = defaultTable.id
-    state.value.currentTable = defaultTable
-    state.value.originalTable = { ...defaultTable }
+    state.value.currentTable = { ...defaultTable }
+    state.value.originalTable = { ...defaultTable } // Set original to track changes
     state.value.lastUpdated = Date.now()
+  }
+
+  /**
+   * Delete table from PostgreSQL and store
+   */
+  async function deleteTable(tableId: string): Promise<void> {
+    debug.startState(DebugCategories.STATE, 'Deleting table', { tableId })
+    state.value.loading = true
+
+    try {
+      // Initialize GraphQL if not already done
+      if (!graphqlOps) {
+        await initGraphQL()
+      }
+
+      if (!graphqlOps) {
+        throw new Error('GraphQL operations not initialized')
+      }
+
+      // Fetch existing tables
+      const existingTables = await graphqlOps.fetchTables()
+
+      // Remove the table to be deleted
+      const { [tableId]: deletedTable, ...remainingTables } = existingTables
+
+      // Save remaining tables back to PostgreSQL
+      const success = await graphqlOps.updateTables(remainingTables)
+
+      if (!success) {
+        throw new Error('Failed to delete table')
+      }
+
+      // Remove from available tables
+      state.value.availableTables = state.value.availableTables.filter(
+        (t) => t.id !== tableId
+      )
+
+      // Clear current table if it was deleted
+      if (state.value.currentTableId === tableId) {
+        state.value.currentTableId = null
+        state.value.currentTable = null
+        state.value.originalTable = null
+        storage.removeItem(LAST_SELECTED_TABLE_KEY)
+      }
+
+      state.value.lastUpdated = Date.now()
+
+      debug.completeState(DebugCategories.STATE, 'Table deleted')
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to delete table')
+      state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to delete table:', error)
+      throw error
+    } finally {
+      state.value.loading = false
+    }
   }
 
   return {
@@ -645,7 +669,8 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     // Core operations
     loadTable,
     saveTable,
-    updateTable,
+    saveCurrentTable,
+    updateTableState,
     deleteTable,
 
     // Column operations

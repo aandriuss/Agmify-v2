@@ -122,27 +122,25 @@ export interface TableStore {
   lastUpdated: Ref<number>
 
   // Core operations
-  loadTable(tableId: string): Promise<void> // Load full table data from PostgreSQL
-  saveTable(settings: TableSettings): Promise<void> // Save to PostgreSQL
-  updateTable(updates: Partial<TableSettings>): Promise<void> // Update working copy
+  loadTable(tableId: string): Promise<void>
+  saveTable(settings: TableSettings): Promise<void>
+  saveCurrentTable(): Promise<void>
+  updateTableState(updates: Partial<TableSettings>): void
   deleteTable(tableId: string): Promise<void>
 
   // Column operations
   addColumn(
     parameter: AvailableBimParameter | AvailableUserParameter,
     isParent: boolean
-  ): Promise<void>
-  removeColumn(columnId: string, isParent: boolean): Promise<void>
-  updateColumns(
-    parentColumns: TableColumn[],
-    childColumns: TableColumn[]
-  ): Promise<void>
+  ): void
+  removeColumn(columnId: string, isParent: boolean): void
+  updateColumns(parentColumns: TableColumn[], childColumns: TableColumn[]): void
 
-  // Category management
-  updateCategories(categories: TableCategoryFilters): Promise<void>
-  resetCategories(): Promise<void>
+  // Category operations
+  updateCategories(categories: TableCategoryFilters): void
+  resetCategories(): void
 
-  // UI state management
+  // UI state
   setShowCategoryOptions(show: boolean): void
   toggleCategoryOptions(): void
 

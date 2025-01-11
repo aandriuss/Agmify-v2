@@ -99,18 +99,18 @@ export const defaultTableConfig: TableSettings = {
   id: 'default-table',
   name: 'Default Table',
   displayName: 'Default Table',
-  parentColumns,
-  childColumns,
   categoryFilters: {
     selectedParentCategories: [],
     selectedChildCategories: []
   },
+  parentColumns,
+  childColumns,
+  metadata: {}, // Empty object, not undefined
   filters: [], // Empty array, not undefined
   sort: {
     field: undefined,
     order: undefined
   },
-  metadata: {}, // Empty object, not undefined
   lastUpdateTimestamp: Date.now()
 }
 
@@ -123,18 +123,18 @@ export function createNewTableConfig(id: string, name: string): TableSettings {
     id,
     name,
     displayName: name,
-    parentColumns: [], // Start with empty columns
-    childColumns: [], // Start with empty columns
     categoryFilters: {
       selectedParentCategories: [],
       selectedChildCategories: []
     },
+    parentColumns: [...parentColumns], // Use default parent columns
+    childColumns: [...childColumns], // Use default child columns
+    metadata: {}, // Empty object, not undefined
     filters: [], // Empty array, not undefined
     sort: {
       field: undefined,
       order: undefined
     },
-    metadata: {}, // Empty object, not undefined
     lastUpdateTimestamp: Date.now()
   }
 }

@@ -45,12 +45,12 @@ export interface TableColumn {
   id: string
   field: string
   header: string
+  order: number
+  width?: number
   visible: boolean
   removable: boolean
   sortable: boolean
   filterable: boolean
-  width?: number
-  order: number
   headerComponent?: Component
 
   // Parameter data
@@ -104,11 +104,12 @@ export function createTableColumn(
     id: param.id,
     field: param.id,
     header: param.name,
+    order,
+    width: 200,
     visible: param.visible ?? true,
-    sortable: true,
-    filterable: true,
     removable: true,
-    order
+    sortable: true,
+    filterable: true
   }
 
   if (param.kind === 'bim') {
@@ -119,13 +120,13 @@ export function createTableColumn(
         name: param.name,
         kind: 'bim',
         type: param.type,
+        category: param.category,
+        description: param.description,
         value: param.value,
         group: param.currentGroup,
         currentGroup: param.currentGroup,
         fetchedGroup: param.fetchedGroup,
-        metadata: param.metadata,
-        category: param.category,
-        description: param.description
+        metadata: param.metadata
       }
     }
   }
@@ -137,12 +138,12 @@ export function createTableColumn(
       name: param.name,
       kind: 'user',
       type: param.type,
+      category: param.category,
+      description: param.description,
       value: param.value,
       group: param.group,
       equation: param.equation,
-      metadata: param.metadata,
-      category: param.category,
-      description: param.description
+      metadata: param.metadata
     }
   }
 }

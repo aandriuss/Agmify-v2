@@ -10,7 +10,7 @@ import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParametersState } from '~/composables/parameters/useParametersState'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
+import { createNewTableConfig } from '~/composables/core/tables/config/defaults'
 
 const LAST_SELECTED_TABLE_KEY = 'speckle:lastSelectedTableId'
 
@@ -25,9 +25,7 @@ export function useTableConfigs() {
   const {
     parameters,
     loading: parametersLoading,
-    error: parametersError,
-    addParameterToTable,
-    removeParameterFromTable
+    error: parametersError
   } = useParametersState()
 
   // Initialize stores
@@ -41,12 +39,20 @@ export function useTableConfigs() {
   )
 
   const namedTables = computed(() => {
-    // Convert Map to Record and filter out default table
-    const tables = Object.fromEntries(store.state.value.tables)
-    return Object.entries(tables).reduce<Record<string, TableSettings>>(
-      (acc, [key, table]) => {
+    // Get tables from store, excluding default table
+    return store.state.value.availableTables.reduce<Record<string, TableSettings>>(
+      (acc, table) => {
         if (table.id !== 'defaultTable') {
-          acc[key] = table
+          // If this is the current table, use its full settings
+          if (
+            store.state.value.currentTableId === table.id &&
+            store.state.value.currentTable
+          ) {
+            acc[table.id] = store.state.value.currentTable
+          } else {
+            // Create a new table with default settings, preserving all properties
+            acc[table.id] = createNewTableConfig(table.id, table.name)
+          }
         }
         return acc
       },
@@ -54,13 +60,7 @@ export function useTableConfigs() {
     )
   })
 
-  const currentTable = computed(() => store.currentTable.value)
-
-  // Get parameters for current table
-  const currentTableParameters = computed(() => {
-    if (!currentTable.value) return { parent: [], child: [] }
-    return currentTable.value.selectedParameters
-  })
+  const currentTable = computed(() => store.state.value.currentTable)
 
   // Get available parameters for parent/child tables
   const availableParameters = computed(() => {
@@ -88,10 +88,10 @@ export function useTableConfigs() {
       // Try to select last used table
       const lastSelectedId = selectedTableId.value
       if (lastSelectedId && namedTables.value[lastSelectedId]) {
-        selectTable(lastSelectedId)
+        await selectTable(lastSelectedId)
       } else if (Object.keys(namedTables.value).length > 0) {
         // Select first available table
-        selectTable(Object.keys(namedTables.value)[0])
+        await selectTable(Object.keys(namedTables.value)[0])
       }
 
       debug.completeState(DebugCategories.INITIALIZATION, 'Table configs initialized')
@@ -113,35 +113,28 @@ export function useTableConfigs() {
       const newTableId = crypto.randomUUID()
       const timestamp = Date.now()
 
-      const newTable: TableSettings = {
-        ...defaultTableConfig,
-        id: newTableId,
-        name,
-        displayName: name,
-        parentColumns: config?.parentColumns || [],
-        childColumns: config?.childColumns || [],
-        categoryFilters: config?.categoryFilters || {
-          selectedParentCategories: [],
-          selectedChildCategories: []
-        },
-        selectedParameters: config?.selectedParameters || { parent: [], child: [] },
-        lastUpdateTimestamp: timestamp
+      // Create new table with proper column spreading
+      const newTable = createNewTableConfig(newTableId, name)
+
+      // Apply any custom config
+      if (config) {
+        Object.assign(newTable, {
+          ...config,
+          id: newTableId, // Ensure ID is preserved
+          name, // Ensure name is preserved
+          displayName: name, // Ensure displayName is preserved
+          lastUpdateTimestamp: timestamp // Ensure timestamp is preserved
+        })
       }
 
+      // First save the table
       await store.saveTable(newTable)
 
-      // Add parameter mappings if any
-      if (newTable.selectedParameters) {
-        const allParams = [
-          ...newTable.selectedParameters.parent,
-          ...newTable.selectedParameters.child
-        ]
-        await Promise.all(
-          allParams.map((param) => addParameterToTable(param.id, newTableId))
-        )
-      }
+      // Then load it to ensure we have the latest state from PostgreSQL
+      await store.loadTable(newTableId)
 
-      selectTable(newTableId)
+      // Finally select it
+      await selectTable(newTableId)
 
       debug.completeState(DebugCategories.STATE, 'Named table created successfully')
       return newTableId
@@ -165,7 +158,7 @@ export function useTableConfigs() {
     try {
       debug.startState(DebugCategories.STATE, 'Updating named table', { tableId })
 
-      const currentTable = store.state.value.tables.get(tableId)
+      const currentTable = store.state.value.currentTable
       if (!currentTable) {
         throw new Error('Table not found')
       }
@@ -177,38 +170,14 @@ export function useTableConfigs() {
         parentColumns: updates.config?.parentColumns || currentTable.parentColumns,
         childColumns: updates.config?.childColumns || currentTable.childColumns,
         categoryFilters: updates.categoryFilters || currentTable.categoryFilters,
-        selectedParameters:
-          updates.config?.selectedParameters || currentTable.selectedParameters,
         sort: updates.sort || currentTable.sort,
         filters: updates.filters || currentTable.filters,
         lastUpdateTimestamp: Date.now()
       }
 
-      // Update parameter mappings if they changed
-      if (updates.config?.selectedParameters) {
-        const newParams = [
-          ...updates.config.selectedParameters.parent,
-          ...updates.config.selectedParameters.child
-        ]
-        const oldParams = [
-          ...currentTable.selectedParameters.parent,
-          ...currentTable.selectedParameters.child
-        ]
-
-        const addedParams = newParams.filter(
-          (param) => !oldParams.find((p) => p.id === param.id)
-        )
-        const removedParams = oldParams.filter(
-          (param) => !newParams.find((p) => p.id === param.id)
-        )
-
-        await Promise.all([
-          ...addedParams.map((param) => addParameterToTable(param.id, tableId)),
-          ...removedParams.map((param) => removeParameterFromTable(param.id, tableId))
-        ])
-      }
-
+      // Save and reload to ensure we have the latest state
       await store.saveTable(updatedTable)
+      await store.loadTable(tableId)
       debug.completeState(DebugCategories.STATE, 'Named table updated successfully')
     } catch (error) {
       debug.error(DebugCategories.ERROR, 'Error updating named table:', error)
@@ -224,17 +193,21 @@ export function useTableConfigs() {
     try {
       debug.startState(DebugCategories.STATE, 'Updating table columns', { tableId })
 
-      const table = store.state.value.tables.get(tableId)
+      const table = store.state.value.currentTable
       if (!table) {
         throw new Error('Table not found')
       }
 
-      await store.saveTable({
+      const updatedTable = {
         ...table,
         parentColumns,
         childColumns,
         lastUpdateTimestamp: Date.now()
-      })
+      }
+
+      // Save and reload to ensure we have the latest state
+      await store.saveTable(updatedTable)
+      await store.loadTable(tableId)
 
       debug.completeState(DebugCategories.STATE, 'Table columns updated successfully')
     } catch (error) {
@@ -247,24 +220,10 @@ export function useTableConfigs() {
     try {
       debug.startState(DebugCategories.STATE, 'Deleting named table', { tableId })
 
-      const table = store.state.value.tables.get(tableId)
-      if (table) {
-        // Remove all parameter mappings
-        const allParams = [
-          ...table.selectedParameters.parent,
-          ...table.selectedParameters.child
-        ]
-        await Promise.all(
-          allParams.map((param) => removeParameterFromTable(param.id, tableId))
-        )
-      }
-
       await store.deleteTable(tableId)
 
       if (selectedTableId.value === tableId) {
-        store.state.value.currentTableId = null
-        localStorage.removeItem(LAST_SELECTED_TABLE_KEY)
-        selectedTableId.value = null
+        await selectTable(null)
       }
 
       debug.completeState(DebugCategories.STATE, 'Named table deleted successfully')
@@ -274,26 +233,25 @@ export function useTableConfigs() {
     }
   }
 
-  const selectTable = (tableId: string | null) => {
+  const selectTable = async (tableId: string | null) => {
     debug.log(DebugCategories.STATE, 'Selecting table', { tableId })
 
     if (tableId) {
-      store.state.value.currentTableId = tableId
+      await store.loadTable(tableId)
       localStorage.setItem(LAST_SELECTED_TABLE_KEY, tableId)
     } else {
-      store.state.value.currentTableId = null
+      store.reset()
       localStorage.removeItem(LAST_SELECTED_TABLE_KEY)
     }
 
     selectedTableId.value = tableId
-    store.state.value.lastUpdated = Date.now()
   }
 
   const updateTableSort = async (tableId: string, sort: TableSort | null) => {
     try {
       debug.startState(DebugCategories.STATE, 'Updating table sort', { tableId })
 
-      const table = store.state.value.tables.get(tableId)
+      const table = store.state.value.currentTable
       if (!table) {
         throw new Error('Table not found')
       }
@@ -311,7 +269,7 @@ export function useTableConfigs() {
     try {
       debug.startState(DebugCategories.STATE, 'Updating table filters', { tableId })
 
-      const table = store.state.value.tables.get(tableId)
+      const table = store.state.value.currentTable
       if (!table) {
         throw new Error('Table not found')
       }
@@ -343,7 +301,6 @@ export function useTableConfigs() {
     namedTables,
     currentTable,
     selectedTableId,
-    currentTableParameters,
     availableParameters,
     loading: computed(() => store.isLoading.value || parametersLoading),
     error: computed(() => store.error.value || parametersError),

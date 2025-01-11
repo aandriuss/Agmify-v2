@@ -246,7 +246,7 @@ const handleAdd = async (
   try {
     await columnManager.handleColumnOperation({
       type: 'add',
-      column: item
+      parameter: item
     })
     listRefreshKey.value++
   } catch (err) {

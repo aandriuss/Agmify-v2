@@ -84,13 +84,7 @@
     <div class="flex items-center gap-2">
       <!-- Action Buttons -->
       <div class="flex items-center gap-2">
-        <FormButton
-          v-if="hasChanges"
-          text
-          size="sm"
-          color="danger"
-          @click="handleGlobalSave"
-        >
+        <FormButton v-if="hasChanges" text size="sm" color="danger" @click="handleSave">
           Save
         </FormButton>
         <FormButton
@@ -122,8 +116,7 @@ import {
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
-import type { TableSettings } from '~/composables/core/tables/store/types'
-import { createNewTableConfig } from '~/composables/core/tables/config/defaults'
+import { defaultTableConfig } from '~/composables/core/tables/config/defaults'
 
 const debug = useDebug()
 const store = useStore()
@@ -233,19 +226,20 @@ async function handleSave() {
       throw new Error('No table selected')
     }
 
-    // Update table with new name while preserving all other properties
-    const updated: TableSettings = {
-      ...current,
+    // First update store state with new name
+    tableStore.updateTableState({
       name,
-      displayName: name,
-      lastUpdateTimestamp: Date.now()
+      displayName: name
+    })
+
+    // Get the full current table state and save to PostgreSQL
+    const currentTable = tableStore.state.value.currentTable
+    if (!currentTable) {
+      throw new Error('Current table state not found')
     }
 
-    // Update local store
-    tableStore.state.value.currentTable = updated
-
-    // Save to PostgreSQL only if checkmark clicked
-    await tableStore.saveTable(updated)
+    // Save full table state to PostgreSQL
+    await tableStore.saveTable(currentTable)
 
     // Update tables array in core store
     store.setTablesArray([...store.tablesArray.value])
@@ -254,30 +248,6 @@ async function handleSave() {
     nameError.value = null
   } catch (err) {
     // Keep editing mode if save fails
-    debug.error(DebugCategories.ERROR, 'Failed to save:', err)
-    nameError.value = err instanceof Error ? err.message : 'Failed to save table'
-  }
-}
-
-async function handleGlobalSave() {
-  debug.log(DebugCategories.TABLE_UPDATES, 'Global save requested', {
-    currentName: tableName.value,
-    isEditing: isEditing.value
-  })
-
-  const current = selectedTable.value
-  if (!current) {
-    debug.log(DebugCategories.TABLE_UPDATES, 'No table selected')
-    return
-  }
-
-  try {
-    // Save current state to PostgreSQL
-    await tableStore.saveTable(current)
-
-    // Update tables array in core store
-    store.setTablesArray([...store.tablesArray.value])
-  } catch (err) {
     debug.error(DebugCategories.ERROR, 'Failed to save:', err)
     nameError.value = err instanceof Error ? err.message : 'Failed to save table'
   }
@@ -301,16 +271,33 @@ async function createNewTable() {
   debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table')
 
   try {
-    // Create new table with proper initialization
-    const newTable = createNewTableConfig(`table-${Date.now()}`, 'New Table')
+    // Use current table as template if it exists, otherwise use default
+    const template = tableStore.state.value.currentTable || defaultTableConfig
+    const newId = `table-${Date.now()}`
 
-    // Update local store only, don't save to PostgreSQL yet
+    // Create new table based on template
+    const newTable = {
+      ...template,
+      id: newId,
+      name: 'New Table',
+      displayName: 'New Table',
+      lastUpdateTimestamp: Date.now()
+    }
+
+    // Update store state
     tableStore.state.value.currentTable = newTable
-    tableStore.state.value.currentTableId = newTable.id
+    tableStore.state.value.currentTableId = newId
     tableStore.state.value.originalTable = null // Mark as new table
 
+    // Add to available tables
+    tableStore.state.value.availableTables.push({
+      id: newId,
+      name: newTable.name,
+      displayName: newTable.displayName
+    })
+
     // Update tables array in core store
-    store.setTablesArray([...store.tablesArray.value])
+    store.setTablesArray([...tableStore.state.value.availableTables])
 
     // Start editing mode
     await nextTick()

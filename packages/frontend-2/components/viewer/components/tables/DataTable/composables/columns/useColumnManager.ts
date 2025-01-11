@@ -110,7 +110,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             : [...currentTable.childColumns, newColumn]
 
           // Update table with new columns
-          await tableStore.updateTable({
+          tableStore.updateTableState({
             ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
 
@@ -124,7 +124,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           ).filter((col) => col.id !== operation.column.id)
 
           // Update table with filtered columns
-          await tableStore.updateTable({
+          tableStore.updateTableState({
             ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
           columnState.value.pendingChanges.push(operation)
@@ -141,7 +141,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           )
 
           // Update table with modified columns
-          await tableStore.updateTable({
+          tableStore.updateTableState({
             ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
           columnState.value.pendingChanges.push(operation)
@@ -176,7 +176,7 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           })
 
           // Update table with reordered columns
-          await tableStore.updateTable({
+          tableStore.updateTableState({
             ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
           columnState.value.pendingChanges.push(operation)
