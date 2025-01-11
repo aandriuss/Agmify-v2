@@ -15,7 +15,7 @@
       <div class="flex flex-col gap-2">
         <!-- View selector -->
         <TabSelector
-          :model-value="columnManager.currentView.value"
+          :model-value="currentView"
           @update:model-value="handleViewChange"
         />
 
@@ -41,7 +41,7 @@
             </div>
 
             <EnhancedColumnList
-              :key="`available-${columnManager.currentView.value}-${listRefreshKey}`"
+              :key="`available-${currentView}-${listRefreshKey}`"
               :items="columnManager.availableParameters.value"
               mode="available"
               :show-filter-options="coreStore.showCategoryOptions.value"
@@ -93,7 +93,7 @@
             </div>
 
             <EnhancedColumnList
-              :key="`active-${columnManager.currentView.value}-${listRefreshKey}`"
+              :key="`active-${currentView}-${listRefreshKey}`"
               :items="columnManager.activeColumns.value"
               mode="active"
               :show-filter-options="false"
@@ -154,19 +154,11 @@ function isColumn(
   return 'field' in item
 }
 
-// Props and Emits
-interface Props {
-  open: boolean
-  tableId: string
-  tableName: string
-}
-
-const props = defineProps<Props>()
-
 // Stores and Composables
 const tableStore = useTableStore()
 const parameterStore = useParameterStore()
 const coreStore = useStore()
+const columnManager = useColumnManager()
 
 // State
 const isInitialized = ref(false)
@@ -176,10 +168,8 @@ const searchTerm = ref('')
 const isGrouped = ref(true)
 const sortBy = ref<'name' | 'category' | 'type' | 'fixed'>('category')
 
-// Column Manager
-const columnManager = useColumnManager({
-  tableId: props.tableId
-})
+// Get current view from columnManager
+const currentView = computed(() => columnManager.currentView.value)
 
 // Drop State
 interface DropState {
@@ -385,16 +375,9 @@ onMounted(async () => {
       await parameterStore.init()
     }
 
-    // Then load and initialize table
-    await tableStore.loadTable(props.tableId)
-
-    // Verify both stores are ready
+    // Verify parameter store is ready
     if (!parameterStore.state.value.initialized) {
       throw new Error('Parameter store failed to initialize')
-    }
-
-    if (!tableStore.computed.currentTable.value) {
-      throw new Error('Table failed to load')
     }
 
     isInitialized.value = true

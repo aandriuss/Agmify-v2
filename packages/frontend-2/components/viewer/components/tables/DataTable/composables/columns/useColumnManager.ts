@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
@@ -16,25 +16,23 @@ type ColumnOperation =
   | { type: 'visibility'; column: TableColumn; visible: boolean }
   | { type: 'reorder'; fromIndex: number; toIndex: number }
 
-interface UseColumnManagerOptions {
-  tableId: string
-}
-
-interface ColumnState {
-  pendingChanges: ColumnOperation[]
-}
-
-export function useColumnManager(options: UseColumnManagerOptions) {
-  const { tableId } = options
-
+export function useColumnManager() {
   const parameterStore = useParameterStore()
   const tableStore = useTableStore()
 
+  // Local view state that syncs with store
   const currentView = ref<View>('parent')
-  const isUpdating = ref(false)
-  const columnState = ref<ColumnState>({
-    pendingChanges: []
-  })
+
+  // Sync with store's view
+  watch(
+    () => tableStore.currentView.value,
+    (newView) => {
+      if (newView !== currentView.value) {
+        currentView.value = newView
+      }
+    },
+    { immediate: true }
+  )
 
   // Active columns are all columns in the current view from table store
   const activeColumns = computed(() => {
@@ -69,14 +67,10 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     return [...bimParams, ...userParams].filter((param) => !selectedIds.has(param.id))
   })
 
+  // Keep for component compatibility
   function setView(view: View) {
-    debug.log(DebugCategories.COLUMN_UPDATES, 'View changed', {
-      from: currentView.value,
-      to: view,
-      activeColumns: activeColumns.value.length,
-      availableParameters: availableParameters.value.length
-    })
     currentView.value = view
+    tableStore.toggleView()
   }
 
   async function handleColumnOperation(operation: ColumnOperation): Promise<void> {
@@ -87,12 +81,10 @@ export function useColumnManager(options: UseColumnManagerOptions) {
       'Processing column operation',
       {
         type: operation.type,
-        view: currentView.value,
-        pendingChanges: columnState.value.pendingChanges.length
+        view: currentView.value
       }
     )
 
-    isUpdating.value = true
     try {
       const isParent = currentView.value === 'parent'
       const currentTable = tableStore.computed.currentTable.value
@@ -110,11 +102,9 @@ export function useColumnManager(options: UseColumnManagerOptions) {
             : [...currentTable.childColumns, newColumn]
 
           // Update table with new columns
-          tableStore.updateTableState({
+          await tableStore.updateTableState({
             ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
-
-          columnState.value.pendingChanges.push(operation)
           break
         }
         case 'remove': {
@@ -124,10 +114,9 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           ).filter((col) => col.id !== operation.column.id)
 
           // Update table with filtered columns
-          tableStore.updateTableState({
+          await tableStore.updateTableState({
             ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
-          columnState.value.pendingChanges.push(operation)
           break
         }
         case 'visibility': {
@@ -141,10 +130,9 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           )
 
           // Update table with modified columns
-          tableStore.updateTableState({
+          await tableStore.updateTableState({
             ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
-          columnState.value.pendingChanges.push(operation)
           break
         }
         case 'reorder': {
@@ -176,10 +164,9 @@ export function useColumnManager(options: UseColumnManagerOptions) {
           })
 
           // Update table with reordered columns
-          tableStore.updateTableState({
+          await tableStore.updateTableState({
             ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
-          columnState.value.pendingChanges.push(operation)
           break
         }
       }
@@ -191,7 +178,6 @@ export function useColumnManager(options: UseColumnManagerOptions) {
         'Column operation completed',
         {
           operation,
-          tableId,
           currentView: currentView.value
         }
       )
@@ -199,53 +185,17 @@ export function useColumnManager(options: UseColumnManagerOptions) {
       const error = err instanceof Error ? err : new Error('Unknown error')
       debug.error(DebugCategories.ERROR, 'Column operation failed', error)
       throw error
-    } finally {
-      isUpdating.value = false
-    }
-  }
-
-  function saveChanges() {
-    debug.startState(DebugCategories.STATE, 'Saving column changes', {
-      tableId,
-      pendingChanges: columnState.value.pendingChanges.length
-    })
-
-    try {
-      const currentTable = tableStore.computed.currentTable.value
-      if (!currentTable) return false
-
-      // Clear pending changes
-      columnState.value.pendingChanges = []
-
-      debug.completeState(DebugCategories.STATE, 'Column changes saved', {
-        tableId,
-        parentColumns: currentTable.parentColumns.length,
-        childColumns: currentTable.childColumns.length
-      })
-
-      return {
-        parentColumns: currentTable.parentColumns,
-        childColumns: currentTable.childColumns
-      }
-    } catch (err) {
-      const error =
-        err instanceof Error ? err : new Error('Failed to save column changes')
-      debug.error(DebugCategories.ERROR, 'Error saving column changes', error)
-      return false
     }
   }
 
   return {
     // State
     currentView,
-    isUpdating,
-    columnState,
     activeColumns,
     availableParameters,
 
     // Methods
     setView,
-    handleColumnOperation,
-    saveChanges
+    handleColumnOperation
   }
 }
