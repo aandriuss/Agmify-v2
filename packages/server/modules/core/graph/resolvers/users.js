@@ -397,10 +397,6 @@ const resolvers = {
             columnsCount: {
               parent: Object.values(tablesMap)[0].parentColumns?.length || 0,
               child: Object.values(tablesMap)[0].childColumns?.length || 0
-            },
-            parametersCount: {
-              parent: Object.values(tablesMap)[0].selectedParameters?.parent?.length || 0,
-              child: Object.values(tablesMap)[0].selectedParameters?.child?.length || 0
             }
           } : null
         });

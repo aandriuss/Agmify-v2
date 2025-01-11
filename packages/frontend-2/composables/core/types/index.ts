@@ -95,7 +95,6 @@ export type {
   AvailableBimParameter,
   AvailableUserParameter,
   AvailableParameter,
-  SelectedParameter,
 
   // Value Types
   PrimitiveValue,
@@ -116,12 +115,10 @@ export {
   isRawParameter,
   isAvailableBimParameter,
   isAvailableUserParameter,
-  isSelectedParameter,
 
   // Parameter Creation
   createAvailableBimParameter,
   createAvailableUserParameter,
-  createSelectedParameter,
 
   // Parameter Operations
   convertBimToUserType,
@@ -177,7 +174,6 @@ export type {
   BaseTableRow,
   TableColumn,
   TableCategoryFilters,
-  TableSelectedParameters,
   BaseTableConfig,
 
   // Table Events
@@ -187,7 +183,9 @@ export type {
   TableUpdatePayload,
   ErrorPayload,
   FilterDef,
-  ExpandableTableRow
+  ExpandableTableRow,
+  TableSort,
+  TableFilter
 } from './tables'
 
 export { createTableColumns, createTableColumn } from './tables'
@@ -230,6 +228,3 @@ export type {
 } from './viewer'
 
 export type { TableSettings, TableStoreState, TableStore } from '../tables/store/types'
-
-// will fix later
-export type { TableSort, TableFilter } from '../tables/store/types'

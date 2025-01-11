@@ -3,8 +3,6 @@ import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import { createTableColumns } from '~/composables/core/types/tables/table-column'
-import { defaultSelectedParameters } from '../config/defaults'
 import type { TableSettings } from '../store/types'
 
 export interface UseTableFlowOptions {
@@ -36,15 +34,10 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
   // Create table config from current table or defaults
   const tableConfig = computed<TableSettings>(() => {
     const table = currentTable.value || defaultConfig
-    const selectedParams = table.selectedParameters
 
-    // Create columns from selected parameters if they don't exist
-    const parentColumns = table.parentColumns?.length
-      ? table.parentColumns
-      : createTableColumns(selectedParams.parent)
-    const childColumns = table.childColumns?.length
-      ? table.childColumns
-      : createTableColumns(selectedParams.child)
+    // Use existing columns or empty arrays
+    const parentColumns = table.parentColumns || []
+    const childColumns = table.childColumns || []
 
     // Only update timestamp if columns changed
     const timestamp = table.lastUpdateTimestamp || Date.now()
@@ -76,12 +69,8 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
         await parameterStore.init()
       }
 
-      // Get parameters from PostgreSQL or defaults
-      const config = {
-        ...tableConfig.value,
-        selectedParameters:
-          tableConfig.value.selectedParameters || defaultSelectedParameters
-      }
+      // Get configuration from PostgreSQL or defaults
+      const config = tableConfig.value
 
       // Only update if needed
       const currentConfig = tableStore.computed.currentTable.value

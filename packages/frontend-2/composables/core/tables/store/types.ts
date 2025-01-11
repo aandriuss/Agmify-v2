@@ -6,15 +6,12 @@
  *    - Load/save tables from/to PostgreSQL
  *    - Manage current table state
  *
- * 2. Selected Parameters
- *    - Own selected parameters (both parent and child)
- *    - Manage parameter visibility and order
- *
- * 3. Column Management
+ * 2. Column Management
  *    - Own table columns using TableColumn type
  *    - Manage column visibility and order
+ *    - Handle parameter data within columns
  *
- * 4. UI State
+ * 3. UI State
  *    - Manage table-related UI state
  *    - Handle category visibility
  *
@@ -28,25 +25,14 @@ import type { Ref } from 'vue'
 import type {
   BaseTableConfig,
   TableColumn,
-  TableCategoryFilters
-} from '~/composables/core/types'
-
-/**
- * Sort configuration for tables
- */
-export interface TableSort {
-  field?: string
-  order?: 'ASC' | 'DESC'
-}
-
-/**
- * Filter configuration for table columns
- */
-export interface TableFilter {
-  columnId: string
-  value: string | number | boolean
-  operator: string
-}
+  TableCategoryFilters,
+  FilterDef,
+  TableSort
+} from '~/composables/core/types/'
+import type {
+  AvailableBimParameter,
+  AvailableUserParameter
+} from '~/composables/core/types/parameters/parameter-states'
 
 /**
  * Table settings stored in PostgreSQL
@@ -59,7 +45,7 @@ export interface TableSettings extends BaseTableConfig {
   childColumns: TableColumn[]
   parentColumns: TableColumn[]
   sort?: TableSort
-  filters: TableFilter[]
+  filters: FilterDef[]
   lastUpdateTimestamp: number
 }
 
@@ -119,8 +105,7 @@ export interface TableComputedState {
  * Public API for interacting with table store:
  * - State access (tables, current table, loading state)
  * - Table operations (load, save, update, delete)
- * - Parameter management (update selected parameters)
- * - Column management (update column definitions)
+ * - Column management (add, remove, update columns)
  * - UI state management
  */
 export interface TableStore {
@@ -139,27 +124,30 @@ export interface TableStore {
   // Core operations
   loadTable(tableId: string): Promise<void> // Load full table data from PostgreSQL
   saveTable(settings: TableSettings): Promise<void> // Save to PostgreSQL
-  updateTable(updates: Partial<TableSettings>): void // Update working copy
+  updateTable(updates: Partial<TableSettings>): Promise<void> // Update working copy
   deleteTable(tableId: string): Promise<void>
+
+  // Column operations
+  addColumn(
+    parameter: AvailableBimParameter | AvailableUserParameter,
+    isParent: boolean
+  ): Promise<void>
+  removeColumn(columnId: string, isParent: boolean): Promise<void>
   updateColumns(
     parentColumns: TableColumn[],
     childColumns: TableColumn[]
   ): Promise<void>
 
-  // Table list management
-  refreshTableList(): Promise<void> // Refresh available tables list
-  getAvailableTables(): TableMetadata[] // Get list of available tables
-
-  // View management
-  toggleView(): void
-
   // Category management
-  updateCategories(categories: TableCategoryFilters): void
-  resetCategories(): void
+  updateCategories(categories: TableCategoryFilters): Promise<void>
+  resetCategories(): Promise<void>
 
   // UI state management
   setShowCategoryOptions(show: boolean): void
   toggleCategoryOptions(): void
+
+  // View management
+  toggleView(): void
 
   // Store management
   initialize(): Promise<void>

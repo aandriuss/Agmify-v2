@@ -115,7 +115,8 @@ import type {
   DataTableFilterMeta
 } from 'primevue/datatable'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
-import type { TableSort, TableFilter } from '~/composables/core/types'
+import type { TableSort } from '~/composables/core/types'
+import type { FilterDef } from '~/composables/core/types/tables/table-config'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
@@ -322,7 +323,14 @@ function handleSort(event: DataTableSortEvent): void {
       order: event.sortOrder === 1 ? 'ASC' : 'DESC'
     }
 
-    tableStore.updateSort(sort)
+    // Update table with new sort
+    if (tableStore.computed.currentTable.value) {
+      tableStore.updateTable({
+        ...tableStore.computed.currentTable.value,
+        sort
+      })
+    }
+
     emit('sort', { sort })
   } catch (err) {
     handleError(err instanceof Error ? err : new Error('Failed to apply sort'))
@@ -333,7 +341,7 @@ function handleFilter(event: DataTableFilterEvent): void {
   try {
     if (loadingState.value.phase !== 'complete') return
 
-    const filters: TableFilter[] = []
+    const filters: FilterDef[] = []
     const eventFilters = event.filters || {}
 
     Object.entries(eventFilters).forEach(([columnId, filterMeta]) => {
@@ -344,7 +352,7 @@ function handleFilter(event: DataTableFilterEvent): void {
         if (isValidFilterValue(value) && isValidMatchMode(matchMode)) {
           filters.push({
             columnId,
-            value,
+            value: String(value),
             operator: matchMode
           })
         }
@@ -362,7 +370,14 @@ function handleFilter(event: DataTableFilterEvent): void {
       {} as DataTableFilterMeta
     )
 
-    tableStore.updateFilters(filters)
+    // Update table with new filters
+    if (tableStore.computed.currentTable.value) {
+      tableStore.updateTable({
+        ...tableStore.computed.currentTable.value,
+        filters
+      })
+    }
+
     emit('filter', { filters: filterMeta })
   } catch (err) {
     handleError(err instanceof Error ? err : new Error('Failed to apply filters'))

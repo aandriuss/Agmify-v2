@@ -3,23 +3,16 @@ import type { ComputedRef } from 'vue'
 import type {
   RawParameter,
   AvailableBimParameter,
-  AvailableUserParameter,
-  SelectedParameter
+  AvailableUserParameter
 } from '~/composables/core/types/parameters/parameter-states'
 
 // Re-export types from centralized location
-export type {
-  RawParameter,
-  AvailableBimParameter,
-  AvailableUserParameter,
-  SelectedParameter
-}
+export type { RawParameter, AvailableBimParameter, AvailableUserParameter }
 
 // Export creation utilities
 export {
   createAvailableBimParameter,
-  createAvailableUserParameter,
-  createSelectedParameter
+  createAvailableUserParameter
 } from '~/composables/core/types/parameters/parameter-states'
 
 /**
@@ -72,12 +65,6 @@ export interface ParameterCollections {
       user: AvailableUserParameter[]
     }
   }
-
-  // Selected parameters for tables
-  selected: {
-    parent: SelectedParameter[]
-    child: SelectedParameter[]
-  }
 }
 
 /**
@@ -115,10 +102,6 @@ export interface ParameterStore {
   parentAvailableUserParameters: ComputedRef<AvailableUserParameter[]>
   childAvailableBimParameters: ComputedRef<AvailableBimParameter[]>
   childAvailableUserParameters: ComputedRef<AvailableUserParameter[]>
-
-  // Selected parameters
-  parentSelectedParameters: ComputedRef<SelectedParameter[]>
-  childSelectedParameters: ComputedRef<SelectedParameter[]>
 
   // Status
   isProcessing: ComputedRef<boolean>

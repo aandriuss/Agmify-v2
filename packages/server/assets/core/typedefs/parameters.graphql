@@ -4,17 +4,13 @@ Base parameter interface with common fields
 interface BaseParameter {
   id: ID!
   name: String!
-  field: String!
-  visible: Boolean!
-  header: String!
-  description: String
-  category: String
-  order: Int
-  computed: JSONObject
-  source: String
-  removable: Boolean!
-  value: String! # Always string in GraphQL
+  kind: String!
+  type: String! # Type name as string, implementations will validate specific values
+  value: String! # Always string in GraphQL, converted to proper type in resolvers
+  group: String!
   metadata: JSONObject
+  category: String
+  description: String
 }
 
 """
@@ -22,23 +18,17 @@ BIM parameter type
 """
 type BimParameter implements BaseParameter {
   id: ID!
-  kind: String! # Always 'bim'
   name: String!
-  type: BimValueType!
-  sourceValue: String! # BIM value as string
-  fetchedGroup: String!
+  kind: String! # Always 'bim'
+  type: String! # Must match BimValueType enum values
+  value: String! # Current value as string
+  sourceValue: String! # Original value from BIM as string
+  group: String!
   currentGroup: String!
-  field: String!
-  visible: Boolean!
-  header: String!
-  description: String
-  category: String
-  order: Int
-  computed: JSONObject
-  source: String
-  removable: Boolean!
-  value: String!
+  fetchedGroup: String!
   metadata: JSONObject
+  category: String
+  description: String
 }
 
 """
@@ -46,23 +36,15 @@ User parameter type
 """
 type UserParameter implements BaseParameter {
   id: ID!
-  kind: String! # Always 'user'
   name: String!
-  type: UserValueType!
+  kind: String! # Always 'user'
+  type: String! # Must match UserValueType enum values
+  value: String! # Primitive value or equation value as JSON string
   group: String!
   equation: String
-  isCustom: Boolean
-  field: String!
-  visible: Boolean!
-  header: String!
-  description: String
-  category: String
-  order: Int
-  computed: JSONObject
-  source: String
-  removable: Boolean!
-  value: String!
   metadata: JSONObject
+  category: String
+  description: String
 }
 
 """
@@ -71,7 +53,7 @@ Union of all parameter types
 union Parameter = BimParameter | UserParameter
 
 """
-BIM value type enum
+BIM value type enum - used for validation in resolvers
 """
 enum BimValueType {
   string
@@ -83,94 +65,11 @@ enum BimValueType {
 }
 
 """
-User value type enum
+User value type enum - used for validation in resolvers
 """
 enum UserValueType {
   fixed
   equation
-}
-
-"""
-Input for creating a BIM parameter
-"""
-input CreateBimParameterInput {
-  name: String!
-  type: BimValueType!
-  sourceValue: String!
-  fetchedGroup: String!
-  currentGroup: String!
-  field: String!
-  visible: Boolean!
-  header: String!
-  description: String
-  category: String
-  order: Int
-  source: String
-  removable: Boolean!
-  value: String!
-  metadata: JSONObject
-}
-
-"""
-Input for creating a user parameter
-"""
-input CreateUserParameterInput {
-  name: String!
-  type: UserValueType!
-  group: String!
-  equation: String
-  isCustom: Boolean
-  field: String!
-  visible: Boolean!
-  header: String!
-  description: String
-  category: String
-  order: Int
-  source: String
-  removable: Boolean!
-  value: String!
-  metadata: JSONObject
-}
-
-"""
-Input for updating a BIM parameter
-"""
-input UpdateBimParameterInput {
-  name: String
-  type: BimValueType
-  sourceValue: String
-  currentGroup: String
-  field: String
-  visible: Boolean
-  header: String
-  description: String
-  category: String
-  order: Int
-  source: String
-  removable: Boolean
-  value: String
-  metadata: JSONObject
-}
-
-"""
-Input for updating a user parameter
-"""
-input UpdateUserParameterInput {
-  name: String
-  type: UserValueType
-  group: String
-  equation: String
-  isCustom: Boolean
-  field: String
-  visible: Boolean
-  header: String
-  description: String
-  category: String
-  order: Int
-  source: String
-  removable: Boolean
-  value: String
-  metadata: JSONObject
 }
 
 """
@@ -230,12 +129,93 @@ extend type Mutation {
   deleteParameter(id: ID!): Boolean!
 
   """
-  Add a parameter to a table (updates mapping)
+  Add a parameter to a table
   """
   addParameterToTable(parameterId: ID!, tableId: ID!): Boolean!
 
   """
-  Remove a parameter from a table (updates mapping)
+  Remove a parameter from a table
   """
   removeParameterFromTable(parameterId: ID!, tableId: ID!): Boolean!
+}
+
+"""
+Input for creating a BIM parameter
+"""
+input CreateBimParameterInput {
+  name: String!
+  type: BimValueType!
+  sourceValue: String!
+  fetchedGroup: String!
+  currentGroup: String!
+  field: String!
+  header: String!
+  category: String
+  description: String
+  removable: Boolean
+  visible: Boolean
+  order: Int
+  metadata: JSONObject
+  source: String
+}
+
+"""
+Input for creating a user parameter
+"""
+input CreateUserParameterInput {
+  name: String!
+  type: UserValueType!
+  value: String!
+  group: String!
+  equation: String
+  field: String!
+  header: String!
+  category: String
+  description: String
+  removable: Boolean
+  visible: Boolean
+  order: Int
+  metadata: JSONObject
+  source: String
+  isCustom: Boolean
+}
+
+"""
+Input for updating a BIM parameter
+"""
+input UpdateBimParameterInput {
+  name: String
+  type: BimValueType
+  sourceValue: String
+  currentGroup: String
+  field: String
+  header: String
+  category: String
+  description: String
+  removable: Boolean
+  visible: Boolean
+  order: Int
+  metadata: JSONObject
+  source: String
+}
+
+"""
+Input for updating a user parameter
+"""
+input UpdateUserParameterInput {
+  name: String
+  type: UserValueType
+  value: String
+  group: String
+  equation: String
+  field: String
+  header: String
+  category: String
+  description: String
+  removable: Boolean
+  visible: Boolean
+  order: Int
+  metadata: JSONObject
+  source: String
+  isCustom: Boolean
 }

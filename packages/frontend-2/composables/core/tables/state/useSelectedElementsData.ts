@@ -12,6 +12,7 @@ import { getMostSpecificCategory } from '~/composables/core/config/categoryMappi
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { convertToParameterValue } from '~/composables/core/parameters/parameter-processing'
+
 interface ProcessingState {
   isProcessingElements: boolean
   processedCount: number
@@ -104,12 +105,10 @@ export function useSelectedElementsData(
       elementsMap.value.clear()
       childElementsList.value = []
 
-      // Get selected parameters from table store
-      const selectedParams = tableStore.computed.currentTable.value
-        ?.selectedParameters || {
-        parent: [],
-        child: []
-      }
+      // Get columns from table store
+      const currentTable = tableStore.computed.currentTable.value
+      const parentColumns = currentTable?.parentColumns || []
+      const childColumns = currentTable?.childColumns || []
 
       // Process elements in parallel chunks
       const elements = options.elements.value
@@ -137,13 +136,11 @@ export function useSelectedElementsData(
 
               // Always process all elements, category filtering happens in state computation
 
-              // Get only selected parameter values
-              const relevantParams = element.isChild
-                ? selectedParams.child
-                : selectedParams.parent
+              // Get relevant columns based on element type
+              const relevantColumns = element.isChild ? childColumns : parentColumns
               const processedParams: Record<string, ParameterValue> = {}
 
-              // Only process selected parameters if element has parameters
+              // Only process parameters if element has parameters
               if (hasParameters(element)) {
                 // Create parameter map for faster lookup
                 const paramMap = new Map(
@@ -153,19 +150,16 @@ export function useSelectedElementsData(
                   ])
                 )
 
-                // Process parameters using map lookup
-                for (const param of relevantParams) {
-                  const paramValue = paramMap.get(param.name)
-                  processedParams[param.id] = paramValue
-                    ? await convertToParameterValue(paramValue)
-                    : null
+                // Process parameters using column parameter IDs
+                for (const column of relevantColumns) {
+                  if (column.parameter) {
+                    const paramValue = paramMap.get(column.parameter.name)
+                    processedParams[column.parameter.id] = paramValue
+                      ? await convertToParameterValue(paramValue)
+                      : null
+                  }
                 }
               }
-
-              // Get column configuration
-              const relevantColumns = element.isChild
-                ? tableStore.computed.currentTable.value?.childColumns || []
-                : tableStore.computed.currentTable.value?.parentColumns || []
 
               // Create base element fields
               const baseFields = {
@@ -310,11 +304,8 @@ export function useSelectedElementsData(
         processingTime: `${Date.now() - performance.now()}ms`,
         tableData: {
           rows: typedViewerData.length,
-          columns: tableStore.computed.currentTable.value?.parentColumns?.length || 0,
-          parameters: tableStore.computed.currentTable.value?.selectedParameters || {
-            parent: [],
-            child: []
-          }
+          parentColumns: parentColumns.length,
+          childColumns: childColumns.length
         }
       })
 
@@ -333,40 +324,47 @@ export function useSelectedElementsData(
   watch(
     [
       () => options.elements.value,
-      () => tableStore.computed.currentTable.value?.selectedParameters,
+      () => tableStore.computed.currentTable.value?.parentColumns,
+      () => tableStore.computed.currentTable.value?.childColumns,
       () => options.selectedParentCategories.value,
       () => options.selectedChildCategories.value
     ],
-    async ([elements, params, parentCategories, childCategories], oldValues) => {
+    async (
+      [elements, parentCols, childCols, parentCategories, childCategories],
+      oldValues
+    ) => {
       // Skip if already processing
       if (processingState.value.isProcessingElements) {
         debug.warn(DebugCategories.DATA_TRANSFORM, 'Already processing elements')
         return
       }
 
-      // Check if we have both elements and parameters
+      // Check if we have both elements and columns
       const hasElements = elements?.length > 0
-      const hasParams =
-        params && (Array.isArray(params.parent) || Array.isArray(params.child))
+      const hasColumns = (parentCols?.length ?? 0) > 0 || (childCols?.length ?? 0) > 0
 
       // Check if data has actually changed
-      const [oldElements, oldParams, oldParentCats, oldChildCats] = oldValues || []
+      const [oldElements, oldParentCols, oldChildCols, oldParentCats, oldChildCats] =
+        oldValues || []
       const hasChanged =
         elements?.length !== oldElements?.length ||
-        JSON.stringify(params) !== JSON.stringify(oldParams) ||
+        JSON.stringify(parentCols) !== JSON.stringify(oldParentCols) ||
+        JSON.stringify(childCols) !== JSON.stringify(oldChildCols) ||
         JSON.stringify(parentCategories) !== JSON.stringify(oldParentCats) ||
         JSON.stringify(childCategories) !== JSON.stringify(oldChildCats)
 
-      if (hasElements && hasParams && params && hasChanged) {
+      if (hasElements && hasColumns && hasChanged) {
         debug.log(DebugCategories.DATA_TRANSFORM, 'Data changed', {
           elements: {
             count: elements.length,
             changed: elements?.length !== oldElements?.length
           },
-          parameters: {
-            parent: Array.isArray(params.parent) ? params.parent.length : 0,
-            child: Array.isArray(params.child) ? params.child.length : 0,
-            changed: JSON.stringify(params) !== JSON.stringify(oldParams)
+          columns: {
+            parent: parentCols?.length ?? 0,
+            child: childCols?.length ?? 0,
+            changed:
+              JSON.stringify(parentCols) !== JSON.stringify(oldParentCols) ||
+              JSON.stringify(childCols) !== JSON.stringify(oldChildCols)
           },
           categories: {
             parent: parentCategories.length,
@@ -388,9 +386,9 @@ export function useSelectedElementsData(
           // Log processed data
           debug.log(DebugCategories.DATA_TRANSFORM, 'Data processed', {
             elements: tableData.value.length,
-            parameters: {
-              parent: params.parent.length,
-              child: params.child.length
+            columns: {
+              parent: parentCols?.length ?? 0,
+              child: childCols?.length ?? 0
             },
             state: {
               parentElements: state.value?.parentElements.length || 0,
@@ -403,12 +401,12 @@ export function useSelectedElementsData(
       } else {
         debug.log(DebugCategories.DATA_TRANSFORM, 'Waiting for data', {
           hasElements,
-          hasParams,
+          hasColumns,
           hasChanged,
           elements: elements?.length || 0,
-          parameters: {
-            parent: params && Array.isArray(params.parent) ? params.parent.length : 0,
-            child: params && Array.isArray(params.child) ? params.child.length : 0
+          columns: {
+            parent: parentCols?.length ?? 0,
+            child: childCols?.length ?? 0
           }
         })
       }

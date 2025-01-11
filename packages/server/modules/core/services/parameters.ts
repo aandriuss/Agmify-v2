@@ -14,7 +14,8 @@ import {
   ParameterStorage,
   TableParameterMapping,
   isBimParameter,
-  isUserParameter
+  isUserParameter,
+  ParameterMetadata
 } from '@/modules/core/models/parameters'
 
 interface CreateBimParameterInput {
@@ -30,7 +31,7 @@ interface CreateBimParameterInput {
   removable?: boolean
   visible?: boolean
   order?: number
-  metadata?: Record<string, unknown>
+  metadata?: Partial<ParameterMetadata>
   source?: string
 }
 
@@ -47,7 +48,7 @@ interface CreateUserParameterInput {
   removable?: boolean
   visible?: boolean
   order?: number
-  metadata?: Record<string, unknown>
+  metadata?: Partial<ParameterMetadata>
   source?: string
   isCustom?: boolean
   validationRules?: ValidationRules
@@ -56,6 +57,41 @@ interface CreateUserParameterInput {
 interface UserRecord {
   parameters?: ParameterStorage
   parameterMappings?: TableParameterMapping
+}
+
+// Metadata validation
+function isValidMetadata(metadata: unknown): metadata is ParameterMetadata {
+  if (!metadata || typeof metadata !== 'object') return false
+  const m = metadata as Record<string, unknown>
+
+  // Validate types of optional fields if present
+  if ('category' in m && typeof m.category !== 'string') return false
+  if ('fullKey' in m && typeof m.fullKey !== 'string') return false
+  if ('isSystem' in m && typeof m.isSystem !== 'boolean') return false
+  if ('group' in m && typeof m.group !== 'string') return false
+  if ('elementId' in m && typeof m.elementId !== 'string') return false
+  if ('isNested' in m && typeof m.isNested !== 'boolean') return false
+  if ('parentKey' in m && typeof m.parentKey !== 'string') return false
+  if ('isJsonString' in m && typeof m.isJsonString !== 'boolean') return false
+  if ('displayName' in m && typeof m.displayName !== 'string') return false
+  if ('originalGroup' in m && typeof m.originalGroup !== 'string') return false
+  if ('groupId' in m && typeof m.groupId !== 'string') return false
+
+  return true
+}
+
+// Ensure BIM parameter metadata has required fields
+function ensureBimMetadata(
+  metadata: Partial<ParameterMetadata> | undefined,
+  name: string,
+  group: string
+): ParameterMetadata {
+  return {
+    ...(metadata as Record<string, unknown>),
+    displayName: metadata?.displayName || name,
+    originalGroup: metadata?.originalGroup || group,
+    groupId: metadata?.groupId || `bim_${group}`
+  } as ParameterMetadata
 }
 
 export class ParameterService {
@@ -98,6 +134,14 @@ export class ParameterService {
   ): Promise<BimParameter> {
     const id = uuid()
 
+    // Validate metadata if provided
+    if (input.metadata && !isValidMetadata(input.metadata)) {
+      throw new GraphQLError('Invalid parameter metadata')
+    }
+
+    // Ensure required metadata fields
+    const metadata = ensureBimMetadata(input.metadata, input.name, input.currentGroup)
+
     const parameter: BimParameter = {
       id,
       kind: 'bim',
@@ -114,7 +158,7 @@ export class ParameterService {
       removable: input.removable ?? true,
       visible: input.visible ?? true,
       order: input.order,
-      metadata: input.metadata,
+      metadata,
       source: input.source
     }
 
@@ -155,6 +199,11 @@ export class ParameterService {
   ): Promise<UserParameter> {
     const id = uuid()
 
+    // Validate metadata if provided
+    if (input.metadata && !isValidMetadata(input.metadata)) {
+      throw new GraphQLError('Invalid parameter metadata')
+    }
+
     const parameter: UserParameter = {
       id,
       kind: 'user',
@@ -170,7 +219,7 @@ export class ParameterService {
       removable: input.removable ?? true,
       visible: input.visible ?? true,
       order: input.order,
-      metadata: input.metadata,
+      metadata: input.metadata as ParameterMetadata,
       source: input.source,
       isCustom: input.isCustom,
       validationRules: input.validationRules
@@ -214,9 +263,24 @@ export class ParameterService {
       throw new GraphQLError('BIM parameter not found')
     }
 
+    // Validate metadata if provided
+    if (input.metadata && !isValidMetadata(input.metadata)) {
+      throw new GraphQLError('Invalid parameter metadata')
+    }
+
+    // Ensure required metadata fields are preserved
+    const metadata = input.metadata
+      ? ensureBimMetadata(
+          input.metadata,
+          input.name || parameter.name,
+          input.currentGroup || parameter.currentGroup
+        )
+      : parameter.metadata
+
     const updatedParameter: BimParameter = {
       ...parameter,
-      ...input
+      ...input,
+      metadata
     }
 
     await db.transaction(async (trx: Knex.Transaction) => {
@@ -263,9 +327,15 @@ export class ParameterService {
       throw new GraphQLError('User parameter not found')
     }
 
+    // Validate metadata if provided
+    if (input.metadata && !isValidMetadata(input.metadata)) {
+      throw new GraphQLError('Invalid parameter metadata')
+    }
+
     const updatedParameter: UserParameter = {
       ...parameter,
-      ...input
+      ...input,
+      metadata: (input.metadata as ParameterMetadata) ?? parameter.metadata
     }
 
     await db.transaction(async (trx: Knex.Transaction) => {

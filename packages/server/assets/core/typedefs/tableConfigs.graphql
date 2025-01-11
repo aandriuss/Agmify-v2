@@ -1,64 +1,24 @@
 scalar JSON
-
-"""
-Parameter type for both BIM and user parameters
-"""
-type Parameter {
-  id: ID!
-  kind: String! # 'bim' or 'user'
-  name: String!
-  field: String!
-  visible: Boolean!
-  header: String!
-  description: String
-  category: String
-  order: Int
-  computed: JSON
-  source: String
-  removable: Boolean!
-  value: String!
-  metadata: JSON
-  type: BimValueType # For BIM parameters
-  sourceValue: String # For BIM parameters
-  fetchedGroup: String # For BIM parameters
-  currentGroup: String # For BIM parameters
-  userType: UserValueType # For user parameters
-  group: String # For user parameters
-  equation: String # For user parameters
-  isCustom: Boolean # For user parameters
-}
-
-"""
-Selected parameters for table with parent/child separation
-"""
-type TableSelectedParameters {
-  parent: [Parameter!]!
-  child: [Parameter!]!
-}
-
-"""
-Table configuration for storing parent and child columns and parameters
-"""
-type TableConfig {
-  parentColumns: [TableColumn!]!
-  childColumns: [TableColumn!]!
-  selectedParameters: TableSelectedParameters!
-}
+scalar JSONObject
 
 """
 Column configuration for tables
+Stores complete parameter data along with display properties
 """
 type TableColumn {
+  # Display properties
   id: ID!
   field: String!
   header: String!
   width: Int
   visible: Boolean!
-  removable: Boolean
+  removable: Boolean!
   order: Int!
-  sortable: Boolean
-  filterable: Boolean
-  parameter: Parameter!
+  sortable: Boolean!
+  filterable: Boolean!
+
+  # Complete parameter data embedded in column
+  parameter: Parameter! # Full parameter data from parameters.graphql
 }
 
 """
@@ -70,53 +30,46 @@ type TableSort {
 }
 
 """
+Sort input for tables
+Must be separate from TableSort since inputs can't use output types
+"""
+input TableSortInput {
+  field: String
+  order: SortOrder
+}
+
+"""
 Filter configuration for table columns
 """
 type TableFilter {
   columnId: String!
-  value: JSON
+  value: String! # String representation of value, matching parameter value format
   operator: String!
 }
 
 """
-Named table configuration with additional metadata
+Table settings stored in PostgreSQL
+Stored in user.tables column with complete parameter data
 """
 type TableSettings {
   id: ID!
   name: String!
   displayName: String!
-  config: TableConfig!
-  categoryFilters: CategoryFilters
+  parentColumns: [TableColumn!]!
+  childColumns: [TableColumn!]!
+  categoryFilters: CategoryFilters!
+  filters: [TableFilter!]!
   sort: TableSort
-  filters: [TableFilter!]
   lastUpdateTimestamp: Float!
+  metadata: JSONObject
 }
 
+"""
+Sort order enum
+"""
 enum SortOrder {
   ASC
   DESC
-}
-
-"""
-Value types for BIM parameters
-"""
-enum BimValueType {
-  string
-  number
-  boolean
-  array
-  object
-}
-
-"""
-Value types for user parameters
-"""
-enum UserValueType {
-  string
-  number
-  boolean
-  array
-  object
 }
 
 """
@@ -127,113 +80,48 @@ type CategoryFilters {
   selectedChildCategories: [String!]!
 }
 
+# Input Types
+
+"""
+Input for table column
+When adding a parameter to a table, its full data is copied into the column
+"""
 input TableColumnInput {
+  # Display properties
   id: ID!
   field: String!
   header: String!
   width: Int
   visible: Boolean!
-  removable: Boolean
-  order: Int!
-  sortable: Boolean
-  filterable: Boolean
-  parameter: ParameterInput!
-}
-
-"""
-Input type for parameters (both BIM and User types)
-"""
-input ParameterInput {
-  # Common fields
-  id: ID!
-  kind: String! # 'bim' or 'user'
-  name: String!
-  field: String!
-  visible: Boolean!
-  header: String!
-  description: String
-  category: String
-  order: Int
-  computed: JSON
-  source: String
   removable: Boolean!
-  value: String!
-  metadata: JSON
+  order: Int!
+  sortable: Boolean!
+  filterable: Boolean!
+
+  # Base parameter data
+  parameterId: ID!
+  parameterName: String!
+  parameterKind: String! # 'bim' or 'user'
+  parameterType: String! # BimValueType or UserValueType
+  parameterValue: String! # String representation of value
+  parameterGroup: String!
+  parameterMetadata: JSONObject
+  parameterCategory: String
+  parameterDescription: String
 
   # BIM-specific fields
-  type: BimValueType # Required if kind = 'bim'
-  sourceValue: String # Required if kind = 'bim'
-  fetchedGroup: String # Required if kind = 'bim'
-  currentGroup: String # Required if kind = 'bim'
+  parameterCurrentGroup: String # Required if kind is 'bim'
+  parameterFetchedGroup: String # Required if kind is 'bim'
   # User-specific fields
-  userType: UserValueType # Required if kind = 'user'
-  group: String # Required if kind = 'user'
-  equation: String
-  isCustom: Boolean
+  parameterEquation: String # Optional, only if kind is 'user'
 }
 
 """
-Input for selected parameters
+Input for category filters
 """
-input TableSelectedParametersInput {
-  parent: [ParameterInput!]!
-  child: [ParameterInput!]!
-}
-
-"""
-Input for table configuration
-"""
-input TableConfigInput {
-  parentColumns: [TableColumnInput!]!
-  childColumns: [TableColumnInput!]!
-  selectedParameters: TableSelectedParametersInput!
-}
-
 input CategoryFiltersInput {
   selectedParentCategories: [String!]!
   selectedChildCategories: [String!]!
-}
-
-"""
-Input for table settings map
-"""
-input TableSettingsMapInput {
-  """
-  Map of table ID to table settings
-  Key is the table ID, value is the table settings
-  """
-  tables: [TableSettingsEntry!]!
-}
-
-"""
-Input for a single table settings entry
-"""
-input TableSettingsEntry {
-  """
-  Table ID - used as key in the map
-  """
-  id: ID!
-
-  """
-  Table settings
-  """
-  settings: TableSettingsInput!
-}
-
-"""
-Input for table settings
-"""
-input TableSettingsInput {
-  name: String!
-  displayName: String!
-  parentColumns: [TableColumnInput!]!
-  childColumns: [TableColumnInput!]!
-  categoryFilters: CategoryFiltersInput
-  selectedParameters: TableSelectedParametersInput!
-  filters: [TableFilterInput!]
-  lastUpdateTimestamp: Float!
-  description: String
-  metadata: JSON
 }
 
 """
@@ -241,20 +129,53 @@ Input for table filter
 """
 input TableFilterInput {
   columnId: String!
-  value: JSON
+  value: String! # String representation of value, matching parameter value format
   operator: String!
+}
+
+"""
+Input for table settings map
+"""
+input TableSettingsMapInput {
+  tables: [TableSettingsEntryInput!]!
+}
+
+"""
+Input for table settings entry
+"""
+input TableSettingsEntryInput {
+  id: ID!
+  settings: TableSettingsInput!
+}
+
+"""
+Input for table settings
+"""
+input TableSettingsInput {
+  id: ID!
+  name: String!
+  displayName: String!
+  parentColumns: [TableColumnInput!]!
+  childColumns: [TableColumnInput!]!
+  categoryFilters: CategoryFiltersInput!
+  filters: [TableFilterInput!]!
+  sort: TableSortInput
+  metadata: JSONObject
+  lastUpdateTimestamp: Float!
+}
+
+extend type Query {
+  """
+  Get table settings for current user
+  Returns complete settings including parameter data from user.tables
+  """
+  userTables: JSONObject!
 }
 
 extend type Mutation {
   """
-  Update user tables
-  Takes a map of table ID to table settings
-  Stored as JSONB in database but validated through GraphQL types
+  Update table settings for current user
+  Stores complete settings including parameter data in user.tables
   """
   userTablesUpdate(input: TableSettingsMapInput!): Boolean!
-
-  """
-  Update user settings
-  """
-  userSettingsUpdate(settings: JSON!): Boolean!
 }

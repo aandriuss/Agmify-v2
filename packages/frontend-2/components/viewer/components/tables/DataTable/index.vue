@@ -83,7 +83,10 @@ import {
 } from './composables/useTableUtils'
 import type { ElementData, TableRow } from '~/composables/core/types'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
-import type { SelectedParameter } from '~/composables/core/types/parameters/parameter-states'
+import type {
+  AvailableBimParameter,
+  AvailableUserParameter
+} from '~/composables/core/types/parameters/parameter-states'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   DataTableColumnReorderEvent,
@@ -91,7 +94,6 @@ import type {
   DataTableExpandedRows
 } from 'primevue/datatable'
 import { useTableConfigs } from '~/composables/useTableConfigs'
-import { useParameterStore } from '~/composables/core/parameters/store'
 
 interface Props {
   tableId: string
@@ -100,8 +102,8 @@ interface Props {
   scheduleData: (TableRow | ElementData)[]
   columns: TableColumn[]
   detailColumns: TableColumn[]
-  availableParentParameters: SelectedParameter[]
-  availableChildParameters: SelectedParameter[]
+  availableParentParameters: (AvailableBimParameter | AvailableUserParameter)[]
+  availableChildParameters: (AvailableBimParameter | AvailableUserParameter)[]
   loading?: boolean
   initialState?: TableState
 }
@@ -267,29 +269,35 @@ function ensureColumnProperties(column: Partial<TableColumn>): TableColumn {
   const name = column.header || column.field || 'Unnamed Column'
   const visible = column.visible ?? true
   const order = column.order ?? 0
-
-  const parameter: SelectedParameter = column.parameter || {
-    id,
-    name,
-    visible,
-    order,
-    kind: 'bim',
-    type: 'string',
-    value: null,
-    group: 'Default'
-  }
+  const removable = column.removable ?? true
 
   return {
     id,
     field: column.field || '',
     header: name,
     visible,
+    removable,
     sortable: column.sortable ?? true,
     filterable: column.filterable ?? true,
     width: column.width,
     order,
     headerComponent: column.headerComponent,
-    parameter
+    parameter: column.parameter || {
+      kind: 'bim' as const,
+      id,
+      name,
+      type: 'string',
+      value: null,
+      group: 'Default',
+      currentGroup: 'Default',
+      fetchedGroup: 'Default',
+      metadata: {
+        isSystem: false,
+        displayName: name,
+        originalGroup: 'Default',
+        groupId: 'bim_Default'
+      }
+    }
   }
 }
 
@@ -347,8 +355,12 @@ async function initializeState(): Promise<void> {
       expandedRows: expandedRowsState.value.length,
       groups: [
         ...new Set([
-          ...localParentColumns.value.map((c) => c.parameter.group),
-          ...localChildColumns.value.map((c) => c.parameter.group)
+          ...localParentColumns.value.map((c) =>
+            c.parameter.kind === 'bim' ? c.parameter.currentGroup : c.parameter.group
+          ),
+          ...localChildColumns.value.map((c) =>
+            c.parameter.kind === 'bim' ? c.parameter.currentGroup : c.parameter.group
+          )
         ])
       ]
     })
@@ -391,21 +403,6 @@ async function handleApplyColumns(): Promise<void> {
     // Update local state
     localParentColumns.value = safeJSONClone(tempParentColumns.value)
     localChildColumns.value = safeJSONClone(tempChildColumns.value)
-
-    // Convert columns to selected parameters
-    const parameterStore = useParameterStore()
-
-    // Update parent parameters
-    const parentSelectedParameters = localParentColumns.value.map(
-      (column) => column.parameter
-    )
-    parameterStore.updateSelectedParameters(parentSelectedParameters, true)
-
-    // Update child parameters
-    const childSelectedParameters = localChildColumns.value.map(
-      (column) => column.parameter
-    )
-    parameterStore.updateSelectedParameters(childSelectedParameters, false)
 
     // Update table configs
     if (props.tableId) {

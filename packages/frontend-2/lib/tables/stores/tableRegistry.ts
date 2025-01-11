@@ -27,10 +27,6 @@ export function useTableRegistry() {
         selectedParentCategories: [],
         selectedChildCategories: []
       },
-      selectedParameters: {
-        parent: [],
-        child: []
-      },
       filters: [],
       lastUpdateTimestamp: Date.now()
     }
@@ -42,7 +38,6 @@ export function useTableRegistry() {
       parentColumns: defaultState.parentColumns,
       childColumns: defaultState.childColumns,
       categoryFilters: defaultState.categoryFilters,
-      selectedParameters: defaultState.selectedParameters,
       lastUpdateTimestamp: Date.now()
     })
 
@@ -71,7 +66,6 @@ export function useTableRegistry() {
       parentColumns: newState.parentColumns,
       childColumns: newState.childColumns,
       categoryFilters: newState.categoryFilters,
-      selectedParameters: newState.selectedParameters,
       lastUpdateTimestamp: Date.now()
     })
 

@@ -105,7 +105,7 @@ function createUserParameterStore(operations: ParameterOperations): UserParamete
       // Generate ID
       const id = `param_${uuidv4()}`
 
-      // Create parameter with all required fields
+      // Create parameter with all required fields and metadata
       const newParameter: AvailableUserParameter = {
         ...parameter,
         id,
@@ -115,7 +115,13 @@ function createUserParameterStore(operations: ParameterOperations): UserParamete
         header: parameter.name, // Use name as header
         removable: true, // User parameters are always removable
         value: parameter.type === 'fixed' ? parameter.value?.toString() || '' : '', // Ensure value is string
-        metadata: {} // Initialize empty metadata
+        metadata: {
+          displayName: parameter.name,
+          originalGroup: parameter.group,
+          groupId: `user_${parameter.group}`,
+          isSystem: false,
+          ...parameter.metadata // Preserve any additional metadata
+        }
       }
 
       // Merge with existing parameters
@@ -171,10 +177,19 @@ function createUserParameterStore(operations: ParameterOperations): UserParamete
         throw new ParameterError('Fixed type parameters cannot have equation values')
       }
 
-      // Create updated parameter
+      // Create updated parameter with preserved metadata
       const updatedParameter: AvailableUserParameter = {
         ...existingParameter,
-        ...updates
+        ...updates,
+        metadata: {
+          ...existingParameter.metadata,
+          displayName: updates.name || existingParameter.name,
+          originalGroup: updates.group || existingParameter.group,
+          groupId: updates.group
+            ? `user_${updates.group}`
+            : existingParameter.metadata?.groupId,
+          ...(updates.metadata || {}) // Preserve any additional metadata updates
+        }
       }
 
       // Update parameters map

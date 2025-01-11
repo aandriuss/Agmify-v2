@@ -44,41 +44,45 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
       try {
         debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
 
-        // Get selected parameters from current table if available
-        const currentParams = store.currentTable.value?.selectedParameters
+        // Get columns from current table if available
+        const currentTable = store.computed.currentTable.value
+        const hasColumns =
+          currentTable &&
+          (currentTable.parentColumns.length > 0 ||
+            currentTable.childColumns.length > 0)
 
-        // If we have current parameters, use them
-        if (currentParams?.parent?.length && currentParams?.child?.length) {
-          debug.log(DebugCategories.INITIALIZATION, 'Using existing parameters', {
-            parent: currentParams.parent.length,
-            child: currentParams.child.length
+        // If we have current columns, use them
+        if (hasColumns && currentTable) {
+          debug.log(DebugCategories.INITIALIZATION, 'Using existing columns', {
+            parent: currentTable.parentColumns.length,
+            child: currentTable.childColumns.length
           })
 
-          await Promise.resolve(store.updateSelectedParameters(currentParams))
+          state.value.currentTableColumns = [...currentTable.parentColumns]
+          state.value.currentDetailColumns = [...currentTable.childColumns]
         } else {
           // Otherwise use defaults
-          const defaultParams = defaultTableConfig.selectedParameters
-
-          debug.log(DebugCategories.INITIALIZATION, 'Using default parameters', {
-            parent: defaultParams.parent.length,
-            child: defaultParams.child.length
+          debug.log(DebugCategories.INITIALIZATION, 'Using default columns', {
+            parent: defaultTableConfig.parentColumns.length,
+            child: defaultTableConfig.childColumns.length
           })
 
-          await Promise.resolve(store.updateSelectedParameters(defaultParams))
+          state.value.currentTableColumns = [...defaultTableConfig.parentColumns]
+          state.value.currentDetailColumns = [...defaultTableConfig.childColumns]
         }
 
-        // Update other table settings
-        await Promise.resolve(
-          store.updateTable({
-            id: state.value.selectedTableId,
-            name: state.value.tableName,
-            displayName: state.value.tableName,
-            categoryFilters: {
-              selectedParentCategories: state.value.selectedParentCategories,
-              selectedChildCategories: state.value.selectedChildCategories
-            }
-          })
-        )
+        // Update table settings
+        await store.updateTable({
+          id: state.value.selectedTableId,
+          name: state.value.tableName,
+          displayName: state.value.tableName,
+          parentColumns: state.value.currentTableColumns,
+          childColumns: state.value.currentDetailColumns,
+          categoryFilters: {
+            selectedParentCategories: state.value.selectedParentCategories,
+            selectedChildCategories: state.value.selectedChildCategories
+          }
+        })
 
         debug.completeState(DebugCategories.INITIALIZATION, 'Table initialized')
       } catch (err) {
@@ -97,20 +101,15 @@ export function useTableInitialization(options: UseTableInitializationOptions) {
         // Reset state to defaults
         state.value = { ...defaultState }
 
-        // Update selected parameters first to ensure columns are created
-        await Promise.resolve(
-          store.updateSelectedParameters(defaultTableConfig.selectedParameters)
-        )
-
-        // Update other table settings
-        await Promise.resolve(
-          store.updateTable({
-            id: defaultTableConfig.id,
-            name: defaultTableConfig.name,
-            displayName: defaultTableConfig.name,
-            categoryFilters: defaultTableConfig.categoryFilters
-          })
-        )
+        // Update table settings
+        await store.updateTable({
+          id: defaultTableConfig.id,
+          name: defaultTableConfig.name,
+          displayName: defaultTableConfig.name,
+          parentColumns: defaultTableConfig.parentColumns,
+          childColumns: defaultTableConfig.childColumns,
+          categoryFilters: defaultTableConfig.categoryFilters
+        })
 
         debug.completeState(DebugCategories.STATE, 'Table state reset')
       } catch (err) {

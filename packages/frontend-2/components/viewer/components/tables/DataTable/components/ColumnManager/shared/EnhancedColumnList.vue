@@ -181,13 +181,17 @@ function isColumn(item: AvailableParameter | TableColumn): item is TableColumn {
 
 // Helper Functions
 function getItemId(item: AvailableParameter | TableColumn): string {
-  return isColumn(item) ? item.id : item.id
+  if (isColumn(item)) {
+    return `col_${item.parameter.id}`
+  }
+  return `param_${item.id}`
 }
 
 function getItemName(item: AvailableParameter | TableColumn): string {
   const param = isColumn(item) ? item.parameter : item
   // Use clean name without group prefix
-  return (param.metadata?.displayName as string) || param.name
+  const displayName = param.metadata?.displayName
+  return typeof displayName === 'string' ? displayName : param.name
 }
 
 /**
@@ -196,8 +200,8 @@ function getItemName(item: AvailableParameter | TableColumn): string {
 function getParameterGroup(item: AvailableParameter): string {
   if (isAvailableBimParameter(item)) {
     // Use original group from metadata
-    const group = item.metadata?.originalGroup as string
-    if (group) return group
+    const group = item.metadata?.originalGroup
+    if (typeof group === 'string') return group
 
     // Fallback to fetched group
     return item.fetchedGroup || 'Other Parameters'

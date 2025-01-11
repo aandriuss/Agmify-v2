@@ -281,10 +281,6 @@
                     <span>{{ parameterStoreCounts.parent.availableUser }}</span>
                   </div>
                   <div class="count-item">
-                    <span>Selected:</span>
-                    <span>{{ tableStoreCounts.parent.selected }}</span>
-                  </div>
-                  <div class="count-item">
                     <span>Columns:</span>
                     <span>{{ tableStoreCounts.parent.columns }}</span>
                   </div>
@@ -328,10 +324,6 @@
                   <div class="count-item">
                     <span>Available User:</span>
                     <span>{{ parameterStoreCounts.child.availableUser }}</span>
-                  </div>
-                  <div class="count-item">
-                    <span>Selected:</span>
-                    <span>{{ tableStoreCounts.child.selected }}</span>
                   </div>
                   <div class="count-item">
                     <span>Columns:</span>
@@ -451,8 +443,7 @@ import { useParameterStore } from '~/composables/core/parameters/store/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import type {
   AvailableBimParameter,
-  AvailableUserParameter,
-  SelectedParameter
+  AvailableUserParameter
 } from '~/composables/core/types/parameters/parameter-states'
 
 type Props = DebugPanelProps
@@ -529,16 +520,12 @@ watch(
 // Selected parameters and columns from table store
 const tableStoreCounts = computed(() => {
   const currentTable = tableStore.computed.currentTable.value
-  const selectedParams = currentTable?.selectedParameters
-  const hasSelectedParams = isSelectedParameters(selectedParams)
 
   return {
     parent: {
-      selected: hasSelectedParams ? selectedParams.parent.length : 0,
       columns: currentTable?.parentColumns?.length ?? 0
     },
     child: {
-      selected: hasSelectedParams ? selectedParams.child.length : 0,
       columns: currentTable?.childColumns?.length ?? 0
     }
   }
@@ -560,15 +547,6 @@ const uniqueChildCategories = computed(() =>
     )
   )
 )
-
-// Type guard for selected parameters
-const isSelectedParameters = (
-  value: unknown
-): value is { parent: SelectedParameter[]; child: SelectedParameter[] } => {
-  return (
-    value !== null && typeof value === 'object' && 'parent' in value && 'child' in value
-  )
-}
 
 // Safe parameter access helper
 const safeValue = <T>(value: { value?: T | null } | undefined | null) => value?.value
@@ -594,17 +572,16 @@ const parameterCounts = computed<ParameterCounts>(() => {
   const tableCounts = tableStoreCounts.value
 
   return {
-    raw: storeCounts.raw,
     parent: {
       availableBim: storeCounts.parent.availableBim,
       availableUser: storeCounts.parent.availableUser,
-      selected: tableCounts.parent.selected,
+      selected: 0, // No longer using selected parameters
       columns: tableCounts.parent.columns
     },
     child: {
       availableBim: storeCounts.child.availableBim,
       availableUser: storeCounts.child.availableUser,
-      selected: tableCounts.child.selected,
+      selected: 0, // No longer using selected parameters
       columns: tableCounts.child.columns
     }
   }
@@ -664,20 +641,14 @@ const parameterGroups = computed(() => {
     }
   }
 
-  const currentTable = tableStore.computed.currentTable.value
-  const selectedParams = currentTable?.selectedParameters
-  const hasSelectedParams = isSelectedParameters(selectedParams)
-
   return {
     parent: getParameterGroups(
       safeValue(parameters.parentAvailableBimParameters) || [],
-      safeValue(parameters.parentAvailableUserParameters) || [],
-      hasSelectedParams ? selectedParams.parent : []
+      safeValue(parameters.parentAvailableUserParameters) || []
     ),
     child: getParameterGroups(
       safeValue(parameters.childAvailableBimParameters) || [],
-      safeValue(parameters.childAvailableUserParameters) || [],
-      hasSelectedParams ? selectedParams.child : []
+      safeValue(parameters.childAvailableUserParameters) || []
     )
   }
 })
@@ -714,11 +685,9 @@ type ParameterGroups = Record<string, ParameterGroupData>
 
 function getParameterGroups(
   bimParams: AvailableBimParameter[],
-  userParams: AvailableUserParameter[],
-  selectedParams: SelectedParameter[]
+  userParams: AvailableUserParameter[]
 ): ParameterGroups {
   const groups = new Map<string, ParameterGroupData>()
-  const selectedMap = new Map(selectedParams.map((p) => [p.id, p]))
 
   // Process BIM parameters
   for (const param of bimParams) {
@@ -733,14 +702,12 @@ function getParameterGroups(
 
     const groupData = groups.get(group)
     if (groupData) {
-      const selected = selectedMap.get(param.id)
-      const visible = selected?.visible ?? false
       groupData.total++
-      if (visible) groupData.visible++
+      if (param.visible ?? false) groupData.visible++
       groupData.parameters.push({
         id: param.id,
         name: param.name,
-        visible
+        visible: param.visible ?? false
       })
     }
   }
@@ -758,14 +725,12 @@ function getParameterGroups(
 
     const groupData = groups.get(group)
     if (groupData) {
-      const selected = selectedMap.get(param.id)
-      const visible = selected?.visible ?? false
       groupData.total++
-      if (visible) groupData.visible++
+      if (param.visible ?? false) groupData.visible++
       groupData.parameters.push({
         id: param.id,
         name: param.name,
-        visible
+        visible: param.visible ?? false
       })
     }
   }

@@ -1,6 +1,5 @@
 import type { Ref } from 'vue'
 import type { TableColumn } from './table-column'
-import type { SelectedParameter } from '../parameters/parameter-states'
 
 /**
  * Table category filters
@@ -11,19 +10,12 @@ export interface TableCategoryFilters {
 }
 
 /**
- * Table selected parameters
- */
-export interface TableSelectedParameters {
-  parent: SelectedParameter[]
-  child: SelectedParameter[]
-}
-
-/**
  * Filter definition type
  */
 export interface FilterDef {
-  value: unknown
-  matchMode: string
+  columnId: string
+  value: string
+  operator: string
 }
 
 /**
@@ -89,20 +81,38 @@ export interface NamedTableState extends CoreTableState {
   // Additional methods
   setActiveTable: (tableId: string) => void
   toggleView: () => void
-  addTable: (config: unknown) => void
+  addTable: (config: BaseTableConfig) => void
   removeTable: (tableId: string) => void
 }
 
 /**
+ * Sort configuration for tables
+ */
+export interface TableSort {
+  field?: string
+  order?: 'ASC' | 'DESC'
+}
+
+export type TableFilter = {
+  __typename: 'string'
+  columnId: string
+  operator: string
+  value: string
+}
+
+/**
  * Base table configuration interface
+ * Matches GraphQL schema TableSettings type
  */
 export interface BaseTableConfig {
   readonly id: string
   name: string
-  parentColumns: TableColumn[]
-  childColumns: TableColumn[]
+  displayName: string
+  parentColumns: TableColumn[] // Full parameter data embedded in columns
+  childColumns: TableColumn[] // Full parameter data embedded in columns
   categoryFilters: TableCategoryFilters
-  selectedParameters: TableSelectedParameters
+  filters: FilterDef[]
+  sort?: TableSort
   metadata?: Record<string, unknown>
   lastUpdateTimestamp: number
 }

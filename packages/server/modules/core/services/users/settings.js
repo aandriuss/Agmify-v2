@@ -40,10 +40,6 @@ async function getTables(userId) {
         selectedParentCategories: [],
         selectedChildCategories: []
       },
-      selectedParameters: table.selectedParameters || {
-        parent: [],
-        child: []
-      },
       filters: Array.isArray(table.filters) ? table.filters : [],
       lastUpdateTimestamp: table.lastUpdateTimestamp || Date.now(),
       // Optional fields
@@ -189,38 +185,6 @@ async function updateTables(userId, tables) {
         const childColumns = validateColumns(table.childColumns);
         const filters = Array.isArray(table.filters) ? table.filters : [];
 
-        // Validate and normalize parameters
-        const validateParameters = (params) => {
-          if (!Array.isArray(params)) {
-            console.warn(`Invalid parameters data for table ${key}:`, params);
-            return [];
-          }
-          return params.map(param => {
-            if (!param || typeof param !== 'object') {
-              console.warn(`Invalid parameter data in table ${key}:`, param);
-              return null;
-            }
-            return {
-              id: param.id || '',
-              name: param.name || '',
-              kind: param.kind || 'bim',
-              type: param.type || 'string',
-              value: param.value === null || param.value === '' || param.value === 'null' ? null : param.value,
-              visible: param.visible ?? true,
-              order: param.order ?? 0,
-              group: param.group || '',
-              category: param.category,
-              description: param.description,
-              metadata: param.metadata
-            };
-          }).filter(Boolean); // Remove any invalid parameters
-        };
-
-        const selectedParameters = {
-          parent: validateParameters(table.selectedParameters?.parent),
-          child: validateParameters(table.selectedParameters?.child)
-        };
-
         // Validate and normalize category filters
         const categoryFilters = {
           selectedParentCategories: Array.isArray(table.categoryFilters?.selectedParentCategories) 
@@ -239,7 +203,6 @@ async function updateTables(userId, tables) {
           parentColumns,
           childColumns,
           categoryFilters,
-          selectedParameters,
           filters,
           lastUpdateTimestamp: table.lastUpdateTimestamp || Date.now(),
           description: table.description,

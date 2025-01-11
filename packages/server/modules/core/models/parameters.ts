@@ -3,6 +3,23 @@
  */
 export type PrimitiveValue = string | number | boolean | null
 
+/**
+ * Parameter metadata interface
+ */
+export interface ParameterMetadata extends Record<string, unknown> {
+  category?: string
+  fullKey?: string
+  isSystem?: boolean
+  group?: string
+  elementId?: string
+  isNested?: boolean
+  parentKey?: string
+  isJsonString?: boolean
+  displayName?: string
+  originalGroup?: string
+  groupId?: string
+}
+
 export type BimValueType = 'string' | 'number' | 'boolean' | 'date' | 'object' | 'array'
 export type UserValueType = 'fixed' | 'equation'
 
@@ -29,7 +46,7 @@ interface BaseParameter {
   computed?: unknown
   source?: string
   removable: boolean
-  metadata?: Record<string, unknown>
+  metadata?: ParameterMetadata
 }
 
 /**

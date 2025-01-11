@@ -1,25 +1,3 @@
-/**
- * Table Store
- *
- * Responsibilities:
- * 1. Table Management
- * - Load/save tables from/to PostgreSQL
- * - Manage current table state
- *
- * 2. Selected Parameters
- * - Owns selected parameters (both parent and child)
- * - Manages parameter visibility and order
- *
- * 3. Column Management
- * - Owns table columns (using TableColumn type)
- * - Manages column visibility and order
- *
- * Does NOT handle:
- * - Raw parameters (managed by Parameter Store)
- * - Available parameters (managed by Parameter Store)
- * - UI state (managed by Core Store)
- */
-
 import { ref, computed } from 'vue'
 import { isEqual } from 'lodash'
 import type {
@@ -30,11 +8,15 @@ import type {
   TableUIState
 } from './types'
 import type { TableColumn, TableCategoryFilters } from '~/composables/core/types'
-import { createTableColumns, createTableColumn } from '~/composables/core/types'
+import { createTableColumn } from '~/composables/core/types'
 import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { defaultSelectedParameters, defaultTableConfig } from '../config/defaults'
+import { defaultTableConfig } from '../config/defaults'
 import { useStore } from '~/composables/core/store'
+import type {
+  AvailableBimParameter,
+  AvailableUserParameter
+} from '../../types/parameters/parameter-states'
 
 const LAST_SELECTED_TABLE_KEY = 'speckle:lastSelectedTableId'
 
@@ -99,9 +81,9 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   const state = ref<TableStoreState>(createInitialState())
   let graphqlOps: Awaited<ReturnType<typeof useTablesGraphQL>> | null = null
 
-  // Create default table with columns created from default parameters
-  const defaultParentColumns = createTableColumns(defaultSelectedParameters.parent)
-  const defaultChildColumns = createTableColumns(defaultSelectedParameters.child)
+  // Create default table with columns
+  const defaultParentColumns = defaultTableConfig.parentColumns
+  const defaultChildColumns = defaultTableConfig.childColumns
 
   // Use consistent default table config
   const defaultTable: TableSettings = {
@@ -147,10 +129,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   })
 
   // Computed properties for change detection
-  const computedState: {
-    currentTable: Ref<TableSettings | null>
-    hasChanges: Ref<boolean>
-  } = {
+  const computedState = {
     currentTable: computed(() => state.value.currentTable),
     hasChanges: computed(() => {
       if (!state.value.currentTable) return false
@@ -166,6 +145,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   const error = computed(() => state.value.error)
   const hasError = computed(() => state.value.error !== null)
   const currentView = computed(() => state.value.currentView)
+  const lastUpdated = computed(() => state.value.lastUpdated)
 
   /**
    * Initialize GraphQL operations
@@ -182,48 +162,13 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         'GraphQL operations initialized'
       )
     } catch (err) {
-      debug.error(DebugCategories.ERROR, 'Failed to initialize GraphQL', err)
-      const errorMessage =
-        err instanceof Error ? err.message : 'Failed to initialize GraphQL'
-      const error = new Error(errorMessage)
+      const error =
+        err instanceof Error ? err : new Error('Failed to initialize GraphQL')
       state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to initialize GraphQL:', error)
       throw error
     }
   }
-
-  /**
-   * Set current table and persist selection
-   */
-  // async function setCurrentTable(tableId: string | null) {
-  //   debug.startState(DebugCategories.STATE, 'Setting current table', { tableId })
-
-  //   // Update current ID
-  //   state.value.currentTableId = tableId
-  //   if (tableId) {
-  //     // Find table in available tables
-  //     const tableInfo = state.value.availableTables.find((t) => t.id === tableId)
-  //     if (!tableInfo) {
-  //       throw new Error(`Table ${tableId} not found`)
-  //     }
-
-  //     // Load full table data if not already current
-  //     if (!state.value.currentTable || state.value.currentTable.id !== tableId) {
-  //       await loadTable(tableId)
-  //     }
-
-  //     // Store original state for change detection
-  //     state.value.originalTable = state.value.currentTable
-  //       ? { ...state.value.currentTable }
-  //       : null
-  //     storage.setItem(LAST_SELECTED_TABLE_KEY, tableId)
-  //   } else {
-  //     state.value.currentTable = null
-  //     state.value.originalTable = null
-  //     storage.removeItem(LAST_SELECTED_TABLE_KEY)
-  //   }
-
-  //   debug.completeState(DebugCategories.STATE, 'Current table set')
-  // }
 
   /**
    * Toggle between parent and child view
@@ -263,50 +208,13 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       const loadedTable = tables[tableId]
 
       // If table exists, preserve all data
-      const table = loadedTable
-        ? {
-            ...loadedTable,
-            // Keep existing columns and parameters, only use defaults if missing
-            parentColumns:
-              loadedTable.parentColumns?.length > 0
-                ? (loadedTable.parentColumns.map((col: Partial<TableColumn>) => ({
-                    ...col,
-                    parameter:
-                      col.parameter ||
-                      defaultSelectedParameters.parent.find((p) => p.id === col.id)
-                  })) as TableColumn[])
-                : createTableColumns(defaultSelectedParameters.parent),
-            childColumns:
-              loadedTable.childColumns?.length > 0
-                ? (loadedTable.childColumns.map((col: Partial<TableColumn>) => ({
-                    ...col,
-                    parameter:
-                      col.parameter ||
-                      defaultSelectedParameters.child.find((p) => p.id === col.id)
-                  })) as TableColumn[])
-                : createTableColumns(defaultSelectedParameters.child),
-            selectedParameters: {
-              parent: loadedTable.selectedParameters?.parent || [
-                ...defaultSelectedParameters.parent
-              ],
-              child: loadedTable.selectedParameters?.child || [
-                ...defaultSelectedParameters.child
-              ]
-            }
-          }
-        : {
-            ...defaultTableConfig,
-            id: tableId,
-            name: `Table ${tableId}`,
-            displayName: `Table ${tableId}`,
-            parentColumns: createTableColumns(defaultSelectedParameters.parent),
-            childColumns: createTableColumns(defaultSelectedParameters.child),
-            selectedParameters: {
-              parent: [...defaultSelectedParameters.parent],
-              child: [...defaultSelectedParameters.child]
-            },
-            lastUpdateTimestamp: Date.now()
-          }
+      const table = loadedTable || {
+        ...defaultTableConfig,
+        id: tableId,
+        name: `Table ${tableId}`,
+        displayName: `Table ${tableId}`,
+        lastUpdateTimestamp: Date.now()
+      }
 
       // Update store with table and set original state for change detection
       state.value.currentTable = table
@@ -318,9 +226,9 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         fromServer: !!loadedTable
       })
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      debug.error(DebugCategories.ERROR, 'Failed to load table:', error)
+      const error = err instanceof Error ? err : new Error('Failed to load table')
       state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to load table:', error)
       throw error
     } finally {
       state.value.loading = false
@@ -334,11 +242,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     const isNewTable = !state.value.availableTables.some((t) => t.id === settings.id)
     debug.startState(DebugCategories.STATE, 'Saving table', {
       tableId: settings.id,
-      settings,
-      isNew: isNewTable,
-      currentTableId: state.value.currentTableId,
-      hasCurrentTable: !!state.value.currentTable,
-      currentTableMatches: state.value.currentTable?.id === settings.id
+      isNew: isNewTable
     })
     state.value.loading = true
 
@@ -352,42 +256,15 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         throw new Error('GraphQL operations not initialized')
       }
 
-      // For new tables, initialize in store first
-      if (isNewTable) {
-        // Create default columns if none provided
-        const parentColumns =
-          settings.parentColumns || createTableColumns(defaultSelectedParameters.parent)
-        const childColumns =
-          settings.childColumns || createTableColumns(defaultSelectedParameters.child)
-
-        const newTable: TableSettings = {
-          ...defaultTableConfig,
-          ...settings,
-          parentColumns,
-          childColumns,
-          selectedParameters: {
-            parent: settings.selectedParameters?.parent || [
-              ...defaultSelectedParameters.parent
-            ],
-            child: settings.selectedParameters?.child || [
-              ...defaultSelectedParameters.child
-            ]
-          },
-          lastUpdateTimestamp: Date.now()
-        }
-
-        // Set as current table
-        state.value.currentTableId = settings.id
-        state.value.currentTable = newTable
-        storage.setItem(LAST_SELECTED_TABLE_KEY, settings.id)
-
-        // Use the newly created table for saving
-        settings = newTable
+      // Ensure id is included in settings
+      const tableSettings: TableSettings = {
+        ...settings,
+        id: settings.id // Explicitly include id
       }
 
       // Save to PostgreSQL
       const success = await graphqlOps.updateTables({
-        [settings.id]: settings
+        [settings.id]: tableSettings
       })
 
       if (!success) {
@@ -429,9 +306,9 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
         isNewTable
       })
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      debug.error(DebugCategories.ERROR, 'Failed to save table:', error)
+      const error = err instanceof Error ? err : new Error('Failed to save table')
       state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to save table:', error)
       throw error
     } finally {
       state.value.loading = false
@@ -439,142 +316,57 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   }
 
   /**
-   * Create new table and save to PostgreSQL
+   * Update current table in store only
+   * Does not save to PostgreSQL
    */
-  async function createTable(id: string, initialData: Partial<TableSettings> = {}) {
-    debug.log(DebugCategories.STATE, 'Creating new table', {
-      tableId: id,
-      initialData
-    })
+  async function updateTable(updates: Partial<TableSettings>): Promise<void> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Updating table')
 
-    // Create default columns if none provided
-    const parentColumns =
-      initialData.parentColumns || createTableColumns(defaultSelectedParameters.parent)
-    const childColumns =
-      initialData.childColumns || createTableColumns(defaultSelectedParameters.child)
-
-    const newTable: TableSettings = {
-      ...defaultTableConfig,
-      ...initialData,
-      id,
-      parentColumns,
-      childColumns,
-      selectedParameters: {
-        parent: initialData.selectedParameters?.parent || [
-          ...defaultSelectedParameters.parent
-        ],
-        child: initialData.selectedParameters?.child || [
-          ...defaultSelectedParameters.child
-        ]
-      },
-      lastUpdateTimestamp: Date.now()
-    }
-
-    // Save to PostgreSQL first
-    await saveTable(newTable)
-
-    // Load the table to ensure consistent state
-    await loadTable(id)
-
-    // Set as current table
-    state.value.currentTableId = id
-    storage.setItem(LAST_SELECTED_TABLE_KEY, id)
-  }
-
-  /**
-   * Update current table
-   */
-  function updateTable(updates: Partial<TableSettings>) {
-    // If this is a new table, create it in PostgreSQL first
-    if (updates.id && !state.value.availableTables.some((t) => t.id === updates.id)) {
-      return createTable(updates.id, updates)
-    }
-
-    // Otherwise update existing table
-    if (!state.value.currentTableId || !state.value.currentTable) {
-      debug.error(
-        DebugCategories.ERROR,
-        'Cannot update table: No current table selected'
-      )
-      return
-    }
-
-    // If selected parameters are being updated, merge with existing columns
-    let updated = { ...state.value.currentTable, ...updates }
-    if (updates.selectedParameters) {
-      // Get existing column maps for quick lookup
-      const existingParentColumns = new Map(
-        state.value.currentTable.parentColumns.map((col: TableColumn) => [col.id, col])
-      )
-      const existingChildColumns = new Map(
-        state.value.currentTable.childColumns.map((col: TableColumn) => [col.id, col])
-      )
-
-      // Create new columns only for new parameters
-      const newParentColumns: TableColumn[] = updates.selectedParameters.parent
-        .filter((param) => !existingParentColumns.has(param.id))
-        .map((param) => createTableColumn(param))
-      const newChildColumns: TableColumn[] = updates.selectedParameters.child
-        .filter((param) => !existingChildColumns.has(param.id))
-        .map((param) => createTableColumn(param))
-
-      // Merge existing and new columns
-      const mergedParentColumns: TableColumn[] = [
-        ...state.value.currentTable.parentColumns,
-        ...newParentColumns
-      ]
-      const mergedChildColumns: TableColumn[] = [
-        ...state.value.currentTable.childColumns,
-        ...newChildColumns
-      ]
-
-      updated = {
-        ...updated,
-        parentColumns: mergedParentColumns,
-        childColumns: mergedChildColumns
+      if (!state.value.currentTableId || !state.value.currentTable) {
+        throw new Error('No table selected')
       }
 
-      debug.log(DebugCategories.STATE, 'Table updated with merged columns', {
-        tableId: state.value.currentTable.id,
-        selectedParameters: {
-          parent: updates.selectedParameters.parent.length,
-          child: updates.selectedParameters.child.length
-        },
-        columns: {
-          parent: updated.parentColumns.length,
-          child: updated.childColumns.length
-        },
-        newColumns: {
-          parent: newParentColumns.length,
-          child: newChildColumns.length
+      const currentTable = state.value.currentTable
+      const updatedTable: TableSettings = {
+        ...currentTable,
+        ...updates,
+        id: currentTable.id, // Ensure id is preserved
+        lastUpdateTimestamp: Date.now()
+      }
+
+      // Update current table without modifying originalTable to track unsaved changes
+      state.value.currentTable = updatedTable
+
+      // Update available tables list if name changed
+      if (updates.name || updates.displayName) {
+        const index = state.value.availableTables.findIndex(
+          (t) => t.id === state.value.currentTableId
+        )
+        if (index !== -1) {
+          state.value.availableTables[index] = {
+            id: updatedTable.id,
+            name: updatedTable.name,
+            displayName: updatedTable.displayName
+          }
         }
+      }
+
+      state.value.lastUpdated = Date.now()
+
+      debug.completeState(DebugCategories.STATE, 'Table updated in store', {
+        tableId: updatedTable.id,
+        updates: Object.keys(updates)
       })
+
+      // Return resolved promise since this is a synchronous operation
+      return Promise.resolve()
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to update table')
+      state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to update table:', error)
+      throw error
     }
-
-    // Update current table without modifying originalTable to track unsaved changes
-    state.value.currentTable = updated
-
-    // Update available tables list if name changed
-    if (updates.name || updates.displayName) {
-      const index = state.value.availableTables.findIndex(
-        (t) => t.id === state.value.currentTableId
-      )
-      if (index !== -1) {
-        state.value.availableTables[index] = {
-          id: updated.id,
-          name: updated.name,
-          displayName: updated.displayName
-        }
-      }
-    }
-
-    state.value.lastUpdated = Date.now()
-
-    debug.log(DebugCategories.STATE, 'Table updated', {
-      tableId: updated.id,
-      updates,
-      table: updated
-    })
   }
 
   /**
@@ -597,7 +389,7 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
       // Delete from PostgreSQL by saving an empty table
       const success = await graphqlOps.updateTables({
         [tableId]: {
-          id: tableId,
+          id: tableId, // Include id
           name: '',
           displayName: '',
           parentColumns: [],
@@ -606,11 +398,8 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
             selectedParentCategories: [],
             selectedChildCategories: []
           },
-          selectedParameters: {
-            parent: [],
-            child: []
-          },
           filters: [],
+          metadata: {}, // Include empty metadata
           lastUpdateTimestamp: Date.now()
         }
       })
@@ -636,9 +425,9 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
 
       debug.log(DebugCategories.STATE, 'Table deleted', { tableId })
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      debug.error(DebugCategories.ERROR, 'Failed to delete table:', error)
+      const error = err instanceof Error ? err : new Error('Failed to delete table')
       state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to delete table:', error)
       throw error
     } finally {
       state.value.loading = false
@@ -646,264 +435,201 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
   }
 
   /**
-   * Reset store state
+   * Column operations
    */
-  function reset() {
-    // Create initial state
-    const initialState = createInitialState()
+  async function addColumn(
+    parameter: AvailableBimParameter | AvailableUserParameter,
+    isParent: boolean
+  ): Promise<void> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Adding column')
 
-    // Create default table with columns created from default parameters
-    const defaultParentColumns = createTableColumns(defaultSelectedParameters.parent)
-    const defaultChildColumns = createTableColumns(defaultSelectedParameters.child)
+      if (!state.value.currentTableId || !state.value.currentTable) {
+        throw new Error('No table selected')
+      }
 
-    // Use consistent default table config
-    const defaultTable: TableSettings = {
-      ...defaultTableConfig,
-      parentColumns: defaultParentColumns,
-      childColumns: defaultChildColumns,
-      categoryFilters: {
-        ...defaultTableConfig.categoryFilters
-      },
-      lastUpdateTimestamp: Date.now()
+      const currentTable = state.value.currentTable
+      const columns = isParent ? currentTable.parentColumns : currentTable.childColumns
+      const order = columns.length
+
+      const newColumn = createTableColumn(parameter, order)
+      const updatedColumns = [...columns, newColumn]
+
+      await updateTable({
+        ...(isParent
+          ? { parentColumns: updatedColumns }
+          : { childColumns: updatedColumns })
+      })
+
+      debug.completeState(DebugCategories.STATE, 'Column added', {
+        tableId: currentTable.id,
+        columnId: newColumn.id,
+        isParent
+      })
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to add column')
+      state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to add column:', error)
+      throw error
     }
+  }
 
-    // Set default table
-    initialState.availableTables = [
+  async function removeColumn(columnId: string, isParent: boolean): Promise<void> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Removing column')
+
+      if (!state.value.currentTableId || !state.value.currentTable) {
+        throw new Error('No table selected')
+      }
+
+      const currentTable = state.value.currentTable
+      const columns = isParent ? currentTable.parentColumns : currentTable.childColumns
+      const updatedColumns = columns.filter((col) => col.id !== columnId)
+
+      await updateTable({
+        ...(isParent
+          ? { parentColumns: updatedColumns }
+          : { childColumns: updatedColumns })
+      })
+
+      debug.completeState(DebugCategories.STATE, 'Column removed', {
+        tableId: currentTable.id,
+        columnId,
+        isParent
+      })
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to remove column')
+      state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to remove column:', error)
+      throw error
+    }
+  }
+
+  async function updateColumns(
+    parentColumns: TableColumn[],
+    childColumns: TableColumn[]
+  ): Promise<void> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Updating columns')
+
+      if (!state.value.currentTableId || !state.value.currentTable) {
+        throw new Error('No table selected')
+      }
+
+      await updateTable({
+        parentColumns,
+        childColumns
+      })
+
+      debug.completeState(DebugCategories.STATE, 'Columns updated', {
+        tableId: state.value.currentTable.id,
+        parentCount: parentColumns.length,
+        childCount: childColumns.length
+      })
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to update columns')
+      state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to update columns:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Category operations
+   */
+  async function updateCategories(categories: TableCategoryFilters): Promise<void> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Updating categories')
+
+      if (!state.value.currentTableId || !state.value.currentTable) {
+        throw new Error('No table selected')
+      }
+
+      await updateTable({
+        categoryFilters: categories
+      })
+
+      debug.completeState(DebugCategories.STATE, 'Categories updated', {
+        tableId: state.value.currentTable.id,
+        categories
+      })
+    } catch (err) {
+      const error =
+        err instanceof Error ? err : new Error('Failed to update categories')
+      state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to update categories:', error)
+      throw error
+    }
+  }
+
+  async function resetCategories(): Promise<void> {
+    try {
+      debug.startState(DebugCategories.STATE, 'Resetting categories')
+
+      if (!state.value.currentTableId || !state.value.currentTable) {
+        throw new Error('No table selected')
+      }
+
+      await updateTable({
+        categoryFilters: {
+          selectedParentCategories: [],
+          selectedChildCategories: []
+        }
+      })
+
+      debug.completeState(DebugCategories.STATE, 'Categories reset', {
+        tableId: state.value.currentTable.id
+      })
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to reset categories')
+      state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to reset categories:', error)
+      throw error
+    }
+  }
+
+  /**
+   * UI state operations
+   */
+  function setShowCategoryOptions(show: boolean): void {
+    state.value.ui.showCategoryOptions = show
+    state.value.lastUpdated = Date.now()
+  }
+
+  function toggleCategoryOptions(): void {
+    state.value.ui.showCategoryOptions = !state.value.ui.showCategoryOptions
+    state.value.lastUpdated = Date.now()
+  }
+
+  /**
+   * Store management
+   */
+  async function initialize(): Promise<void> {
+    debug.startState(DebugCategories.STATE, 'Initializing table store')
+    try {
+      await initGraphQL()
+      debug.completeState(DebugCategories.STATE, 'Table store initialized')
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to initialize store')
+      state.value.error = error
+      debug.error(DebugCategories.ERROR, 'Failed to initialize store:', error)
+      throw error
+    }
+  }
+
+  function reset(): void {
+    state.value = createInitialState()
+    state.value.availableTables = [
       {
         id: defaultTable.id,
         name: defaultTable.name,
         displayName: defaultTable.displayName
       }
     ]
-    initialState.currentTableId = defaultTable.id
-    initialState.currentTable = defaultTable
-    initialState.originalTable = { ...defaultTable }
-
-    debug.log(DebugCategories.STATE, 'Default table reset with columns', {
-      selectedParameters: {
-        parent: defaultSelectedParameters.parent.length,
-        child: defaultSelectedParameters.child.length
-      },
-      columns: {
-        parent: defaultParentColumns.length,
-        child: defaultChildColumns.length
-      }
-    })
-
-    // Update state
-    state.value = initialState
-
-    debug.log(DebugCategories.STATE, 'Table store reset with defaults', {
-      tableId: defaultTable.id,
-      selectedParameters: {
-        parent: defaultSelectedParameters.parent.length,
-        child: defaultSelectedParameters.child.length
-      }
-    })
-  }
-
-  /**
-   * Initialize store
-   */
-  async function initialize(): Promise<void> {
-    debug.startState(DebugCategories.STATE, 'Initializing table store')
-    try {
-      // Initialize GraphQL operations
-      await initGraphQL()
-
-      // Initialize state
-      reset()
-
-      debug.log(DebugCategories.STATE, 'Table store initialized')
-      return Promise.resolve()
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      debug.error(DebugCategories.ERROR, 'Failed to initialize store:', error)
-      state.value.error = error
-      throw error
-    }
-  }
-
-  /**
-   * Update table columns
-   */
-  async function updateColumns(
-    parentColumns: TableColumn[],
-    childColumns: TableColumn[]
-  ): Promise<void> {
-    try {
-      if (!state.value.currentTableId || !state.value.currentTable) {
-        throw new Error('Cannot update columns: No current table selected')
-      }
-
-      // Update table with new columns
-      const updated = {
-        ...state.value.currentTable,
-        parentColumns,
-        childColumns,
-        lastUpdateTimestamp: Date.now()
-      }
-
-      // Update current table without modifying originalTable to track unsaved changes
-      state.value.currentTable = updated
-
-      state.value.lastUpdated = Date.now()
-
-      debug.log(DebugCategories.STATE, 'Columns updated', {
-        tableId: updated.id,
-        columns: {
-          parent: parentColumns.length,
-          child: childColumns.length
-        }
-      })
-
-      return Promise.resolve()
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      debug.error(DebugCategories.ERROR, 'Failed to update columns:', error)
-      state.value.error = error
-      throw error
-    }
-  }
-
-  /**
-   * Update table categories
-   */
-  function updateCategories(categories: TableCategoryFilters): void {
-    debug.startState(DebugCategories.STATE, 'Updating categories', { categories })
-
-    if (!state.value.currentTableId || !state.value.currentTable) {
-      const error = new Error('Cannot update categories: No current table selected')
-      debug.error(DebugCategories.ERROR, error.message)
-      return
-    }
-
-    // Update table with new categories
-    const updated = {
-      ...state.value.currentTable,
-      categoryFilters: categories,
-      lastUpdateTimestamp: Date.now()
-    }
-
-    // Update current table without modifying originalTable
-    state.value.currentTable = updated
+    state.value.currentTableId = defaultTable.id
+    state.value.currentTable = defaultTable
+    state.value.originalTable = { ...defaultTable }
     state.value.lastUpdated = Date.now()
-
-    debug.log(DebugCategories.STATE, 'Categories updated', {
-      tableId: updated.id,
-      categories
-    })
-  }
-
-  /**
-   * Reset categories to default state
-   */
-  function resetCategories(): void {
-    debug.startState(DebugCategories.STATE, 'Resetting categories')
-
-    if (!state.value.currentTableId || !state.value.currentTable) {
-      const error = new Error('Cannot reset categories: No current table selected')
-      debug.error(DebugCategories.ERROR, error.message)
-      return
-    }
-
-    // Reset to default categories
-    const updated = {
-      ...state.value.currentTable,
-      categoryFilters: {
-        selectedParentCategories: [],
-        selectedChildCategories: []
-      },
-      lastUpdateTimestamp: Date.now()
-    }
-
-    // Update current table without modifying originalTable
-    state.value.currentTable = updated
-    state.value.lastUpdated = Date.now()
-
-    debug.log(DebugCategories.STATE, 'Categories reset', {
-      tableId: updated.id
-    })
-  }
-
-  /**
-   * Set category options visibility
-   */
-  function setShowCategoryOptions(show: boolean): void {
-    debug.startState(DebugCategories.STATE, 'Setting category options visibility', {
-      show
-    })
-
-    state.value.ui.showCategoryOptions = show
-    state.value.lastUpdated = Date.now()
-
-    debug.completeState(DebugCategories.STATE, 'Category options visibility set')
-  }
-
-  /**
-   * Toggle category options visibility
-   */
-  function toggleCategoryOptions(): void {
-    debug.startState(DebugCategories.STATE, 'Toggling category options')
-
-    state.value.ui.showCategoryOptions = !state.value.ui.showCategoryOptions
-    state.value.lastUpdated = Date.now()
-
-    debug.completeState(DebugCategories.STATE, 'Category options toggled', {
-      show: state.value.ui.showCategoryOptions
-    })
-  }
-
-  // Create lastUpdated ref
-  const lastUpdated = computed(() => state.value.lastUpdated)
-
-  /**
-   * Refresh available tables list from PostgreSQL
-   */
-  async function refreshTableList(): Promise<void> {
-    debug.startState(DebugCategories.STATE, 'Refreshing table list')
-    state.value.loading = true
-
-    try {
-      // Initialize GraphQL if not already done
-      if (!graphqlOps) {
-        await initGraphQL()
-      }
-
-      if (!graphqlOps) {
-        throw new Error('GraphQL operations not initialized')
-      }
-
-      // Fetch tables from PostgreSQL
-      const tables = await graphqlOps.fetchTables()
-
-      // Update available tables list with metadata
-      state.value.availableTables = Object.values(tables).map((table) => ({
-        id: table.id,
-        name: table.name,
-        displayName: table.displayName
-      }))
-
-      state.value.lastUpdated = Date.now()
-
-      debug.log(DebugCategories.STATE, 'Table list refreshed', {
-        tableCount: state.value.availableTables.length
-      })
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      debug.error(DebugCategories.ERROR, 'Failed to refresh table list:', error)
-      state.value.error = error
-      throw error
-    } finally {
-      state.value.loading = false
-    }
-  }
-
-  /**
-   * Get list of available tables
-   */
-  function getAvailableTables() {
-    return state.value.availableTables
   }
 
   return {
@@ -921,22 +647,22 @@ function createTableStore(options: TableStoreOptions = {}): TableStore {
     saveTable,
     updateTable,
     deleteTable,
+
+    // Column operations
+    addColumn,
+    removeColumn,
     updateColumns,
 
-    // Table list management
-    refreshTableList,
-    getAvailableTables,
-
-    // View management
-    toggleView,
-
-    // Category management
+    // Category operations
     updateCategories,
     resetCategories,
 
-    // UI state management
+    // UI state
     setShowCategoryOptions,
     toggleCategoryOptions,
+
+    // View management
+    toggleView,
 
     // Store management
     initialize,
@@ -949,7 +675,6 @@ const store = createTableStore()
 
 /**
  * Table store composable
- * Provides access to the global table store instance
  */
 export function useTableStore() {
   return store

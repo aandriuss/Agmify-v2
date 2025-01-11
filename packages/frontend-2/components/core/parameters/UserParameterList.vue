@@ -103,13 +103,16 @@ function formatValue(
 .parameter-list {
   display: flex;
   flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
   background: var(--color-background);
 }
 
 .parameter-group {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.5rem;
+  border: 1px solid var(--color-border);
   border-radius: 0.375rem;
   overflow: hidden;
 }
@@ -121,18 +124,17 @@ function formatValue(
   font-size: 1rem;
   font-weight: 600;
   color: var(--color-foreground);
-  padding: 0.5rem;
-  background: transparent;
+  padding: 0.75rem 1rem;
+  background: var(--color-background-muted);
   cursor: pointer;
   user-select: none;
   transition: background-color 0.2s ease;
   width: 100%;
   text-align: left;
-  border: transparent;
 }
 
 .group-header:hover {
-  background: var(--color-background-muted);
+  background: var(--color-background);
 }
 
 .group-header .parameter-count {
@@ -150,8 +152,8 @@ function formatValue(
 .group-content {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding-left: 1.5rem;
+  gap: 0.5rem;
+  padding: 0.5rem;
 }
 
 .parameter-item {
@@ -172,7 +174,7 @@ function formatValue(
   justify-content: space-between;
   min-width: 0;
   width: 100%;
-  padding: 0.25rem 0.5rem;
+  padding: 0.5rem;
 }
 
 .parameter-info {

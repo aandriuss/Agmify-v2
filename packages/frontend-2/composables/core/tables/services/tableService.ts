@@ -29,10 +29,7 @@ function toTableSettings(response: GetTableResponse['tableSettings']): TableSett
         response.config.categoryFilters.selectedParentCategories,
       selectedChildCategories: response.config.categoryFilters.selectedChildCategories
     },
-    selectedParameters: {
-      parent: response.config.selectedParameters.parent,
-      child: response.config.selectedParameters.child
-    },
+    filters: [], // Add the missing filters property
     lastUpdateTimestamp: Date.now()
   }
   return settings

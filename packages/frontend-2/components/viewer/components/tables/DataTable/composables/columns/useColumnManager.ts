@@ -7,12 +7,11 @@ import type {
 } from '~/composables/core/types/parameters/parameter-states'
 import type { TableColumn } from '~/composables/core/types/tables'
 import { createTableColumn } from '~/composables/core/types/tables/table-column'
-import { createSelectedParameter } from '~/composables/core/types/parameters/parameter-states'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 type View = 'parent' | 'child'
 type ColumnOperation =
-  | { type: 'add'; column: AvailableBimParameter | AvailableUserParameter }
+  | { type: 'add'; parameter: AvailableBimParameter | AvailableUserParameter }
   | { type: 'remove'; column: TableColumn }
   | { type: 'visibility'; column: TableColumn; visible: boolean }
   | { type: 'reorder'; fromIndex: number; toIndex: number }
@@ -28,11 +27,9 @@ interface ColumnState {
 export function useColumnManager(options: UseColumnManagerOptions) {
   const { tableId } = options
 
-  // Stores
   const parameterStore = useParameterStore()
   const tableStore = useTableStore()
 
-  // State
   const currentView = ref<View>('parent')
   const isUpdating = ref(false)
   const columnState = ref<ColumnState>({
@@ -49,17 +46,16 @@ export function useColumnManager(options: UseColumnManagerOptions) {
       : currentTable.childColumns
   })
 
-  // Available parameters for the current view (excluding selected ones)
+  // Available parameters for the current view (excluding ones already in columns)
   const availableParameters = computed(() => {
     const currentTable = tableStore.computed.currentTable.value
     if (!currentTable) return []
 
     const isParent = currentView.value === 'parent'
     const selectedIds = new Set(
-      (isParent
-        ? currentTable.selectedParameters.parent
-        : currentTable.selectedParameters.child
-      ).map((p) => p.id)
+      (isParent ? currentTable.parentColumns : currentTable.childColumns).map(
+        (col) => col.parameter?.id
+      )
     )
 
     const bimParams = isParent
@@ -73,7 +69,6 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     return [...bimParams, ...userParams].filter((param) => !selectedIds.has(param.id))
   })
 
-  // View management
   function setView(view: View) {
     debug.log(DebugCategories.COLUMN_UPDATES, 'View changed', {
       from: currentView.value,
@@ -84,7 +79,6 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     currentView.value = view
   }
 
-  // Column operations
   async function handleColumnOperation(operation: ColumnOperation): Promise<void> {
     debug.startState(
       operation.type === 'add' || operation.type === 'remove'
@@ -101,115 +95,44 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     isUpdating.value = true
     try {
       const isParent = currentView.value === 'parent'
+      const currentTable = tableStore.computed.currentTable.value
+      if (!currentTable) return
 
       switch (operation.type) {
         case 'add': {
-          const currentTable = tableStore.computed.currentTable.value
-          if (!currentTable) return
-
-          const selectedParams = isParent
-            ? currentTable.selectedParameters.parent
-            : currentTable.selectedParameters.child
-
-          // Convert available parameter to selected parameter
-          const newSelectedParam = createSelectedParameter(
-            operation.column,
-            selectedParams.length
-          )
-
-          // Create new column with parameter data preserved
-          const newColumn = {
-            ...createTableColumn(newSelectedParam),
-            parameter: newSelectedParam
-          }
-
-          // Create new columns array with existing and new column
-          const newColumns = isParent
+          // Create column directly from available parameter
+          const order = (
+            isParent ? currentTable.parentColumns : currentTable.childColumns
+          ).length
+          const newColumn = createTableColumn(operation.parameter, order)
+          const columns = isParent
             ? [...currentTable.parentColumns, newColumn]
             : [...currentTable.childColumns, newColumn]
 
-          // Update both columns and parameters to keep them in sync
+          // Update table with new columns
           await tableStore.updateTable({
-            ...(isParent
-              ? {
-                  parentColumns: newColumns,
-                  selectedParameters: {
-                    ...currentTable.selectedParameters,
-                    parent: [...selectedParams, newSelectedParam]
-                  }
-                }
-              : {
-                  childColumns: newColumns,
-                  selectedParameters: {
-                    ...currentTable.selectedParameters,
-                    child: [...selectedParams, newSelectedParam]
-                  }
-                })
+            ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
 
           columnState.value.pendingChanges.push(operation)
           break
         }
         case 'remove': {
-          const currentTable = tableStore.computed.currentTable.value
-          if (!currentTable) return
-
-          const selectedParams = isParent
-            ? currentTable.selectedParameters.parent
-            : currentTable.selectedParameters.child
-
-          // Filter out removed parameter
-          const filteredParams = selectedParams.filter(
-            (param) => param.id !== operation.column.id
-          )
-
-          // Update order values
-          filteredParams.forEach((param, index) => {
-            param.order = index
-          })
-
-          // Filter columns to match parameters
-          const filteredColumns = (
+          // Filter out removed column
+          const columns = (
             isParent ? currentTable.parentColumns : currentTable.childColumns
           ).filter((col) => col.id !== operation.column.id)
 
-          // Update both columns and parameters to keep them in sync
+          // Update table with filtered columns
           await tableStore.updateTable({
-            ...(isParent
-              ? {
-                  parentColumns: filteredColumns,
-                  selectedParameters: {
-                    ...currentTable.selectedParameters,
-                    parent: filteredParams
-                  }
-                }
-              : {
-                  childColumns: filteredColumns,
-                  selectedParameters: {
-                    ...currentTable.selectedParameters,
-                    child: filteredParams
-                  }
-                })
+            ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
           columnState.value.pendingChanges.push(operation)
           break
         }
         case 'visibility': {
-          const currentTable = tableStore.computed.currentTable.value
-          if (!currentTable) return
-
-          const selectedParams = isParent
-            ? currentTable.selectedParameters.parent
-            : currentTable.selectedParameters.child
-
-          // Update both parameters and columns visibility
-          const updatedParams = selectedParams.map((param) =>
-            param.id === operation.column.id
-              ? { ...param, visible: operation.visible }
-              : param
-          )
-
-          const updatedColumns = (
+          // Update column visibility
+          const columns = (
             isParent ? currentTable.parentColumns : currentTable.childColumns
           ).map((col) =>
             col.id === operation.column.id
@@ -217,86 +140,44 @@ export function useColumnManager(options: UseColumnManagerOptions) {
               : col
           )
 
-          // Update both arrays to keep them in sync
+          // Update table with modified columns
           await tableStore.updateTable({
-            ...(isParent
-              ? {
-                  parentColumns: updatedColumns,
-                  selectedParameters: {
-                    ...currentTable.selectedParameters,
-                    parent: updatedParams
-                  }
-                }
-              : {
-                  childColumns: updatedColumns,
-                  selectedParameters: {
-                    ...currentTable.selectedParameters,
-                    child: updatedParams
-                  }
-                })
+            ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
           columnState.value.pendingChanges.push(operation)
           break
         }
         case 'reorder': {
-          const currentTable = tableStore.computed.currentTable.value
-          if (!currentTable) return
+          const columns = (
+            isParent ? currentTable.parentColumns : currentTable.childColumns
+          ).slice()
 
-          const selectedParams = isParent
-            ? currentTable.selectedParameters.parent
-            : currentTable.selectedParameters.child
-
-          // Create a new array with the current order
-          const reorderedParams = [...selectedParams]
-
-          // Validate indices
           if (
             operation.fromIndex < 0 ||
-            operation.fromIndex >= reorderedParams.length ||
+            operation.fromIndex >= columns.length ||
             operation.toIndex < 0 ||
-            operation.toIndex > reorderedParams.length
+            operation.toIndex > columns.length
           ) {
             debug.error(DebugCategories.ERROR, 'Invalid reorder indices', {
               fromIndex: operation.fromIndex,
               toIndex: operation.toIndex,
-              length: reorderedParams.length
+              length: columns.length
             })
             return
           }
 
-          // Perform the reorder
-          const [movedParam] = reorderedParams.splice(operation.fromIndex, 1)
-          reorderedParams.splice(operation.toIndex, 0, movedParam)
+          // Perform reorder
+          const [movedColumn] = columns.splice(operation.fromIndex, 1)
+          columns.splice(operation.toIndex, 0, movedColumn)
 
           // Update order values
-          reorderedParams.forEach((param, index) => {
-            param.order = index
+          columns.forEach((col, index) => {
+            col.order = index
           })
 
-          // Create reordered columns array to match parameters
-          const reorderedColumns = (
-            isParent ? currentTable.parentColumns : currentTable.childColumns
-          ).slice()
-          const [movedColumn] = reorderedColumns.splice(operation.fromIndex, 1)
-          reorderedColumns.splice(operation.toIndex, 0, movedColumn)
-
-          // Update both arrays to keep them in sync
+          // Update table with reordered columns
           await tableStore.updateTable({
-            ...(isParent
-              ? {
-                  parentColumns: reorderedColumns,
-                  selectedParameters: {
-                    ...currentTable.selectedParameters,
-                    parent: reorderedParams
-                  }
-                }
-              : {
-                  childColumns: reorderedColumns,
-                  selectedParameters: {
-                    ...currentTable.selectedParameters,
-                    child: reorderedParams
-                  }
-                })
+            ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
           columnState.value.pendingChanges.push(operation)
           break
@@ -323,87 +204,34 @@ export function useColumnManager(options: UseColumnManagerOptions) {
     }
   }
 
-  // Save changes
-  async function saveChanges() {
+  function saveChanges() {
     debug.startState(DebugCategories.STATE, 'Saving column changes', {
       tableId,
       pendingChanges: columnState.value.pendingChanges.length
     })
 
-    isUpdating.value = true
     try {
       const currentTable = tableStore.computed.currentTable.value
       if (!currentTable) return false
 
-      // Keep existing columns and only update changed ones
-      const parentColumns = currentTable.selectedParameters.parent.map((param) => {
-        // Find existing column for this parameter
-        const existingColumn = currentTable.parentColumns.find(
-          (col) => col.id === param.id
-        )
-        if (existingColumn) {
-          // Keep existing column data but update parameter-related fields
-          return {
-            ...existingColumn,
-            parameter: param,
-            visible: param.visible,
-            order: param.order
-          }
-        }
-        // Create new column only for new parameters
-        return createTableColumn(param)
-      })
-
-      const childColumns = currentTable.selectedParameters.child.map((param) => {
-        // Find existing column for this parameter
-        const existingColumn = currentTable.childColumns.find(
-          (col) => col.id === param.id
-        )
-        if (existingColumn) {
-          // Keep existing column data but update parameter-related fields
-          return {
-            ...existingColumn,
-            parameter: param,
-            visible: param.visible,
-            order: param.order
-          }
-        }
-        // Create new column only for new parameters
-        return createTableColumn(param)
-      })
-
-      // Update table store with merged columns
-      await tableStore.updateTable({
-        ...currentTable,
-        parentColumns,
-        childColumns
-      })
-
-      // Clear pending changes after successful save
+      // Clear pending changes
       columnState.value.pendingChanges = []
 
       debug.completeState(DebugCategories.STATE, 'Column changes saved', {
         tableId,
-        parentColumns: parentColumns.length,
-        childColumns: childColumns.length,
-        selectedParameters: {
-          parent: currentTable.selectedParameters.parent.length,
-          child: currentTable.selectedParameters.child.length
-        }
+        parentColumns: currentTable.parentColumns.length,
+        childColumns: currentTable.childColumns.length
       })
 
       return {
-        parentColumns,
-        childColumns,
-        selectedParameters: currentTable.selectedParameters
+        parentColumns: currentTable.parentColumns,
+        childColumns: currentTable.childColumns
       }
     } catch (err) {
       const error =
         err instanceof Error ? err : new Error('Failed to save column changes')
       debug.error(DebugCategories.ERROR, 'Error saving column changes', error)
       return false
-    } finally {
-      isUpdating.value = false
     }
   }
 

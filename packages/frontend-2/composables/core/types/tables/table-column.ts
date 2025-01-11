@@ -1,10 +1,44 @@
-import type { SelectedParameter } from '../parameters/parameter-states'
-
 import type { Component } from 'vue'
+import type {
+  AvailableBimParameter,
+  AvailableUserParameter,
+  ParameterMetadata
+} from '../parameters/parameter-states'
+import type { BimValueType, UserValueType, ParameterValue } from '../parameters'
 
 /**
- * Simple column definition for tables
- * Separates display properties from data
+ * Parameter data stored in column
+ */
+interface BaseColumnParameter {
+  id: string
+  name: string
+  kind: 'bim' | 'user'
+  type: BimValueType | UserValueType
+  value: ParameterValue
+  group: string
+  metadata?: ParameterMetadata
+  category?: string
+  description?: string
+}
+
+interface BimColumnParameter extends BaseColumnParameter {
+  kind: 'bim'
+  type: BimValueType
+  currentGroup: string
+  fetchedGroup: string
+}
+
+interface UserColumnParameter extends BaseColumnParameter {
+  kind: 'user'
+  type: UserValueType
+  equation?: string
+}
+
+type ColumnParameter = BimColumnParameter | UserColumnParameter
+
+/**
+ * Column definition for tables
+ * Separates display properties from parameter data
  */
 export interface TableColumn {
   // Display properties
@@ -12,15 +46,15 @@ export interface TableColumn {
   field: string
   header: string
   visible: boolean
-  removable?: boolean
-  sortable?: boolean
-  filterable?: boolean
+  removable: boolean
+  sortable: boolean
+  filterable: boolean
   width?: number
   order: number
   headerComponent?: Component
 
-  // Link to data
-  parameter: SelectedParameter
+  // Parameter data
+  parameter: ColumnParameter
 }
 
 /**
@@ -38,59 +72,87 @@ export function createBaseColumn(
     visible: true,
     sortable: true,
     filterable: true,
+    removable: true,
     order,
     parameter: {
-      header,
-      removable: true,
       id,
       name: header,
-      kind: 'bim' as const,
-      type: 'string' as const,
+      kind: 'bim',
+      type: 'string',
       value: '',
       group: 'Base Properties',
-      visible: true,
-      order,
-      category: 'Base',
+      currentGroup: 'Base Properties',
+      fetchedGroup: 'Base Properties',
       metadata: {
-        isSystem: true
-      },
-      sourceValue: '',
-      fetchedGroup: '',
-      currentGroup: '',
-      field: ''
+        isSystem: true,
+        displayName: header,
+        originalGroup: 'Base Properties',
+        groupId: 'bim_Base Properties'
+      }
     }
   }
 }
 
 /**
- * Convert a SelectedParameter to a TableColumn
+ * Create a column from an available parameter
  */
-export function createTableColumn(param: SelectedParameter): TableColumn {
-  return {
+export function createTableColumn(
+  param: AvailableBimParameter | AvailableUserParameter,
+  order: number
+): TableColumn {
+  const base = {
     id: param.id,
     field: param.id,
     header: param.name,
-    visible: param.visible,
+    visible: param.visible ?? true,
     sortable: true,
     filterable: true,
-    order: param.order,
-    parameter: param
+    removable: true,
+    order
+  }
+
+  if (param.kind === 'bim') {
+    return {
+      ...base,
+      parameter: {
+        id: param.id,
+        name: param.name,
+        kind: 'bim',
+        type: param.type,
+        value: param.value,
+        group: param.currentGroup,
+        currentGroup: param.currentGroup,
+        fetchedGroup: param.fetchedGroup,
+        metadata: param.metadata,
+        category: param.category,
+        description: param.description
+      }
+    }
+  }
+
+  return {
+    ...base,
+    parameter: {
+      id: param.id,
+      name: param.name,
+      kind: 'user',
+      type: param.type,
+      value: param.value,
+      group: param.group,
+      equation: param.equation,
+      metadata: param.metadata,
+      category: param.category,
+      description: param.description
+    }
   }
 }
 
 /**
- * Convert an array of SelectedParameters to TableColumns
+ * Create multiple table columns from available parameters
+ * Assigns order based on array index
  */
-export function createTableColumns(params: SelectedParameter[]): TableColumn[] {
-  // Create columns while preserving all parameter data
-  return params.map((param) => ({
-    id: param.id,
-    field: param.id,
-    header: param.name,
-    visible: param.visible,
-    sortable: true,
-    filterable: true,
-    order: param.order,
-    parameter: param // Keep original parameter data intact
-  }))
+export function createTableColumns(
+  params: Array<AvailableBimParameter | AvailableUserParameter>
+): TableColumn[] {
+  return params.map((param, index) => createTableColumn(param, index))
 }

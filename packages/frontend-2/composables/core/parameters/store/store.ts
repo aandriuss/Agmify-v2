@@ -30,10 +30,6 @@ function createInitialState(): ParameterStoreState {
           bim: [],
           user: []
         }
-      },
-      selected: {
-        parent: [],
-        child: []
       }
     },
     processing: {
@@ -72,10 +68,6 @@ function createParameterStore(): ParameterStore {
   const childAvailableUserParameters = computed(
     () => state.value.collections.available.child.user
   )
-  const parentSelectedParameters = computed(
-    () => state.value.collections.selected.parent
-  )
-  const childSelectedParameters = computed(() => state.value.collections.selected.child)
 
   /**
    * Process parameters from elements
@@ -172,8 +164,7 @@ function createParameterStore(): ParameterStore {
                 bim: childBimWithValues,
                 user: childUser // Keep existing user parameters
               }
-            },
-            selected: state.value.collections.selected // Keep existing selected parameters
+            }
           },
           processing: {
             status: 'complete',
@@ -303,8 +294,6 @@ function createParameterStore(): ParameterStore {
     parentAvailableUserParameters,
     childAvailableBimParameters,
     childAvailableUserParameters,
-    parentSelectedParameters,
-    childSelectedParameters,
     isProcessing,
     hasError,
     lastUpdated,

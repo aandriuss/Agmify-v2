@@ -16,8 +16,13 @@ interface BaseGQLParameter {
   computed?: unknown
   source?: string
   removable: boolean
-  value: string // Always string in GraphQL
-  metadata?: Record<string, unknown>
+  value: JSON
+  metadata: {
+    displayName: string
+    originalGroup: string
+    groupId: string
+    isSystem: boolean
+  }
 }
 
 export interface BimGQLParameter extends BaseGQLParameter {
@@ -108,7 +113,6 @@ export interface TableSettingsInput {
   parentColumns: TableColumnInput[]
   childColumns: TableColumnInput[]
   categoryFilters?: CategoryFiltersInput
-  selectedParameters: TableSelectedParametersInput
   filters?: TableFilterInput[]
   lastUpdateTimestamp: number
   description?: string
@@ -133,11 +137,6 @@ export interface CategoryFiltersInput {
   selectedChildCategories: string[]
 }
 
-export interface TableSelectedParametersInput {
-  parent: ParameterInput[]
-  child: ParameterInput[]
-}
-
 export interface TableFilterInput {
   columnId: string
   value: unknown
@@ -158,7 +157,7 @@ export interface ParameterInput {
   computed?: unknown
   source?: string
   removable: boolean
-  value: string
+  value: JSON
   metadata?: Record<string, unknown>
 
   // BIM-specific fields
@@ -204,10 +203,6 @@ export interface TableResponse {
   childColumns: TableColumn[]
   metadata?: Record<string, unknown>
   categoryFilters: TableCategoryFilters
-  selectedParameters: {
-    parent: string[]
-    child: string[]
-  }
 }
 
 export interface CreateNamedTableInput {
@@ -216,10 +211,6 @@ export interface CreateNamedTableInput {
   childColumns: TableColumn[]
   metadata?: Record<string, unknown>
   categoryFilters: TableCategoryFilters
-  selectedParameters: {
-    parent: string[]
-    child: string[]
-  }
 }
 
 export interface UpdateNamedTableInput {
@@ -229,10 +220,6 @@ export interface UpdateNamedTableInput {
   childColumns?: TableColumn[]
   metadata?: Record<string, unknown>
   categoryFilters?: TableCategoryFilters
-  selectedParameters?: {
-    parent: string[]
-    child: string[]
-  }
 }
 
 /**

@@ -122,12 +122,8 @@ import {
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
-import {
-  createTableColumn,
-  createTableColumns
-} from '~/composables/core/types/tables/table-column'
 import type { TableSettings } from '~/composables/core/tables/store/types'
-import type { SelectedParameter, TableColumn } from '~/composables/core/types'
+import { createNewTableConfig } from '~/composables/core/tables/config/defaults'
 
 const debug = useDebug()
 const store = useStore()
@@ -141,7 +137,7 @@ const existingTables = computed(() => {
       .map((table) => ({
         id: table.id,
         name: table.name,
-        displayName: table.name // Use name as displayName since TableInfo doesn't have it
+        displayName: table.name
       })) || []
   )
 })
@@ -238,24 +234,15 @@ async function handleSave() {
     }
 
     // Update table with new name while preserving all other properties
-    const updated = {
+    const updated: TableSettings = {
       ...current,
       name,
       displayName: name,
-      // Ensure columns have parameters
-      parentColumns: current.parentColumns.map((col: TableColumn) => {
-        const param = current.selectedParameters.parent.find((p) => p.id === col.id)
-        return param ? createTableColumn(param) : col
-      }),
-      childColumns: current.childColumns.map((col: TableColumn) => {
-        const param = current.selectedParameters.child.find((p) => p.id === col.id)
-        return param ? createTableColumn(param) : col
-      }),
       lastUpdateTimestamp: Date.now()
     }
 
     // Update local store
-    tableStore.updateTable(updated)
+    tableStore.state.value.currentTable = updated
 
     // Save to PostgreSQL only if checkmark clicked
     await tableStore.saveTable(updated)
@@ -314,75 +301,13 @@ async function createNewTable() {
   debug.log(DebugCategories.TABLE_UPDATES, 'Creating new table')
 
   try {
-    // Get current table state
-    const currentTable = tableStore.computed.currentTable.value
-    // If no current table, try to get first available table from store
-    let firstAvailableTable: TableSettings | undefined = undefined
-    if (!currentTable && store.tablesArray.value?.length > 0) {
-      await tableStore.loadTable(store.tablesArray.value[0].id)
-      firstAvailableTable = tableStore.computed.currentTable.value || undefined
-    }
+    // Create new table with proper initialization
+    const newTable = createNewTableConfig(`table-${Date.now()}`, 'New Table')
 
-    // Create new table using current or first available table's state
-    const newTable: TableSettings = {
-      id: `table-${Date.now()}`,
-      name: 'New Table',
-      displayName: 'New Table',
-      // Use current table's state if available, otherwise use first available table
-      parentColumns: currentTable
-        ? currentTable.selectedParameters.parent.map((param: SelectedParameter) =>
-            createTableColumn(param)
-          )
-        : firstAvailableTable?.selectedParameters?.parent?.map(
-            (param: SelectedParameter) => createTableColumn(param)
-          ) || createTableColumns([]),
-      childColumns: currentTable
-        ? currentTable.selectedParameters.child.map((param: SelectedParameter) =>
-            createTableColumn(param)
-          )
-        : firstAvailableTable?.selectedParameters?.child?.map(
-            (param: SelectedParameter) => createTableColumn(param)
-          ) || createTableColumns([]),
-      categoryFilters: {
-        selectedParentCategories: currentTable
-          ? [...currentTable.categoryFilters.selectedParentCategories]
-          : firstAvailableTable?.categoryFilters.selectedParentCategories || [],
-        selectedChildCategories: currentTable
-          ? [...currentTable.categoryFilters.selectedChildCategories]
-          : firstAvailableTable?.categoryFilters.selectedChildCategories || []
-      },
-      // Deep clone parameters to ensure metadata is properly copied
-      selectedParameters: {
-        parent: currentTable
-          ? currentTable.selectedParameters.parent.map((param: SelectedParameter) => ({
-              ...param,
-              metadata: { ...(param.metadata || {}) }
-            }))
-          : firstAvailableTable?.selectedParameters?.parent?.map(
-              (param: SelectedParameter) => ({
-                ...param,
-                metadata: { ...(param.metadata || {}) }
-              })
-            ) || [],
-        child: currentTable
-          ? currentTable.selectedParameters.child.map((param: SelectedParameter) => ({
-              ...param,
-              metadata: { ...(param.metadata || {}) }
-            }))
-          : firstAvailableTable?.selectedParameters?.child?.map(
-              (param: SelectedParameter) => ({
-                ...param,
-                metadata: { ...(param.metadata || {}) }
-              })
-            ) || []
-      },
-      filters: [],
-      metadata: {},
-      lastUpdateTimestamp: Date.now()
-    }
-
-    // Update local store only
-    tableStore.updateTable(newTable)
+    // Update local store only, don't save to PostgreSQL yet
+    tableStore.state.value.currentTable = newTable
+    tableStore.state.value.currentTableId = newTable.id
+    tableStore.state.value.originalTable = null // Mark as new table
 
     // Update tables array in core store
     store.setTablesArray([...store.tablesArray.value])

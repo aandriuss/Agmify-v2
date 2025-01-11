@@ -1,15 +1,11 @@
-import type {
-  AvailableBimParameter,
-  SelectedParameter
-} from '../../types/parameters/parameter-states'
+import type { AvailableBimParameter } from '../../types/parameters/parameter-states'
 import type { TableSettings } from '../store/types'
-import { createSelectedParameter } from '../../types/parameters/parameter-states'
-import { createTableColumns } from '~/composables/core/types/tables/table-column'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
 
 /**
  * Essential parameters that should always be available
  */
-const essentialBimParameters: Record<string, AvailableBimParameter> = {
+export const essentialBimParameters: Record<string, AvailableBimParameter> = {
   id: {
     kind: 'bim',
     id: 'id',
@@ -80,50 +76,65 @@ const essentialBimParameters: Record<string, AvailableBimParameter> = {
   }
 }
 
-/**
- * Default selected parameters for parent elements
- */
-const defaultParentParameters: SelectedParameter[] = [
-  createSelectedParameter(essentialBimParameters.id, 0),
-  createSelectedParameter(essentialBimParameters.mark, 1),
-  createSelectedParameter(essentialBimParameters.category, 2)
+// Create parent columns with full parameter data
+const parentColumns = [
+  createTableColumn(essentialBimParameters.id, 0),
+  createTableColumn(essentialBimParameters.mark, 1),
+  createTableColumn(essentialBimParameters.category, 2)
+]
+
+// Create child columns with full parameter data
+const childColumns = [
+  createTableColumn(essentialBimParameters.id, 0),
+  createTableColumn(essentialBimParameters.mark, 1),
+  createTableColumn(essentialBimParameters.host, 2),
+  createTableColumn(essentialBimParameters.category, 3)
 ]
 
 /**
- * Default selected parameters for child elements
- */
-const defaultChildParameters: SelectedParameter[] = [
-  createSelectedParameter(essentialBimParameters.id, 0),
-  createSelectedParameter(essentialBimParameters.mark, 1),
-  createSelectedParameter(essentialBimParameters.host, 2),
-  createSelectedParameter(essentialBimParameters.category, 3)
-]
-
-/**
- * Default selected parameters that should be consistent across the application
- */
-export const defaultSelectedParameters: {
-  parent: SelectedParameter[]
-  child: SelectedParameter[]
-} = {
-  parent: defaultParentParameters,
-  child: defaultChildParameters
-}
-
-/**
- * Default table configuration
+ * Default table configuration with essential columns
+ * Matches GraphQL TableSettings type exactly
  */
 export const defaultTableConfig: TableSettings = {
   id: 'default-table',
   name: 'Default Table',
   displayName: 'Default Table',
-  parentColumns: createTableColumns(defaultSelectedParameters.parent),
-  childColumns: createTableColumns(defaultSelectedParameters.child),
+  parentColumns,
+  childColumns,
   categoryFilters: {
     selectedParentCategories: [],
     selectedChildCategories: []
   },
-  selectedParameters: defaultSelectedParameters,
-  filters: [],
+  filters: [], // Empty array, not undefined
+  sort: {
+    field: undefined,
+    order: undefined
+  },
+  metadata: {}, // Empty object, not undefined
   lastUpdateTimestamp: Date.now()
+}
+
+/**
+ * Create a new table configuration
+ * Ensures all required fields are present and properly initialized
+ */
+export function createNewTableConfig(id: string, name: string): TableSettings {
+  return {
+    id,
+    name,
+    displayName: name,
+    parentColumns: [], // Start with empty columns
+    childColumns: [], // Start with empty columns
+    categoryFilters: {
+      selectedParentCategories: [],
+      selectedChildCategories: []
+    },
+    filters: [], // Empty array, not undefined
+    sort: {
+      field: undefined,
+      order: undefined
+    },
+    metadata: {}, // Empty object, not undefined
+    lastUpdateTimestamp: Date.now()
+  }
 }

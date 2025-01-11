@@ -136,38 +136,3 @@ export const scheduleRowToBaseTableRow = (row: ScheduleRow): BaseTableRow => {
     [row.field]: row.parameters[row.field] || null
   }
 }
-
-/**
- * Convert a SelectedParameter to a ScheduleRow
- */
-export const selectedParameterToScheduleRow = (
-  param: import('../parameters/parameter-states').SelectedParameter
-): ScheduleRow => {
-  const base = createBaseItem({
-    id: param.id,
-    name: param.name,
-    field: param.id,
-    header: param.name,
-    removable: true,
-    metadata: param.metadata,
-    category: param.metadata?.category
-  })
-
-  return {
-    ...base,
-    id: base.id,
-    name: base.name,
-    field: base.field!,
-    header: base.header!,
-    removable: base.removable,
-    category: base.category,
-    kind: param.kind,
-    type: param.type,
-    group: param.group,
-    visible: param.visible,
-    order: param.order,
-    selected: false,
-    parameters: {},
-    metadata: param.metadata
-  }
-}

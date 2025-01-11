@@ -1,13 +1,7 @@
 import type { ElementData } from '~/composables/core/types'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
-import type {
-  RawParameter,
-  SelectedParameter
-} from '~/composables/core/types/parameters/parameter-states'
-import {
-  createAvailableBimParameter,
-  createSelectedParameter
-} from '~/composables/core/types/parameters/parameter-states'
+import type { RawParameter } from '~/composables/core/types/parameters/parameter-states'
+import { createAvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
 import { createTableColumn } from '~/composables/core/types/tables/table-column'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
@@ -208,7 +202,7 @@ function processElements(elements: ElementData[]): {
  */
 function extractColumns(elements: ElementData[]): TableColumn[] {
   try {
-    const parameterMap = new Map<string, SelectedParameter>()
+    const parameterMap = new Map<string, TableColumn>()
     let order = 0
 
     elements.forEach((element) => {
@@ -216,40 +210,42 @@ function extractColumns(elements: ElementData[]): TableColumn[] {
       if (element.parameters) {
         Object.entries(element.parameters).forEach(([key, value]) => {
           if (!parameterMap.has(key)) {
-            // Convert value to ParameterValue
-            const processedValue =
-              typeof value === 'number' ||
-              typeof value === 'boolean' ||
-              typeof value === 'string'
-                ? value
-                : String(value)
+            // Determine parameter type and value
+            let paramType: 'number' | 'boolean' | 'string'
+            let paramValue: number | boolean | string
+
+            if (typeof value === 'number') {
+              paramType = 'number'
+              paramValue = value
+            } else if (typeof value === 'boolean') {
+              paramType = 'boolean'
+              paramValue = value
+            } else {
+              paramType = 'string'
+              paramValue = String(value)
+            }
 
             const rawParam: RawParameter = {
               id: key,
               name: key,
-              value: processedValue, // Use processed value
+              value: paramValue,
               fetchedGroup: 'Parameters',
               metadata: {
                 category: element.category || 'Parameters'
               }
             }
 
-            // Convert to available parameter
+            // Convert to available parameter with properly typed value
             const availableParam = createAvailableBimParameter(
               rawParam,
-              typeof value === 'number'
-                ? 'number'
-                : typeof value === 'boolean'
-                ? 'boolean'
-                : 'string',
-              value,
+              paramType,
+              paramValue,
               false
             )
 
-            // Convert to selected parameter
-            const selectedParam = createSelectedParameter(availableParam, order++)
-
-            parameterMap.set(key, selectedParam)
+            // Convert directly to column
+            const column = createTableColumn(availableParam, order++)
+            parameterMap.set(key, column)
           }
         })
       }
@@ -259,40 +255,49 @@ function extractColumns(elements: ElementData[]): TableColumn[] {
         Object.entries(element.metadata).forEach(([key, value]) => {
           const columnKey = `metadata_${key}`
           if (!parameterMap.has(columnKey)) {
-            // Create raw parameter for metadata
+            // Determine metadata type and value
+            let paramType: 'number' | 'boolean' | 'string'
+            let paramValue: number | boolean | string
+
+            if (typeof value === 'number') {
+              paramType = 'number'
+              paramValue = value
+            } else if (typeof value === 'boolean') {
+              paramType = 'boolean'
+              paramValue = value
+            } else {
+              paramType = 'string'
+              paramValue = String(value)
+            }
+
+            // Create raw parameter for metadata with properly typed value
             const rawParam: RawParameter = {
               id: columnKey,
               name: key,
-              value,
+              value: paramValue,
               fetchedGroup: 'Metadata',
               metadata: {
                 category: 'Metadata'
               }
             }
 
-            // Convert to available parameter
+            // Convert to available parameter with properly typed value
             const availableParam = createAvailableBimParameter(
               rawParam,
-              typeof value === 'number'
-                ? 'number'
-                : typeof value === 'boolean'
-                ? 'boolean'
-                : 'string',
-              value,
+              paramType,
+              paramValue,
               false
             )
 
-            // Convert to selected parameter
-            const selectedParam = createSelectedParameter(availableParam, order++)
-
-            parameterMap.set(columnKey, selectedParam)
+            // Convert directly to column
+            const column = createTableColumn(availableParam, order++)
+            parameterMap.set(columnKey, column)
           }
         })
       }
     })
 
-    // Convert selected parameters to table columns
-    return Array.from(parameterMap.values()).map(createTableColumn)
+    return Array.from(parameterMap.values())
   } catch (err) {
     debug.error(DebugCategories.ERROR, 'Error extracting columns:', err)
     throw err

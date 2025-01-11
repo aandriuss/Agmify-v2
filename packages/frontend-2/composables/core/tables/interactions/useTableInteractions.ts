@@ -3,10 +3,13 @@ import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
   TableSettings,
   Store,
-  ScheduleInitializationInstance,
-  TableSelectedParameters
+  ScheduleInitializationInstance
 } from '~/composables/core/types'
-import { createTableColumns } from '~/composables/core/types/tables/table-column'
+import type {
+  AvailableBimParameter,
+  AvailableUserParameter
+} from '~/composables/core/types/parameters/parameter-states'
+import { createTableColumn } from '~/composables/core/types/tables/table-column'
 
 export interface TableInteractionsState {
   selectedTableId: string
@@ -14,6 +17,8 @@ export interface TableInteractionsState {
   currentTable: TableSettings | null
   selectedParentCategories: string[]
   selectedChildCategories: string[]
+  parentParameters: Array<AvailableBimParameter | AvailableUserParameter>
+  childParameters: Array<AvailableBimParameter | AvailableUserParameter>
 }
 
 export interface TableInteractionsOptions {
@@ -70,6 +75,19 @@ export function useTableInteractions(options: TableInteractionsOptions) {
     await store.lifecycle.update({ tablesArray: tables })
   }
 
+  function createColumnsFromParameters(
+    parameters: Array<AvailableBimParameter | AvailableUserParameter>
+  ) {
+    return parameters.map((param, index) => {
+      const column = createTableColumn(param, index)
+      return {
+        ...column,
+        field: column.id,
+        header: column.parameter.name
+      }
+    })
+  }
+
   async function handleSaveTable() {
     try {
       debug.startState(DebugCategories.TABLE_UPDATES, 'Save table requested', {
@@ -82,12 +100,6 @@ export function useTableInteractions(options: TableInteractionsOptions) {
       // Get current table settings
       const currentTable = state.value.currentTable
 
-      // Create table config with type safety
-      const selectedParameters: TableSelectedParameters = {
-        parent: currentTable?.selectedParameters?.parent || [],
-        child: currentTable?.selectedParameters?.child || []
-      }
-
       // Create complete table config
       const tableConfig: TableSettings = {
         id:
@@ -99,18 +111,12 @@ export function useTableInteractions(options: TableInteractionsOptions) {
           selectedParentCategories: state.value.selectedParentCategories || [],
           selectedChildCategories: state.value.selectedChildCategories || []
         },
-        selectedParameters,
-        // Create proper columns from selected parameters
-        parentColumns: createTableColumns(selectedParameters.parent).map((col) => ({
-          ...col,
-          field: col.id,
-          header: col.parameter.name
-        })),
-        childColumns: createTableColumns(selectedParameters.child).map((col) => ({
-          ...col,
-          field: col.id,
-          header: col.parameter.name
-        })),
+        // Create columns from current parameters
+        parentColumns: createColumnsFromParameters(state.value.parentParameters),
+        childColumns: createColumnsFromParameters(state.value.childParameters),
+        filters: currentTable?.filters || [],
+        sort: currentTable?.sort,
+        metadata: currentTable?.metadata,
         lastUpdateTimestamp: Date.now()
       }
 

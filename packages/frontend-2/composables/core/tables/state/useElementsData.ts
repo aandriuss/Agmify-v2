@@ -5,7 +5,6 @@ import type {
   ProcessingState,
   TableRow,
   DataState,
-  SelectedParameter,
   BimValueType
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
@@ -175,49 +174,52 @@ export function useElementsData(
         debug.log(DebugCategories.INITIALIZATION, 'Using cached parameters')
       }
 
-      // Get selected parameters from table store
+      // Get columns from table store
       const currentTable = tableStore.computed.currentTable.value
-      if (currentTable?.selectedParameters) {
-        const { parent: parentParams, child: childParams } =
-          currentTable.selectedParameters
+      if (currentTable) {
+        const { parentColumns, childColumns } = currentTable
 
-        // Ensure all elements have entries for selected parameters
+        // Ensure all elements have entries for column parameters
         elements.forEach((el) => {
           // Add parent parameters
-          parentParams.forEach((param: SelectedParameter) => {
-            if (!el.parameters[param.id]) {
-              // Create parameter using utility function
+          parentColumns.forEach((column) => {
+            if (column.parameter && !el.parameters[column.parameter.id]) {
               const availableParam = createAvailableBimParameter(
                 {
-                  id: param.id,
-                  name: param.name,
+                  id: column.parameter.id,
+                  name: column.parameter.name,
                   value: null,
-                  fetchedGroup: param.group,
-                  metadata: param.metadata || {}
+                  fetchedGroup:
+                    column.parameter.kind === 'bim'
+                      ? column.parameter.currentGroup
+                      : column.parameter.group,
+                  metadata: column.parameter.metadata || {}
                 },
-                param.type as BimValueType,
+                column.parameter.type as BimValueType,
                 null
               )
-              el.parameters[param.id] = availableParam.value
+              el.parameters[column.parameter.id] = availableParam.value
             }
           })
 
           // Add child parameters
-          childParams.forEach((param: SelectedParameter) => {
-            if (!el.parameters[param.id]) {
-              // Create parameter using utility function
+          childColumns.forEach((column) => {
+            if (column.parameter && !el.parameters[column.parameter.id]) {
               const availableParam = createAvailableBimParameter(
                 {
-                  id: param.id,
-                  name: param.name,
+                  id: column.parameter.id,
+                  name: column.parameter.name,
                   value: null,
-                  fetchedGroup: param.group,
-                  metadata: param.metadata || {}
+                  fetchedGroup:
+                    column.parameter.kind === 'bim'
+                      ? column.parameter.currentGroup
+                      : column.parameter.group,
+                  metadata: column.parameter.metadata || {}
                 },
-                param.type as BimValueType,
+                column.parameter.type as BimValueType,
                 null
               )
-              el.parameters[param.id] = availableParam.value
+              el.parameters[column.parameter.id] = availableParam.value
             }
           })
         })
@@ -225,8 +227,7 @@ export function useElementsData(
 
       // Verify parameters were processed
       const paramCounts = {
-        parentRaw: parameterStore.parentRawParameters.value?.length || 0,
-        childRaw: parameterStore.childRawParameters.value?.length || 0,
+        raw: parameterStore.rawParameters.value?.length || 0,
         parentBim: parameterStore.parentAvailableBimParameters.value?.length || 0,
         childBim: parameterStore.childAvailableBimParameters.value?.length || 0
       }
@@ -242,16 +243,13 @@ export function useElementsData(
       debug.startState(DebugCategories.INITIALIZATION, 'Initializing table')
       await initializeTable()
 
-      const selectedCounts = {
-        parent:
-          tableStore.computed.currentTable.value?.selectedParameters?.parent?.length ||
-          0,
-        child:
-          tableStore.computed.currentTable.value?.selectedParameters?.child?.length || 0
+      const columnCounts = {
+        parent: tableStore.computed.currentTable.value?.parentColumns.length || 0,
+        child: tableStore.computed.currentTable.value?.childColumns.length || 0
       }
 
       debug.log(DebugCategories.INITIALIZATION, 'Table initialized with parameters', {
-        selectedParameters: selectedCounts,
+        columns: columnCounts,
         availableParameters: paramCounts
       })
 
@@ -320,69 +318,54 @@ export function useElementsData(
         // Extract parameters with new categories
         await extractParameters()
 
-        // Ensure all elements have selected parameters
+        // Ensure all elements have column parameters
         const currentTable = tableStore.computed.currentTable.value
-        if (currentTable?.selectedParameters) {
-          const { parent: parentParams, child: childParams } =
-            currentTable.selectedParameters
+        if (currentTable) {
+          const { parentColumns, childColumns } = currentTable
 
           // Add missing parameters to all elements
           bimElements.allElements.value?.forEach((el) => {
             const element = ensureParameters(el)
 
             // Add parent parameters
-            parentParams.forEach((param) => {
-              if (!element.parameters[param.id]) {
-                // Extract group from parameter name if it exists
-                const nameParts = param.name.split('.')
-                const group = nameParts.length > 1 ? nameParts[0] : param.group
-                const name =
-                  nameParts.length > 1 ? nameParts.slice(1).join('.') : param.name
-
+            parentColumns.forEach((column) => {
+              if (column.parameter && !element.parameters[column.parameter.id]) {
                 const availableParam = createAvailableBimParameter(
                   {
-                    id: param.id,
-                    name,
+                    id: column.parameter.id,
+                    name: column.parameter.name,
                     value: null,
-                    fetchedGroup: group,
-                    metadata: {
-                      ...param.metadata,
-                      originalGroup: group,
-                      displayName: name
-                    }
+                    fetchedGroup:
+                      column.parameter.kind === 'bim'
+                        ? column.parameter.currentGroup
+                        : column.parameter.group,
+                    metadata: column.parameter.metadata || {}
                   },
-                  param.type as BimValueType,
+                  column.parameter.type as BimValueType,
                   null
                 )
-                element.parameters[param.id] = availableParam.value
+                element.parameters[column.parameter.id] = availableParam.value
               }
             })
 
             // Add child parameters
-            childParams.forEach((param) => {
-              if (!element.parameters[param.id]) {
-                // Extract group from parameter name if it exists
-                const nameParts = param.name.split('.')
-                const group = nameParts.length > 1 ? nameParts[0] : param.group
-                const name =
-                  nameParts.length > 1 ? nameParts.slice(1).join('.') : param.name
-
+            childColumns.forEach((column) => {
+              if (column.parameter && !element.parameters[column.parameter.id]) {
                 const availableParam = createAvailableBimParameter(
                   {
-                    id: param.id,
-                    name,
+                    id: column.parameter.id,
+                    name: column.parameter.name,
                     value: null,
-                    fetchedGroup: group,
-                    metadata: {
-                      ...param.metadata,
-                      originalGroup: group,
-                      displayName: name
-                    }
+                    fetchedGroup:
+                      column.parameter.kind === 'bim'
+                        ? column.parameter.currentGroup
+                        : column.parameter.group,
+                    metadata: column.parameter.metadata || {}
                   },
-                  param.type as BimValueType,
+                  column.parameter.type as BimValueType,
                   null
                 )
-                element.parameters[param.id] = availableParam.value
+                element.parameters[column.parameter.id] = availableParam.value
               }
             })
           })
@@ -390,9 +373,9 @@ export function useElementsData(
 
         debug.log(DebugCategories.CATEGORY_UPDATES, 'Parameters extracted and added', {
           elements: bimElements.allElements.value?.length || 0,
-          parameters: {
-            parent: currentTable?.selectedParameters?.parent?.length || 0,
-            child: currentTable?.selectedParameters?.child?.length || 0
+          columns: {
+            parent: currentTable?.parentColumns.length || 0,
+            child: currentTable?.childColumns.length || 0
           }
         })
 
@@ -534,45 +517,50 @@ export function useElementsData(
             const element = ensureParameters(el)
             const parameters = { ...element.parameters }
 
-            // Ensure all selected parameters exist
+            // Ensure all column parameters exist
             const table = tableStore.computed.currentTable.value
-            if (table?.selectedParameters) {
-              const { parent: parentParams, child: childParams } =
-                table.selectedParameters
+            if (table) {
+              const { parentColumns, childColumns } = table
 
               // Add missing parent parameters
-              parentParams.forEach((param: SelectedParameter) => {
-                if (!parameters[param.id]) {
+              parentColumns.forEach((column) => {
+                if (column.parameter && !parameters[column.parameter.id]) {
                   const availableParam = createAvailableBimParameter(
                     {
-                      id: param.id,
-                      name: param.name,
+                      id: column.parameter.id,
+                      name: column.parameter.name,
                       value: null,
-                      fetchedGroup: param.group,
-                      metadata: param.metadata || {}
+                      fetchedGroup:
+                        column.parameter.kind === 'bim'
+                          ? column.parameter.currentGroup
+                          : column.parameter.group,
+                      metadata: column.parameter.metadata || {}
                     },
-                    param.type as BimValueType,
+                    column.parameter.type as BimValueType,
                     null
                   )
-                  parameters[param.id] = availableParam.value
+                  parameters[column.parameter.id] = availableParam.value
                 }
               })
 
               // Add missing child parameters
-              childParams.forEach((param: SelectedParameter) => {
-                if (!parameters[param.id]) {
+              childColumns.forEach((column) => {
+                if (column.parameter && !parameters[column.parameter.id]) {
                   const availableParam = createAvailableBimParameter(
                     {
-                      id: param.id,
-                      name: param.name,
+                      id: column.parameter.id,
+                      name: column.parameter.name,
                       value: null,
-                      fetchedGroup: param.group,
-                      metadata: param.metadata || {}
+                      fetchedGroup:
+                        column.parameter.kind === 'bim'
+                          ? column.parameter.currentGroup
+                          : column.parameter.group,
+                      metadata: column.parameter.metadata || {}
                     },
-                    param.type as BimValueType,
+                    column.parameter.type as BimValueType,
                     null
                   )
-                  parameters[param.id] = availableParam.value
+                  parameters[column.parameter.id] = availableParam.value
                 }
               })
             }
@@ -664,49 +652,54 @@ export function useElementsData(
       // Extract parameters with new categories
       await extractParameters()
 
-      // Ensure all elements have selected parameters
+      // Ensure all elements have column parameters
       const currentTable = tableStore.computed.currentTable.value
-      if (currentTable?.selectedParameters) {
-        const { parent: parentParams, child: childParams } =
-          currentTable.selectedParameters
+      if (currentTable) {
+        const { parentColumns, childColumns } = currentTable
 
         // Add missing parameters to all elements
         bimElements.allElements.value?.forEach((el) => {
           const element = ensureParameters(el)
 
           // Add parent parameters
-          parentParams.forEach((param) => {
-            if (!element.parameters[param.id]) {
+          parentColumns.forEach((column) => {
+            if (column.parameter && !element.parameters[column.parameter.id]) {
               const availableParam = createAvailableBimParameter(
                 {
-                  id: param.id,
-                  name: param.name,
+                  id: column.parameter.id,
+                  name: column.parameter.name,
                   value: null,
-                  fetchedGroup: param.group,
-                  metadata: param.metadata || {}
+                  fetchedGroup:
+                    column.parameter.kind === 'bim'
+                      ? column.parameter.currentGroup
+                      : column.parameter.group,
+                  metadata: column.parameter.metadata || {}
                 },
-                param.type as BimValueType,
+                column.parameter.type as BimValueType,
                 null
               )
-              element.parameters[param.id] = availableParam.value
+              element.parameters[column.parameter.id] = availableParam.value
             }
           })
 
           // Add child parameters
-          childParams.forEach((param) => {
-            if (!element.parameters[param.id]) {
+          childColumns.forEach((column) => {
+            if (column.parameter && !element.parameters[column.parameter.id]) {
               const availableParam = createAvailableBimParameter(
                 {
-                  id: param.id,
-                  name: param.name,
+                  id: column.parameter.id,
+                  name: column.parameter.name,
                   value: null,
-                  fetchedGroup: param.group,
-                  metadata: param.metadata || {}
+                  fetchedGroup:
+                    column.parameter.kind === 'bim'
+                      ? column.parameter.currentGroup
+                      : column.parameter.group,
+                  metadata: column.parameter.metadata || {}
                 },
-                param.type as BimValueType,
+                column.parameter.type as BimValueType,
                 null
               )
-              element.parameters[param.id] = availableParam.value
+              element.parameters[column.parameter.id] = availableParam.value
             }
           })
         })
@@ -714,9 +707,9 @@ export function useElementsData(
 
       debug.log(DebugCategories.CATEGORY_UPDATES, 'Parameters extracted and added', {
         elements: bimElements.allElements.value?.length || 0,
-        parameters: {
-          parent: currentTable?.selectedParameters?.parent?.length || 0,
-          child: currentTable?.selectedParameters?.child?.length || 0
+        columns: {
+          parent: currentTable?.parentColumns.length || 0,
+          child: currentTable?.childColumns.length || 0
         }
       })
 
@@ -791,44 +784,50 @@ export function useElementsData(
         const element = ensureParameters(el)
         const parameters = { ...element.parameters }
 
-        // Ensure all selected parameters exist
+        // Ensure all column parameters exist
         const table = tableStore.computed.currentTable.value
-        if (table?.selectedParameters) {
-          const { parent: parentParams, child: childParams } = table.selectedParameters
+        if (table) {
+          const { parentColumns, childColumns } = table
 
           // Add missing parent parameters
-          parentParams.forEach((param: SelectedParameter) => {
-            if (!parameters[param.id]) {
+          parentColumns.forEach((column) => {
+            if (column.parameter && !parameters[column.parameter.id]) {
               const availableParam = createAvailableBimParameter(
                 {
-                  id: param.id,
-                  name: param.name,
+                  id: column.parameter.id,
+                  name: column.parameter.name,
                   value: null,
-                  fetchedGroup: param.group,
-                  metadata: param.metadata || {}
+                  fetchedGroup:
+                    column.parameter.kind === 'bim'
+                      ? column.parameter.currentGroup
+                      : column.parameter.group,
+                  metadata: column.parameter.metadata || {}
                 },
-                param.type as BimValueType,
+                column.parameter.type as BimValueType,
                 null
               )
-              parameters[param.id] = availableParam.value
+              parameters[column.parameter.id] = availableParam.value
             }
           })
 
           // Add missing child parameters
-          childParams.forEach((param: SelectedParameter) => {
-            if (!parameters[param.id]) {
+          childColumns.forEach((column) => {
+            if (column.parameter && !parameters[column.parameter.id]) {
               const availableParam = createAvailableBimParameter(
                 {
-                  id: param.id,
-                  name: param.name,
+                  id: column.parameter.id,
+                  name: column.parameter.name,
                   value: null,
-                  fetchedGroup: param.group,
-                  metadata: param.metadata || {}
+                  fetchedGroup:
+                    column.parameter.kind === 'bim'
+                      ? column.parameter.currentGroup
+                      : column.parameter.group,
+                  metadata: column.parameter.metadata || {}
                 },
-                param.type as BimValueType,
+                column.parameter.type as BimValueType,
                 null
               )
-              parameters[param.id] = availableParam.value
+              parameters[column.parameter.id] = availableParam.value
             }
           })
         }

@@ -45,20 +45,18 @@ export function useParametersState() {
 
     return {
       parent: {
-        raw: parameterStore.parentRawParameters.value || [],
+        raw: parameterStore.rawParameters.value || [],
         available: {
           bim: parameterStore.parentAvailableBimParameters.value || [],
           user: parameterStore.parentAvailableUserParameters.value || []
-        },
-        selected: parameterStore.parentSelectedParameters.value || []
+        }
       },
       child: {
-        raw: parameterStore.childRawParameters.value || [],
+        raw: parameterStore.rawParameters.value || [],
         available: {
           bim: parameterStore.childAvailableBimParameters.value || [],
           user: parameterStore.childAvailableUserParameters.value || []
-        },
-        selected: parameterStore.childSelectedParameters.value || []
+        }
       }
     }
   })
