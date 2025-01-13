@@ -6,9 +6,13 @@ import type {
   RawParameter,
   AvailableBimParameter,
   ParameterValue,
-  Group
+  Group,
+  ParameterMetadata
 } from '~/composables/core/types'
-import { createAvailableBimParameter } from '~/composables/core/types'
+import {
+  createAvailableBimParameter,
+  createElementParameter
+} from '~/composables/core/types'
 import { inferParameterType } from '~/composables/core/parameters/utils/group-processing'
 
 /**
@@ -37,16 +41,6 @@ export function convertToParameterValue(value: unknown): ParameterValue {
 
   // For objects and arrays, stringify them
   return JSON.stringify(value)
-}
-
-/**
- * Create default group structure
- */
-function createDefaultGroup(groupName?: string): Group {
-  return {
-    fetchedGroup: groupName || 'Ungrouped',
-    currentGroup: ''
-  }
 }
 
 /**
@@ -85,7 +79,12 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
         // Parse JSON strings
         let parsedValue: unknown = value
         let isJsonString = false
-        if (typeof value === 'string' && value.startsWith('{') && value.endsWith('}')) {
+        const valueStr = String(value)
+        if (
+          typeof value === 'string' &&
+          valueStr.startsWith('{') &&
+          valueStr.endsWith('}')
+        ) {
           try {
             const parsed = JSON.parse(value) as Record<string, unknown>
             if (isRecord(parsed)) {
@@ -106,31 +105,49 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
           element.metadata?.isParent ||
           (element.category && parentCategories.includes(element.category))
 
-        // Split parameter name into group and name parts
+        // Extract group and clean name
         const nameParts = key.split('.')
-        const groupName = nameParts.length > 1 ? nameParts[0] : undefined
-        const paramName = nameParts.length > 1 ? nameParts.slice(1).join('.') : key
+        const groupName = nameParts.length > 1 ? nameParts[0] : 'Ungrouped'
+        const cleanName = nameParts.length > 1 ? nameParts.slice(1).join('.') : key
 
-        // Create raw parameter with default group
-        const rawParam: RawParameter = {
-          id: key,
-          name: paramName,
-          value: validatedValue,
-          group: createDefaultGroup(groupName),
-          metadata: {
-            category: element.category || 'Uncategorized',
-            mappedCategory: element.category
-              ? getMostSpecificCategory(element.category)
-              : 'Uncategorized',
-            isSystem: groupName?.startsWith('__') || false,
-            elementId: element.id,
-            isJsonString,
-            isParent,
-            originalGroup: groupName,
-            displayName: paramName
-          }
+        // Create group info
+        const group: Group = {
+          fetchedGroup: groupName,
+          currentGroup: groupName
         }
 
+        // Create metadata
+        const metadata: ParameterMetadata = {
+          category: element.category || 'Uncategorized',
+          mappedCategory: element.category
+            ? getMostSpecificCategory(element.category)
+            : 'Uncategorized',
+          isSystem: groupName?.startsWith('__') || false,
+          elementId: element.id,
+          isJsonString,
+          isParent,
+          displayName: cleanName
+        }
+
+        // Create raw parameter
+        const rawParam: RawParameter = {
+          id: key,
+          name: cleanName,
+          value: validatedValue,
+          group,
+          metadata
+        }
+
+        // Create element parameter and store in element's parameters
+        if (element.parameters) {
+          element.parameters[key] = createElementParameter(
+            convertToParameterValue(validatedValue),
+            group,
+            metadata
+          )
+        }
+
+        // Store raw parameter for further processing
         rawParams.push(rawParam)
 
         // Handle nested parameters for JSON objects
@@ -144,7 +161,10 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
               id: nestedId,
               name: nestedKey,
               value: validatedNestedValue,
-              group: createDefaultGroup(rawParam.group.fetchedGroup),
+              group: {
+                fetchedGroup: groupName || 'Ungrouped',
+                currentGroup: groupName || 'Ungrouped'
+              },
               metadata: {
                 category: element.category,
                 mappedCategory: element.category
@@ -182,11 +202,12 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
 /**
  * Process raw parameters into available parameters
  */
-export function processRawParameters(rawParams: RawParameter[]): {
+export function processParams(rawParams: RawParameter[]): {
   parent: AvailableBimParameter[]
   child: AvailableBimParameter[]
 } {
   debug.startState(DebugCategories.PARAMETERS, 'Processing raw parameters')
+  const seenParams = new Set<string>()
 
   try {
     const { parent, child } = rawParams.reduce<{
@@ -195,6 +216,11 @@ export function processRawParameters(rawParams: RawParameter[]): {
     }>(
       (acc, param) => {
         try {
+          // Skip if we've seen this parameter name before (case-insensitive)
+          const lowerName = param.name.toLowerCase()
+          if (seenParams.has(lowerName)) return acc
+          seenParams.add(lowerName)
+
           // Convert value
           const value = convertToParameterValue(param.value)
 
@@ -202,25 +228,22 @@ export function processRawParameters(rawParams: RawParameter[]): {
           const type = inferParameterType(value)
 
           // Create BIM parameter with proper group handling
-          const processedParam = createAvailableBimParameter(
-            {
-              ...param,
-              name: param.metadata?.displayName || param.name,
-              group: {
-                fetchedGroup: param.group?.fetchedGroup || 'Ungrouped',
-                currentGroup: param.group?.currentGroup || ''
-              },
-              metadata: {
-                ...param.metadata,
-                groupId: param.metadata?.originalGroup
-                  ? `bim_${param.metadata.originalGroup}`
-                  : '',
-                displayName: param.metadata?.displayName || param.name
-              }
-            },
-            type,
-            value
-          )
+          const paramName = param.metadata?.displayName || param.name
+
+          // Create parameter object
+          const parameterData: RawParameter = {
+            id: param.id,
+            name: paramName,
+            value: param.value,
+            group: param.group,
+            metadata: {
+              ...param.metadata,
+              displayName: paramName,
+              originalName: param.name
+            }
+          }
+
+          const processedParam = createAvailableBimParameter(parameterData, type, value)
 
           // Categorize into parent/child
           const isParent =
@@ -228,16 +251,33 @@ export function processRawParameters(rawParams: RawParameter[]): {
             (param.metadata?.category &&
               parentCategories.includes(param.metadata.category))
 
+          // Store parameter in appropriate array with deduplication
           if (isParent) {
-            acc.parent.push(processedParam)
+            // Check for existing parameter with null value
+            const existingIndex = acc.parent.findIndex(
+              (p) => p.name.toLowerCase() === lowerName && p.value === null
+            )
+            if (existingIndex >= 0 && value !== null) {
+              acc.parent[existingIndex] = processedParam
+            } else if (existingIndex === -1) {
+              acc.parent.push(processedParam)
+            }
           } else {
-            acc.child.push(processedParam)
+            // Same for child parameters
+            const existingIndex = acc.child.findIndex(
+              (p) => p.name.toLowerCase() === lowerName && p.value === null
+            )
+            if (existingIndex >= 0 && value !== null) {
+              acc.child[existingIndex] = processedParam
+            } else if (existingIndex === -1) {
+              acc.child.push(processedParam)
+            }
           }
         } catch (err) {
           debug.warn(
             DebugCategories.PARAMETERS,
             `Failed to process parameter ${param.id}:`,
-            err
+            err instanceof Error ? err : new Error(String(err))
           )
         }
         return acc
@@ -250,16 +290,7 @@ export function processRawParameters(rawParams: RawParameter[]): {
       processedCount: {
         parent: parent.length,
         child: child.length
-      },
-      sample:
-        parent[0] || child[0]
-          ? {
-              id: (parent[0] || child[0]).id,
-              kind: (parent[0] || child[0]).kind,
-              category: (parent[0] || child[0]).metadata?.category,
-              isParent: !!parent[0]
-            }
-          : null
+      }
     })
 
     return { parent, child }

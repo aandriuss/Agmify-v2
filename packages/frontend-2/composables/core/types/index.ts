@@ -83,7 +83,8 @@ export type {
   ValidationRules,
   ValidationResult,
   ParameterMetadata,
-  Group
+  Group,
+  ElementParameter
 } from './parameters'
 
 // Parameter System Functions
@@ -103,7 +104,8 @@ export {
   // Parameter Operations
   convertBimToUserType,
   isEquationValue,
-  isPrimitiveValue
+  isPrimitiveValue,
+  createElementParameter
 } from './parameters'
 
 // Settings types

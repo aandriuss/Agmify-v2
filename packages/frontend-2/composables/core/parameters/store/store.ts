@@ -7,9 +7,10 @@ import type {
   RawParameter,
   AvailableBimParameter
 } from './types'
+import { createElementParameter } from '~/composables/core/types'
 import { parameterCache } from './cache'
 import {
-  processRawParameters as processParams,
+  processParams,
   extractRawParameters,
   convertToParameterValue
 } from '../parameter-processing'
@@ -227,25 +228,31 @@ function createParameterStore(): ParameterStore {
       if (cached?.length) {
         debug.log(DebugCategories.PARAMETERS, 'Processing cached parameters')
         const convertedElements = cached.map((param: RawParameter) => {
-          const paramValue = convertToParameterValue(param.value)
+          // Create element parameter with group info
+          const elementParam = createElementParameter(
+            convertToParameterValue(param.value),
+            param.group,
+            param.metadata
+          )
+
+          // Create element with parameter
           return {
             id: param.id,
             type: param.metadata?.category || 'Uncategorized',
             name: param.name,
-            field: param.id,
+            field: param.name,
             header: param.name,
             visible: true,
             removable: true,
             isChild: !param.metadata?.isParent,
             category: param.metadata?.category || 'Uncategorized',
             parameters: {
-              [param.id]: paramValue
+              [param.name]: elementParam // Store full parameter object
             },
-            group: {
-              fetchedGroup: param.group?.fetchedGroup || 'Ungrouped',
-              currentGroup: param.group?.currentGroup || ''
+            metadata: {
+              ...param.metadata,
+              displayName: param.name
             },
-            metadata: param.metadata,
             details: [],
             order: 0
           }

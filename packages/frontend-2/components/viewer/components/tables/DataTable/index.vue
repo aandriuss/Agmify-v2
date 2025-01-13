@@ -289,8 +289,8 @@ function ensureColumnProperties(column: Partial<TableColumn>): TableColumn {
       type: 'string',
       value: null,
       group: {
-        currentGroup: 'Default',
-        fetchedGroup: ''
+        currentGroup: 'Ungrouped',
+        fetchedGroup: 'Ungrouped'
       },
       metadata: {
         isSystem: false,

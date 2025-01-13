@@ -77,11 +77,13 @@
               <template #header>
                 <div class="column-header">
                   <span class="header-text">{{ col.header }}</span>
-                  <span class="source-tag">{{ col.source || 'Parameters' }}</span>
+                  <span class="source-tag">
+                    {{ col.parameter?.kind === 'user' ? 'User' : 'Parameters' }}
+                  </span>
                 </div>
               </template>
               <template #body="{ data }">
-                <div class="truncate">{{ data[col.field] }}</div>
+                <div class="truncate">{{ getFieldValue(data, col.field) }}</div>
               </template>
             </Column>
           </DataTable>
@@ -106,11 +108,13 @@
         <template #header>
           <div class="column-header">
             <span class="header-text">{{ col.header }}</span>
-            <span class="source-tag">{{ col.source || 'Parameters' }}</span>
+            <span class="source-tag">
+              {{ col.parameter?.kind === 'user' ? 'User' : 'Parameters' }}
+            </span>
           </div>
         </template>
         <template #body="{ data }">
-          <div class="truncate">{{ data[col.field] }}</div>
+          <div class="truncate">{{ getFieldValue(data, col.field) }}</div>
         </template>
       </Column>
     </DataTable>
@@ -155,6 +159,38 @@ const emit = defineEmits<{
   filter: [filters: DataTableFilterMeta]
 }>()
 
+// Helper function to get field value from row
+function getFieldValue(row: TableRow | ElementData, field: string): unknown {
+  // Get current column definition
+  const parentCol = props.parentColumns.find((col) => col.field === field)
+  const childCol = props.childColumns.find((col) => col.field === field)
+  const column = parentCol || childCol
+
+  // For parameters, just look up value directly from element.parameters using column field
+  if (column?.parameter && row.parameters && typeof row.parameters === 'object') {
+    const params = row.parameters as Record<string, unknown>
+    return params[column.field] ?? null
+  }
+
+  // Then check if it's a known property of BaseElement
+  if (
+    field === 'id' ||
+    field === 'type' ||
+    field === 'mark' ||
+    field === 'category' ||
+    field === '_visible'
+  ) {
+    return row[field]
+  }
+
+  // Finally check if it's a details array
+  if (field === 'details' && 'details' in row) {
+    return row.details
+  }
+
+  return null
+}
+
 // Sort data to keep "Ungrouped" at the end
 const sortedData = computed(() => {
   const data = [...props.data]
@@ -165,35 +201,6 @@ const sortedData = computed(() => {
 
     // For other categories, maintain current sort
     if (props.sortField) {
-      // Handle field access through parameters or direct properties
-      const getFieldValue = (row: TableRow | ElementData, field: string): unknown => {
-        // First check if it's a known property of BaseElement
-        if (
-          field === 'id' ||
-          field === 'type' ||
-          field === 'mark' ||
-          field === 'category' ||
-          field === '_visible'
-        ) {
-          return row[field]
-        }
-
-        // Then check parameters
-        if (row.parameters && typeof row.parameters === 'object') {
-          const params = row.parameters as Record<string, unknown>
-          if (field in params) {
-            return params[field]
-          }
-        }
-
-        // Finally check if it's a details array
-        if (field === 'details' && 'details' in row) {
-          return row.details
-        }
-
-        return null
-      }
-
       const aValue = getFieldValue(a, props.sortField)
       const bValue = getFieldValue(b, props.sortField)
 
@@ -258,12 +265,12 @@ function rowExpandable(options: { row: TableRow | ElementData }): boolean {
 
 // Helper function to check if any children have nested children
 function hasNestedChildren(data: TableRow | ElementData): boolean {
-  return (
-    data.details?.some(
-      (child) =>
-        'details' in child && Array.isArray(child.details) && child.details.length > 0
-    ) || false
-  )
+  if (!data.details || !Array.isArray(data.details)) return false
+  return data.details.some((child: TableRow | ElementData) => {
+    return (
+      'details' in child && Array.isArray(child.details) && child.details.length > 0
+    )
+  })
 }
 
 // Helper function to get valid columns from a group
@@ -311,7 +318,7 @@ function handleExpandedRowsUpdate(value: DataTableExpandedRows | unknown[]): voi
       rowCount: validExpansions.length,
       rows: validExpansions.map((row) => ({
         id: row.id,
-        hasDetails: !!row.details?.length
+        hasDetails: !!row.details
       }))
     })
     emit('update:expanded-rows', validExpansions)

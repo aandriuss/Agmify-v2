@@ -6,12 +6,10 @@ import type {
   TableRow,
   Store
 } from '~/composables/core/types'
-import type { ParameterValue } from '~/composables/core/types/parameters'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { getMostSpecificCategory } from '~/composables/core/config/categoryMapping'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
-import { convertToParameterValue } from '~/composables/core/parameters/parameter-processing'
 
 interface ProcessingState {
   isProcessingElements: boolean
@@ -48,13 +46,6 @@ interface UseSelectedElementsDataReturn {
   state: ComputedRef<DataState>
   processingState: Ref<ProcessingState>
   processElements: (forceProcess?: boolean) => Promise<void>
-}
-
-// Type guard for element parameters
-function hasParameters(
-  element: ElementData
-): element is ElementData & { parameters: Record<string, ParameterValue> } {
-  return element.parameters !== undefined && typeof element.parameters === 'object'
 }
 
 export function useSelectedElementsData(
@@ -126,131 +117,49 @@ export function useSelectedElementsData(
         const chunkIndex = Math.floor(i / chunkSize)
 
         // Process chunk elements in parallel with type safety
-        const processedElements = await Promise.all(
-          chunk.map(async (element) => {
-            try {
-              // Ensure required fields
-              const id = element.id
-              const mark = element.mark || `Element-${id}`
-              const category = element.category || 'Uncategorized'
+        const processedElements = chunk.map((element) => {
+          try {
+            // Ensure required fields
+            const id = element.id
+            const mark = element.mark || `Element-${id}`
+            const category = element.category || 'Uncategorized'
 
-              // Always process all elements, category filtering happens in state computation
-
-              // Get relevant columns based on element type
-              const relevantColumns = element.isChild ? childColumns : parentColumns
-              const processedParams: Record<string, ParameterValue> = {}
-              const parameterGroups: Record<string, string> = {}
-
-              // Only process parameters if element has parameters
-              if (hasParameters(element)) {
-                // Create parameter map for faster lookup
-                const paramMap = new Map<string, { value: unknown; group?: string }>()
-
-                // First pass: build parameter map with all possible names
-                Object.entries(element.parameters).forEach(([key, value]) => {
-                  const parts = key.split('.')
-                  // Store both the full key and the base name
-                  const baseName = parts[parts.length - 1]
-                  const group =
-                    parts.length > 1 ? parts.slice(0, -1).join(' > ') : undefined
-
-                  // Store by full key
-                  paramMap.set(key, { value, group })
-                  // Also store by base name if it's not already stored
-                  // or if the current one has a group (prefer grouped parameters)
-                  const existing = paramMap.get(baseName)
-                  if (!existing || (!existing.group && group)) {
-                    paramMap.set(baseName, { value, group })
-                  }
-                })
-
-                // Process parameters using column parameter IDs
-                for (const column of relevantColumns) {
-                  if (column.parameter) {
-                    // Try to find parameter by ID first, then name
-                    const paramInfo =
-                      paramMap.get(column.parameter.id) ||
-                      paramMap.get(column.parameter.name)
-
-                    if (paramInfo) {
-                      const paramValue = await convertToParameterValue(paramInfo.value)
-                      processedParams[column.parameter.id] = paramValue
-                      if (paramInfo.group) {
-                        parameterGroups[column.parameter.id] = paramInfo.group
-                      }
-                    } else {
-                      // Try to find by case-insensitive name as fallback
-                      const paramKey = Array.from(paramMap.keys()).find(
-                        (key) =>
-                          key.toLowerCase() === column.parameter!.name.toLowerCase()
-                      )
-                      if (paramKey) {
-                        const fallbackInfo = paramMap.get(paramKey)!
-                        const paramValue = await convertToParameterValue(
-                          fallbackInfo.value
-                        )
-                        processedParams[column.parameter.id] = paramValue
-                        if (fallbackInfo.group) {
-                          parameterGroups[column.parameter.id] = fallbackInfo.group
-                        }
-                      } else {
-                        processedParams[column.parameter.id] = null
-                      }
-                    }
-                  }
-                }
-              }
-
-              // Create base element fields
-              const baseFields = {
-                id,
-                name: element.name || mark,
-                field: id,
-                header: element.name || mark,
-                visible: true,
-                order: 0,
-                removable: true,
-                type: element.type || 'unknown',
-                mark, // Guaranteed to be string
-                category,
-                isChild: element.isChild || false,
-                host: element.host,
-                metadata: element.metadata,
-                details: element.details,
-                _visible: element._visible,
-                _raw: element._raw
-              }
-
-              // Create field mappings based on columns
-              const fieldMappings: Record<string, ParameterValue | null> = {}
-              for (const column of relevantColumns) {
-                if (column.parameter) {
-                  fieldMappings[column.field] =
-                    processedParams[column.parameter.id] ?? null
-                }
-              }
-
-              // Create element with all required fields
-              const processedElement: ElementData = {
-                ...baseFields,
-                ...fieldMappings,
-                parameters: processedParams,
-                metadata: {
-                  ...element.metadata,
-                  parameterGroups
-                }
-              }
-
-              return processedElement
-            } catch (err) {
-              debug.error(DebugCategories.ERROR, 'Error processing element:', {
-                element,
-                error: err
-              })
-              return null
+            // Create base element fields
+            const baseFields = {
+              id,
+              name: element.name || mark,
+              field: id,
+              header: element.name || mark,
+              visible: true,
+              order: 0,
+              removable: true,
+              type: element.type || 'unknown',
+              mark, // Guaranteed to be string
+              category,
+              isChild: element.isChild || false,
+              host: element.host,
+              metadata: element.metadata,
+              details: element.details,
+              _visible: element._visible,
+              _raw: element._raw
             }
-          })
-        )
+
+            // Create element with all required fields - just pass through the raw parameters
+            const processedElement: ElementData = {
+              ...baseFields,
+              parameters: element.parameters || {},
+              metadata: element.metadata
+            }
+
+            return processedElement
+          } catch (err) {
+            debug.error(DebugCategories.ERROR, 'Error processing element:', {
+              element,
+              error: err
+            })
+            return null
+          }
+        })
 
         // Filter out null elements and sort into parents/children using metadata
         for (const element of processedElements) {

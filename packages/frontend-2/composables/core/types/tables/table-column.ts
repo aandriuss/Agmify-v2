@@ -63,9 +63,13 @@ export function createTableColumn(
   param: AvailableBimParameter | AvailableUserParameter,
   order: number
 ): TableColumn {
+  // For BIM parameters, use name (without group) to match storage
+  // For user parameters, use ID to ensure uniqueness
+  const field = param.kind === 'bim' ? param.name : param.id
+
   const base = {
     id: param.id,
-    field: param.id,
+    field,
     header: param.name,
     order,
     width: 200,

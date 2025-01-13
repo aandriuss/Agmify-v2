@@ -5,10 +5,11 @@ import type {
   ProcessingState,
   TableRow,
   DataState,
-  BimValueType
+  TableColumn,
+  ElementParameter
 } from '~/composables/core/types'
+import { createElementParameter } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import { createAvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
@@ -21,14 +22,14 @@ import { isWorldTreeRoot } from '~/composables/core/types/viewer/viewer-types'
 // Type guard for element parameters
 function hasParameters(
   element: ElementData
-): element is ElementData & { parameters: Record<string, unknown> } {
+): element is ElementData & { parameters: Record<string, ElementParameter> } {
   return element.parameters !== undefined && typeof element.parameters === 'object'
 }
 
 // Helper to ensure element has parameters
 function ensureParameters(
   element: ElementData
-): ElementData & { parameters: Record<string, unknown> } {
+): ElementData & { parameters: Record<string, ElementParameter> } {
   if (!hasParameters(element)) {
     return {
       ...element,
@@ -184,42 +185,22 @@ export function useElementsData(
           // Add parent parameters
           parentColumns.forEach((column) => {
             if (column.parameter && !el.parameters[column.parameter.id]) {
-              const availableParam = createAvailableBimParameter(
-                {
-                  id: column.parameter.id,
-                  name: column.parameter.name,
-                  value: null,
-                  group: column.parameter.group || {
-                    fetchedGroup: 'Ungrouped',
-                    currentGroup: ''
-                  },
-                  metadata: column.parameter.metadata || {}
-                },
-                column.parameter.type as BimValueType,
-                null
-              )
-              el.parameters[column.parameter.id] = availableParam.value
+              // Only store value in element parameters
+              el.parameters[column.parameter.id] = createElementParameter(null, {
+                fetchedGroup: 'Ungrouped',
+                currentGroup: 'Ungrouped'
+              })
             }
           })
 
           // Add child parameters
           childColumns.forEach((column) => {
             if (column.parameter && !el.parameters[column.parameter.id]) {
-              const availableParam = createAvailableBimParameter(
-                {
-                  id: column.parameter.id,
-                  name: column.parameter.name,
-                  value: null,
-                  group: column.parameter.group || {
-                    fetchedGroup: 'Parameters',
-                    currentGroup: ''
-                  },
-                  metadata: column.parameter.metadata || {}
-                },
-                column.parameter.type as BimValueType,
-                null
-              )
-              el.parameters[column.parameter.id] = availableParam.value
+              // Only store value in element parameters
+              el.parameters[column.parameter.id] = createElementParameter(null, {
+                fetchedGroup: 'Ungrouped',
+                currentGroup: 'Ungrouped'
+              })
             }
           })
         })
@@ -327,41 +308,24 @@ export function useElementsData(
           bimElements.allElements.value?.forEach((el) => {
             const element = ensureParameters(el)
 
-            // Add parent parameters
-            parentColumns.forEach((column) => {
-              if (column.parameter && !element.parameters[column.parameter.id]) {
-                const availableParam = createAvailableBimParameter(
-                  {
-                    id: column.parameter.id,
-                    name: column.parameter.name,
-                    value: null,
-                    group: column.parameter.group,
-                    metadata: column.parameter.metadata || {}
-                  },
-                  column.parameter.type as BimValueType,
-                  null
-                )
-                element.parameters[column.parameter.id] = availableParam.value
-              }
-            })
+            // Add missing parameters with just values, no group info
+            const addMissingParams = (columns: TableColumn[]) => {
+              columns.forEach((column) => {
+                if (column.parameter && !element.parameters[column.parameter.id]) {
+                  element.parameters[column.parameter.id] = createElementParameter(
+                    null,
+                    {
+                      fetchedGroup: 'Ungrouped',
+                      currentGroup: 'Ungrouped'
+                    }
+                  )
+                }
+              })
+            }
 
-            // Add child parameters
-            childColumns.forEach((column) => {
-              if (column.parameter && !element.parameters[column.parameter.id]) {
-                const availableParam = createAvailableBimParameter(
-                  {
-                    id: column.parameter.id,
-                    name: column.parameter.name,
-                    value: null,
-                    group: column.parameter.group,
-                    metadata: column.parameter.metadata || {}
-                  },
-                  column.parameter.type as BimValueType,
-                  null
-                )
-                element.parameters[column.parameter.id] = availableParam.value
-              }
-            })
+            // Add parent and child parameters
+            addMissingParams(parentColumns)
+            addMissingParams(childColumns)
           })
         }
 
@@ -461,12 +425,15 @@ export function useElementsData(
               parameterCount: Object.keys(element.parameters || {}).length
             })
 
+            // Create clean metadata without parameterGroups
+            const { parameterGroups, ...restMetadata } = element.metadata || {}
+
             return {
               ...element,
               isChild,
               host,
               metadata: {
-                ...element.metadata,
+                ...restMetadata,
                 isParent,
                 category
               }
@@ -509,81 +476,34 @@ export function useElementsData(
           // Transform elements into table rows with all parameters
           const transformedElements = updatedElements.map((el) => {
             const element = ensureParameters(el)
+            // Create parameters object with just values, no group info
             const parameters: Record<string, unknown> = {}
 
-            // Ensure all column parameters exist
+            // Copy existing parameter values
+            Object.entries(element.parameters).forEach(([key, value]) => {
+              parameters[key] = value
+            })
+
+            // Add missing parameters from columns
             const table = tableStore.computed.currentTable.value
             if (table) {
               const { parentColumns, childColumns } = table
 
-              // Process existing parameters first
-              Object.entries(element.parameters).forEach(([key, value]) => {
-                parameters[key] = value
-              })
+              // Add missing parameters with group info
+              const addMissingParams = (columns: TableColumn[]) => {
+                columns.forEach((column) => {
+                  if (column.parameter && !parameters[column.parameter.id]) {
+                    // Create parameter with default group
+                    parameters[column.parameter.id] = createElementParameter(null, {
+                      fetchedGroup: 'Ungrouped',
+                      currentGroup: 'Ungrouped'
+                    })
+                  }
+                })
+              }
 
-              // Add missing parent parameters
-              parentColumns.forEach((column) => {
-                if (column.parameter && !parameters[column.parameter.id]) {
-                  const paramGroup = column.parameter.group || 'Parameters'
-                  const availableParam = createAvailableBimParameter(
-                    {
-                      id: column.parameter.id,
-                      name: column.parameter.name,
-                      value: null,
-                      group: {
-                        fetchedGroup:
-                          typeof paramGroup === 'string'
-                            ? paramGroup
-                            : paramGroup?.fetchedGroup || 'Parameters',
-                        currentGroup:
-                          typeof paramGroup === 'string'
-                            ? ''
-                            : paramGroup?.currentGroup || ''
-                      },
-                      metadata: {
-                        ...column.parameter.metadata,
-                        elementType: element.type || 'Unknown',
-                        category: element.type || 'Uncategorized'
-                      }
-                    },
-                    column.parameter.type as BimValueType,
-                    null
-                  )
-                  parameters[column.parameter.id] = availableParam.value
-                }
-              })
-
-              // Add missing child parameters
-              childColumns.forEach((column) => {
-                if (column.parameter && !parameters[column.parameter.id]) {
-                  const paramGroup = column.parameter.group || 'Parameters'
-                  const availableParam = createAvailableBimParameter(
-                    {
-                      id: column.parameter.id,
-                      name: column.parameter.name,
-                      value: null,
-                      group: {
-                        fetchedGroup:
-                          typeof paramGroup === 'string'
-                            ? paramGroup
-                            : paramGroup?.fetchedGroup || 'Parameters',
-                        currentGroup:
-                          typeof paramGroup === 'string'
-                            ? ''
-                            : paramGroup?.currentGroup || ''
-                      },
-                      metadata: {
-                        ...column.parameter.metadata,
-                        elementType: element.type || 'Unknown',
-                        category: element.type || 'Uncategorized'
-                      }
-                    },
-                    column.parameter.type as BimValueType,
-                    null
-                  )
-                  parameters[column.parameter.id] = availableParam.value
-                }
-              })
+              addMissingParams(parentColumns)
+              addMissingParams(childColumns)
             }
 
             return {
@@ -685,42 +605,20 @@ export function useElementsData(
           // Add parent parameters
           parentColumns.forEach((column) => {
             if (column.parameter && !element.parameters[column.parameter.id]) {
-              const availableParam = createAvailableBimParameter(
-                {
-                  id: column.parameter.id,
-                  name: column.parameter.name,
-                  value: null,
-                  group: column.parameter.group || {
-                    fetchedGroup: 'Parameters',
-                    currentGroup: ''
-                  },
-                  metadata: column.parameter.metadata || {}
-                },
-                column.parameter.type as BimValueType,
-                null
-              )
-              element.parameters[column.parameter.id] = availableParam.value
+              element.parameters[column.parameter.id] = createElementParameter(null, {
+                fetchedGroup: 'Ungrouped',
+                currentGroup: 'Ungrouped'
+              })
             }
           })
 
           // Add child parameters
           childColumns.forEach((column) => {
             if (column.parameter && !element.parameters[column.parameter.id]) {
-              const availableParam = createAvailableBimParameter(
-                {
-                  id: column.parameter.id,
-                  name: column.parameter.name,
-                  value: null,
-                  group: column.parameter.group || {
-                    fetchedGroup: 'Parameters',
-                    currentGroup: ''
-                  },
-                  metadata: column.parameter.metadata || {}
-                },
-                column.parameter.type as BimValueType,
-                null
-              )
-              element.parameters[column.parameter.id] = availableParam.value
+              element.parameters[column.parameter.id] = createElementParameter(null, {
+                fetchedGroup: 'Ungrouped',
+                currentGroup: 'Ungrouped'
+              })
             }
           })
         })
@@ -784,12 +682,15 @@ export function useElementsData(
           parameterCount: Object.keys(element.parameters || {}).length
         })
 
+        // Create clean metadata without parameterGroups
+        const { parameterGroups, ...restMetadata } = element.metadata || {}
+
         return {
           ...element,
           isChild,
           host,
           metadata: {
-            ...element.metadata,
+            ...restMetadata,
             isParent,
             category
           }
@@ -813,36 +714,22 @@ export function useElementsData(
           // Add missing parent parameters
           parentColumns.forEach((column) => {
             if (column.parameter && !parameters[column.parameter.id]) {
-              const availableParam = createAvailableBimParameter(
-                {
-                  id: column.parameter.id,
-                  name: column.parameter.name,
-                  value: null,
-                  group: column.parameter.group,
-                  metadata: column.parameter.metadata || {}
-                },
-                column.parameter.type as BimValueType,
-                null
-              )
-              parameters[column.parameter.id] = availableParam.value
+              // Only store value in element parameters
+              parameters[column.parameter.id] = createElementParameter(null, {
+                fetchedGroup: 'Ungrouped',
+                currentGroup: 'Ungrouped'
+              })
             }
           })
 
           // Add missing child parameters
           childColumns.forEach((column) => {
             if (column.parameter && !parameters[column.parameter.id]) {
-              const availableParam = createAvailableBimParameter(
-                {
-                  id: column.parameter.id,
-                  name: column.parameter.name,
-                  value: null,
-                  group: column.parameter.group,
-                  metadata: column.parameter.metadata || {}
-                },
-                column.parameter.type as BimValueType,
-                null
-              )
-              parameters[column.parameter.id] = availableParam.value
+              // Only store value in element parameters
+              parameters[column.parameter.id] = createElementParameter(null, {
+                fetchedGroup: 'Ungrouped',
+                currentGroup: 'Ungrouped'
+              })
             }
           })
         }

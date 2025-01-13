@@ -14,7 +14,7 @@ export interface Group {
 function createDefaultGroup(groupName?: string): Group {
   return {
     fetchedGroup: groupName || 'Ungrouped',
-    currentGroup: ''
+    currentGroup: groupName || 'Ungrouped'
   }
 }
 
@@ -35,9 +35,52 @@ export interface ParameterMetadata extends Record<string, unknown> {
 /**
  * Raw parameter from BIM before any processing
  */
+/**
+ * Element parameter interface
+ * Used to store parameter data with its group in ElementData
+ */
+export interface ElementParameter {
+  value: ParameterValue
+  group: Group
+  metadata?: ParameterMetadata
+}
+
+/**
+ * Create default element parameter
+ */
+export function createElementParameter(
+  value: ParameterValue,
+  group: Group = createDefaultGroup(),
+  metadata?: ParameterMetadata
+): ElementParameter {
+  return {
+    value,
+    group,
+    metadata
+  }
+}
+
+/**
+ * Type guard for ElementParameter
+ */
+export function isElementParameter(value: unknown): value is ElementParameter {
+  if (!value || typeof value !== 'object') return false
+  const p = value as Partial<ElementParameter>
+  return (
+    'value' in p &&
+    typeof p.group === 'object' &&
+    p.group !== null &&
+    typeof (p.group as Group).fetchedGroup === 'string' &&
+    typeof (p.group as Group).currentGroup === 'string'
+  )
+}
+
+/**
+ * Raw parameter from BIM before any processing
+ */
 export interface RawParameter {
   id: string
-  name: string
+  name: string // Clean name without group prefix
   value: unknown
   group: Group
   metadata: ParameterMetadata
@@ -92,10 +135,6 @@ export const isRawParameter = (param: unknown): param is RawParameter => {
   return (
     typeof p.id === 'string' &&
     typeof p.name === 'string' &&
-    typeof p.group === 'object' &&
-    p.group !== null &&
-    typeof (p.group as Group).fetchedGroup === 'string' &&
-    typeof (p.group as Group).currentGroup === 'string' &&
     'value' in p &&
     typeof p.metadata === 'object'
   )
@@ -145,29 +184,16 @@ export const createAvailableBimParameter = (
   processedValue: ParameterValue,
   isSystem = false
 ): AvailableBimParameter => {
-  // Extract group and name from parameter
-  const nameParts = raw.name.split('.')
-  const cleanName = nameParts.length > 1 ? nameParts.slice(1).join('.') : raw.name
-
-  // Ensure group has proper structure
-  const group = raw.group || createDefaultGroup()
-
   return {
     kind: 'bim',
     id: raw.id,
-    name: cleanName,
+    name: raw.name,
     type,
     value: processedValue,
-    group: {
-      fetchedGroup: group.fetchedGroup || 'Ungrouped',
-      currentGroup: group.currentGroup || ''
-    },
+    group: raw.group, // Use group directly from raw parameter
     visible: true,
     isSystem: isSystem || raw.metadata?.isSystem || false,
-    metadata: {
-      ...raw.metadata,
-      displayName: cleanName
-    }
+    metadata: raw.metadata
   }
 }
 

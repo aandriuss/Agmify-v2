@@ -195,29 +195,17 @@ function getItemName(item: AvailableParameter | TableColumn): string {
 }
 
 /**
- * Get parameter group with proper hierarchy
+ * Get parameter group from group info
  */
 function getParameterGroup(item: AvailableParameter): string {
   if (isAvailableBimParameter(item)) {
-    // First try to get group from parameterGroups
-    const paramGroups = item.metadata?.parameterGroups as
-      | Record<string, string>
-      | undefined
-    if (paramGroups && typeof paramGroups[item.id] === 'string') {
-      return paramGroups[item.id]
-    }
-
-    // Then try original group from metadata
-    const group = item.metadata?.originalGroup
-    if (typeof group === 'string') return group
-
-    // Fallback to fetched group
-    return item.group.fetchedGroup || 'Other Parameters'
+    // Prefer currentGroup over fetchedGroup
+    return item.group.currentGroup || item.group.fetchedGroup || 'Ungrouped'
   }
   if (isAvailableUserParameter(item)) {
     return item.group.currentGroup || 'User Parameters'
   }
-  return 'Other Parameters'
+  return 'Ungrouped'
 }
 
 /**
@@ -227,20 +215,8 @@ function getItemGroup(item: AvailableParameter | TableColumn): string {
   if (isColumn(item)) {
     const param = item.parameter
     if (isAvailableBimParameter(param)) {
-      // First try to get group from parameterGroups
-      const paramGroups = param.metadata?.parameterGroups as
-        | Record<string, string>
-        | undefined
-      if (paramGroups && typeof paramGroups[param.id] === 'string') {
-        return paramGroups[param.id]
-      }
-
-      // Then try original group from metadata
-      const originalGroup = param.metadata?.originalGroup
-      if (typeof originalGroup === 'string') return originalGroup
-
-      // Then try BIM groups
-      return param.group.currentGroup || param.group.fetchedGroup || 'Other Parameters'
+      // Prefer currentGroup over fetchedGroup
+      return param.group.currentGroup || param.group.fetchedGroup || 'Ungrouped'
     }
     if (isAvailableUserParameter(param)) {
       return param.group.currentGroup || 'User Parameters'

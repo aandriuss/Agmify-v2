@@ -427,40 +427,12 @@ export type AvatarUser = {
   name: Scalars['String']['output'];
 };
 
-/** Base parameter interface with common fields */
-export type BaseParameter = {
-  category?: Maybe<Scalars['String']['output']>;
-  description?: Maybe<Scalars['String']['output']>;
-  group: Scalars['JSONObject']['output'];
-  id: Scalars['ID']['output'];
-  kind: Scalars['String']['output'];
-  metadata?: Maybe<Scalars['JSONObject']['output']>;
-  name: Scalars['String']['output'];
-  type: Scalars['String']['output'];
-  value: Scalars['String']['output'];
-};
-
 export type BasicGitRepositoryMetadata = {
   __typename?: 'BasicGitRepositoryMetadata';
   id: Scalars['ID']['output'];
   name: Scalars['String']['output'];
   owner: Scalars['String']['output'];
   url: Scalars['String']['output'];
-};
-
-/** BIM parameter type */
-export type BimParameter = BaseParameter & {
-  __typename?: 'BimParameter';
-  category?: Maybe<Scalars['String']['output']>;
-  description?: Maybe<Scalars['String']['output']>;
-  group: Scalars['JSONObject']['output'];
-  id: Scalars['ID']['output'];
-  kind: Scalars['String']['output'];
-  metadata?: Maybe<Scalars['JSONObject']['output']>;
-  name: Scalars['String']['output'];
-  sourceValue: Scalars['String']['output'];
-  type: Scalars['String']['output'];
-  value: Scalars['String']['output'];
 };
 
 /** Parameter value types */
@@ -874,23 +846,6 @@ export type CreateAutomateFunctionInput = {
   template: AutomateFunctionTemplateLanguage;
 };
 
-/** Input for creating a BIM parameter */
-export type CreateBimParameterInput = {
-  category?: InputMaybe<Scalars['String']['input']>;
-  description?: InputMaybe<Scalars['String']['input']>;
-  field: Scalars['String']['input'];
-  group: Scalars['JSONObject']['input'];
-  header: Scalars['String']['input'];
-  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
-  name: Scalars['String']['input'];
-  order?: InputMaybe<Scalars['Int']['input']>;
-  removable?: InputMaybe<Scalars['Boolean']['input']>;
-  source?: InputMaybe<Scalars['String']['input']>;
-  sourceValue: Scalars['String']['input'];
-  type: BimValueType;
-  visible?: InputMaybe<Scalars['Boolean']['input']>;
-};
-
 export type CreateCommentInput = {
   content: CommentContentInput;
   projectId: Scalars['String']['input'];
@@ -925,14 +880,11 @@ export type CreateUserParameterInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   equation?: InputMaybe<Scalars['String']['input']>;
   field: Scalars['String']['input'];
-  group: Scalars['String']['input'];
+  group: Scalars['JSONObject']['input'];
   header: Scalars['String']['input'];
-  isCustom?: InputMaybe<Scalars['Boolean']['input']>;
   metadata?: InputMaybe<Scalars['JSONObject']['input']>;
   name: Scalars['String']['input'];
-  order?: InputMaybe<Scalars['Int']['input']>;
   removable?: InputMaybe<Scalars['Boolean']['input']>;
-  source?: InputMaybe<Scalars['String']['input']>;
   type: UserValueType;
   value: Scalars['String']['input'];
   visible?: InputMaybe<Scalars['Boolean']['input']>;
@@ -1390,8 +1342,6 @@ export type Mutation = {
    * @deprecated Part of the old API surface and will be removed in the future. Use VersionMutations.moveToModel instead.
    */
   commitsMove: Scalars['Boolean']['output'];
-  /** Create a new BIM parameter */
-  createBimParameter: ParameterMutationResponse;
   /** Create a new user parameter */
   createUserParameter: ParameterMutationResponse;
   /** Delete a parameter */
@@ -1486,8 +1436,6 @@ export type Mutation = {
   streamUpdatePermission?: Maybe<Scalars['Boolean']['output']>;
   /** @deprecated Part of the old API surface and will be removed in the future. Use ProjectMutations.batchDelete instead. */
   streamsDelete: Scalars['Boolean']['output'];
-  /** Update a BIM parameter */
-  updateBimParameter: ParameterMutationResponse;
   /** Update a user parameter */
   updateUserParameter: ParameterMutationResponse;
   /**
@@ -1662,11 +1610,6 @@ export type MutationCommitsMoveArgs = {
 };
 
 
-export type MutationCreateBimParameterArgs = {
-  input: CreateBimParameterInput;
-};
-
-
 export type MutationCreateUserParameterArgs = {
   input: CreateUserParameterInput;
 };
@@ -1791,12 +1734,6 @@ export type MutationStreamUpdatePermissionArgs = {
 
 export type MutationStreamsDeleteArgs = {
   ids?: InputMaybe<Array<Scalars['String']['input']>>;
-};
-
-
-export type MutationUpdateBimParameterArgs = {
-  id: Scalars['ID']['input'];
-  input: UpdateBimParameterInput;
 };
 
 
@@ -1927,13 +1864,10 @@ export type ObjectCreateInput = {
   streamId: Scalars['String']['input'];
 };
 
-/** Union of all parameter types */
-export type Parameter = BimParameter | UserParameter;
-
 /** Response type for parameter mutations */
 export type ParameterMutationResponse = {
   __typename?: 'ParameterMutationResponse';
-  parameter: Parameter;
+  parameter: UserParameter;
 };
 
 export type PasswordStrengthCheckFeedback = {
@@ -2667,9 +2601,9 @@ export type Query = {
   /** Get the (limited) profile information of another server user */
   otherUser?: Maybe<LimitedUser>;
   /** Get a specific parameter by ID */
-  parameter?: Maybe<Parameter>;
+  parameter?: Maybe<UserParameter>;
   /** Get all parameters for the current user */
-  parameters: Array<Parameter>;
+  parameters: Array<UserParameter>;
   /**
    * Find a specific project. Will throw an authorization error if active user isn't authorized
    * to see it, for example, if a project isn't public and the user doesn't have the appropriate rights.
@@ -2714,7 +2648,7 @@ export type Query = {
    */
   streams?: Maybe<StreamCollection>;
   /** Get all parameters for a specific table */
-  tableParameters: Array<Parameter>;
+  tableParameters: Array<UserParameter>;
   /**
    * Gets the profile of a user. If no id argument is provided, will return the current authenticated user's profile (as extracted from the authorization header).
    * @deprecated To be removed in the near future! Use 'activeUser' to get info about the active user or 'otherUser' to get info about another user.
@@ -3750,23 +3684,6 @@ export type UpdateAutomateFunctionInput = {
   tags?: InputMaybe<Array<Scalars['String']['input']>>;
 };
 
-/** Input for updating a BIM parameter */
-export type UpdateBimParameterInput = {
-  category?: InputMaybe<Scalars['String']['input']>;
-  description?: InputMaybe<Scalars['String']['input']>;
-  field?: InputMaybe<Scalars['String']['input']>;
-  group: Scalars['JSONObject']['input'];
-  header?: InputMaybe<Scalars['String']['input']>;
-  metadata?: InputMaybe<Scalars['JSONObject']['input']>;
-  name?: InputMaybe<Scalars['String']['input']>;
-  order?: InputMaybe<Scalars['Int']['input']>;
-  removable?: InputMaybe<Scalars['Boolean']['input']>;
-  source?: InputMaybe<Scalars['String']['input']>;
-  sourceValue?: InputMaybe<Scalars['String']['input']>;
-  type?: InputMaybe<BimValueType>;
-  visible?: InputMaybe<Scalars['Boolean']['input']>;
-};
-
 export type UpdateModelInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
@@ -3780,14 +3697,11 @@ export type UpdateUserParameterInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   equation?: InputMaybe<Scalars['String']['input']>;
   field?: InputMaybe<Scalars['String']['input']>;
-  group?: InputMaybe<Scalars['String']['input']>;
+  group?: InputMaybe<Scalars['JSONObject']['input']>;
   header?: InputMaybe<Scalars['String']['input']>;
-  isCustom?: InputMaybe<Scalars['Boolean']['input']>;
   metadata?: InputMaybe<Scalars['JSONObject']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-  order?: InputMaybe<Scalars['Int']['input']>;
   removable?: InputMaybe<Scalars['Boolean']['input']>;
-  source?: InputMaybe<Scalars['String']['input']>;
   type?: InputMaybe<UserValueType>;
   value?: InputMaybe<Scalars['String']['input']>;
   visible?: InputMaybe<Scalars['Boolean']['input']>;
@@ -4035,18 +3949,22 @@ export type UserEmailMutationsSetPrimaryArgs = {
 };
 
 /** User parameter type */
-export type UserParameter = BaseParameter & {
+export type UserParameter = {
   __typename?: 'UserParameter';
   category?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   equation?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
   group: Scalars['JSONObject']['output'];
+  header: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   kind: Scalars['String']['output'];
   metadata?: Maybe<Scalars['JSONObject']['output']>;
   name: Scalars['String']['output'];
+  removable: Scalars['Boolean']['output'];
   type: Scalars['String']['output'];
   value: Scalars['String']['output'];
+  visible: Scalars['Boolean']['output'];
 };
 
 export type UserProjectsFilter = {
@@ -6580,7 +6498,6 @@ export type AllObjectTypes = {
   AutomationRevisionFunction: AutomationRevisionFunction,
   AvatarUser: AvatarUser,
   BasicGitRepositoryMetadata: BasicGitRepositoryMetadata,
-  BimParameter: BimParameter,
   BlobMetadata: BlobMetadata,
   BlobMetadataCollection: BlobMetadataCollection,
   Branch: Branch,
@@ -6884,18 +6801,6 @@ export type BasicGitRepositoryMetadataFieldArgs = {
   owner: {},
   url: {},
 }
-export type BimParameterFieldArgs = {
-  category: {},
-  description: {},
-  group: {},
-  id: {},
-  kind: {},
-  metadata: {},
-  name: {},
-  sourceValue: {},
-  type: {},
-  value: {},
-}
 export type BlobMetadataFieldArgs = {
   createdAt: {},
   fileHash: {},
@@ -7169,7 +7074,6 @@ export type MutationFieldArgs = {
   commitUpdate: MutationCommitUpdateArgs,
   commitsDelete: MutationCommitsDeleteArgs,
   commitsMove: MutationCommitsMoveArgs,
-  createBimParameter: MutationCreateBimParameterArgs,
   createUserParameter: MutationCreateUserParameterArgs,
   deleteParameter: MutationDeleteParameterArgs,
   inviteDelete: MutationInviteDeleteArgs,
@@ -7197,7 +7101,6 @@ export type MutationFieldArgs = {
   streamUpdate: MutationStreamUpdateArgs,
   streamUpdatePermission: MutationStreamUpdatePermissionArgs,
   streamsDelete: MutationStreamsDeleteArgs,
-  updateBimParameter: MutationUpdateBimParameterArgs,
   updateUserParameter: MutationUpdateUserParameterArgs,
   userCommentThreadActivityBroadcast: MutationUserCommentThreadActivityBroadcastArgs,
   userDelete: MutationUserDeleteArgs,
@@ -7750,13 +7653,17 @@ export type UserParameterFieldArgs = {
   category: {},
   description: {},
   equation: {},
+  field: {},
   group: {},
+  header: {},
   id: {},
   kind: {},
   metadata: {},
   name: {},
+  removable: {},
   type: {},
   value: {},
+  visible: {},
 }
 export type UserProjectsUpdatedMessageFieldArgs = {
   id: {},
@@ -7965,7 +7872,6 @@ export type AllObjectFieldArgTypes = {
   AutomationRevisionFunction: AutomationRevisionFunctionFieldArgs,
   AvatarUser: AvatarUserFieldArgs,
   BasicGitRepositoryMetadata: BasicGitRepositoryMetadataFieldArgs,
-  BimParameter: BimParameterFieldArgs,
   BlobMetadata: BlobMetadataFieldArgs,
   BlobMetadataCollection: BlobMetadataCollectionFieldArgs,
   Branch: BranchFieldArgs,

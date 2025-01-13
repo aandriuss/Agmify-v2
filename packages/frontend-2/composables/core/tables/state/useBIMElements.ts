@@ -6,7 +6,8 @@ import type {
   ViewerNode,
   ViewerNodeRaw,
   WorldTreeRoot,
-  Group
+  Group,
+  ElementParameter
 } from '~/composables/core/types'
 import { parentCategories } from '~/composables/core/config/categories'
 import { getMostSpecificCategory } from '~/composables/core/config/categoryMapping'
@@ -21,6 +22,7 @@ import {
 } from '~/composables/core/types/viewer/viewer-types'
 import type { ParameterValue } from '~/composables/core/types/parameters'
 import { convertToParameterValue } from '~/composables/core/parameters/parameter-processing'
+import { createElementParameter } from '~/composables/core/types/parameters/parameter-states'
 
 interface BIMElementsState {
   worldTree: ViewerTree | null
@@ -63,70 +65,80 @@ function extractNodeParameters(
   // Extract all properties except core and system ones
   const parameters: Record<string, ExtractedParameter> = {}
 
-  function processValue(value: unknown, path: string[]): void {
-    if (value === null || value === undefined) return
+  // function processValue(value: unknown, path: string[]): void {
+  //   if (value === null || value === undefined) return
 
-    if (typeof value === 'object' && !Array.isArray(value)) {
-      // Process nested object
-      Object.entries(value as Record<string, unknown>).forEach(([key, val]) => {
-        const newPath = [...path, key]
+  //   // Get the current key (last item in path)
+  //   const currentKey = path[path.length - 1]
+  //   if (!currentKey) return
 
-        // Skip core and system properties
-        const isCore = coreProperties.has(key)
-        const isSystem = key.startsWith('__') || key.startsWith('@')
+  //   // Skip core and system properties
+  //   const isCore = coreProperties.has(currentKey)
+  //   const isSystem = currentKey.startsWith('__') || currentKey.startsWith('@')
+  //   if (isCore || isSystem) return
 
-        if (!isCore && !isSystem) {
-          if (typeof val === 'object' && !Array.isArray(val) && val !== null) {
-            processValue(val, newPath)
-          } else {
-            const convertedValue = convertToParameterValue(val)
-            if (convertedValue !== null) {
-              // Last item in path is the parameter name
-              const paramName = newPath[newPath.length - 1]
-              // Everything before the last item forms the group path
-              const groupPath = newPath.slice(0, -1)
+  //   // Handle nested objects
+  //   if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+  //     Object.entries(value as Record<string, unknown>).forEach(([key, val]) => {
+  //       processValue(val, [...path, key])
+  //     })
+  //     return
+  //   }
 
-              parameters[paramName] = {
-                name: paramName,
-                value: convertedValue,
-                group: {
-                  fetchedGroup:
-                    groupPath.length > 0 ? groupPath.join(' > ') : 'Ungrouped',
-                  currentGroup: ''
-                }
+  //   // Convert value
+  //   const convertedValue = convertToParameterValue(value)
+  //   if (convertedValue === null) return
+
+  //   // For parameters, use the last part of the path as the name
+  //   const paramName = currentKey
+  //   // For groups, use all but the last part
+  //   const groupPath = path.slice(0, -1)
+
+  //   // Store parameter with its group
+  //   parameters[paramName] = {
+  //     name: paramName,
+  //     value: convertedValue,
+  //     group: {
+  //       fetchedGroup: groupPath.length > 0 ? groupPath.join('.') : 'Ungrouped',
+  //       currentGroup: ''
+  //     }
+  //   }
+  // }
+
+  // Process all properties recursively
+  function processAllProperties(obj: Record<string, unknown>, basePath: string[] = []) {
+    Object.entries(obj).forEach(([key, value]) => {
+      const isCore = coreProperties.has(key)
+      const isSystem = key.startsWith('__') || key.startsWith('@')
+
+      if (!isCore && !isSystem) {
+        // For objects, process recursively
+        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          processAllProperties(value as Record<string, unknown>, [...basePath, key])
+        } else {
+          // For primitive values, process directly
+          const convertedValue = convertToParameterValue(value)
+          if (convertedValue !== null) {
+            const paramPath = [...basePath, key]
+            const paramName = paramPath[paramPath.length - 1]
+            const groupPath = paramPath.slice(0, -1)
+
+            parameters[paramName] = {
+              name: paramName,
+              value: convertedValue,
+              group: {
+                fetchedGroup: groupPath.length > 0 ? groupPath.join('.') : 'Ungrouped',
+                currentGroup: groupPath.length > 0 ? groupPath.join('.') : 'Ungrouped'
               }
             }
           }
         }
-      })
-    } else {
-      // Convert non-object value
-      const convertedValue = convertToParameterValue(value)
-      if (convertedValue !== null && path.length > 0) {
-        const paramName = path[path.length - 1]
-        const groupPath = path.slice(0, -1)
-
-        parameters[paramName] = {
-          name: paramName,
-          value: convertedValue,
-          group: {
-            fetchedGroup: groupPath.length > 0 ? groupPath.join(' > ') : 'Ungrouped',
-            currentGroup: ''
-          }
-        }
       }
-    }
+    })
   }
 
-  // Process top-level properties
-  Object.entries(nodeData).forEach(([key, value]) => {
-    const isCore = coreProperties.has(key)
-    const isSystem = key.startsWith('__') || key.startsWith('@')
-
-    if (!isCore && !isSystem) {
-      processValue(value, [key])
-    }
-  })
+  // Start processing from root
+  processAllProperties(nodeData)
 
   // Log extracted parameters for debugging
   if (Object.keys(parameters).length > 0) {
@@ -233,26 +245,29 @@ function convertViewerNodeToElementData(
   // Extract raw parameters from node data
   const extractedParams = extractNodeParameters(nodeData)
 
-  // Convert extracted parameters to the format expected by ElementData
-  const parameters: Record<string, ParameterValue> = {}
-  const parameterGroups: Record<string, Group> = {}
+  // Convert extracted parameters to ElementParameter objects
+  const parameters: Record<string, ElementParameter> = {}
 
   Object.entries(extractedParams).forEach(([paramName, param]) => {
-    parameters[paramName] = param.value
-    parameterGroups[paramName] = param.group
+    // Create ElementParameter with group info
+    parameters[paramName] = createElementParameter(param.value, param.group, {
+      category: nodeData.type || 'Uncategorized',
+      elementId: nodeData.id,
+      displayName: paramName
+    })
   })
 
   debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
     nodeId: nodeData.id,
     parameterCount: Object.keys(parameters).length,
-    groups: Object.values(parameterGroups).map((g) => g.fetchedGroup),
+    groups: Object.values(parameters).map((p) => p.group.fetchedGroup),
     sampleParameters: Object.entries(parameters)
       .slice(0, 3)
-      .map(([key, value]) => ({
+      .map(([key, param]) => ({
         key,
-        value,
-        type: typeof value,
-        group: parameterGroups[key]
+        value: param.value,
+        type: typeof param.value,
+        group: param.group
       }))
   })
 
@@ -270,8 +285,7 @@ function convertViewerNodeToElementData(
     metadata: {
       ...nodeData.metadata,
       isParent,
-      category,
-      parameterGroups
+      category
     },
     details: [],
     order: 0

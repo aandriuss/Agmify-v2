@@ -82,7 +82,7 @@ export function useTableFlow({ currentTable, defaultConfig }: UseTableFlowOption
 
       if (needsUpdate) {
         debug.log(DebugCategories.INITIALIZATION, 'Updating table store')
-        await tableStore.updateTable(config)
+        await tableStore.updateTableState(config)
 
         // Update core store with table info
         await store.lifecycle.update({

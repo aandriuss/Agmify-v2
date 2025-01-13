@@ -1,6 +1,15 @@
 import type { BaseItem } from '../common/base-types'
-import type { ParameterValue } from '../parameters'
+import type { ParameterValue, ElementParameter } from '../parameters'
 import type { TableColumn } from '../tables/table-column'
+
+/**
+ * Element metadata interface
+ */
+export interface ElementMetadata {
+  isParent?: boolean
+  category?: string
+  [key: string]: unknown
+}
 
 /**
  * Base table row interface
@@ -24,8 +33,8 @@ export interface ElementData extends BaseTableRow {
   type: string
   mark?: string
   category?: string
-  parameters?: Record<string, ParameterValue>
-  metadata?: Record<string, unknown>
+  parameters?: Record<string, ElementParameter>
+  metadata?: ElementMetadata
   details?: ElementData[]
   _visible?: boolean
   host?: string
@@ -40,7 +49,7 @@ export interface ElementData extends BaseTableRow {
  */
 export interface ViewerTableRow extends ElementData {
   // Ensure all required table properties are present
-  parameters: Record<string, ParameterValue> // Make parameters required
+  parameters: Record<string, ElementParameter> // Make parameters required
   column?: TableColumn // Optional reference to display column
   // Allow dynamic parameter properties
   [key: string]: ParameterValue | unknown
@@ -115,8 +124,8 @@ export function toViewerTableRow(
 
   // Flatten parameters into top-level properties for table display
   if (element.parameters) {
-    Object.entries(element.parameters).forEach(([key, value]) => {
-      row[key] = value
+    Object.entries(element.parameters).forEach(([key, param]) => {
+      row[key] = param.value // Use just the value for display
     })
   }
 

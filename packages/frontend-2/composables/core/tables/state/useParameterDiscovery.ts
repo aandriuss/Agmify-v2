@@ -4,7 +4,6 @@ import type {
   TreeItemComponentModel,
   AvailableParameter,
   AvailableBimParameter,
-  BimValueType,
   ParameterValue,
   BIMNodeData,
   RawParameter
@@ -12,6 +11,11 @@ import type {
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { isValidBIMNodeData } from '~/composables/core/types/viewer/viewer-base'
 import { createAvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
+import {
+  inferParameterType,
+  extractGroupFromKey,
+  cleanParameterName
+} from '~/composables/core/parameters/utils/group-processing'
 import type {
   BaseParameterDiscoveryOptions,
   BaseParameterDiscoveryState,
@@ -90,9 +94,6 @@ export function useParameterDiscovery(
   const discoveryError = computed(() => state.value.error)
 
   /**
-   * Process a single BIM node
-   */
-  /**
    * Extract elements from node data
    */
   function extractElements(node: TreeItemComponentModel): BIMNodeData[] {
@@ -136,55 +137,48 @@ export function useParameterDiscovery(
         // Skip if we've already processed this parameter
         if (processedParams.has(paramName)) return
 
-        const paramValue = value as ParameterValue
-        const type = inferParameterType(paramValue)
+        try {
+          const paramValue = value as ParameterValue
+          const paramType = inferParameterType(paramValue)
 
-        // Type guard for metadata
-        const metadata = element.metadata as
-          | { parameterGroups?: Record<string, string> }
-          | undefined
-        const group = metadata?.parameterGroups?.[paramName]
+          // Extract group and clean name
+          const groupName = extractGroupFromKey(paramName)
+          const cleanName = cleanParameterName(paramName)
 
-        // Create raw parameter
-        const rawParam: RawParameter = {
-          id: paramName,
-          name: paramName,
-          value: paramValue,
-          group: {
-            fetchedGroup: group || 'Ungrouped',
-            currentGroup: ''
-          },
-          metadata: {
-            category: element.type || 'Uncategorized',
-            elementId: element.id || '',
-            elementType: element.type || 'Unknown',
-            fullKey: paramName,
-            isNested: group !== undefined
+          // Create raw parameter with group info
+          const rawParam: RawParameter = {
+            id: paramName,
+            name: cleanName,
+            value: paramValue,
+            group: {
+              fetchedGroup: groupName,
+              currentGroup: groupName
+            },
+            metadata: {
+              category: element.type || 'Uncategorized',
+              elementId: element.id || '',
+              elementType: element.type || 'Unknown',
+              fullKey: paramName,
+              isNested: false
+            }
           }
+
+          // Create parameter using utility function
+          const param = createAvailableBimParameter(rawParam, paramType, paramValue)
+
+          parameters.push(param)
+          processedParams.add(paramName)
+        } catch (err) {
+          debug.warn(
+            DebugCategories.PARAMETERS,
+            `Failed to process parameter ${paramName}:`,
+            err instanceof Error ? err : new Error(String(err))
+          )
         }
-
-        // Create parameter using utility function
-        const param = createAvailableBimParameter(rawParam, type, paramValue)
-
-        parameters.push(param)
-        processedParams.add(paramName)
       })
     })
 
     return parameters
-  }
-
-  /**
-   * Infer parameter type from value
-   */
-  function inferParameterType(value: unknown): BimValueType {
-    if (value === null || value === undefined) return 'string'
-    if (typeof value === 'boolean') return 'boolean'
-    if (typeof value === 'number') return 'number'
-    if (value instanceof Date) return 'date'
-    if (Array.isArray(value)) return 'array'
-    if (typeof value === 'object') return 'object'
-    return 'string'
   }
 
   /**
@@ -209,29 +203,12 @@ export function useParameterDiscovery(
       // Sort parameters by element type while preserving groups
       availableParams.forEach((param) => {
         const elementType = param.metadata?.elementType?.toString() || 'Uncategorized'
-        const group = String(
-          param.metadata?.originalGroup || param.group.fetchedGroup || 'Parameters'
-        )
-
-        // Create parameter with proper group assignments
-        const paramWithGroups: AvailableParameter = {
-          ...param,
-          group: {
-            fetchedGroup: group,
-            currentGroup: group
-          },
-          metadata: {
-            ...param.metadata,
-            elementType,
-            originalGroup: group
-          }
-        }
 
         // Add to appropriate list based on element type
         if (options.selectedParentCategories.value.includes(elementType)) {
-          parentParams.push(paramWithGroups)
+          parentParams.push(param)
         } else if (options.selectedChildCategories.value.includes(elementType)) {
-          childParams.push(paramWithGroups)
+          childParams.push(param)
         }
       })
 
