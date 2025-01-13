@@ -144,7 +144,7 @@ function getItemId(
 function isParameter(
   item: AvailableBimParameter | AvailableUserParameter | TableColumn
 ): item is AvailableBimParameter | AvailableUserParameter {
-  return 'id' in item && !('field' in item)
+  return 'id' in item && 'kind' in item && (item.kind === 'bim' || item.kind === 'user')
 }
 
 // Helper to determine if item is a Column
@@ -228,30 +228,41 @@ const toggleFilterOptions = () => {
   coreStore.setShowCategoryOptions(!coreStore.showCategoryOptions.value)
 }
 
-const handleAdd = async (
+const handleAdd = (
   item: AvailableBimParameter | AvailableUserParameter | TableColumn
 ) => {
   if (!isParameter(item)) return
 
   try {
-    await columnManager.handleColumnOperation({
+    debug.log(DebugCategories.STATE, 'Adding parameter', {
+      item,
+      isUserParam: item.kind === 'user',
+      isBimParam: item.kind === 'bim'
+    })
+
+    columnManager.handleColumnOperation({
       type: 'add',
       parameter: item
     })
     listRefreshKey.value++
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to add column')
+    debug.error(DebugCategories.ERROR, 'Failed to add parameter', {
+      error,
+      item,
+      isUserParam: item.kind === 'user'
+    })
     loadingError.value = error
   }
 }
 
-const handleRemove = async (
+const handleRemove = (
   item: AvailableBimParameter | AvailableUserParameter | TableColumn
 ) => {
   if (!isColumn(item)) return
 
   try {
-    await columnManager.handleColumnOperation({
+    columnManager.handleColumnOperation({
       type: 'remove',
       column: item
     })
@@ -262,9 +273,9 @@ const handleRemove = async (
   }
 }
 
-const handleReorder = async (fromIndex: number, toIndex: number) => {
+const handleReorder = (fromIndex: number, toIndex: number) => {
   try {
-    await columnManager.handleColumnOperation({
+    columnManager.handleColumnOperation({
       type: 'reorder',
       fromIndex,
       toIndex
@@ -276,14 +287,14 @@ const handleReorder = async (fromIndex: number, toIndex: number) => {
   }
 }
 
-const handleVisibilityChange = async (
+const handleVisibilityChange = (
   item: AvailableBimParameter | AvailableUserParameter | TableColumn,
   visible: boolean
 ) => {
   if (!isColumn(item)) return
 
   try {
-    await columnManager.handleColumnOperation({
+    columnManager.handleColumnOperation({
       type: 'visibility',
       column: item,
       visible
@@ -325,7 +336,7 @@ const handleDragEnter = (event: DragEvent, index: number) => {
   dropState.dropPosition = mouseY < threshold ? 'above' : 'below'
 }
 
-const handleDrop = async (event: DragEvent, targetIndex?: number) => {
+const handleDrop = (event: DragEvent, targetIndex?: number) => {
   if (!dropState.dragging || targetIndex === undefined) return
 
   try {
@@ -334,13 +345,13 @@ const handleDrop = async (event: DragEvent, targetIndex?: number) => {
     )
 
     if (sourceIndex !== -1) {
-      await handleReorder(sourceIndex, targetIndex)
+      handleReorder(sourceIndex, targetIndex)
     } else {
       const sourceItem = columnManager.availableParameters.value.find(
         (p) => getItemId(p) === dropState.dragging
       )
       if (sourceItem && isParameter(sourceItem)) {
-        await handleAdd(sourceItem)
+        handleAdd(sourceItem)
       }
     }
   } catch (err) {
@@ -351,13 +362,11 @@ const handleDrop = async (event: DragEvent, targetIndex?: number) => {
   }
 }
 
-const showAllColumns = async () => {
+const showAllColumns = () => {
   try {
-    const promises = columnManager.activeColumns.value
+    columnManager.activeColumns.value
       .filter((col) => !col.visible)
-      .map((col) => handleVisibilityChange(col, true))
-
-    await Promise.all(promises)
+      .forEach((col) => handleVisibilityChange(col, true))
     listRefreshKey.value++
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to show all columns')

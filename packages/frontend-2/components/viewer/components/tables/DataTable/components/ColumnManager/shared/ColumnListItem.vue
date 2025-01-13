@@ -126,7 +126,17 @@ function isColumn(value: TableColumn | AvailableParameter): value is TableColumn
 function isParameter(
   value: TableColumn | AvailableParameter
 ): value is AvailableParameter {
-  return 'kind' in value
+  return (
+    value &&
+    typeof value === 'object' &&
+    'kind' in value &&
+    (value.kind === 'bim' || value.kind === 'user') &&
+    'id' in value &&
+    'name' in value &&
+    'type' in value &&
+    'value' in value &&
+    'group' in value
+  )
 }
 
 // Computed Properties
@@ -163,6 +173,12 @@ const isVisible = computed({
 // Event handlers
 function handleAdd() {
   if (isParameter(props.column)) {
+    // eslint-disable-next-line no-console
+    console.log('Adding parameter:', {
+      parameter: props.column,
+      kind: props.column.kind,
+      isUser: props.column.kind === 'user'
+    })
     emit('add', props.column)
   }
 }

@@ -1066,12 +1066,20 @@ button:hover {
   background: #1e1e1e;
   padding: 8px;
   border-radius: 4px;
+  margin-top: 8px;
 }
 
 .stat-group h5 {
   margin: 0 0 8px;
   color: #888;
   font-size: 12px;
+}
+
+.stat-group pre {
+  font-size: 11px;
+  margin: 0;
+  overflow: auto;
+  max-height: 200px;
 }
 
 .stat-item {

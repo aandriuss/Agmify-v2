@@ -63,16 +63,10 @@ export function createTableColumn(
   param: AvailableBimParameter | AvailableUserParameter,
   order: number
 ): TableColumn {
-  // For BIM parameters, use name as ID and field
-  // For user parameters, use their existing ID and field
-  const paramId = param.id
-  const field =
-    param.kind === 'bim'
-      ? `parameters.${param.name}.value`
-      : `parameters.${param.id}.value`
+  const field = `parameters.${param.id}.value`
 
   const base = {
-    id: paramId,
+    id: param.id,
     field,
     header: param.name,
     order,

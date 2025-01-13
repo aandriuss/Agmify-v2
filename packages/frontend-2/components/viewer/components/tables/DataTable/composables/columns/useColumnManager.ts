@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, ref, toRaw, watch } from 'vue'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useUserParameterStore } from '~/composables/core/userparameters/store'
@@ -7,7 +7,6 @@ import type {
   AvailableUserParameter
 } from '~/composables/core/types/parameters/parameter-states'
 import type { TableColumn } from '~/composables/core/types/tables'
-import { createTableColumn } from '~/composables/core/types/tables/table-column'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 type View = 'parent' | 'child'
@@ -64,10 +63,40 @@ export function useColumnManager() {
       : parameterStore.state.value.collections.available.child.bim
 
     // Get user parameters from user parameter store
-    const userParams = Object.values(userParameterStore.state.value.parameters)
+    const userParams = Object.values(toRaw(userParameterStore.state.value.parameters))
+
+    debug.log(DebugCategories.STATE, 'User parameter store state', {
+      storeState: userParameterStore.state.value,
+      rawParams: userParameterStore.state.value.parameters,
+      userParamsCount: userParams.length
+    })
+
+    debug.log(DebugCategories.STATE, 'Available parameters', {
+      bimParams: bimParams.map((p) => ({ id: p.id, name: p.name, kind: p.kind })),
+      userParams: userParams.map((p) => ({
+        id: p.id,
+        name: p.name,
+        kind: p.kind,
+        field: p.field,
+        value: p.value,
+        type: p.type
+      })),
+      selectedIds: Array.from(selectedIds),
+      isParent
+    })
 
     // Merge and filter out already selected parameters
-    return [...bimParams, ...userParams].filter((param) => !selectedIds.has(param.id))
+    const filteredParams = [...bimParams, ...userParams].filter(
+      (param) => !selectedIds.has(param.id)
+    )
+
+    debug.log(DebugCategories.STATE, 'Filtered parameters', {
+      total: filteredParams.length,
+      bimCount: filteredParams.filter((p) => p.kind === 'bim').length,
+      userCount: filteredParams.filter((p) => p.kind === 'user').length
+    })
+
+    return filteredParams
   })
 
   // Keep for component compatibility
@@ -76,7 +105,7 @@ export function useColumnManager() {
     tableStore.toggleView()
   }
 
-  async function handleColumnOperation(operation: ColumnOperation): Promise<void> {
+  function handleColumnOperation(operation: ColumnOperation): void {
     debug.startState(
       operation.type === 'add' || operation.type === 'remove'
         ? DebugCategories.SAVED_PARAMETERS
@@ -95,64 +124,86 @@ export function useColumnManager() {
 
       switch (operation.type) {
         case 'add': {
-          // Add debug logging
+          // Add detailed debug logging
           debug.log(DebugCategories.STATE, 'Adding parameter to columns', {
             parameter: operation.parameter,
             isParent,
-            kind: operation.parameter.kind
+            kind: operation.parameter.kind,
+            id: operation.parameter.id,
+            name: operation.parameter.name,
+            currentColumns: isParent
+              ? currentTable.parentColumns
+              : currentTable.childColumns
           })
 
-          // Create column with debug logging
-          const order = (
-            isParent ? currentTable.parentColumns : currentTable.childColumns
-          ).length
-          const newColumn = createTableColumn(operation.parameter, order)
+          // Add column using store method
+          try {
+            tableStore.addColumn(operation.parameter, isParent)
 
-          debug.log(DebugCategories.STATE, 'Created new column', {
-            column: newColumn
-          })
+            // Log the state after adding
+            const updatedColumns = isParent
+              ? tableStore.computed.currentTable.value?.parentColumns
+              : tableStore.computed.currentTable.value?.childColumns
 
-          const columns = isParent
-            ? [...currentTable.parentColumns, newColumn]
-            : [...currentTable.childColumns, newColumn]
-
-          // Update table with new columns
-          await tableStore.updateTableState({
-            ...(isParent ? { parentColumns: columns } : { childColumns: columns })
-          })
-
-          debug.log(DebugCategories.STATE, 'Updated table state with new column')
+            debug.log(DebugCategories.STATE, 'Column added', {
+              parameter: operation.parameter,
+              isUserParam: operation.parameter.kind === 'user',
+              currentColumnsCount: updatedColumns?.length || 0,
+              addedColumn: updatedColumns?.find(
+                (col) => col.parameter.id === operation.parameter.id
+              )
+            })
+          } catch (err) {
+            debug.error(DebugCategories.ERROR, 'Failed to add column', {
+              error: err instanceof Error ? err : new Error('Unknown error'),
+              parameter: operation.parameter,
+              isUserParam: operation.parameter.kind === 'user'
+            })
+            throw err
+          }
           break
         }
         case 'remove': {
-          // Filter out removed column
-          const columns = (
-            isParent ? currentTable.parentColumns : currentTable.childColumns
-          ).filter((col) => col.id !== operation.column.id)
-
-          // Update table with filtered columns
-          await tableStore.updateTableState({
-            ...(isParent ? { parentColumns: columns } : { childColumns: columns })
+          debug.log(DebugCategories.STATE, 'Removing column', {
+            column: operation.column,
+            isParent
           })
+          tableStore.removeColumn(operation.column.id, isParent)
           break
         }
         case 'visibility': {
-          // Update column visibility
-          const columns = (
-            isParent ? currentTable.parentColumns : currentTable.childColumns
-          ).map((col) =>
-            col.id === operation.column.id
-              ? { ...col, visible: operation.visible }
-              : col
-          )
-
-          // Update table with modified columns
-          await tableStore.updateTableState({
-            ...(isParent ? { parentColumns: columns } : { childColumns: columns })
+          debug.log(DebugCategories.STATE, 'Updating column visibility', {
+            column: operation.column,
+            visible: operation.visible,
+            isParent
+          })
+          // Use updateTableState since there's no dedicated visibility method
+          tableStore.updateTableState({
+            ...(isParent
+              ? {
+                  parentColumns: currentTable.parentColumns.map((col) =>
+                    col.id === operation.column.id
+                      ? { ...col, visible: operation.visible }
+                      : col
+                  )
+                }
+              : {
+                  childColumns: currentTable.childColumns.map((col) =>
+                    col.id === operation.column.id
+                      ? { ...col, visible: operation.visible }
+                      : col
+                  )
+                })
           })
           break
         }
         case 'reorder': {
+          debug.log(DebugCategories.STATE, 'Reordering columns', {
+            fromIndex: operation.fromIndex,
+            toIndex: operation.toIndex,
+            isParent
+          })
+
           const columns = (
             isParent ? currentTable.parentColumns : currentTable.childColumns
           ).slice()
@@ -171,22 +222,19 @@ export function useColumnManager() {
             return
           }
 
-          // Perform reorder
+          // Perform reorder and update order values
           const [movedColumn] = columns.splice(operation.fromIndex, 1)
           columns.splice(operation.toIndex, 0, movedColumn)
-
-          // Create new column objects with updated order values
           const updatedColumns = columns.map((col, index) => ({
             ...col,
             order: index
           }))
 
-          // Update table with reordered columns
-          await tableStore.updateTableState({
-            ...(isParent
-              ? { parentColumns: updatedColumns }
-              : { childColumns: updatedColumns })
-          })
+          // Update columns using store method
+          tableStore.updateColumns(
+            isParent ? updatedColumns : currentTable.parentColumns,
+            isParent ? currentTable.childColumns : updatedColumns
+          )
           break
         }
       }
