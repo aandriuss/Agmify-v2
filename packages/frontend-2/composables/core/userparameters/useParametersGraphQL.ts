@@ -14,10 +14,7 @@ interface GraphQLResponse<T> {
 }
 
 interface GetParametersResponse {
-  activeUser: {
-    id: string
-    parameters: Record<string, AvailableUserParameter>
-  }
+  parameters: Record<string, AvailableUserParameter>
 }
 
 interface UpdateParametersResponse {
@@ -26,10 +23,7 @@ interface UpdateParametersResponse {
 
 const GET_USER_PARAMETERS = gql`
   query GetUserParameters {
-    activeUser {
-      id
-      parameters
-    }
+    parameters
   }
 `
 
@@ -101,7 +95,8 @@ export async function useParametersGraphQL() {
       loading: queryLoading,
       refetch: queryRefetch
     } = useQuery<GetParametersResponse>(GET_USER_PARAMETERS, null, {
-      fetchPolicy: 'cache-and-network'
+      fetchPolicy: 'network-only', // Always fetch from network on mount
+      notifyOnNetworkStatusChange: true // Ensure we get loading states for refetch
     })
 
     // Ensure refetch is available and type-safe
@@ -119,24 +114,42 @@ export async function useParametersGraphQL() {
         // Ensure we have auth and Apollo client
         await getApolloClient()
 
-        const response = await runInContext(() => refetch()).catch(async (err) => {
-          // If auth error, try to re-initialize Apollo client
-          if (isGraphQLAuthError(err)) {
-            debug.log(DebugCategories.INITIALIZATION, 'Auth error, retrying...')
-            await getApolloClient()
-            return refetch()
+        // Try fetching up to 3 times with exponential backoff
+        let lastError: Error | null = null
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const response = await runInContext(() => refetch())
+            const parameters = response?.data?.parameters || {}
+
+            debug.log(DebugCategories.INITIALIZATION, 'Parameters fetched', {
+              count: Object.keys(parameters).length,
+              attempt: attempt + 1
+            })
+
+            return parameters
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err))
+
+            // If it's an auth error, try to re-initialize Apollo client
+            if (isGraphQLAuthError(lastError)) {
+              debug.log(DebugCategories.INITIALIZATION, 'Auth error, retrying...')
+              await getApolloClient()
+              continue
+            }
+
+            // For other errors, wait before retry
+            if (attempt < 2) {
+              const delay = Math.pow(2, attempt) * 1000 // 1s, 2s, 4s
+              debug.log(DebugCategories.INITIALIZATION, `Retrying in ${delay}ms...`)
+              await new Promise((resolve) => setTimeout(resolve, delay))
+            }
           }
-          throw err
-        })
+        }
 
-        // Get parameters from response
-        const parameters = response?.data?.activeUser?.parameters || {}
-
-        debug.log(DebugCategories.INITIALIZATION, 'Parameters fetched', {
-          count: Object.keys(parameters).length
-        })
-
-        return parameters
+        // If we get here, all attempts failed
+        throw (
+          lastError || new Error('Failed to fetch parameters after multiple attempts')
+        )
       } catch (err) {
         debug.error(DebugCategories.ERROR, 'Failed to fetch parameters:', err)
         throw new ParameterError(
@@ -199,7 +212,7 @@ export async function useParametersGraphQL() {
             throw new Error('Refetch returned no data')
           }
 
-          const parameters = refetchResult.data.activeUser?.parameters
+          const parameters = refetchResult.data?.parameters
           debug.log(DebugCategories.STATE, 'Parameters refetched', {
             success: true,
             parameterCount: parameters ? Object.keys(parameters).length : 0,

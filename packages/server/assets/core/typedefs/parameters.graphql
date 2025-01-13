@@ -35,9 +35,9 @@ type ParameterMutationResponse {
 
 extend type Query {
   """
-  Get all parameters for the current user
+  Get all parameters for the current user as a map of ID to parameter
   """
-  parameters: [UserParameter!]!
+  parameters: JSONObject!
 
   """
   Get a specific parameter by ID

@@ -270,14 +270,17 @@ function createUserParameterStore(operations: ParameterOperations): UserParamete
 }
 
 let store: UserParameterStore | null = null
+let currentOperations: ParameterOperations | null = null
 
 /**
  * User parameter store composable
  * Provides access to the global user parameter store instance
  */
 export function useUserParameterStore(operations?: ParameterOperations) {
-  if (!store && operations) {
+  // If operations are provided and either store doesn't exist or operations have changed
+  if (operations && (!store || operations !== currentOperations)) {
     store = createUserParameterStore(operations)
+    currentOperations = operations
   }
   if (!store) {
     throw new Error('Parameter store not initialized')

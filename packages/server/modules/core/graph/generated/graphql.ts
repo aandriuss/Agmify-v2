@@ -2621,8 +2621,8 @@ export type Query = {
   otherUser?: Maybe<LimitedUser>;
   /** Get a specific parameter by ID */
   parameter?: Maybe<UserParameter>;
-  /** Get all parameters for the current user */
-  parameters: Array<UserParameter>;
+  /** Get all parameters for the current user as a map of ID to parameter */
+  parameters: Scalars['JSONObject']['output'];
   /**
    * Find a specific project. Will throw an authorization error if active user isn't authorized
    * to see it, for example, if a project isn't public and the user doesn't have the appropriate rights.
@@ -6133,7 +6133,7 @@ export type QueryResolvers<ContextType = GraphQLContext, ParentType extends Reso
   discoverableStreams?: Resolver<Maybe<ResolversTypes['StreamCollection']>, ParentType, ContextType, RequireFields<QueryDiscoverableStreamsArgs, 'limit'>>;
   otherUser?: Resolver<Maybe<ResolversTypes['LimitedUser']>, ParentType, ContextType, RequireFields<QueryOtherUserArgs, 'id'>>;
   parameter?: Resolver<Maybe<ResolversTypes['UserParameter']>, ParentType, ContextType, RequireFields<QueryParameterArgs, 'id'>>;
-  parameters?: Resolver<Array<ResolversTypes['UserParameter']>, ParentType, ContextType>;
+  parameters?: Resolver<ResolversTypes['JSONObject'], ParentType, ContextType>;
   project?: Resolver<ResolversTypes['Project'], ParentType, ContextType, RequireFields<QueryProjectArgs, 'id'>>;
   projectInvite?: Resolver<Maybe<ResolversTypes['PendingStreamCollaborator']>, ParentType, ContextType, RequireFields<QueryProjectInviteArgs, 'projectId'>>;
   serverInfo?: Resolver<ResolversTypes['ServerInfo'], ParentType, ContextType>;

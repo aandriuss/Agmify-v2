@@ -1,4 +1,5 @@
 const { parameterService } = require('../../services/parameters.js')
+const { db } = require('@/db/knex')
 
 /**
  * Type resolvers for UserParameter
@@ -17,7 +18,11 @@ const parameterTypeResolvers = {
 const queryResolvers = {
   parameters: async (_parent, _args, context) => {
     if (!context.userId) throw new Error('User not authenticated')
-    return parameterService.getParameters(context.userId)
+    const user = await db('users')
+      .select('parameters')
+      .where({ id: context.userId })
+      .first()
+    return user?.parameters || {}
   },
 
   parameter: async (_parent, { id }, context) => {
