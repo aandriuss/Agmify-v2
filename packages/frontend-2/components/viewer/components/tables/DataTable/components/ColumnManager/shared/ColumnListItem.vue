@@ -18,9 +18,9 @@
     <div class="flex items-center justify-between w-full p-1">
       <!-- Left side with drag handle and parameter info -->
       <div class="flex items-center gap-1">
-        <i
+        <Bars3Icon
           v-if="mode === 'active'"
-          class="pi pi-bars text-gray-400 cursor-move opacity-0 group-hover:opacity-100 transition-opacity"
+          class="w-4 h-4 text-gray-400 cursor-move opacity-0 group-hover:opacity-100 transition-opacity"
         />
         <div class="flex flex-col">
           <span class="text-sm font-medium">{{ getItemName }}</span>
@@ -30,33 +30,38 @@
 
       <!-- Right side with action buttons -->
       <div class="flex items-center gap-1">
-        <!-- Add button for available items -->
-        <Button
+        <!-- Add arrow for available items -->
+        <div
           v-if="mode === 'available'"
-          icon="pi pi-arrow-right"
-          text
-          severity="primary"
-          size="small"
-          class="opacity-0 group-hover:opacity-100 transition-opacity"
-          @click="handleAdd"
-        />
+          class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+        >
+          <ArrowRightIcon
+            class="w-4 h-4 text-primary cursor-pointer"
+            @click="handleAdd"
+          />
+        </div>
 
-        <!-- Remove button and visibility toggle for active items -->
+        <!-- Remove X and visibility toggle for active items -->
         <template v-if="mode === 'active'">
-          <Button
-            v-if="isColumn(column) && column.removable"
-            icon="pi pi-arrow-left"
-            text
-            severity="danger"
-            size="small"
-            class="opacity-0 group-hover:opacity-100 transition-opacity"
-            @click="handleRemove"
-          />
-          <Checkbox
-            v-model="isVisible"
-            :binary="true"
-            @change="handleVisibilityChange"
-          />
+          <div class="flex items-center gap-2">
+            <!-- Eye icon toggle -->
+            <component
+              :is="isVisible ? EyeIcon : EyeSlashIcon"
+              :class="{
+                'w-4 h-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity':
+                  isVisible,
+                'w-4 h-4 cursor-pointer text-gray-400': !isVisible
+              }"
+              @click="handleVisibilityChange"
+            />
+
+            <!-- Remove X button -->
+            <XMarkIcon
+              v-if="isColumn(column) && column.removable"
+              class="w-4 h-4 text-danger cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+              @click="handleRemove"
+            />
+          </div>
         </template>
       </div>
     </div>
@@ -65,8 +70,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import Button from 'primevue/button'
-import Checkbox from 'primevue/checkbox'
+import {
+  ArrowRightIcon,
+  XMarkIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  Bars3Icon
+} from '@heroicons/vue/24/solid'
 import type {
   TableColumn,
   AvailableBimParameter,
@@ -188,7 +198,7 @@ function handleDrop(event: DragEvent) {
 
 function handleVisibilityChange() {
   if (isColumn(props.column)) {
-    emit('visibility-change', props.column, isVisible.value)
+    emit('visibility-change', props.column, !isVisible.value)
   }
 }
 </script>

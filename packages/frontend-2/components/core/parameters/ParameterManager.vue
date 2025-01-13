@@ -52,17 +52,38 @@
             </div>
           </div>
 
+          <!-- Filter Options -->
+          <FilterOptions
+            v-if="showFilterOptions"
+            :search-term="searchTerm"
+            :is-grouped="isGrouped"
+            :sort-by="sortBy"
+            @update:search-term="searchTerm = $event"
+            @update:is-grouped="isGrouped = $event"
+            @update:sort-by="handleSortByUpdate"
+          />
+
           <!-- Parameter Groups -->
           <div class="flex-1 overflow-auto">
-            <div v-for="group in groupedParameters" :key="group.name">
+            <template v-if="isGrouped">
+              <div v-for="group in userGroupedItems" :key="group.group">
+                <UserParameterList
+                  :parameters="group.items"
+                  :group="group.group"
+                  :get-current-value="(param) => param.value"
+                  @update="handleParameterUpdate"
+                  @delete="handleDelete"
+                />
+              </div>
+            </template>
+            <template v-else>
               <UserParameterList
-                :parameters="group.parameters"
-                :group="group.name"
+                :parameters="userSortedItems"
                 :get-current-value="(param) => param.value"
                 @update="handleParameterUpdate"
                 @delete="handleDelete"
               />
-            </div>
+            </template>
           </div>
         </div>
       </div>
@@ -79,7 +100,6 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from '@heroicons/vue/24/solid'
 import { useUserParameterStore } from '~/composables/core/userparameters/store'
-import { useParameterGroups } from '../../../composables/core/userparameters/useParameterGroups'
 import { useParametersGraphQL } from '~/composables/core/userparameters/useParametersGraphQL'
 import type { AvailableUserParameter } from '~/composables/core/types'
 import type {
@@ -90,11 +110,24 @@ import type {
 // Components
 import UserParameterList from './UserParameterList.vue'
 import ParameterCreationForm from './ParameterCreationForm.vue'
+import FilterOptions from '~/components/shared/FilterOptions.vue'
+import { useFilterAndSort } from '~/composables/shared/useFilterAndSort'
 
 const error = ref<string | null>(null)
 const isAddingNew = ref(false)
 const showFilterOptions = ref(false)
 const showAddButton = ref(true)
+
+// Filter state
+const searchTerm = ref('')
+const isGrouped = ref(true)
+const sortBy = ref<'name' | 'category' | 'type' | 'fixed'>('name')
+
+function handleSortByUpdate(value: string) {
+  if (['name', 'category', 'type', 'fixed'].includes(value)) {
+    sortBy.value = value as 'name' | 'category' | 'type' | 'fixed'
+  }
+}
 
 // Initialize store
 const parameterStore = ref<UserParameterStore | null>(null)
@@ -142,14 +175,27 @@ const emit = defineEmits<{
   (e: 'parameter-update'): void
 }>()
 
-// Get raw parameters array and groups
+// Get raw parameters array
 const parametersList = computed<AvailableUserParameter[]>(() =>
   Object.values(parameters.value)
 )
 
-const { groupedParameters } = useParameterGroups({
-  parameters: parametersList
+// Use filter and sort composable with type casting
+const { sortedItems, groupedItems } = useFilterAndSort({
+  items: computed(() => parametersList.value as unknown as AvailableUserParameter[]),
+  searchTerm,
+  isGrouped,
+  sortBy
 })
+
+// Cast back to AvailableUserParameter[]
+const userSortedItems = computed(() => sortedItems.value as AvailableUserParameter[])
+const userGroupedItems = computed(() =>
+  groupedItems.value.map((group) => ({
+    ...group,
+    items: group.items as AvailableUserParameter[]
+  }))
+)
 
 async function handleCreateParameter(paramData: Omit<AvailableUserParameter, 'id'>) {
   if (!parameterStore.value) return

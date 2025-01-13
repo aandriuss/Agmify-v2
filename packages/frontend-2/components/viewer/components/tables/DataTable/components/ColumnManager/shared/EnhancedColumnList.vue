@@ -1,63 +1,28 @@
 <template>
   <div class="flex flex-col h-full">
-    <!-- Filter Options -->
-    <div v-if="showFilterOptions" class="p-2 border-b bg-gray-50">
-      <div class="flex flex-col gap-2">
-        <!-- Search -->
-        <div class="flex items-center gap-2">
-          <label for="search-input" class="sr-only">Search parameters</label>
-          <input
-            id="search-input"
-            v-model="localSearchTerm"
-            type="text"
-            placeholder="Search..."
-            class="w-full px-2 py-1 border rounded text-sm"
-            @input="$emit('update:search-term', localSearchTerm)"
-          />
-        </div>
-
-        <!-- Grouping (only for available parameters) -->
-        <div v-if="mode === 'available'" class="flex items-center gap-2">
-          <label class="flex items-center gap-1 text-sm">
-            <input
-              id="group-checkbox"
-              :checked="isGrouped"
-              type="checkbox"
-              @change="$emit('update:is-grouped', !isGrouped)"
-            />
-            <span>Group parameters</span>
-          </label>
-        </div>
-
-        <!-- Sort (only for available parameters) -->
-        <div v-if="mode === 'available'" class="flex items-center gap-1">
-          <label for="sort-select" class="text-sm">Sort by:</label>
-          <select
-            id="sort-select"
-            :value="sortBy"
-            class="px-2 py-1 rounded border bg-background text-sm h-7 w-32"
-            @change="handleSortChange"
-          >
-            <option value="name">Name</option>
-            <option value="category">Group</option>
-            <option value="type">Type</option>
-            <option value="fixed">Favorite First</option>
-          </select>
-        </div>
-      </div>
-    </div>
+    <FilterOptions
+      v-if="showFilterOptions"
+      :search-term="localSearchTerm"
+      :is-grouped="localIsGrouped"
+      :sort-by="localSortBy"
+      :show-grouping="mode === 'available'"
+      :show-sorting="mode === 'available'"
+      @update:search-term="handleSearchTermUpdate"
+      @update:is-grouped="handleIsGroupedUpdate"
+      @update:sort-by="handleSortByUpdate"
+    />
 
     <!-- List -->
     <div class="flex-1 overflow-y-auto">
       <div
         class="p-2"
         :class="{
-          'space-y-4': isGrouped && mode === 'available',
-          'space-y-1': !isGrouped || mode === 'active'
+          'space-y-4': localIsGrouped && mode === 'available',
+          'space-y-1': !localIsGrouped || mode === 'active'
         }"
       >
         <!-- Available Parameters with Grouping -->
-        <template v-if="isGrouped && mode === 'available'">
+        <template v-if="localIsGrouped && mode === 'available'">
           <div v-for="group in groupedItems" :key="group.group" class="space-y-1">
             <!-- Group Header -->
             <div class="flex items-center gap-1">
@@ -84,6 +49,7 @@
                 :column="item"
                 :mode="mode"
                 :index="index"
+                :is-drop-target="index === currentDropIndex"
                 :drop-position="dropPosition"
                 @add="handleAdd"
                 @remove="handleRemove"
@@ -100,11 +66,12 @@
         <!-- Active Parameters or Ungrouped Available Parameters -->
         <template v-else>
           <ColumnListItem
-            v-for="(item, index) in items"
+            v-for="(item, index) in sortedItems"
             :key="getItemId(item)"
             :column="item"
             :mode="mode"
             :index="index"
+            :is-drop-target="index === currentDropIndex"
             :drop-position="dropPosition"
             @add="handleAdd"
             @remove="handleRemove"
@@ -128,11 +95,9 @@ import type {
   AvailableBimParameter,
   AvailableUserParameter
 } from '~/composables/core/types'
-import {
-  isAvailableBimParameter,
-  isAvailableUserParameter
-} from '~/composables/core/types'
 import ColumnListItem from './ColumnListItem.vue'
+import FilterOptions from '~/components/shared/FilterOptions.vue'
+import { useFilterAndSort } from '~/composables/shared/useFilterAndSort'
 
 type AvailableParameter = AvailableBimParameter | AvailableUserParameter
 
@@ -171,8 +136,28 @@ const emit = defineEmits<{
   'visibility-change': [item: TableColumn, visible: boolean]
 }>()
 
+// Local state to avoid prop mutations
 const localSearchTerm = ref(props.searchTerm)
+const localIsGrouped = ref(props.isGrouped)
+const localSortBy = ref(props.sortBy)
 const expandedGroups = ref<Set<string>>(new Set())
+const currentDropIndex = ref<number | null>(null)
+
+// Update handlers
+function handleSearchTermUpdate(value: string) {
+  localSearchTerm.value = value
+  emit('update:search-term', value)
+}
+
+function handleIsGroupedUpdate(value: boolean) {
+  localIsGrouped.value = value
+  emit('update:is-grouped', value)
+}
+
+function handleSortByUpdate(value: string) {
+  localSortBy.value = value as 'name' | 'category' | 'type' | 'fixed'
+  emit('update:sort-by', value)
+}
 
 // Type Guards
 function isColumn(item: AvailableParameter | TableColumn): item is TableColumn {
@@ -187,94 +172,12 @@ function getItemId(item: AvailableParameter | TableColumn): string {
   return `param_${item.id}`
 }
 
-function getItemName(item: AvailableParameter | TableColumn): string {
-  const param = isColumn(item) ? item.parameter : item
-  // Use clean name without group prefix
-  const displayName = param.metadata?.displayName
-  return typeof displayName === 'string' ? displayName : param.name
-}
-
-/**
- * Get parameter group from group info
- */
-function getParameterGroup(item: AvailableParameter): string {
-  if (isAvailableBimParameter(item)) {
-    // Prefer currentGroup over fetchedGroup
-    return item.group.currentGroup || item.group.fetchedGroup || 'Ungrouped'
-  }
-  if (isAvailableUserParameter(item)) {
-    return item.group.currentGroup || 'User Parameters'
-  }
-  return 'Ungrouped'
-}
-
-/**
- * Get group for any item type
- */
-function getItemGroup(item: AvailableParameter | TableColumn): string {
-  if (isColumn(item)) {
-    const param = item.parameter
-    if (isAvailableBimParameter(param)) {
-      // Prefer currentGroup over fetchedGroup
-      return param.group.currentGroup || param.group.fetchedGroup || 'Ungrouped'
-    }
-    if (isAvailableUserParameter(param)) {
-      return param.group.currentGroup || 'User Parameters'
-    }
-  }
-  return getParameterGroup(item as AvailableParameter)
-}
-
-const groupedItems = computed(() => {
-  const groups: Record<
-    string,
-    { group: string; items: (AvailableParameter | TableColumn)[] }
-  > = {}
-
-  props.items.forEach((item) => {
-    const group = getItemGroup(item)
-    if (!groups[group]) {
-      groups[group] = {
-        group,
-        items: []
-      }
-    }
-    groups[group].items.push(item)
-  })
-
-  // Sort groups by priority and name
-  return Object.values(groups)
-    .sort((a, b) => {
-      // System groups first
-      const aIsSystem = a.group.startsWith('__')
-      const bIsSystem = b.group.startsWith('__')
-      if (aIsSystem && !bIsSystem) return -1
-      if (!aIsSystem && bIsSystem) return 1
-
-      // User parameters last
-      const aIsUser = a.group === 'User Parameters'
-      const bIsUser = b.group === 'User Parameters'
-      if (aIsUser && !bIsUser) return 1
-      if (!aIsUser && bIsUser) return -1
-
-      // Other parameters last
-      const aIsOther = a.group === 'Other Parameters'
-      const bIsOther = b.group === 'Other Parameters'
-      if (aIsOther && !bIsOther) return 1
-      if (!aIsOther && bIsOther) return -1
-
-      // Then sort alphabetically
-      return a.group.localeCompare(b.group)
-    })
-    .map((group) => ({
-      ...group,
-      items: group.items.sort((a, b) => {
-        // Sort by name within groups
-        const nameA = getItemName(a)
-        const nameB = getItemName(b)
-        return nameA.localeCompare(nameB)
-      })
-    }))
+// Use filter and sort composable
+const { sortedItems, groupedItems } = useFilterAndSort({
+  items: computed(() => props.items),
+  searchTerm: localSearchTerm,
+  isGrouped: localIsGrouped,
+  sortBy: localSortBy
 })
 
 // Event Handlers
@@ -291,29 +194,27 @@ function handleDragStart(
   item: AvailableParameter | TableColumn,
   index: number
 ) {
+  currentDropIndex.value = null
   emit('drag-start', event, item, index)
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function handleDragEnd(event: DragEvent) {
+function handleDragEnd(_event: DragEvent) {
+  currentDropIndex.value = null
   emit('drag-end')
 }
 
 function handleDragEnter(event: DragEvent, index: number) {
+  currentDropIndex.value = index
   emit('drag-enter', event, index)
 }
 
 function handleDrop(event: DragEvent, index: number) {
+  currentDropIndex.value = null
   emit('drop', event, index)
 }
 
 function handleVisibilityChange(item: TableColumn, visible: boolean) {
   emit('visibility-change', item, visible)
-}
-
-function handleSortChange(event: Event) {
-  const target = event.target as HTMLSelectElement
-  emit('update:sort-by', target.value)
 }
 
 function toggleGroup(group: string) {
