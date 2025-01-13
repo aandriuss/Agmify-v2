@@ -158,14 +158,17 @@ export function useColumnManager() {
           const [movedColumn] = columns.splice(operation.fromIndex, 1)
           columns.splice(operation.toIndex, 0, movedColumn)
 
-          // Update order values
-          columns.forEach((col, index) => {
-            col.order = index
-          })
+          // Create new column objects with updated order values
+          const updatedColumns = columns.map((col, index) => ({
+            ...col,
+            order: index
+          }))
 
           // Update table with reordered columns
           await tableStore.updateTableState({
-            ...(isParent ? { parentColumns: columns } : { childColumns: columns })
+            ...(isParent
+              ? { parentColumns: updatedColumns }
+              : { childColumns: updatedColumns })
           })
           break
         }
