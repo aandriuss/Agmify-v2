@@ -32,7 +32,7 @@
           </div>
 
           <!-- Parameter Creation -->
-          <div v-if="isAddingNew || showAddButton" class="p-4 border-b">
+          <div v-if="isAddingNew || showAddButton" class="p-2 border-b">
             <div v-if="isAddingNew">
               <ParameterCreationForm
                 @create="handleCreateParameter"

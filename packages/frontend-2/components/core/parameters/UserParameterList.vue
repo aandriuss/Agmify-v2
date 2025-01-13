@@ -120,11 +120,11 @@ function formatValue(
 .group-header {
   display: flex;
   align-items: center;
+  border: transparent;
   gap: 0.5rem;
   font-size: 1rem;
   font-weight: 600;
   color: var(--color-foreground);
-  padding: 0.75rem 1rem;
   background: var(--color-background-muted);
   cursor: pointer;
   user-select: none;
@@ -174,7 +174,6 @@ function formatValue(
   justify-content: space-between;
   min-width: 0;
   width: 100%;
-  padding: 0.5rem;
 }
 
 .parameter-info {

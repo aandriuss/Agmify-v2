@@ -38,22 +38,27 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { gql } from '@apollo/client/core'
-import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
-import { useStore } from '~/composables/core/store'
 import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
+import { gql } from '@apollo/client/core'
+import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
+
+import { useStore } from '~/composables/core/store'
+import { useParameterStore } from '~/composables/core/parameters/store'
+import { useUserParameterStore } from '~/composables/core/userparameters/store'
+import { useTableStore } from '~/composables/core/tables/store/store'
+import { useParametersGraphQL } from '~/composables/core/userparameters/useParametersGraphQL'
+import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
+
 import { useElementsData } from '~/composables/core/tables/state/useElementsData'
 import { useScheduleInitialization } from './composables/useScheduleInitialization'
 import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
-import { useParameterStore } from '~/composables/core/parameters/store'
 import type { TableColumn } from '~/composables/core/types'
-import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
+
 import ScheduleMainView from './components/ScheduleMainView.vue'
 import LoadingState from '~/components/core/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
+import ScheduleTableHeader from './components/ScheduleTableHeader.vue'
 import TableOptionsMenu from '~/components/core/tables/menu/TableOptionsMenu.vue'
-import { useTableStore } from '~/composables/core/tables/store/store'
-import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 import type {
   ViewerNode,
   WorldTreeRoot
@@ -61,7 +66,8 @@ import type {
 import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
 import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
 import { childCategories } from '~/composables/core/config/categories'
-import ScheduleTableHeader from './components/ScheduleTableHeader.vue'
+
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 
 // Type-safe error handling utility
 function createSafeError(err: unknown): Error {
@@ -344,7 +350,18 @@ onMounted(async () => {
       if (!parameterStore.state.value.initialized) {
         throw new Error('Parameter store failed to initialize')
       }
+
       debug.log(DebugCategories.INITIALIZATION, 'Parameter store initialized')
+
+      // Initialize user parameter store
+      debug.log(DebugCategories.INITIALIZATION, 'Initializing user parameter store')
+      const graphqlOps = await useParametersGraphQL()
+      const userStore = useUserParameterStore({
+        fetchParameters: graphqlOps.fetchParameters,
+        updateParameters: graphqlOps.updateParameters
+      })
+      await userStore.loadParameters()
+      debug.log(DebugCategories.INITIALIZATION, 'User parameter store initialized')
 
       // Then initialize table store
       debug.log(DebugCategories.INITIALIZATION, 'Initializing table store')
@@ -513,6 +530,7 @@ onMounted(async () => {
 
 <style scoped>
 .viewer-container {
+  padding: 0;
   width: 100%;
   height: 100%;
   min-height: 400px;

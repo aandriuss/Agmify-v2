@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
+import { useUserParameterStore } from '~/composables/core/userparameters/store'
 import type {
   AvailableBimParameter,
   AvailableUserParameter
@@ -19,6 +20,7 @@ type ColumnOperation =
 export function useColumnManager() {
   const parameterStore = useParameterStore()
   const tableStore = useTableStore()
+  const userParameterStore = useUserParameterStore()
 
   // Local view state that syncs with store
   const currentView = ref<View>('parent')
@@ -56,14 +58,15 @@ export function useColumnManager() {
       )
     )
 
+    // Get BIM parameters from parameter store
     const bimParams = isParent
       ? parameterStore.state.value.collections.available.parent.bim
       : parameterStore.state.value.collections.available.child.bim
 
-    const userParams = isParent
-      ? parameterStore.state.value.collections.available.parent.user
-      : parameterStore.state.value.collections.available.child.user
+    // Get user parameters from user parameter store
+    const userParams = Object.values(userParameterStore.state.value.parameters)
 
+    // Merge and filter out already selected parameters
     return [...bimParams, ...userParams].filter((param) => !selectedIds.has(param.id))
   })
 
@@ -92,11 +95,23 @@ export function useColumnManager() {
 
       switch (operation.type) {
         case 'add': {
-          // Create column directly from available parameter
+          // Add debug logging
+          debug.log(DebugCategories.STATE, 'Adding parameter to columns', {
+            parameter: operation.parameter,
+            isParent,
+            kind: operation.parameter.kind
+          })
+
+          // Create column with debug logging
           const order = (
             isParent ? currentTable.parentColumns : currentTable.childColumns
           ).length
           const newColumn = createTableColumn(operation.parameter, order)
+
+          debug.log(DebugCategories.STATE, 'Created new column', {
+            column: newColumn
+          })
+
           const columns = isParent
             ? [...currentTable.parentColumns, newColumn]
             : [...currentTable.childColumns, newColumn]
@@ -105,6 +120,8 @@ export function useColumnManager() {
           await tableStore.updateTableState({
             ...(isParent ? { parentColumns: columns } : { childColumns: columns })
           })
+
+          debug.log(DebugCategories.STATE, 'Updated table state with new column')
           break
         }
         case 'remove': {

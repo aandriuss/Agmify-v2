@@ -25,6 +25,7 @@
 <style scoped>
 .table-layout {
   display: flex;
+  padding: 0;
   flex-direction: column;
   height: 100%;
   background-color: var(--surface-card);
