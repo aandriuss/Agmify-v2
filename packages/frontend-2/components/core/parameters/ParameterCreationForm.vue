@@ -35,7 +35,7 @@
         />
         <input
           id="parameter-group-input"
-          v-model="newParameter.group"
+          v-model="newParameter.group.currentGroup"
           type="text"
           class="form-input parameter-group-input"
           placeholder="Enter group name"
@@ -71,12 +71,18 @@ const newParameter = ref({
   name: '',
   type: 'fixed' as ParameterType,
   value: '',
-  group: 'Custom'
+  group: {
+    fetchedGroup: 'AgmifyUserParameters',
+    currentGroup: 'Custom'
+  }
 })
 
 function handleCreate() {
   const name = newParameter.value.name
-  const group = newParameter.value.group || 'Custom'
+  const group = {
+    fetchedGroup: 'AgmifyUserParameters',
+    currentGroup: newParameter.value.group.currentGroup || 'Custom'
+  }
 
   emit('create', {
     name,
@@ -97,7 +103,10 @@ function handleCreate() {
     name: '',
     type: 'fixed',
     value: '',
-    group: 'Custom'
+    group: {
+      fetchedGroup: 'AgmifyUserParameters',
+      currentGroup: 'Custom'
+    }
   }
 }
 </script>

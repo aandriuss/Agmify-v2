@@ -20,8 +20,6 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
     isSystem: true,
     metadata: {
       displayName: 'ID',
-      originalGroup: 'Identity Data',
-      groupId: 'bim_Identity Data',
       isSystem: true
     }
   },
@@ -39,8 +37,6 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
     isSystem: true,
     metadata: {
       displayName: 'Mark',
-      originalGroup: 'Identity Data',
-      groupId: 'bim_Identity Data',
       isSystem: true
     }
   },
@@ -58,8 +54,6 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
     isSystem: true,
     metadata: {
       displayName: 'Category',
-      originalGroup: 'Identity Data',
-      groupId: 'bim_Identity Data',
       isSystem: true
     }
   },
@@ -77,8 +71,6 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
     isSystem: true,
     metadata: {
       displayName: 'Host',
-      originalGroup: 'Parameters',
-      groupId: 'bim_Parameters',
       isSystem: true
     }
   }

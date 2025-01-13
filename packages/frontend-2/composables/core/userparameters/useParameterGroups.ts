@@ -21,6 +21,18 @@ export class ParameterGroupError extends Error {
 }
 
 /**
+ * Get the effective group name for a parameter
+ */
+function getEffectiveGroup(param: AvailableUserParameter): string {
+  if (!param.group) return 'Custom'
+
+  // Handle both string and object group types for backward compatibility
+  if (typeof param.group === 'string') return param.group
+
+  return param.group.currentGroup || 'Custom'
+}
+
+/**
  * Hook for parameter grouping functionality
  * Handles grouping parameters and managing group operations
  */
@@ -47,7 +59,7 @@ export function useParameterGroups({ parameters, onError }: UseParameterGroupsPa
 
       // Group parameters
       parameters.value.forEach((param) => {
-        const group = param.group || 'Custom'
+        const group = getEffectiveGroup(param)
         if (!groups[group]) {
           groups[group] = []
         }
@@ -92,8 +104,9 @@ export function useParameterGroups({ parameters, onError }: UseParameterGroupsPa
       const groups = new Set(['Custom'])
 
       parameters.value.forEach((param) => {
-        if (param.group) {
-          groups.add(param.group)
+        const group = getEffectiveGroup(param)
+        if (group) {
+          groups.add(group)
         }
       })
 

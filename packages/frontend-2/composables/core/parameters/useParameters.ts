@@ -8,7 +8,7 @@ import type {
   AvailableUserParameter
 } from './store/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-import type { UserValueType } from '~/composables/core/types/parameters'
+import type { UserValueType, Group } from '~/composables/core/types'
 import { convertToParameterValue } from './parameter-processing'
 import { createAvailableUserParameter } from '~/composables/core/types/parameters/parameter-states'
 
@@ -38,7 +38,7 @@ interface UseParametersReturn {
   createUserParameter: (options: {
     name: string
     type: UserValueType
-    group: string
+    group: Group
     initialValue?: unknown
   }) => AvailableUserParameter
 
@@ -248,16 +248,18 @@ export function useParameters(options: UseParametersOptions): UseParametersRetur
         group,
         undefined, // equation
         {
-          displayName: name,
-          originalGroup: group,
-          groupId: `user_${group}`
+          displayName: name
         }
       )
 
       debug.log(DebugCategories.PARAMETERS, 'User parameter created', {
         id: availableParam.id,
         name: availableParam.name,
-        type: availableParam.type
+        type: availableParam.type,
+        group: {
+          current: group.currentGroup,
+          fetched: group.fetchedGroup
+        }
       })
 
       return availableParam

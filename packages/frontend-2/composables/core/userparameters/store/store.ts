@@ -117,8 +117,6 @@ function createUserParameterStore(operations: ParameterOperations): UserParamete
         value: parameter.type === 'fixed' ? parameter.value?.toString() || '' : '', // Ensure value is string
         metadata: {
           displayName: parameter.name,
-          originalGroup: parameter.group,
-          groupId: `user_${parameter.group}`,
           isSystem: false,
           ...parameter.metadata // Preserve any additional metadata
         }
@@ -184,10 +182,6 @@ function createUserParameterStore(operations: ParameterOperations): UserParamete
         metadata: {
           ...existingParameter.metadata,
           displayName: updates.name || existingParameter.name,
-          originalGroup: updates.group || existingParameter.group,
-          groupId: updates.group
-            ? `user_${updates.group}`
-            : existingParameter.metadata?.groupId,
           ...(updates.metadata || {}) // Preserve any additional metadata updates
         }
       }
