@@ -4,18 +4,16 @@ import type {
   TreeItemComponentModel,
   AvailableParameter,
   AvailableBimParameter,
-  ParameterValue,
   BIMNodeData,
   RawParameter
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { isValidBIMNodeData } from '~/composables/core/types/viewer/viewer-base'
-import { createAvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
 import {
-  inferParameterType,
-  extractGroupFromKey,
-  cleanParameterName
-} from '~/composables/core/parameters/utils/group-processing'
+  createAvailableBimParameter,
+  isElementParameter
+} from '~/composables/core/types/parameters/parameter-states'
+import { inferParameterType } from '~/composables/core/parameters/utils/group-processing'
 import type {
   BaseParameterDiscoveryOptions,
   BaseParameterDiscoveryState,
@@ -133,27 +131,29 @@ export function useParameterDiscovery(
     elements.forEach((element) => {
       if (!element.parameters) return
 
-      Object.entries(element.parameters).forEach(([paramName, value]) => {
+      Object.entries(element.parameters).forEach(([paramName, paramData]) => {
         // Skip if we've already processed this parameter
         if (processedParams.has(paramName)) return
 
         try {
-          const paramValue = value as ParameterValue
-          const paramType = inferParameterType(paramValue)
+          // Ensure paramData is an ElementParameter
+          if (!isElementParameter(paramData)) {
+            debug.warn(
+              DebugCategories.PARAMETERS,
+              `Invalid parameter data for ${paramName}`,
+              paramData
+            )
+            return
+          }
 
-          // Extract group and clean name
-          const groupName = extractGroupFromKey(paramName)
-          const cleanName = cleanParameterName(paramName)
+          const paramType = inferParameterType(paramData.value)
 
-          // Create raw parameter with group info
+          // Create raw parameter using existing group info
           const rawParam: RawParameter = {
             id: paramName,
-            name: cleanName,
-            value: paramValue,
-            group: {
-              fetchedGroup: groupName,
-              currentGroup: groupName
-            },
+            name: paramName,
+            value: paramData.value,
+            group: paramData.group,
             metadata: {
               category: element.type || 'Uncategorized',
               elementId: element.id || '',
@@ -164,7 +164,11 @@ export function useParameterDiscovery(
           }
 
           // Create parameter using utility function
-          const param = createAvailableBimParameter(rawParam, paramType, paramValue)
+          const param = createAvailableBimParameter(
+            rawParam,
+            paramType,
+            paramData.value
+          )
 
           parameters.push(param)
           processedParams.add(paramName)

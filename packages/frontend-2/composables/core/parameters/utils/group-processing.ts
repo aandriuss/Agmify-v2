@@ -13,19 +13,3 @@ export function inferParameterType(value: unknown): BimValueType {
   if (typeof value === 'object') return 'object'
   return 'string'
 }
-
-/**
- * Extract group name from parameter key
- */
-export function extractGroupFromKey(key: string): string {
-  const parts = key.split('.')
-  return parts.length > 1 ? parts[0] : 'Ungrouped'
-}
-
-/**
- * Clean parameter name by removing group prefix
- */
-export function cleanParameterName(key: string): string {
-  const parts = key.split('.')
-  return parts.length > 1 ? parts.slice(1).join('.') : key
-}

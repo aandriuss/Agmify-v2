@@ -48,7 +48,11 @@ import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import type { ElementData, TableColumn, ParameterValue } from '~/composables/core/types'
+import type {
+  ElementData,
+  TableColumn,
+  ElementParameter
+} from '~/composables/core/types'
 import { isEquationValue } from '~/composables/core/types'
 import BaseDataTable from '~/components/core/tables/BaseDataTable.vue'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
@@ -117,7 +121,7 @@ const tableData = computed(() => {
       {
         details: filteredChildren,
         type: 'ungrouped',
-        parameters: {} as Record<string, ParameterValue>,
+        parameters: {} as Record<string, ElementParameter>,
         metadata: { isParent: true } as Record<string, unknown>,
         _visible: true,
         id: '__ungrouped',
@@ -158,7 +162,7 @@ const tableData = computed(() => {
 
   // Group children by parent
   filteredChildren.forEach((child) => {
-    const hostParam = child.parameters?.['host'] as ParameterValue | undefined
+    const hostParam = child.parameters?.['host'] as ElementParameter | undefined
     let hostValue: string | undefined
 
     if (hostParam) {
@@ -175,7 +179,7 @@ const tableData = computed(() => {
     if (hostValue) {
       // Find matching parent
       const matchingParent = filteredParents.find((parent) => {
-        const markParam = parent.parameters?.['mark'] as ParameterValue | undefined
+        const markParam = parent.parameters?.['mark'] as ElementParameter | undefined
         if (!markParam) return false
 
         if (isEquationValue(markParam)) {
@@ -210,7 +214,7 @@ const tableData = computed(() => {
     result.push({
       details: ungroupedChildren,
       type: 'ungrouped',
-      parameters: {} as Record<string, ParameterValue>,
+      parameters: {} as Record<string, ElementParameter>,
       metadata: { isParent: true } as Record<string, unknown>,
       _visible: true,
       id: '__ungrouped',

@@ -6,12 +6,13 @@ import type {
   RawParameter,
   AvailableBimParameter,
   ParameterValue,
-  Group,
+  ElementParameter,
   ParameterMetadata
 } from '~/composables/core/types'
 import {
   createAvailableBimParameter,
-  createElementParameter
+  createElementParameter,
+  isElementParameter
 } from '~/composables/core/types'
 import { inferParameterType } from '~/composables/core/parameters/utils/group-processing'
 
@@ -105,15 +106,15 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
           element.metadata?.isParent ||
           (element.category && parentCategories.includes(element.category))
 
-        // Extract group and clean name
-        const nameParts = key.split('.')
-        const groupName = nameParts.length > 1 ? nameParts[0] : 'Ungrouped'
-        const cleanName = nameParts.length > 1 ? nameParts.slice(1).join('.') : key
-
-        // Create group info
-        const group: Group = {
-          fetchedGroup: groupName,
-          currentGroup: groupName
+        // Get group from ElementParameter if available
+        const elementParam = value as ElementParameter
+        if (!isElementParameter(elementParam)) {
+          debug.warn(
+            DebugCategories.PARAMETERS,
+            `Invalid parameter data for ${key}`,
+            elementParam
+          )
+          return
         }
 
         // Create metadata
@@ -122,19 +123,19 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
           mappedCategory: element.category
             ? getMostSpecificCategory(element.category)
             : 'Uncategorized',
-          isSystem: groupName?.startsWith('__') || false,
+          isSystem: key.startsWith('__') || false,
           elementId: element.id,
           isJsonString,
           isParent,
-          displayName: cleanName
+          displayName: key
         }
 
-        // Create raw parameter
+        // Create raw parameter using group from ElementParameter
         const rawParam: RawParameter = {
           id: key,
-          name: cleanName,
+          name: key,
           value: validatedValue,
-          group,
+          group: elementParam.group,
           metadata
         }
 
@@ -142,7 +143,7 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
         if (element.parameters) {
           element.parameters[key] = createElementParameter(
             convertToParameterValue(validatedValue),
-            group,
+            elementParam.group,
             metadata
           )
         }
@@ -161,10 +162,7 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
               id: nestedId,
               name: nestedKey,
               value: validatedNestedValue,
-              group: {
-                fetchedGroup: groupName || 'Ungrouped',
-                currentGroup: groupName || 'Ungrouped'
-              },
+              group: elementParam.group, // Reuse the same group for nested parameters
               metadata: {
                 category: element.category,
                 mappedCategory: element.category

@@ -82,7 +82,7 @@ export function createTableColumn(
   // Ensure group is a plain object for GraphQL
   const group = {
     fetchedGroup: param.group?.fetchedGroup || 'Ungrouped',
-    currentGroup: param.group?.currentGroup || ''
+    currentGroup: param.group?.currentGroup || param.group?.fetchedGroup || 'Ungrouped'
   }
 
   if (param.kind === 'bim') {

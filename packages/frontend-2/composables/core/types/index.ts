@@ -105,7 +105,8 @@ export {
   convertBimToUserType,
   isEquationValue,
   isPrimitiveValue,
-  createElementParameter
+  createElementParameter,
+  isElementParameter
 } from './parameters'
 
 // Settings types
