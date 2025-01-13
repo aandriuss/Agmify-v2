@@ -199,15 +199,23 @@ function getItemName(item: AvailableParameter | TableColumn): string {
  */
 function getParameterGroup(item: AvailableParameter): string {
   if (isAvailableBimParameter(item)) {
-    // Use original group from metadata
+    // First try to get group from parameterGroups
+    const paramGroups = item.metadata?.parameterGroups as
+      | Record<string, string>
+      | undefined
+    if (paramGroups && typeof paramGroups[item.id] === 'string') {
+      return paramGroups[item.id]
+    }
+
+    // Then try original group from metadata
     const group = item.metadata?.originalGroup
     if (typeof group === 'string') return group
 
     // Fallback to fetched group
-    return item.fetchedGroup || 'Other Parameters'
+    return item.group.fetchedGroup || 'Other Parameters'
   }
   if (isAvailableUserParameter(item)) {
-    return item.group || 'User Parameters'
+    return item.group.currentGroup || 'User Parameters'
   }
   return 'Other Parameters'
 }
@@ -219,15 +227,23 @@ function getItemGroup(item: AvailableParameter | TableColumn): string {
   if (isColumn(item)) {
     const param = item.parameter
     if (isAvailableBimParameter(param)) {
-      // First try to get group from metadata
+      // First try to get group from parameterGroups
+      const paramGroups = param.metadata?.parameterGroups as
+        | Record<string, string>
+        | undefined
+      if (paramGroups && typeof paramGroups[param.id] === 'string') {
+        return paramGroups[param.id]
+      }
+
+      // Then try original group from metadata
       const originalGroup = param.metadata?.originalGroup
       if (typeof originalGroup === 'string') return originalGroup
 
       // Then try BIM groups
-      return param.currentGroup || param.fetchedGroup || 'Other Parameters'
+      return param.group.currentGroup || param.group.fetchedGroup || 'Other Parameters'
     }
     if (isAvailableUserParameter(param)) {
-      return param.group || 'User Parameters'
+      return param.group.currentGroup || 'User Parameters'
     }
   }
   return getParameterGroup(item as AvailableParameter)

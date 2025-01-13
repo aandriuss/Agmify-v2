@@ -6,14 +6,11 @@ import type {
   AvailableBimParameter,
   BimValueType,
   ParameterValue,
-  BIMNodeData
+  BIMNodeData,
+  RawParameter
 } from '~/composables/core/types'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
 import { isValidBIMNodeData } from '~/composables/core/types/viewer/viewer-base'
-import {
-  extractRawParameters,
-  extractParameterGroups
-} from '../../parameters/utils/parameter-extraction'
 import { createAvailableBimParameter } from '~/composables/core/types/parameters/parameter-states'
 import type {
   BaseParameterDiscoveryOptions,
@@ -76,19 +73,15 @@ export function useParameterDiscovery(
   // Computed properties
   const availableParentHeaders = computed(() =>
     state.value.discoveredParameters.parent.filter((param) => {
-      const elementType = param.metadata?.elementType as string
-      return options.selectedParentCategories.value.includes(
-        elementType || 'Uncategorized'
-      )
+      const elementType = param.metadata?.elementType?.toString() || 'Uncategorized'
+      return options.selectedParentCategories.value.includes(elementType)
     })
   )
 
   const availableChildHeaders = computed(() =>
     state.value.discoveredParameters.child.filter((param) => {
-      const elementType = param.metadata?.elementType as string
-      return options.selectedChildCategories.value.includes(
-        elementType || 'Uncategorized'
-      )
+      const elementType = param.metadata?.elementType?.toString() || 'Uncategorized'
+      return options.selectedChildCategories.value.includes(elementType)
     })
   )
 
@@ -129,31 +122,56 @@ export function useParameterDiscovery(
   /**
    * Convert extracted parameters to available parameters
    */
-  async function convertToAvailableParameters(
+  function convertToAvailableParameters(
     elements: BIMNodeData[]
-  ): Promise<AvailableBimParameter[]> {
-    // Extract raw parameters
-    const rawParams = extractRawParameters(elements)
-    const _groups = await extractParameterGroups(elements)
+  ): AvailableBimParameter[] {
+    // Extract raw parameters and their groups from elements
+    const parameters: AvailableBimParameter[] = []
+    const processedParams = new Set<string>() // Track processed parameter names
 
-    // Create raw parameters with proper metadata
-    const processedRawParams = rawParams.map((param) => ({
-      id: param.id,
-      name: param.name,
-      value: param.value as ParameterValue,
-      fetchedGroup: param.group || 'Parameters',
-      metadata: {
-        ...param.metadata,
-        category: param.category,
-        group: param.group
-      }
-    }))
+    elements.forEach((element) => {
+      if (!element.parameters) return
 
-    // Convert to BIM parameters
-    return processedRawParams.map((raw) => {
-      const type = inferParameterType(raw.value)
-      return createAvailableBimParameter(raw, type, raw.value)
+      Object.entries(element.parameters).forEach(([paramName, value]) => {
+        // Skip if we've already processed this parameter
+        if (processedParams.has(paramName)) return
+
+        const paramValue = value as ParameterValue
+        const type = inferParameterType(paramValue)
+
+        // Type guard for metadata
+        const metadata = element.metadata as
+          | { parameterGroups?: Record<string, string> }
+          | undefined
+        const group = metadata?.parameterGroups?.[paramName]
+
+        // Create raw parameter
+        const rawParam: RawParameter = {
+          id: paramName,
+          name: paramName,
+          value: paramValue,
+          group: {
+            fetchedGroup: group || 'Ungrouped',
+            currentGroup: ''
+          },
+          metadata: {
+            category: element.type || 'Uncategorized',
+            elementId: element.id || '',
+            elementType: element.type || 'Unknown',
+            fullKey: paramName,
+            isNested: group !== undefined
+          }
+        }
+
+        // Create parameter using utility function
+        const param = createAvailableBimParameter(rawParam, type, paramValue)
+
+        parameters.push(param)
+        processedParams.add(paramName)
+      })
     })
+
+    return parameters
   }
 
   /**
@@ -190,16 +208,18 @@ export function useParameterDiscovery(
 
       // Sort parameters by element type while preserving groups
       availableParams.forEach((param) => {
-        const elementType = (param.metadata?.elementType as string) || 'Uncategorized'
+        const elementType = param.metadata?.elementType?.toString() || 'Uncategorized'
         const group = String(
-          param.metadata?.originalGroup || param.fetchedGroup || 'Parameters'
+          param.metadata?.originalGroup || param.group.fetchedGroup || 'Parameters'
         )
 
         // Create parameter with proper group assignments
         const paramWithGroups: AvailableParameter = {
           ...param,
-          fetchedGroup: group,
-          currentGroup: group,
+          group: {
+            fetchedGroup: group,
+            currentGroup: group
+          },
           metadata: {
             ...param.metadata,
             elementType,
@@ -218,10 +238,10 @@ export function useParameterDiscovery(
       // Add user parameters if provided
       if (options.userParameters) {
         options.userParameters.forEach((param) => {
-          const category = param.category || 'Uncategorized'
-          if (options.selectedParentCategories.value.includes(category)) {
+          const elementType = param.metadata?.elementType?.toString() || 'Uncategorized'
+          if (options.selectedParentCategories.value.includes(elementType)) {
             parentParams.push(param)
-          } else if (options.selectedChildCategories.value.includes(category)) {
+          } else if (options.selectedChildCategories.value.includes(elementType)) {
             childParams.push(param)
           }
         })

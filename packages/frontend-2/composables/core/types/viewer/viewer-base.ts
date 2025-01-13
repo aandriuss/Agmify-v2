@@ -1,12 +1,12 @@
-import type { Parameter } from '../parameters'
+import type { AvailableParameter } from '../parameters'
 import type { BaseItem } from '../common/base-types'
 
 /**
  * Available headers structure for parameter organization
  */
 export interface AvailableHeaders {
-  parent: Parameter[]
-  child: Parameter[]
+  parent: AvailableParameter[]
+  child: AvailableParameter[]
 }
 
 /**

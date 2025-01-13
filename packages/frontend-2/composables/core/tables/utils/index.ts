@@ -19,7 +19,6 @@ export { processDataPipeline } from './dataPipeline'
 export type { DataPipelineOptions, DataPipelineResult } from './dataPipeline'
 
 // Header processing
-export { useProcessedHeaders } from './header-processing'
 
 // Validation utilities
 export { isValidHeader, processHeaders } from '../../types/validation/header-validation'

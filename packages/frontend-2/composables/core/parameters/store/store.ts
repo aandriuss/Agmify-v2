@@ -238,7 +238,13 @@ function createParameterStore(): ParameterStore {
             removable: true,
             isChild: !param.metadata?.isParent,
             category: param.metadata?.category || 'Uncategorized',
-            parameters: { [param.id]: paramValue },
+            parameters: {
+              [param.id]: paramValue
+            },
+            group: {
+              fetchedGroup: param.group?.fetchedGroup || 'Ungrouped',
+              currentGroup: param.group?.currentGroup || ''
+            },
             metadata: param.metadata,
             details: [],
             order: 0

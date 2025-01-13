@@ -691,7 +691,7 @@ function getParameterGroups(
 
   // Process BIM parameters
   for (const param of bimParams) {
-    const group = param.currentGroup
+    const group = param.group.currentGroup
     if (!groups.has(group)) {
       groups.set(group, {
         total: 0,
@@ -715,15 +715,15 @@ function getParameterGroups(
   // Process user parameters
   for (const param of userParams) {
     const group = param.group
-    if (!groups.has(group)) {
-      groups.set(group, {
+    if (!groups.has(group.currentGroup)) {
+      groups.set(group.currentGroup, {
         total: 0,
         visible: 0,
         parameters: []
       })
     }
 
-    const groupData = groups.get(group)
+    const groupData = groups.get(group.currentGroup)
     if (groupData) {
       groupData.total++
       if (param.visible ?? false) groupData.visible++

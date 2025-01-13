@@ -288,14 +288,13 @@ function ensureColumnProperties(column: Partial<TableColumn>): TableColumn {
       name,
       type: 'string',
       value: null,
-      group: 'Default',
-      currentGroup: 'Default',
-      fetchedGroup: 'Default',
+      group: {
+        currentGroup: 'Default',
+        fetchedGroup: ''
+      },
       metadata: {
         isSystem: false,
-        displayName: name,
-        originalGroup: 'Default',
-        groupId: 'bim_Default'
+        displayName: name
       }
     }
   }
@@ -356,10 +355,14 @@ async function initializeState(): Promise<void> {
       groups: [
         ...new Set([
           ...localParentColumns.value.map((c) =>
-            c.parameter.kind === 'bim' ? c.parameter.currentGroup : c.parameter.group
+            c.parameter.kind === 'bim'
+              ? c.parameter.group.currentGroup
+              : c.parameter.group
           ),
           ...localChildColumns.value.map((c) =>
-            c.parameter.kind === 'bim' ? c.parameter.currentGroup : c.parameter.group
+            c.parameter.kind === 'bim'
+              ? c.parameter.group.currentGroup
+              : c.parameter.group
           )
         ])
       ]

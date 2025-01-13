@@ -189,10 +189,10 @@ export function useElementsData(
                   id: column.parameter.id,
                   name: column.parameter.name,
                   value: null,
-                  fetchedGroup:
-                    column.parameter.kind === 'bim'
-                      ? column.parameter.currentGroup
-                      : column.parameter.group,
+                  group: column.parameter.group || {
+                    fetchedGroup: 'Ungrouped',
+                    currentGroup: ''
+                  },
                   metadata: column.parameter.metadata || {}
                 },
                 column.parameter.type as BimValueType,
@@ -210,10 +210,10 @@ export function useElementsData(
                   id: column.parameter.id,
                   name: column.parameter.name,
                   value: null,
-                  fetchedGroup:
-                    column.parameter.kind === 'bim'
-                      ? column.parameter.currentGroup
-                      : column.parameter.group,
+                  group: column.parameter.group || {
+                    fetchedGroup: 'Parameters',
+                    currentGroup: ''
+                  },
                   metadata: column.parameter.metadata || {}
                 },
                 column.parameter.type as BimValueType,
@@ -335,10 +335,7 @@ export function useElementsData(
                     id: column.parameter.id,
                     name: column.parameter.name,
                     value: null,
-                    fetchedGroup:
-                      column.parameter.kind === 'bim'
-                        ? column.parameter.currentGroup
-                        : column.parameter.group,
+                    group: column.parameter.group,
                     metadata: column.parameter.metadata || {}
                   },
                   column.parameter.type as BimValueType,
@@ -356,10 +353,7 @@ export function useElementsData(
                     id: column.parameter.id,
                     name: column.parameter.name,
                     value: null,
-                    fetchedGroup:
-                      column.parameter.kind === 'bim'
-                        ? column.parameter.currentGroup
-                        : column.parameter.group,
+                    group: column.parameter.group,
                     metadata: column.parameter.metadata || {}
                   },
                   column.parameter.type as BimValueType,
@@ -515,26 +509,42 @@ export function useElementsData(
           // Transform elements into table rows with all parameters
           const transformedElements = updatedElements.map((el) => {
             const element = ensureParameters(el)
-            const parameters = { ...element.parameters }
+            const parameters: Record<string, unknown> = {}
 
             // Ensure all column parameters exist
             const table = tableStore.computed.currentTable.value
             if (table) {
               const { parentColumns, childColumns } = table
 
+              // Process existing parameters first
+              Object.entries(element.parameters).forEach(([key, value]) => {
+                parameters[key] = value
+              })
+
               // Add missing parent parameters
               parentColumns.forEach((column) => {
                 if (column.parameter && !parameters[column.parameter.id]) {
+                  const paramGroup = column.parameter.group || 'Parameters'
                   const availableParam = createAvailableBimParameter(
                     {
                       id: column.parameter.id,
                       name: column.parameter.name,
                       value: null,
-                      fetchedGroup:
-                        column.parameter.kind === 'bim'
-                          ? column.parameter.currentGroup
-                          : column.parameter.group,
-                      metadata: column.parameter.metadata || {}
+                      group: {
+                        fetchedGroup:
+                          typeof paramGroup === 'string'
+                            ? paramGroup
+                            : paramGroup?.fetchedGroup || 'Parameters',
+                        currentGroup:
+                          typeof paramGroup === 'string'
+                            ? ''
+                            : paramGroup?.currentGroup || ''
+                      },
+                      metadata: {
+                        ...column.parameter.metadata,
+                        elementType: element.type || 'Unknown',
+                        category: element.type || 'Uncategorized'
+                      }
                     },
                     column.parameter.type as BimValueType,
                     null
@@ -546,16 +556,27 @@ export function useElementsData(
               // Add missing child parameters
               childColumns.forEach((column) => {
                 if (column.parameter && !parameters[column.parameter.id]) {
+                  const paramGroup = column.parameter.group || 'Parameters'
                   const availableParam = createAvailableBimParameter(
                     {
                       id: column.parameter.id,
                       name: column.parameter.name,
                       value: null,
-                      fetchedGroup:
-                        column.parameter.kind === 'bim'
-                          ? column.parameter.currentGroup
-                          : column.parameter.group,
-                      metadata: column.parameter.metadata || {}
+                      group: {
+                        fetchedGroup:
+                          typeof paramGroup === 'string'
+                            ? paramGroup
+                            : paramGroup?.fetchedGroup || 'Parameters',
+                        currentGroup:
+                          typeof paramGroup === 'string'
+                            ? ''
+                            : paramGroup?.currentGroup || ''
+                      },
+                      metadata: {
+                        ...column.parameter.metadata,
+                        elementType: element.type || 'Unknown',
+                        category: element.type || 'Uncategorized'
+                      }
                     },
                     column.parameter.type as BimValueType,
                     null
@@ -669,10 +690,10 @@ export function useElementsData(
                   id: column.parameter.id,
                   name: column.parameter.name,
                   value: null,
-                  fetchedGroup:
-                    column.parameter.kind === 'bim'
-                      ? column.parameter.currentGroup
-                      : column.parameter.group,
+                  group: column.parameter.group || {
+                    fetchedGroup: 'Parameters',
+                    currentGroup: ''
+                  },
                   metadata: column.parameter.metadata || {}
                 },
                 column.parameter.type as BimValueType,
@@ -690,10 +711,10 @@ export function useElementsData(
                   id: column.parameter.id,
                   name: column.parameter.name,
                   value: null,
-                  fetchedGroup:
-                    column.parameter.kind === 'bim'
-                      ? column.parameter.currentGroup
-                      : column.parameter.group,
+                  group: column.parameter.group || {
+                    fetchedGroup: 'Parameters',
+                    currentGroup: ''
+                  },
                   metadata: column.parameter.metadata || {}
                 },
                 column.parameter.type as BimValueType,
@@ -797,10 +818,7 @@ export function useElementsData(
                   id: column.parameter.id,
                   name: column.parameter.name,
                   value: null,
-                  fetchedGroup:
-                    column.parameter.kind === 'bim'
-                      ? column.parameter.currentGroup
-                      : column.parameter.group,
+                  group: column.parameter.group,
                   metadata: column.parameter.metadata || {}
                 },
                 column.parameter.type as BimValueType,
@@ -818,10 +836,7 @@ export function useElementsData(
                   id: column.parameter.id,
                   name: column.parameter.name,
                   value: null,
-                  fetchedGroup:
-                    column.parameter.kind === 'bim'
-                      ? column.parameter.currentGroup
-                      : column.parameter.group,
+                  group: column.parameter.group,
                   metadata: column.parameter.metadata || {}
                 },
                 column.parameter.type as BimValueType,

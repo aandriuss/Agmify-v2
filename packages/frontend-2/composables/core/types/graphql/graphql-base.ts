@@ -1,90 +1,20 @@
-import type { TableColumn, TableCategoryFilters } from '../tables'
-import type { BimValueType, UserValueType } from '../parameters'
+import type { AvailableUserParameter } from '../parameters/parameter-states'
 
 /**
- * GraphQL Parameter Types
+ * GraphQL Response Types
  */
-interface BaseGQLParameter {
-  id: string
-  name: string
-  field: string
-  visible: boolean
-  header: string
-  description?: string
-  category?: string
-  order?: number
-  computed?: unknown
-  source?: string
-  removable: boolean
-  value: JSON
-  metadata: {
-    displayName: string
-    originalGroup: string
-    groupId: string
-    isSystem: boolean
-  }
-}
-
-export interface BimGQLParameter extends BaseGQLParameter {
-  kind: 'bim'
-  type: BimValueType
-  sourceValue: string // BIM value as string
-  fetchedGroup: string
-  currentGroup: string
-  group?: never
-  equation?: never
-  isCustom?: never
-  validationRules?: never
-}
-
-export interface UserGQLParameter extends BaseGQLParameter {
-  kind: 'user'
-  type: UserValueType
-  group: string
-  equation?: string
-  isCustom?: boolean
-  sourceValue?: never
-  fetchedGroup?: never
-  currentGroup?: never
-}
-
-export type GQLParameter = BimGQLParameter | UserGQLParameter
-
-/**
- * Parameter Input Types
- */
-export type CreateBimGQLInput = Omit<BimGQLParameter, 'id' | 'kind'>
-export type CreateUserGQLInput = Omit<UserGQLParameter, 'id' | 'kind'>
-
-export type UpdateBimGQLInput = Partial<CreateBimGQLInput>
-export type UpdateUserGQLInput = Partial<CreateUserGQLInput>
-
-/**
- * Parameter Response Types
- */
-export interface ParametersQueryResponse {
-  parameters: GQLParameter[]
-}
-
 export interface GetParametersQueryResponse {
   activeUser: {
-    parameters: Record<string, GQLParameter>
+    parameters: Record<string, AvailableUserParameter>
   }
 }
 
-/**
- * Mutation Response Types
- */
 export interface ParameterMutationResponse {
-  parameter: GQLParameter
+  parameter: AvailableUserParameter
 }
 
 export interface CreateParameterResponse {
   createParameter: ParameterMutationResponse
-}
-
-export interface SingleParameterResponse {
-  parameter: GQLParameter
 }
 
 export interface UpdateParameterResponse {
@@ -95,144 +25,10 @@ export interface DeleteParameterResponse {
   deleteParameter: boolean
 }
 
-export interface ParametersOperationResponse {
-  status: boolean
-  error?: string
-  parameter?: GQLParameter
-}
-
-/**
- * Table GraphQL Types
- */
-/**
- * GraphQL Table Input Types - match schema exactly
- */
-export interface TableSettingsInput {
-  name: string
-  displayName: string
-  parentColumns: TableColumnInput[]
-  childColumns: TableColumnInput[]
-  categoryFilters?: CategoryFiltersInput
-  filters?: TableFilterInput[]
-  lastUpdateTimestamp: number
-  description?: string
-  metadata?: Record<string, unknown>
-}
-
-export interface TableColumnInput {
-  id: string
-  field: string
-  header: string
-  width?: number
-  visible: boolean
-  removable?: boolean
-  order: number
-  sortable?: boolean
-  filterable?: boolean
-  parameter: ParameterInput
-}
-
-export interface CategoryFiltersInput {
-  selectedParentCategories: string[]
-  selectedChildCategories: string[]
-}
-
-export interface TableFilterInput {
-  columnId: string
-  value: unknown
-  operator: string
-}
-
-export interface ParameterInput {
-  // Common fields
-  id: string
-  kind: 'bim' | 'user'
-  name: string
-  field: string
-  visible: boolean
-  header: string
-  description?: string
-  category?: string
-  order?: number
-  computed?: unknown
-  source?: string
-  removable: boolean
-  value: JSON
-  metadata?: Record<string, unknown>
-
-  // BIM-specific fields
-  type?: BimValueType
-  sourceValue?: string
-  fetchedGroup?: string
-  currentGroup?: string
-
-  // User-specific fields
-  userType?: UserValueType
-  group?: string
-  equation?: string
-  isCustom?: boolean
-}
-
-export interface TableSettingsEntry {
-  id: string
-  settings: TableSettingsInput
-}
-
-export interface TableSettingsMapInput {
-  tables: TableSettingsEntry[]
-}
-
-export interface TablesQueryResponse {
-  activeUser: {
-    tables: Record<string, TableSettingsEntry>
-  }
-}
-
-export interface TablesMutationResponse {
-  userTablesUpdate: boolean
-}
-
-/**
- * Legacy Table Types
- * @deprecated Use TableSettingsInput and related types instead
- */
-export interface TableResponse {
-  id: string
-  name: string
-  parentColumns: TableColumn[]
-  childColumns: TableColumn[]
-  metadata?: Record<string, unknown>
-  categoryFilters: TableCategoryFilters
-}
-
-export interface CreateNamedTableInput {
-  name: string
-  parentColumns: TableColumn[]
-  childColumns: TableColumn[]
-  metadata?: Record<string, unknown>
-  categoryFilters: TableCategoryFilters
-}
-
-export interface UpdateNamedTableInput {
-  id: string
-  name?: string
-  parentColumns?: TableColumn[]
-  childColumns?: TableColumn[]
-  metadata?: Record<string, unknown>
-  categoryFilters?: TableCategoryFilters
-}
-
-/**
- * Parameter-Table Operations
- */
 export interface AddParameterToTableResponse {
-  addParameterToTable: {
-    parameter: GQLParameter
-  }
+  addParameterToTable: boolean
 }
 
 export interface RemoveParameterFromTableResponse {
-  removeParameterFromTable: {
-    parameter: GQLParameter
-  }
+  removeParameterFromTable: boolean
 }

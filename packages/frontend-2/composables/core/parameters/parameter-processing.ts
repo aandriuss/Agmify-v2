@@ -5,9 +5,10 @@ import type {
   ElementData,
   RawParameter,
   AvailableBimParameter,
-  ParameterValue
+  ParameterValue,
+  Group
 } from '~/composables/core/types'
-import { createAvailableBimParameter } from '~/composables/core/types/parameters'
+import { createAvailableBimParameter } from '~/composables/core/types'
 import { inferParameterType } from '~/composables/core/parameters/utils/group-processing'
 
 /**
@@ -36,6 +37,16 @@ export function convertToParameterValue(value: unknown): ParameterValue {
 
   // For objects and arrays, stringify them
   return JSON.stringify(value)
+}
+
+/**
+ * Create default group structure
+ */
+function createDefaultGroup(groupName?: string): Group {
+  return {
+    fetchedGroup: groupName || 'Ungrouped',
+    currentGroup: ''
+  }
 }
 
 /**
@@ -100,12 +111,12 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
         const groupName = nameParts.length > 1 ? nameParts[0] : undefined
         const paramName = nameParts.length > 1 ? nameParts.slice(1).join('.') : key
 
-        // Create raw parameter
+        // Create raw parameter with default group
         const rawParam: RawParameter = {
           id: key,
           name: paramName,
           value: validatedValue,
-          fetchedGroup: groupName || element.category || 'Uncategorized',
+          group: createDefaultGroup(groupName),
           metadata: {
             category: element.category || 'Uncategorized',
             mappedCategory: element.category
@@ -133,7 +144,7 @@ export function extractRawParameters(elements: ElementData[]): RawParameter[] {
               id: nestedId,
               name: nestedKey,
               value: validatedNestedValue,
-              fetchedGroup: element.category || 'Uncategorized',
+              group: createDefaultGroup(rawParam.group.fetchedGroup),
               metadata: {
                 category: element.category,
                 mappedCategory: element.category
@@ -195,14 +206,16 @@ export function processRawParameters(rawParams: RawParameter[]): {
             {
               ...param,
               name: param.metadata?.displayName || param.name,
-              fetchedGroup: param.metadata?.originalGroup || param.fetchedGroup,
+              group: {
+                fetchedGroup: param.group?.fetchedGroup || 'Ungrouped',
+                currentGroup: param.group?.currentGroup || ''
+              },
               metadata: {
                 ...param.metadata,
                 groupId: param.metadata?.originalGroup
                   ? `bim_${param.metadata.originalGroup}`
                   : '',
-                displayName: param.metadata?.displayName || param.name,
-                originalGroup: param.metadata?.originalGroup || ''
+                displayName: param.metadata?.displayName || param.name
               }
             },
             type,

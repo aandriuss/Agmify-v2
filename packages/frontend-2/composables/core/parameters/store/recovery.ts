@@ -41,7 +41,10 @@ export const parameterRecovery: ParameterRecovery = {
       id,
       name: 'Unknown',
       value: null,
-      fetchedGroup: 'Parameters',
+      group: {
+        currentGroup: '',
+        fetchedGroup: 'Parameters'
+      },
       metadata: {
         category: 'Unknown',
         isSystem: false

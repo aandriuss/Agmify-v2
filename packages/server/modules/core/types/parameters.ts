@@ -32,6 +32,11 @@ interface BaseParameter {
   metadata?: Record<string, unknown>
 }
 
+export interface Group {
+  fetchedGroup: string
+  currentGroup: string
+}
+
 /**
  * BIM parameter type
  */
@@ -40,8 +45,7 @@ export interface BimParameter extends BaseParameter {
   type: BimValueType
   sourceValue: PrimitiveValue
   value: PrimitiveValue
-  fetchedGroup: string
-  currentGroup: string
+  group: Group
 }
 
 /**
@@ -51,7 +55,7 @@ export interface UserParameter extends BaseParameter {
   kind: 'user'
   type: UserValueType
   value: ParameterValue
-  group: string
+  group: Group
   equation?: string
   isCustom?: boolean
   validationRules?: ValidationRules

@@ -55,8 +55,8 @@ describe('Parameters', () => {
         name: 'Width',
         type: 'number',
         sourceValue: '100',
-        fetchedGroup: 'Dimensions',
-        currentGroup: 'Dimensions',
+        group: {fetchedGroup: 'Dimensions',
+        currentGroup: 'Dimensions'},
         field: 'width',
         visible: true,
         header: 'Width',
@@ -86,8 +86,7 @@ describe('Parameters', () => {
               name
               type
               sourceValue
-              fetchedGroup
-              currentGroup
+              group
               value
             }
             ... on UserParameter {
@@ -126,8 +125,7 @@ describe('Parameters', () => {
                   name
                   type
                   sourceValue
-                  fetchedGroup
-                  currentGroup
+                  group
                   value
                 }
               }
@@ -139,8 +137,10 @@ describe('Parameters', () => {
           name: 'Width',
           type: 'number',
           sourceValue: '100',
-          fetchedGroup: 'Dimensions',
-          currentGroup: 'Dimensions',
+          group: {
+            fetchedGroup: 'Dimensions',
+            currentGroup: 'Dimensions'
+          },
           field: 'width',
           visible: true,
           header: 'Width',
@@ -160,8 +160,10 @@ describe('Parameters', () => {
           name: 'Width',
           type: 'number',
           sourceValue: '100',
-          fetchedGroup: 'Dimensions',
-          currentGroup: 'Dimensions',
+          group: {
+            fetchedGroup: 'Dimensions',
+            currentGroup: 'Dimensions'
+        },
           value: '100'
         })
       })
@@ -183,8 +185,10 @@ describe('Parameters', () => {
           name: 'Width',
           type: 'number',
           sourceValue: '100',
-          fetchedGroup: 'Dimensions',
-          currentGroup: 'Dimensions',
+          group: {
+            fetchedGroup: 'Dimensions',
+            currentGroup: 'Dimensions'
+          },
           field: 'width',
           visible: true,
           header: 'Width',
@@ -224,8 +228,7 @@ describe('Parameters', () => {
                   name
                   type
                   sourceValue
-                  fetchedGroup
-                  currentGroup
+                  group
                   value
                 }
               }
@@ -237,8 +240,10 @@ describe('Parameters', () => {
           name: 'Width',
           type: 'number',
           sourceValue: '100',
-          fetchedGroup: 'Dimensions',
-          currentGroup: 'Dimensions',
+          group: { 
+            fetchedGroup: 'Dimensions',
+            currentGroup: 'Dimensions'
+          },
           field: 'width',
           visible: true,
           header: 'Width',
@@ -265,8 +270,7 @@ describe('Parameters', () => {
                   name
                   type
                   sourceValue
-                  fetchedGroup
-                  currentGroup
+                  g
                   value
                 }
               }
@@ -345,7 +349,10 @@ describe('Parameters', () => {
         const input = {
           name: 'Custom Width',
           type: 'fixed',
-          group: 'Custom',
+          group: { 
+            fetchedGroup: '', 
+            currentGroup: 'Custom' 
+          },
           field: 'customWidth',
           visible: true,
           header: 'Custom Width',
@@ -364,7 +371,10 @@ describe('Parameters', () => {
           kind: 'user',
           name: 'Custom Width',
           type: 'fixed',
-          group: 'Custom',
+          group: { 
+            fetchedGroup: '', 
+            currentGroup: 'Custom' 
+          },
           value: '150'
         })
       })
@@ -385,7 +395,10 @@ describe('Parameters', () => {
         const input = {
           name: 'Custom Width',
           type: 'fixed',
-          group: 'Custom',
+          group: { 
+            fetchedGroup: '', 
+            currentGroup: 'Custom' 
+          },
           field: 'customWidth',
           visible: true,
           header: 'Custom Width',
@@ -435,7 +448,10 @@ describe('Parameters', () => {
         const input = {
           name: 'Double Width',
           type: 'equation',
-          group: 'Custom',
+          group: { 
+            fetchedGroup: '', 
+            currentGroup: 'Custom' 
+          },
           equation: 'width * 2',
           field: 'doubleWidth',
           visible: true,
@@ -455,7 +471,10 @@ describe('Parameters', () => {
           kind: 'user',
           name: 'Double Width',
           type: 'equation',
-          group: 'Custom',
+          group: { 
+            fetchedGroup: '', 
+            currentGroup: 'Custom' 
+          },
           equation: 'width * 2',
           value: '200'
         })
@@ -480,7 +499,10 @@ describe('Parameters', () => {
         const createInput = {
           name: 'Custom Width',
           type: 'fixed',
-          group: 'Custom',
+          group: { 
+            fetchedGroup: '', 
+            currentGroup: 'Custom' 
+          },
           field: 'customWidth',
           visible: true,
           header: 'Custom Width',
@@ -578,7 +600,10 @@ describe('Parameters', () => {
         const createInput = {
           name: 'Custom Width',
           type: 'fixed',
-          group: 'Custom',
+          group: { 
+            fetchedGroup: '', 
+            currentGroup: 'Custom' 
+          },
           field: 'customWidth',
           visible: true,
           header: 'Custom Width',

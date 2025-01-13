@@ -139,24 +139,64 @@ export function useSelectedElementsData(
               // Get relevant columns based on element type
               const relevantColumns = element.isChild ? childColumns : parentColumns
               const processedParams: Record<string, ParameterValue> = {}
+              const parameterGroups: Record<string, string> = {}
 
               // Only process parameters if element has parameters
               if (hasParameters(element)) {
                 // Create parameter map for faster lookup
-                const paramMap = new Map(
-                  Object.entries(element.parameters).map(([key, value]) => [
-                    key.includes('.') ? key.split('.').pop()! : key,
-                    value
-                  ])
-                )
+                const paramMap = new Map<string, { value: unknown; group?: string }>()
+
+                // First pass: build parameter map with all possible names
+                Object.entries(element.parameters).forEach(([key, value]) => {
+                  const parts = key.split('.')
+                  // Store both the full key and the base name
+                  const baseName = parts[parts.length - 1]
+                  const group =
+                    parts.length > 1 ? parts.slice(0, -1).join(' > ') : undefined
+
+                  // Store by full key
+                  paramMap.set(key, { value, group })
+                  // Also store by base name if it's not already stored
+                  // or if the current one has a group (prefer grouped parameters)
+                  const existing = paramMap.get(baseName)
+                  if (!existing || (!existing.group && group)) {
+                    paramMap.set(baseName, { value, group })
+                  }
+                })
 
                 // Process parameters using column parameter IDs
                 for (const column of relevantColumns) {
                   if (column.parameter) {
-                    const paramValue = paramMap.get(column.parameter.name)
-                    processedParams[column.parameter.id] = paramValue
-                      ? await convertToParameterValue(paramValue)
-                      : null
+                    // Try to find parameter by ID first, then name
+                    const paramInfo =
+                      paramMap.get(column.parameter.id) ||
+                      paramMap.get(column.parameter.name)
+
+                    if (paramInfo) {
+                      const paramValue = await convertToParameterValue(paramInfo.value)
+                      processedParams[column.parameter.id] = paramValue
+                      if (paramInfo.group) {
+                        parameterGroups[column.parameter.id] = paramInfo.group
+                      }
+                    } else {
+                      // Try to find by case-insensitive name as fallback
+                      const paramKey = Array.from(paramMap.keys()).find(
+                        (key) =>
+                          key.toLowerCase() === column.parameter!.name.toLowerCase()
+                      )
+                      if (paramKey) {
+                        const fallbackInfo = paramMap.get(paramKey)!
+                        const paramValue = await convertToParameterValue(
+                          fallbackInfo.value
+                        )
+                        processedParams[column.parameter.id] = paramValue
+                        if (fallbackInfo.group) {
+                          parameterGroups[column.parameter.id] = fallbackInfo.group
+                        }
+                      } else {
+                        processedParams[column.parameter.id] = null
+                      }
+                    }
                   }
                 }
               }
@@ -194,7 +234,11 @@ export function useSelectedElementsData(
               const processedElement: ElementData = {
                 ...baseFields,
                 ...fieldMappings,
-                parameters: processedParams // Keep original parameters for reference
+                parameters: processedParams,
+                metadata: {
+                  ...element.metadata,
+                  parameterGroups
+                }
               }
 
               return processedElement

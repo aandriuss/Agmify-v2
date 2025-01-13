@@ -2,7 +2,8 @@ import type { Component } from 'vue'
 import type {
   AvailableBimParameter,
   AvailableUserParameter,
-  ParameterMetadata
+  ParameterMetadata,
+  Group
 } from '../parameters/parameter-states'
 import type { BimValueType, UserValueType, ParameterValue } from '../parameters'
 
@@ -15,7 +16,7 @@ interface BaseColumnParameter {
   kind: 'bim' | 'user'
   type: BimValueType | UserValueType
   value: ParameterValue
-  group: string
+  group: Group
   metadata?: ParameterMetadata
   category?: string
   description?: string
@@ -24,8 +25,6 @@ interface BaseColumnParameter {
 interface BimColumnParameter extends BaseColumnParameter {
   kind: 'bim'
   type: BimValueType
-  currentGroup: string
-  fetchedGroup: string
 }
 
 interface UserColumnParameter extends BaseColumnParameter {
@@ -58,42 +57,6 @@ export interface TableColumn {
 }
 
 /**
- * Create a base column without parameter
- */
-export function createBaseColumn(
-  id: string,
-  header: string,
-  order: number
-): TableColumn {
-  return {
-    id,
-    field: id,
-    header,
-    visible: true,
-    sortable: true,
-    filterable: true,
-    removable: true,
-    order,
-    parameter: {
-      id,
-      name: header,
-      kind: 'bim',
-      type: 'string',
-      value: '',
-      group: 'Base Properties',
-      currentGroup: 'Base Properties',
-      fetchedGroup: 'Base Properties',
-      metadata: {
-        isSystem: true,
-        displayName: header,
-        originalGroup: 'Base Properties',
-        groupId: 'bim_Base Properties'
-      }
-    }
-  }
-}
-
-/**
  * Create a column from an available parameter
  */
 export function createTableColumn(
@@ -112,6 +75,12 @@ export function createTableColumn(
     filterable: true
   }
 
+  // Ensure group is a plain object for GraphQL
+  const group = {
+    fetchedGroup: param.group?.fetchedGroup || 'Ungrouped',
+    currentGroup: param.group?.currentGroup || ''
+  }
+
   if (param.kind === 'bim') {
     return {
       ...base,
@@ -123,9 +92,7 @@ export function createTableColumn(
         category: param.category,
         description: param.description,
         value: param.value,
-        group: param.currentGroup,
-        currentGroup: param.currentGroup,
-        fetchedGroup: param.fetchedGroup,
+        group,
         metadata: param.metadata
       }
     }
@@ -141,7 +108,7 @@ export function createTableColumn(
       category: param.category,
       description: param.description,
       value: param.value,
-      group: param.group,
+      group,
       equation: param.equation,
       metadata: param.metadata
     }

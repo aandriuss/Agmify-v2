@@ -5,7 +5,8 @@ import type {
   TreeNode,
   ViewerNode,
   ViewerNodeRaw,
-  WorldTreeRoot
+  WorldTreeRoot,
+  Group
 } from '~/composables/core/types'
 import { parentCategories } from '~/composables/core/config/categories'
 import { getMostSpecificCategory } from '~/composables/core/config/categoryMapping'
@@ -37,9 +38,15 @@ interface BIMElementsOptions {
 /**
  * Extract raw parameters from node data with nested property support
  */
+interface ExtractedParameter {
+  name: string
+  value: ParameterValue
+  group: Group
+}
+
 function extractNodeParameters(
   nodeData: ViewerNodeRaw
-): Record<string, ParameterValue> {
+): Record<string, ExtractedParameter> {
   // Get core properties that should be excluded
   const coreProperties = new Set([
     'id',
@@ -47,7 +54,6 @@ function extractNodeParameters(
     'Name',
     'metadata',
     'children',
-    'parameters',
     'elements',
     'speckle_type',
     'applicationId',
@@ -55,15 +61,15 @@ function extractNodeParameters(
   ])
 
   // Extract all properties except core and system ones
-  const parameters: Record<string, ParameterValue> = {}
+  const parameters: Record<string, ExtractedParameter> = {}
 
-  function processValue(value: unknown, prefix = ''): void {
+  function processValue(value: unknown, path: string[]): void {
     if (value === null || value === undefined) return
 
     if (typeof value === 'object' && !Array.isArray(value)) {
       // Process nested object
       Object.entries(value as Record<string, unknown>).forEach(([key, val]) => {
-        const fullKey = prefix ? `${prefix}.${key}` : key
+        const newPath = [...path, key]
 
         // Skip core and system properties
         const isCore = coreProperties.has(key)
@@ -71,11 +77,24 @@ function extractNodeParameters(
 
         if (!isCore && !isSystem) {
           if (typeof val === 'object' && !Array.isArray(val) && val !== null) {
-            processValue(val, fullKey)
+            processValue(val, newPath)
           } else {
             const convertedValue = convertToParameterValue(val)
             if (convertedValue !== null) {
-              parameters[fullKey] = convertedValue
+              // Last item in path is the parameter name
+              const paramName = newPath[newPath.length - 1]
+              // Everything before the last item forms the group path
+              const groupPath = newPath.slice(0, -1)
+
+              parameters[paramName] = {
+                name: paramName,
+                value: convertedValue,
+                group: {
+                  fetchedGroup:
+                    groupPath.length > 0 ? groupPath.join(' > ') : 'Ungrouped',
+                  currentGroup: ''
+                }
+              }
             }
           }
         }
@@ -83,8 +102,18 @@ function extractNodeParameters(
     } else {
       // Convert non-object value
       const convertedValue = convertToParameterValue(value)
-      if (convertedValue !== null && prefix) {
-        parameters[prefix] = convertedValue
+      if (convertedValue !== null && path.length > 0) {
+        const paramName = path[path.length - 1]
+        const groupPath = path.slice(0, -1)
+
+        parameters[paramName] = {
+          name: paramName,
+          value: convertedValue,
+          group: {
+            fetchedGroup: groupPath.length > 0 ? groupPath.join(' > ') : 'Ungrouped',
+            currentGroup: ''
+          }
+        }
       }
     }
   }
@@ -95,7 +124,7 @@ function extractNodeParameters(
     const isSystem = key.startsWith('__') || key.startsWith('@')
 
     if (!isCore && !isSystem) {
-      processValue(value, key)
+      processValue(value, [key])
     }
   })
 
@@ -104,8 +133,13 @@ function extractNodeParameters(
     debug.log(DebugCategories.PARAMETERS, 'Extracted parameters from node', {
       nodeId: nodeData.id,
       parameterCount: Object.keys(parameters).length,
-      sampleKeys: Object.keys(parameters).slice(0, 5),
-      sampleValues: Object.values(parameters).slice(0, 5)
+      samples: Object.entries(parameters)
+        .slice(0, 5)
+        .map(([_key, param]) => ({
+          name: param.name,
+          group: param.group,
+          value: param.value
+        }))
     })
   }
 
@@ -160,21 +194,7 @@ function convertViewerNodeToElementData(
     debug.warn(DebugCategories.DATA_TRANSFORM, 'Invalid node data format', {
       id: node.id
     })
-    return {
-      id: node.id,
-      type: '',
-      name: '',
-      field: node.id,
-      header: '',
-      visible: true,
-      removable: true,
-      isChild: false,
-      category: 'Uncategorized',
-      parameters: {},
-      metadata: {},
-      details: [],
-      order: 0
-    }
+    return defaultElement
   }
 
   // Get raw type from node data
@@ -211,20 +231,28 @@ function convertViewerNodeToElementData(
   })
 
   // Extract raw parameters from node data
-  const parameters = extractNodeParameters(nodeData)
+  const extractedParams = extractNodeParameters(nodeData)
+
+  // Convert extracted parameters to the format expected by ElementData
+  const parameters: Record<string, ParameterValue> = {}
+  const parameterGroups: Record<string, Group> = {}
+
+  Object.entries(extractedParams).forEach(([paramName, param]) => {
+    parameters[paramName] = param.value
+    parameterGroups[paramName] = param.group
+  })
 
   debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
     nodeId: nodeData.id,
     parameterCount: Object.keys(parameters).length,
-    groups: Array.from(
-      new Set(Object.keys(parameters).map((key) => key.split('.')[0]))
-    ),
+    groups: Object.values(parameterGroups).map((g) => g.fetchedGroup),
     sampleParameters: Object.entries(parameters)
       .slice(0, 3)
       .map(([key, value]) => ({
         key,
         value,
-        type: typeof value
+        type: typeof value,
+        group: parameterGroups[key]
       }))
   })
 
@@ -242,7 +270,8 @@ function convertViewerNodeToElementData(
     metadata: {
       ...nodeData.metadata,
       isParent,
-      category
+      category,
+      parameterGroups
     },
     details: [],
     order: 0

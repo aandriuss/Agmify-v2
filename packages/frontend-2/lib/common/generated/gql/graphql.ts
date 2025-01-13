@@ -431,7 +431,7 @@ export type AvatarUser = {
 export type BaseParameter = {
   category?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
-  group: Scalars['String']['output'];
+  group: Scalars['JSONObject']['output'];
   id: Scalars['ID']['output'];
   kind: Scalars['String']['output'];
   metadata?: Maybe<Scalars['JSONObject']['output']>;
@@ -452,10 +452,8 @@ export type BasicGitRepositoryMetadata = {
 export type BimParameter = BaseParameter & {
   __typename?: 'BimParameter';
   category?: Maybe<Scalars['String']['output']>;
-  currentGroup: Scalars['String']['output'];
   description?: Maybe<Scalars['String']['output']>;
-  fetchedGroup: Scalars['String']['output'];
-  group: Scalars['String']['output'];
+  group: Scalars['JSONObject']['output'];
   id: Scalars['ID']['output'];
   kind: Scalars['String']['output'];
   metadata?: Maybe<Scalars['JSONObject']['output']>;
@@ -569,11 +567,9 @@ export type CategoryFiltersInput = {
 export type ColumnParameter = {
   __typename?: 'ColumnParameter';
   category?: Maybe<Scalars['String']['output']>;
-  currentGroup?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   equation?: Maybe<Scalars['String']['output']>;
-  fetchedGroup?: Maybe<Scalars['String']['output']>;
-  group: Scalars['String']['output'];
+  group: Scalars['JSONObject']['output'];
   id: Scalars['ID']['output'];
   kind: Scalars['String']['output'];
   metadata?: Maybe<Scalars['JSONObject']['output']>;
@@ -585,11 +581,9 @@ export type ColumnParameter = {
 /** Input for parameter data in table column */
 export type ColumnParameterInput = {
   category?: InputMaybe<Scalars['String']['input']>;
-  currentGroup?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   equation?: InputMaybe<Scalars['String']['input']>;
-  fetchedGroup?: InputMaybe<Scalars['String']['input']>;
-  group: Scalars['String']['input'];
+  group: Scalars['JSONObject']['input'];
   id: Scalars['ID']['input'];
   kind: Scalars['String']['input'];
   metadata?: InputMaybe<Scalars['JSONObject']['input']>;
@@ -883,10 +877,9 @@ export type CreateAutomateFunctionInput = {
 /** Input for creating a BIM parameter */
 export type CreateBimParameterInput = {
   category?: InputMaybe<Scalars['String']['input']>;
-  currentGroup: Scalars['String']['input'];
   description?: InputMaybe<Scalars['String']['input']>;
-  fetchedGroup: Scalars['String']['input'];
   field: Scalars['String']['input'];
+  group: Scalars['JSONObject']['input'];
   header: Scalars['String']['input'];
   metadata?: InputMaybe<Scalars['JSONObject']['input']>;
   name: Scalars['String']['input'];
@@ -3760,9 +3753,9 @@ export type UpdateAutomateFunctionInput = {
 /** Input for updating a BIM parameter */
 export type UpdateBimParameterInput = {
   category?: InputMaybe<Scalars['String']['input']>;
-  currentGroup?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   field?: InputMaybe<Scalars['String']['input']>;
+  group: Scalars['JSONObject']['input'];
   header?: InputMaybe<Scalars['String']['input']>;
   metadata?: InputMaybe<Scalars['JSONObject']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
@@ -4047,7 +4040,7 @@ export type UserParameter = BaseParameter & {
   category?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   equation?: Maybe<Scalars['String']['output']>;
-  group: Scalars['String']['output'];
+  group: Scalars['JSONObject']['output'];
   id: Scalars['ID']['output'];
   kind: Scalars['String']['output'];
   metadata?: Maybe<Scalars['JSONObject']['output']>;
@@ -6893,9 +6886,7 @@ export type BasicGitRepositoryMetadataFieldArgs = {
 }
 export type BimParameterFieldArgs = {
   category: {},
-  currentGroup: {},
   description: {},
-  fetchedGroup: {},
   group: {},
   id: {},
   kind: {},
@@ -6943,10 +6934,8 @@ export type CategoryFiltersFieldArgs = {
 }
 export type ColumnParameterFieldArgs = {
   category: {},
-  currentGroup: {},
   description: {},
   equation: {},
-  fetchedGroup: {},
   group: {},
   id: {},
   kind: {},

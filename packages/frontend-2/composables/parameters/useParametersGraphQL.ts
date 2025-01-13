@@ -5,28 +5,16 @@ import { useNuxtApp } from '#app'
 import {
   ParameterError,
   ParameterNotFoundError,
-  ParameterDuplicateError,
   ParameterOperationError
 } from './errors'
 
 import type {
-  AvailableBimParameter as BimParameter,
-  AvailableUserParameter as UserParameter,
-  AvailableParameter as Parameter
-} from '~/composables/core/types/parameters/parameter-states'
+  AvailableUserParameter,
+  GetParametersQueryResponse
+} from '~/composables/core/types'
 
-import type { GQLParameter, GetParametersQueryResponse } from '~/composables/core/types'
-
-import {
-  convertToParameter,
-  convertToGQLParameter
-} from '~/composables/core/utils/graphql'
-import { isBimParameter } from '~/composables/core/types/parameters'
-
-// Update types that properly handle discriminated unions
-type BimParameterUpdates = Partial<Omit<BimParameter, 'id' | 'kind'>>
-type UserParameterUpdates = Partial<Omit<UserParameter, 'id' | 'kind'>>
-type ParameterUpdates = BimParameterUpdates | UserParameterUpdates
+// Update types for user parameters
+type UserParameterUpdates = Partial<Omit<AvailableUserParameter, 'id' | 'kind'>>
 
 // GraphQL Operations
 const GET_USER_PARAMETERS = gql`
@@ -90,7 +78,7 @@ export function useParametersGraphQL() {
   // Initialize GraphQL operations
   const { mutate: updateParametersMutation } = useMutation<
     { userParametersUpdate: boolean },
-    { parameters: Record<string, GQLParameter> }
+    { parameters: Record<string, AvailableUserParameter> }
   >(UPDATE_USER_PARAMETERS)
 
   const { mutate: addParameterToTableMutation } = useMutation<
@@ -112,26 +100,17 @@ export function useParametersGraphQL() {
   })
 
   // Parameter operations
-  async function fetchParameters(): Promise<Record<string, Parameter>> {
+  async function fetchParameters(): Promise<Record<string, AvailableUserParameter>> {
     try {
       debug.startState(DebugCategories.INITIALIZATION, 'Fetching parameters')
 
       const response = await nuxtApp.runWithContext(() => refetch())
-      const gqlParameters = response?.data?.activeUser?.parameters
+      const parameters = response?.data?.activeUser?.parameters
 
-      if (!gqlParameters) {
+      if (!parameters) {
         debug.warn(DebugCategories.INITIALIZATION, 'No parameters found')
         return {}
       }
-
-      // Convert GQL parameters to core parameters with type safety
-      const parameters: Record<string, Parameter> = {}
-      Object.entries(gqlParameters).forEach(([key, gqlParam]) => {
-        const converted = convertToParameter(gqlParam)
-        if (converted && (isBimParameter(converted) || 'group' in converted)) {
-          parameters[key] = converted
-        }
-      })
 
       debug.log(DebugCategories.INITIALIZATION, 'Parameters fetched', {
         count: Object.keys(parameters).length
@@ -143,7 +122,9 @@ export function useParametersGraphQL() {
     }
   }
 
-  async function createParameter(parameter: Parameter): Promise<Parameter> {
+  async function createParameter(
+    parameter: AvailableUserParameter
+  ): Promise<AvailableUserParameter> {
     try {
       debug.startState(DebugCategories.STATE, 'Creating parameter')
 
@@ -165,24 +146,15 @@ export function useParametersGraphQL() {
   }
 
   async function updateParameters(
-    parameters: Record<string, Parameter>
+    parameters: Record<string, AvailableUserParameter>
   ): Promise<boolean> {
     try {
       debug.startState(DebugCategories.STATE, 'Updating parameters')
 
-      // Convert parameters to GQL format with type safety
-      const gqlParameters: Record<string, GQLParameter> = {}
-      Object.entries(parameters).forEach(([key, param]) => {
-        const converted = convertToGQLParameter(param)
-        if (converted) {
-          gqlParameters[key] = converted
-        }
-      })
-
       // Send update
       const result = await nuxtApp.runWithContext(() =>
         updateParametersMutation({
-          parameters: gqlParameters
+          parameters
         })
       )
 
@@ -201,8 +173,8 @@ export function useParametersGraphQL() {
 
   async function updateParameter(
     id: string,
-    updates: ParameterUpdates
-  ): Promise<Parameter> {
+    updates: UserParameterUpdates
+  ): Promise<AvailableUserParameter> {
     try {
       debug.startState(DebugCategories.STATE, 'Updating parameter')
 
@@ -214,51 +186,12 @@ export function useParametersGraphQL() {
         throw new ParameterNotFoundError(id)
       }
 
-      // Type guard to ensure parameter type safety
-      if (!isBimParameter(existingParameter) && !('group' in existingParameter)) {
-        throw new ParameterError('Invalid parameter type')
+      // Update parameter
+      const updatedParameter: AvailableUserParameter = {
+        ...existingParameter,
+        ...updates,
+        kind: 'user' as const
       }
-
-      // Check for name/group conflicts
-      const groupToCheck = isBimParameter(existingParameter)
-        ? (updates as BimParameterUpdates).currentGroup ||
-          existingParameter.currentGroup
-        : (updates as UserParameterUpdates).group || existingParameter.group
-
-      const paramName = updates.name || existingParameter.name
-
-      if (paramName || groupToCheck) {
-        const newKey = `${groupToCheck}-${paramName}`
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, '_')
-        if (newKey !== id && currentParameters[newKey]) {
-          throw new ParameterDuplicateError(paramName, groupToCheck)
-        }
-      }
-
-      // Type-safe parameter update
-      const updatedParameter = isBimParameter(existingParameter)
-        ? ({
-            ...existingParameter,
-            ...Object.fromEntries(
-              Object.entries(updates).filter(
-                ([key]) => !['group', 'equation', 'isCustom'].includes(key)
-              )
-            ),
-            kind: 'bim' as const,
-            type: existingParameter.type
-          } satisfies BimParameter)
-        : ({
-            ...existingParameter,
-            ...Object.fromEntries(
-              Object.entries(updates).filter(
-                ([key]) =>
-                  !['sourceValue', 'fetchedGroup', 'currentGroup'].includes(key)
-              )
-            ),
-            kind: 'user' as const,
-            type: existingParameter.type
-          } satisfies UserParameter)
 
       // Update parameters
       await updateParameters({ [id]: updatedParameter })

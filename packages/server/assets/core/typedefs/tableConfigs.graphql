@@ -40,9 +40,7 @@ type ColumnParameter {
   category: String
   description: String
   value: JSON # Can be string, number, boolean, null, or EquationValue
-  group: String!
-  currentGroup: String # Required if kind is 'bim'
-  fetchedGroup: String # Required if kind is 'bim'
+  group: JSONObject!
   equation: String # Optional, only if kind is 'user'
   metadata: JSONObject
 }
@@ -148,12 +146,10 @@ input ColumnParameterInput {
   kind: String! # 'bim' or 'user'
   type: String! # BimValueType or UserValueType
   value: JSON # Can be string, number, boolean, null, or EquationValue
-  group: String!
+  group: JSONObject!
   metadata: JSONObject
   category: String
   description: String
-  currentGroup: String # Required if kind is 'bim'
-  fetchedGroup: String # Required if kind is 'bim'
   equation: String # Optional, only if kind is 'user'
 }
 

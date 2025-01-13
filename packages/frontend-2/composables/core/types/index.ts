@@ -54,33 +54,11 @@ export type {
 
 // GraphQL types
 export type {
-  // Parameter Types
-  BimGQLParameter,
-  UserGQLParameter,
-  GQLParameter,
-
-  // Input Types
-  CreateBimGQLInput,
-  CreateUserGQLInput,
-  UpdateBimGQLInput,
-  UpdateUserGQLInput,
-
-  // Response Types
-  ParametersQueryResponse,
   GetParametersQueryResponse,
   ParameterMutationResponse,
   CreateParameterResponse,
-  SingleParameterResponse,
   UpdateParameterResponse,
   DeleteParameterResponse,
-  ParametersOperationResponse,
-
-  // Table Types
-  TableResponse,
-  CreateNamedTableInput,
-  UpdateNamedTableInput,
-  TablesQueryResponse,
-  TablesMutationResponse,
   AddParameterToTableResponse,
   RemoveParameterFromTableResponse
 } from './graphql'
@@ -103,7 +81,9 @@ export type {
   EquationValue,
   ParameterValue,
   ValidationRules,
-  ValidationResult
+  ValidationResult,
+  ParameterMetadata,
+  Group
 } from './parameters'
 
 // Parameter System Functions
@@ -228,3 +208,5 @@ export type {
 } from './viewer'
 
 export type { TableSettings, TableStoreState, TableStore } from '../tables/store/types'
+
+export type { ElementMetadata, DebugPanelProps } from './debug-panel'

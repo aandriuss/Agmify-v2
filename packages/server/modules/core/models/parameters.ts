@@ -10,14 +10,11 @@ export interface ParameterMetadata extends Record<string, unknown> {
   category?: string
   fullKey?: string
   isSystem?: boolean
-  group?: string
   elementId?: string
   isNested?: boolean
   parentKey?: string
   isJsonString?: boolean
   displayName?: string
-  originalGroup?: string
-  groupId?: string
 }
 
 export type BimValueType = 'string' | 'number' | 'boolean' | 'date' | 'object' | 'array'
@@ -49,6 +46,11 @@ interface BaseParameter {
   metadata?: ParameterMetadata
 }
 
+export interface Group {
+  fetchedGroup: string
+  currentGroup: string
+}
+
 /**
  * BIM parameter type
  */
@@ -57,8 +59,7 @@ export interface BimParameter extends BaseParameter {
   type: BimValueType
   sourceValue: PrimitiveValue
   value: PrimitiveValue
-  fetchedGroup: string
-  currentGroup: string
+  group: Group
 }
 
 /**
@@ -68,7 +69,7 @@ export interface UserParameter extends BaseParameter {
   kind: 'user'
   type: UserValueType
   value: ParameterValue
-  group: string
+  group: Group
   equation?: string
   isCustom?: boolean
   validationRules?: ValidationRules

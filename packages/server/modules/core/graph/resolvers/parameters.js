@@ -1,22 +1,9 @@
 const { parameterService } = require('../../services/parameters.js')
 
 /**
- * Type resolvers for Parameter union
+ * Type resolvers for UserParameter
  */
 const parameterTypeResolvers = {
-  Parameter: {
-    __resolveType(obj) {
-      return obj.kind === 'bim' ? 'BimParameter' : 'UserParameter'
-    }
-  },
-
-  BimParameter: {
-    kind: () => 'bim',
-    value: (param) => String(param.value || ''),
-    sourceValue: (param) => String(param.sourceValue || ''),
-    metadata: (param) => param.metadata || {}
-  },
-
   UserParameter: {
     kind: () => 'user',
     value: (param) => String(param.value || ''),
@@ -48,21 +35,9 @@ const queryResolvers = {
  * Mutation resolvers
  */
 const mutationResolvers = {
-  createBimParameter: async (_parent, { input }, context) => {
-    if (!context.userId) throw new Error('User not authenticated')
-    const parameter = await parameterService.createBimParameter(context.userId, input)
-    return { parameter }
-  },
-
   createUserParameter: async (_parent, { input }, context) => {
     if (!context.userId) throw new Error('User not authenticated')
     const parameter = await parameterService.createUserParameter(context.userId, input)
-    return { parameter }
-  },
-
-  updateBimParameter: async (_parent, { id, input }, context) => {
-    if (!context.userId) throw new Error('User not authenticated')
-    const parameter = await parameterService.updateBimParameter(id, context.userId, input)
     return { parameter }
   },
 

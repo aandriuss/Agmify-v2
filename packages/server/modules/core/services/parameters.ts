@@ -3,43 +3,19 @@ import { v4 as uuid } from 'uuid'
 import { db } from '@/db/knex'
 import type { Knex } from 'knex'
 import {
-  Parameter,
-  BimParameter,
   UserParameter,
-  BimValueType,
   UserValueType,
-  PrimitiveValue,
   ParameterValue,
   ValidationRules,
-  ParameterStorage,
-  TableParameterMapping,
-  isBimParameter,
-  isUserParameter,
-  ParameterMetadata
-} from '@/modules/core/models/parameters'
-
-interface CreateBimParameterInput {
-  name: string
-  type: BimValueType
-  sourceValue: PrimitiveValue
-  fetchedGroup: string
-  currentGroup: string
-  field: string
-  header: string
-  category?: string
-  description?: string
-  removable?: boolean
-  visible?: boolean
-  order?: number
-  metadata?: Partial<ParameterMetadata>
-  source?: string
-}
+  ParameterMetadata,
+  Group
+} from 'modules/core/models/parameters'
 
 interface CreateUserParameterInput {
   name: string
   type: UserValueType
   value: ParameterValue
-  group: string
+  group: Group
   equation?: string
   field: string
   header: string
@@ -55,8 +31,8 @@ interface CreateUserParameterInput {
 }
 
 interface UserRecord {
-  parameters?: ParameterStorage
-  parameterMappings?: TableParameterMapping
+  parameters?: Record<string, UserParameter>
+  parameterMappings?: Record<string, string[]>
 }
 
 // Metadata validation
@@ -68,34 +44,17 @@ function isValidMetadata(metadata: unknown): metadata is ParameterMetadata {
   if ('category' in m && typeof m.category !== 'string') return false
   if ('fullKey' in m && typeof m.fullKey !== 'string') return false
   if ('isSystem' in m && typeof m.isSystem !== 'boolean') return false
-  if ('group' in m && typeof m.group !== 'string') return false
   if ('elementId' in m && typeof m.elementId !== 'string') return false
   if ('isNested' in m && typeof m.isNested !== 'boolean') return false
   if ('parentKey' in m && typeof m.parentKey !== 'string') return false
   if ('isJsonString' in m && typeof m.isJsonString !== 'boolean') return false
   if ('displayName' in m && typeof m.displayName !== 'string') return false
-  if ('originalGroup' in m && typeof m.originalGroup !== 'string') return false
-  if ('groupId' in m && typeof m.groupId !== 'string') return false
 
   return true
 }
 
-// Ensure BIM parameter metadata has required fields
-function ensureBimMetadata(
-  metadata: Partial<ParameterMetadata> | undefined,
-  name: string,
-  group: string
-): ParameterMetadata {
-  return {
-    ...(metadata as Record<string, unknown>),
-    displayName: metadata?.displayName || name,
-    originalGroup: metadata?.originalGroup || group,
-    groupId: metadata?.groupId || `bim_${group}`
-  } as ParameterMetadata
-}
-
 export class ParameterService {
-  async getParameters(userId: string): Promise<Parameter[]> {
+  async getParameters(userId: string): Promise<UserParameter[]> {
     const user = (await db('users')
       .select('parameters')
       .where({ id: userId })
@@ -104,7 +63,7 @@ export class ParameterService {
     return Object.values(user?.parameters || {})
   }
 
-  async getParameter(id: string, userId: string): Promise<Parameter | null> {
+  async getParameter(id: string, userId: string): Promise<UserParameter | null> {
     const user = (await db('users')
       .select('parameters')
       .where({ id: userId })
@@ -113,7 +72,7 @@ export class ParameterService {
     return user?.parameters?.[id] || null
   }
 
-  async getTableParameters(tableId: string, userId: string): Promise<Parameter[]> {
+  async getTableParameters(tableId: string, userId: string): Promise<UserParameter[]> {
     const user = (await db('users')
       .select(['parameters', 'parameterMappings'])
       .where({ id: userId })
@@ -125,72 +84,7 @@ export class ParameterService {
 
     return parameterIds
       .map((id) => parameters[id])
-      .filter((param): param is Parameter => param !== undefined)
-  }
-
-  async createBimParameter(
-    userId: string,
-    input: CreateBimParameterInput
-  ): Promise<BimParameter> {
-    const id = uuid()
-
-    // Validate metadata if provided
-    if (input.metadata && !isValidMetadata(input.metadata)) {
-      throw new GraphQLError('Invalid parameter metadata')
-    }
-
-    // Ensure required metadata fields
-    const metadata = ensureBimMetadata(input.metadata, input.name, input.currentGroup)
-
-    const parameter: BimParameter = {
-      id,
-      kind: 'bim',
-      name: input.name,
-      type: input.type,
-      sourceValue: input.sourceValue,
-      value: input.sourceValue, // Initially same as sourceValue
-      fetchedGroup: input.fetchedGroup,
-      currentGroup: input.currentGroup,
-      field: input.field,
-      header: input.header,
-      category: input.category,
-      description: input.description,
-      removable: input.removable ?? true,
-      visible: input.visible ?? true,
-      order: input.order,
-      metadata,
-      source: input.source
-    }
-
-    await db.transaction(async (trx: Knex.Transaction) => {
-      const user = (await trx('users')
-        .select('parameters')
-        .where({ id: userId })
-        .forUpdate()
-        .first()) as UserRecord | undefined
-
-      const parameters = user?.parameters || {}
-
-      // Check for name conflicts
-      const nameConflictExists = Object.values(parameters).some(
-        (p) =>
-          isBimParameter(p) &&
-          p.name === input.name &&
-          p.currentGroup === input.currentGroup
-      )
-
-      if (nameConflictExists) {
-        throw new GraphQLError(
-          'A BIM parameter with this name already exists in this group'
-        )
-      }
-
-      parameters[id] = parameter
-
-      await trx('users').where({ id: userId }).update({ parameters })
-    })
-
-    return parameter
+      .filter((p): p is UserParameter => p !== undefined)
   }
 
   async createUserParameter(
@@ -236,7 +130,7 @@ export class ParameterService {
 
       // Check for name conflicts
       const nameConflictExists = Object.values(parameters).some(
-        (p) => isUserParameter(p) && p.name === input.name && p.group === input.group
+        (p) => p.name === input.name && p.group === input.group
       )
 
       if (nameConflictExists) {
@@ -253,77 +147,13 @@ export class ParameterService {
     return parameter
   }
 
-  async updateBimParameter(
-    id: string,
-    userId: string,
-    input: Partial<Omit<CreateBimParameterInput, 'fetchedGroup'>>
-  ): Promise<BimParameter> {
-    const parameter = await this.getParameter(id, userId)
-    if (!parameter || !isBimParameter(parameter)) {
-      throw new GraphQLError('BIM parameter not found')
-    }
-
-    // Validate metadata if provided
-    if (input.metadata && !isValidMetadata(input.metadata)) {
-      throw new GraphQLError('Invalid parameter metadata')
-    }
-
-    // Ensure required metadata fields are preserved
-    const metadata = input.metadata
-      ? ensureBimMetadata(
-          input.metadata,
-          input.name || parameter.name,
-          input.currentGroup || parameter.currentGroup
-        )
-      : parameter.metadata
-
-    const updatedParameter: BimParameter = {
-      ...parameter,
-      ...input,
-      metadata
-    }
-
-    await db.transaction(async (trx: Knex.Transaction) => {
-      const user = (await trx('users')
-        .select('parameters')
-        .where({ id: userId })
-        .forUpdate()
-        .first()) as UserRecord | undefined
-
-      const parameters = user?.parameters || {}
-
-      // Check for name conflicts if name is being updated
-      if (input.name) {
-        const nameConflictExists = Object.values(parameters).some(
-          (p) =>
-            p.id !== id &&
-            isBimParameter(p) &&
-            p.name === input.name &&
-            p.currentGroup === (input.currentGroup || parameter.currentGroup)
-        )
-
-        if (nameConflictExists) {
-          throw new GraphQLError(
-            'A BIM parameter with this name already exists in this group'
-          )
-        }
-      }
-
-      parameters[id] = updatedParameter
-
-      await trx('users').where({ id: userId }).update({ parameters })
-    })
-
-    return updatedParameter
-  }
-
   async updateUserParameter(
     id: string,
     userId: string,
     input: Partial<CreateUserParameterInput>
   ): Promise<UserParameter> {
     const parameter = await this.getParameter(id, userId)
-    if (!parameter || !isUserParameter(parameter)) {
+    if (!parameter) {
       throw new GraphQLError('User parameter not found')
     }
 
@@ -352,7 +182,6 @@ export class ParameterService {
         const nameConflictExists = Object.values(parameters).some(
           (p) =>
             p.id !== id &&
-            isUserParameter(p) &&
             p.name === input.name &&
             p.group === (input.group || parameter.group)
         )

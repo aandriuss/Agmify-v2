@@ -1,20 +1,35 @@
 import type { ParameterValue, BimValueType, UserValueType } from '../parameters'
 
 /**
+ * Group name type
+ */
+export interface Group {
+  fetchedGroup: string
+  currentGroup: string
+}
+
+/**
+ * Create default group
+ */
+function createDefaultGroup(groupName?: string): Group {
+  return {
+    fetchedGroup: groupName || 'Ungrouped',
+    currentGroup: ''
+  }
+}
+
+/**
  * Parameter metadata interface
  */
 export interface ParameterMetadata extends Record<string, unknown> {
   category?: string
   fullKey?: string
   isSystem?: boolean
-  group?: string
   elementId?: string
   isNested?: boolean
   parentKey?: string
   isJsonString?: boolean
   displayName?: string
-  originalGroup?: string
-  groupId?: string
 }
 
 /**
@@ -24,7 +39,7 @@ export interface RawParameter {
   id: string
   name: string
   value: unknown
-  fetchedGroup: string
+  group: Group
   metadata: ParameterMetadata
 }
 
@@ -37,8 +52,7 @@ export interface AvailableBimParameter {
   name: string
   type: BimValueType
   value: ParameterValue
-  fetchedGroup: string
-  currentGroup: string
+  group: Group
   visible?: boolean
   isSystem: boolean
   category?: string
@@ -58,7 +72,7 @@ export interface AvailableUserParameter {
   removable: boolean // Required by GraphQL schema
   type: UserValueType
   value: ParameterValue
-  group: string
+  group: Group
   visible: boolean
   equation?: string
   category?: string
@@ -78,7 +92,10 @@ export const isRawParameter = (param: unknown): param is RawParameter => {
   return (
     typeof p.id === 'string' &&
     typeof p.name === 'string' &&
-    typeof p.fetchedGroup === 'string' &&
+    typeof p.group === 'object' &&
+    p.group !== null &&
+    typeof (p.group as Group).fetchedGroup === 'string' &&
+    typeof (p.group as Group).currentGroup === 'string' &&
     'value' in p &&
     typeof p.metadata === 'object'
   )
@@ -93,9 +110,11 @@ export const isAvailableBimParameter = (
     p.kind === 'bim' &&
     typeof p.id === 'string' &&
     typeof p.name === 'string' &&
-    typeof p.fetchedGroup === 'string' &&
-    typeof p.currentGroup === 'string' &&
     typeof p.isSystem === 'boolean' &&
+    typeof p.group === 'object' &&
+    p.group !== null &&
+    typeof (p.group as Group).fetchedGroup === 'string' &&
+    typeof (p.group as Group).currentGroup === 'string' &&
     'value' in p &&
     'type' in p
   )
@@ -110,7 +129,10 @@ export const isAvailableUserParameter = (
     p.kind === 'user' &&
     typeof p.id === 'string' &&
     typeof p.name === 'string' &&
-    typeof p.group === 'string' &&
+    typeof p.group === 'object' &&
+    p.group !== null &&
+    typeof (p.group as Group).fetchedGroup === 'string' &&
+    typeof (p.group as Group).currentGroup === 'string' &&
     'value' in p &&
     'type' in p
   )
@@ -125,11 +147,10 @@ export const createAvailableBimParameter = (
 ): AvailableBimParameter => {
   // Extract group and name from parameter
   const nameParts = raw.name.split('.')
-  const groupName = nameParts.length > 1 ? nameParts[0] : undefined
   const cleanName = nameParts.length > 1 ? nameParts.slice(1).join('.') : raw.name
 
-  // Use original group from metadata if available
-  const group = raw.metadata?.originalGroup || groupName || raw.fetchedGroup
+  // Ensure group has proper structure
+  const group = raw.group || createDefaultGroup()
 
   return {
     kind: 'bim',
@@ -137,15 +158,15 @@ export const createAvailableBimParameter = (
     name: cleanName,
     type,
     value: processedValue,
-    fetchedGroup: group,
-    currentGroup: group,
+    group: {
+      fetchedGroup: group.fetchedGroup || 'Ungrouped',
+      currentGroup: group.currentGroup || ''
+    },
     visible: true,
     isSystem: isSystem || raw.metadata?.isSystem || false,
     metadata: {
       ...raw.metadata,
-      displayName: cleanName,
-      originalGroup: group,
-      groupId: group ? `bim_${group}` : ''
+      displayName: cleanName
     }
   }
 }
@@ -155,7 +176,7 @@ export const createAvailableUserParameter = (
   name: string,
   type: UserValueType,
   value: ParameterValue,
-  group: string,
+  group?: Group,
   equation?: string,
   metadata?: ParameterMetadata
 ): AvailableUserParameter => ({
@@ -164,7 +185,7 @@ export const createAvailableUserParameter = (
   name,
   type,
   value,
-  group,
+  group: group || createDefaultGroup(),
   visible: true,
   equation,
   metadata,
