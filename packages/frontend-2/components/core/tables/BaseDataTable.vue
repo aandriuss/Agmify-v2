@@ -325,7 +325,7 @@ function handleSort(event: DataTableSortEvent): void {
 
     // Update table with new sort
     if (tableStore.computed.currentTable.value) {
-      tableStore.updateTable({
+      tableStore.updateTableState({
         ...tableStore.computed.currentTable.value,
         sort
       })
@@ -372,7 +372,7 @@ function handleFilter(event: DataTableFilterEvent): void {
 
     // Update table with new filters
     if (tableStore.computed.currentTable.value) {
-      tableStore.updateTable({
+      tableStore.updateTableState({
         ...tableStore.computed.currentTable.value,
         filters
       })

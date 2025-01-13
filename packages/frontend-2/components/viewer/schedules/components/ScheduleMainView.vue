@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
@@ -72,6 +72,32 @@ const debug = useDebug()
 const store = useStore()
 const tableStore = useTableStore()
 const parameterStore = useParameterStore()
+
+// Update column fields to use nested parameter paths
+function updateColumnFields(): void {
+  if (!currentTable.value) return
+
+  const recreateColumns = (columns: TableColumn[]) => {
+    return columns.map((col) => ({
+      ...col,
+      field:
+        col.parameter.metadata?.isSystem &&
+        ['id', 'category'].includes(col.parameter.name.toLowerCase())
+          ? col.parameter.name.toLowerCase()
+          : `parameters.${col.parameter.name}.value`
+    }))
+  }
+
+  const updatedParentColumns = recreateColumns(currentTable.value.parentColumns)
+  const updatedChildColumns = recreateColumns(currentTable.value.childColumns)
+
+  tableStore.updateColumns(updatedParentColumns, updatedChildColumns)
+}
+
+// Update column fields when component is mounted
+onMounted(() => {
+  updateColumnFields()
+})
 
 // Column management
 const currentTable = computed(() => tableStore.computed.currentTable.value)
@@ -162,40 +188,93 @@ const tableData = computed(() => {
 
   // Group children by parent
   filteredChildren.forEach((child) => {
-    const hostParam = child.parameters?.['host'] as ElementParameter | undefined
+    let matched = false
+
+    // Get host parameter value, trying both 'host' and 'Host'
+    const hostParam = (child.parameters?.['Host'] || child.parameters?.['host']) as
+      | ElementParameter
+      | undefined
     let hostValue: string | undefined
 
+    // Extract host value if it exists
     if (hostParam) {
       if (isEquationValue(hostParam)) {
-        hostValue =
-          hostParam.computed !== undefined ? String(hostParam.computed) : undefined
+        // For equation values, only use if computed exists and is non-empty
+        const computed = hostParam.computed
+        if (
+          computed !== undefined &&
+          computed !== null &&
+          String(computed).trim() !== ''
+        ) {
+          hostValue = String(computed)
+        }
       } else {
-        hostValue = String(hostParam)
+        // For regular values, check both value property and direct value
+        const value = hostParam.value !== undefined ? hostParam.value : hostParam
+        if (value !== undefined && value !== null && String(value).trim() !== '') {
+          hostValue = String(value)
+        }
       }
     }
 
-    let matched = false
-
+    // Only attempt matching if we have a non-empty host value
     if (hostValue) {
-      // Find matching parent
-      const matchingParent = filteredParents.find((parent) => {
-        const markParam = parent.parameters?.['mark'] as ElementParameter | undefined
+      // Find all parents with matching mark value
+      const matchingParents = filteredParents.filter((parent) => {
+        // Get mark parameter value, trying both 'mark' and 'Mark'
+        const markParam = (parent.parameters?.['Mark'] ||
+          parent.parameters?.['mark']) as ElementParameter | undefined
         if (!markParam) return false
 
-        if (isEquationValue(markParam)) {
-          return markParam.computed !== undefined
-            ? String(markParam.computed) === hostValue
-            : false
+        let markValue: string | undefined
+
+        // Extract mark value if it exists
+        if (markParam) {
+          if (isEquationValue(markParam)) {
+            // For equation values, only use if computed exists and is non-empty
+            const computed = markParam.computed
+            if (
+              computed !== undefined &&
+              computed !== null &&
+              String(computed).trim() !== ''
+            ) {
+              markValue = String(computed)
+            }
+          } else {
+            // For regular values, check both value property and direct value
+            const value = markParam.value !== undefined ? markParam.value : markParam
+            if (value !== undefined && value !== null && String(value).trim() !== '') {
+              markValue = String(value)
+            }
+          }
         }
-        return String(markParam) === hostValue
+
+        // Only match if we have a non-empty mark value
+        if (markValue) {
+          // Debug log to help diagnose matching issues
+          debug.log(DebugCategories.DATA, 'Comparing values:', {
+            hostValue,
+            markValue,
+            matched: markValue === hostValue
+          })
+
+          return markValue === hostValue
+        }
+        return false
       })
 
-      if (matchingParent && typeof matchingParent.id === 'string') {
-        const children = childrenByParent.get(matchingParent.id) || []
-        children.push(child)
-        childrenByParent.set(matchingParent.id, children)
-        matched = true
+      // If we found exactly one matching parent, add the child to its group
+      if (matchingParents.length === 1) {
+        const matchingParent = matchingParents[0]
+        if (typeof matchingParent.id === 'string') {
+          const children = childrenByParent.get(matchingParent.id) || []
+          children.push(child)
+          childrenByParent.set(matchingParent.id, children)
+          matched = true
+        }
       }
+      // If we found multiple matching parents or no matching parents,
+      // the child should go to ungrouped to avoid ambiguity
     }
 
     if (!matched) {

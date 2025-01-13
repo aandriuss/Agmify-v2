@@ -63,9 +63,12 @@ export function createTableColumn(
   param: AvailableBimParameter | AvailableUserParameter,
   order: number
 ): TableColumn {
-  // For BIM parameters, use name (without group) to match storage
-  // For user parameters, use ID to ensure uniqueness
-  const field = param.kind === 'bim' ? param.name : param.id
+  // System parameters (id, category) are at top level, others are nested in parameters.{name}.value
+  const isSystemParam =
+    param.metadata?.isSystem && ['id', 'category'].includes(param.name.toLowerCase())
+  const field = isSystemParam
+    ? param.name.toLowerCase()
+    : `parameters.${param.kind === 'bim' ? param.name : param.id}.value`
 
   const base = {
     id: param.id,

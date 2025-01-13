@@ -65,46 +65,6 @@ function extractNodeParameters(
   // Extract all properties except core and system ones
   const parameters: Record<string, ExtractedParameter> = {}
 
-  // function processValue(value: unknown, path: string[]): void {
-  //   if (value === null || value === undefined) return
-
-  //   // Get the current key (last item in path)
-  //   const currentKey = path[path.length - 1]
-  //   if (!currentKey) return
-
-  //   // Skip core and system properties
-  //   const isCore = coreProperties.has(currentKey)
-  //   const isSystem = currentKey.startsWith('__') || currentKey.startsWith('@')
-  //   if (isCore || isSystem) return
-
-  //   // Handle nested objects
-  //   if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
-  //     Object.entries(value as Record<string, unknown>).forEach(([key, val]) => {
-  //       processValue(val, [...path, key])
-  //     })
-  //     return
-  //   }
-
-  //   // Convert value
-  //   const convertedValue = convertToParameterValue(value)
-  //   if (convertedValue === null) return
-
-  //   // For parameters, use the last part of the path as the name
-  //   const paramName = currentKey
-  //   // For groups, use all but the last part
-  //   const groupPath = path.slice(0, -1)
-
-  //   // Store parameter with its group
-  //   parameters[paramName] = {
-  //     name: paramName,
-  //     value: convertedValue,
-  //     group: {
-  //       fetchedGroup: groupPath.length > 0 ? groupPath.join('.') : 'Ungrouped',
-  //       currentGroup: ''
-  //     }
-  //   }
-  // }
-
   // Process all properties recursively
   function processAllProperties(obj: Record<string, unknown>, basePath: string[] = []) {
     Object.entries(obj).forEach(([key, value]) => {

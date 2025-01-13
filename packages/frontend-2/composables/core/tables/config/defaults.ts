@@ -12,8 +12,10 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
     name: 'ID',
     type: 'string',
     value: null,
-    fetchedGroup: 'Identity Data',
-    currentGroup: 'Identity Data',
+    group: {
+      fetchedGroup: 'Identity Data',
+      currentGroup: 'Identity Data'
+    },
     visible: true,
     isSystem: true,
     metadata: {
@@ -29,8 +31,10 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
     name: 'Mark',
     type: 'string',
     value: null,
-    fetchedGroup: 'Identity Data',
-    currentGroup: 'Identity Data',
+    group: {
+      fetchedGroup: 'Identity Data',
+      currentGroup: 'Identity Data'
+    },
     visible: true,
     isSystem: true,
     metadata: {
@@ -46,8 +50,10 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
     name: 'Category',
     type: 'string',
     value: null,
-    fetchedGroup: 'Identity Data',
-    currentGroup: 'Identity Data',
+    group: {
+      fetchedGroup: 'Identity Data',
+      currentGroup: 'Identity Data'
+    },
     visible: true,
     isSystem: true,
     metadata: {
@@ -63,8 +69,10 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
     name: 'Host',
     type: 'string',
     value: null,
-    fetchedGroup: 'Parameters',
-    currentGroup: 'Parameters',
+    group: {
+      fetchedGroup: 'Parameters',
+      currentGroup: 'Parameters'
+    },
     visible: true,
     isSystem: true,
     metadata: {
