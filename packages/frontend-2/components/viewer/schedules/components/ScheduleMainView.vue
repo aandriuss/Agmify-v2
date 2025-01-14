@@ -5,9 +5,6 @@
       <pre class="text-xs">{{ debugInfo }}</pre>
     </div>
 
-    <!-- Category Menu -->
-    <CategoryMenu class="mb-4" />
-
     <!-- PrimeVue DataTable -->
     <DataTable
       v-model:expanded-rows="expandedRows"
@@ -101,7 +98,6 @@ import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
 import type { ElementData, TableColumn } from '~/composables/core/types'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
-import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
 import { ChevronRightIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
 
 const emit = defineEmits<{
@@ -373,7 +369,6 @@ function handleTestModeUpdate(value: boolean): void {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 2.5rem;
 }
 
 :deep(.expander-button) {
@@ -381,8 +376,6 @@ function handleTestModeUpdate(value: boolean): void {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 0.25rem;
   transition: background-color 0.2s;
 }
 

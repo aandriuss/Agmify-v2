@@ -49,7 +49,7 @@ interface ExtractedParameter {
 function extractNodeParameters(
   nodeData: ViewerNodeRaw
 ): Record<string, ExtractedParameter> {
-  // Get core properties that should be excluded
+  // Get 0_Base that should be excluded
   const coreProperties = new Set([
     'id',
     'type',
@@ -216,6 +216,33 @@ function convertViewerNodeToElementData(
       displayName: paramName
     })
   })
+
+  // Add id and category as parameters
+  parameters['id'] = createElementParameter(
+    nodeData.id,
+    {
+      fetchedGroup: '0_Base',
+      currentGroup: '0_Base'
+    },
+    {
+      category: nodeData.type || 'Uncategorized',
+      elementId: nodeData.id,
+      displayName: 'ID'
+    }
+  )
+
+  parameters['category'] = createElementParameter(
+    category,
+    {
+      fetchedGroup: '0_Base',
+      currentGroup: '0_Base'
+    },
+    {
+      category: nodeData.type || 'Uncategorized',
+      elementId: nodeData.id,
+      displayName: 'Category'
+    }
+  )
 
   debug.log(DebugCategories.PARAMETERS, 'Extracted parameters', {
     nodeId: nodeData.id,

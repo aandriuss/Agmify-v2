@@ -9,7 +9,7 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
   id: {
     kind: 'bim',
     id: 'id',
-    name: 'ID',
+    name: 'id',
     type: 'string',
     value: null,
     group: {
@@ -19,13 +19,13 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
     visible: true,
     isSystem: true,
     metadata: {
-      displayName: 'ID',
+      displayName: 'id',
       isSystem: true
     }
   },
-  mark: {
+  Mark: {
     kind: 'bim',
-    id: 'mark',
+    id: 'Mark',
     name: 'Mark',
     type: 'string',
     value: null,
@@ -40,9 +40,9 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
       isSystem: true
     }
   },
-  category: {
+  Category: {
     kind: 'bim',
-    id: 'category',
+    id: 'Category',
     name: 'Category',
     type: 'string',
     value: null,
@@ -57,9 +57,9 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
       isSystem: true
     }
   },
-  host: {
+  Host: {
     kind: 'bim',
-    id: 'host',
+    id: 'Host',
     name: 'Host',
     type: 'string',
     value: null,
@@ -79,16 +79,16 @@ export const essentialBimParameters: Record<string, AvailableBimParameter> = {
 // Create parent columns with full parameter data
 const parentColumns = [
   createTableColumn(essentialBimParameters.id, 0),
-  createTableColumn(essentialBimParameters.mark, 1),
-  createTableColumn(essentialBimParameters.category, 2)
+  createTableColumn(essentialBimParameters.Mark, 1),
+  createTableColumn(essentialBimParameters.Category, 2)
 ]
 
 // Create child columns with full parameter data
 const childColumns = [
   createTableColumn(essentialBimParameters.id, 0),
-  createTableColumn(essentialBimParameters.mark, 1),
-  createTableColumn(essentialBimParameters.host, 2),
-  createTableColumn(essentialBimParameters.category, 3)
+  createTableColumn(essentialBimParameters.Mark, 1),
+  createTableColumn(essentialBimParameters.Host, 2),
+  createTableColumn(essentialBimParameters.Category, 3)
 ]
 
 /**
