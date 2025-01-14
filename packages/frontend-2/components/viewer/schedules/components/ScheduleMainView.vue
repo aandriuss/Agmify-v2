@@ -282,18 +282,17 @@ function reorderColumns(
   dragIndex: number,
   dropIndex: number
 ): TableColumn[] {
-  // Create a new array to avoid mutating the original
-  const updatedColumns = columns.map((col) => ({ ...col }))
+  // Create a shallow copy of the array
+  const updatedColumns = columns.slice()
 
   // Move the column
   const [movedColumn] = updatedColumns.splice(dragIndex, 1)
   updatedColumns.splice(dropIndex, 0, movedColumn)
 
-  // Update order indices to match new positions
+  // Create new objects with updated order
   return updatedColumns.map((col, index) => ({
     ...col,
-    order: index,
-    visible: col.visible // Preserve visibility
+    order: index
   }))
 }
 
@@ -312,9 +311,9 @@ async function handleColumnReorder(event: {
       throw new Error('No table selected')
     }
 
-    // Determine if we're reordering parent or child columns
-    const isChildTable = event.target?.closest('.nested-table') !== null
-    const sourceColumns = isChildTable ? childColumns.value : columns.value
+    // Determine if we're reordering parent columns
+    const isParent = !event.target?.closest('.nested-table')
+    const sourceColumns = isParent ? columns.value : childColumns.value
 
     if (!sourceColumns || !sourceColumns.length) {
       throw new Error('No columns available')
@@ -337,24 +336,16 @@ async function handleColumnReorder(event: {
       event.dropIndex
     )
 
-    // Create deep copies to avoid mutation issues
-    const updatedParentColumns = isChildTable
-      ? currentTable.value.parentColumns.map((col) => ({ ...col }))
-      : reorderedColumns
-    const updatedChildColumns = isChildTable
-      ? reorderedColumns
-      : currentTable.value.childColumns.map((col) => ({ ...col }))
-
     // Update the store with new column order
-    await tableStore.updateTableState({
-      parentColumns: updatedParentColumns,
-      childColumns: updatedChildColumns
-    })
+    await tableStore.updateColumns(
+      isParent ? reorderedColumns : currentTable.value.parentColumns,
+      isParent ? currentTable.value.childColumns : reorderedColumns
+    )
 
     emit('table-updated')
 
     debug.log(DebugCategories.TABLE_UPDATES, 'Column reordered', {
-      isChildTable,
+      isParent,
       dragIndex: event.dragIndex,
       dropIndex: event.dropIndex,
       columnsCount: reorderedColumns.length
