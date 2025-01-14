@@ -1,13 +1,34 @@
 import type { DataTableFilterMeta } from 'primevue/datatable'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
-import type { BaseItem } from '~/composables/core/types/common/base-types'
+import type { BaseTableRow } from '~/composables/core/types'
 
 /**
- * Base table row interface
- * Extends BaseItem to ensure consistent base properties
+ * Component state interface
  */
-export interface BaseTableRow extends BaseItem {
-  [key: string]: unknown
+export interface ComponentState<T extends BaseTableRow = BaseTableRow> {
+  columns: TableColumn[]
+  detailColumns?: TableColumn[]
+  expandedRows: T[]
+  selectedRows: T[]
+  sortField?: string
+  sortOrder?: number
+  filters?: DataTableFilterMeta
+}
+
+/**
+ * Table props interface
+ */
+export interface TableProps<T extends BaseTableRow = BaseTableRow> {
+  tableId: string
+  tableName?: string
+  data: T[]
+  columns: TableColumn[]
+  detailColumns?: TableColumn[]
+  loading?: boolean
+  initialState?: {
+    expandedRows?: T[]
+    selectedRows?: T[]
+  }
 }
 
 /**

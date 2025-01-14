@@ -18,6 +18,8 @@ export * from './table-state'
 // Category types for table filtering
 export * from './category-types'
 
+export * from './table-base'
+
 /**
  * @deprecated All legacy types have been replaced by the core types above.
  * Use the following replacements:

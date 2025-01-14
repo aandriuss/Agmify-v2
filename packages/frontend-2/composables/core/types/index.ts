@@ -213,3 +213,14 @@ export type {
 export type { TableSettings, TableStoreState, TableStore } from '../tables/store/types'
 
 export type { ElementMetadata, DebugPanelProps } from './debug-panel'
+
+// will fix later
+
+export type {
+  ComponentState,
+  TableProps,
+  ColumnManagerProps,
+  TableWrapperProps
+} from '~/components/tables/DataTable/types'
+
+export { isBaseTableRow } from '~/components/tables/DataTable/types'

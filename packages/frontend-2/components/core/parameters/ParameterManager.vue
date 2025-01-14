@@ -89,7 +89,7 @@
       </div>
     </div>
     <!-- Debug Info -->
-    <div class="mb-2 p-2 bg-gray-100">
+    <div v-if="debug.isEnabled.value" class="mb-2 p-2 bg-gray-100">
       <pre class="text-xs">{{ debugInfo }}</pre>
     </div>
   </div>
@@ -112,6 +112,7 @@ import UserParameterList from './UserParameterList.vue'
 import ParameterCreationForm from './ParameterCreationForm.vue'
 import FilterOptions from '~/components/shared/FilterOptions.vue'
 import { useFilterAndSort } from '~/composables/shared/useFilterAndSort'
+import { debug } from '~/composables/core/utils/debug'
 
 const error = ref<string | null>(null)
 const isAddingNew = ref(false)

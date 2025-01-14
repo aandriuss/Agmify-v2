@@ -53,18 +53,19 @@
       data-key="id"
       :expanded-rows="hasExpandableRows ? expandedRowsMap : undefined"
       @update:expanded-rows="hasExpandableRows ? handleExpandedRowsChange : undefined"
-      @column-resize="handleColumnResize"
-      @column-reorder="handleColumnReorder"
       @row-expand="handleRowExpand"
       @row-collapse="handleRowCollapse"
+      @column-resize="handleColumnResize"
+      @column-reorder="handleColumnReorder"
       @filter="handleFilter"
       @sort="handleSort"
     >
       <!-- Row Expansion Template -->
       <template #expansion="slotProps">
         <slot name="expansion" :row="slotProps.data">
-          <div class="p-1">
+          <div class="p-3">
             <DataTable
+              v-if="isExpandableRow(slotProps.data) && slotProps.data.details?.length"
               :value="slotProps.data.details"
               :resizable-columns="true"
               :reorderable-columns="true"
@@ -84,12 +85,28 @@
                 :sortable="true"
               />
             </DataTable>
+            <div v-else class="text-gray-500">No details available</div>
           </div>
         </slot>
       </template>
 
+      <!-- Expander Column -->
+      <Column v-if="hasExpandableRows" :expander="true" style="width: 3rem">
+        <template #body="slotProps">
+          <button
+            v-if="hasDetails(slotProps.data)"
+            class="p-row-toggler"
+            @click="toggleRow(slotProps.data)"
+          >
+            <component
+              :is="isRowExpanded(slotProps.data) ? ChevronDownIcon : ChevronRightIcon"
+              class="h-4 w-4"
+            />
+          </button>
+        </template>
+      </Column>
+
       <!-- Default Columns -->
-      <Column v-if="hasExpandableRows" :expander="true" style="width: 3rem" />
       <Column
         v-for="col in visibleTableColumns"
         :key="col.field"
@@ -108,6 +125,7 @@
 import { computed, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/vue/24/outline'
 import type {
   DataTableFilterEvent,
   DataTableSortEvent,
@@ -115,15 +133,15 @@ import type {
   DataTableFilterMeta
 } from 'primevue/datatable'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
-import type { TableSort } from '~/composables/core/types'
-import type { FilterDef } from '~/composables/core/types/tables/table-config'
-import { useTableStore } from '~/composables/core/tables/store/store'
-import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import type {
+  TableSort,
   TableEmits,
   BaseTableRow,
   ExpandableTableRow
-} from '~/composables/core/types/tables/table-events'
+} from '~/composables/core/types'
+import type { FilterDef } from '~/composables/core/types/tables/table-config'
+import { useTableStore } from '~/composables/core/tables/store/store'
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
 
 // Extend TableEmits to include sort event
@@ -146,6 +164,16 @@ interface BaseTableProps<T extends BaseTableRow> {
   }
 }
 
+// Props with defaults
+const props = withDefaults(defineProps<BaseTableProps<T>>(), {
+  tableName: 'Untitled Table',
+  loading: false,
+  loadingMessage: '',
+  error: null,
+  detailColumns: () => [],
+  initialState: () => ({})
+})
+
 // Add type for filter match modes
 type FilterMatchMode =
   | 'startsWith'
@@ -167,16 +195,6 @@ type FilterMatchMode =
 
 const debug = useDebug()
 
-// Props with defaults
-const props = withDefaults(defineProps<BaseTableProps<T>>(), {
-  tableName: 'Untitled Table',
-  loading: false,
-  loadingMessage: '',
-  error: null,
-  detailColumns: () => [],
-  initialState: () => ({})
-})
-
 // Emits with extended type
 const emit = defineEmits<ExtendedTableEmits<T>>()
 
@@ -187,17 +205,76 @@ const { state: loadingState } = useLoadingState()
 // Table state
 const expandedRowsMap = ref<Record<string, boolean>>(
   props.initialState?.expandedRows?.reduce((acc, row) => {
-    if (row.id) acc[row.id] = true
+    if (row.id && hasDetails(row)) acc[row.id] = true
     return acc
   }, {} as Record<string, boolean>) || {}
 )
 
-// Computed properties
-const hasExpandableRows = computed(() => {
-  return props.data.some(
-    (row) =>
-      isExpandableRow(row) && Array.isArray(row.details) && row.details.length > 0
+// Function to check if a row has details
+function hasDetails(row: T): row is T & ExpandableTableRow {
+  return isExpandableRow(row) && Array.isArray(row.details) && row.details.length > 0
+}
+
+// Function to safely check if a row is expanded
+function isRowExpanded(row: T): boolean {
+  return Boolean(row.id && expandedRowsMap.value[row.id])
+}
+
+// Toggle row expansion
+function toggleRow(row: T): void {
+  if (!row.id || !hasDetails(row)) return
+
+  const newState = !expandedRowsMap.value[row.id]
+  expandedRowsMap.value = {
+    ...expandedRowsMap.value,
+    [row.id]: newState
+  }
+}
+
+// Handle expanded rows change with type checking
+function handleExpandedRowsChange(value: unknown): void {
+  if (Array.isArray(value)) {
+    // Handle array case
+    const newMap: Record<string, boolean> = {}
+    value.forEach((row) => {
+      if (isExpandableRow(row) && hasDetails(row)) {
+        newMap[row.id] = true
+      }
+    })
+    expandedRowsMap.value = newMap
+  } else if (typeof value === 'object' && value !== null) {
+    // Handle object case - but only keep rows that have details
+    const newMap: Record<string, boolean> = {}
+    Object.entries(value as Record<string, boolean>).forEach(([id, expanded]) => {
+      const row = props.data.find((r) => r.id === id)
+      if (row && hasDetails(row) && expanded) {
+        newMap[id] = true
+      }
+    })
+    expandedRowsMap.value = newMap
+  }
+
+  debug.log(DebugCategories.STATE, 'Expanded rows changed:', {
+    expandedRowsMap: expandedRowsMap.value,
+    rowsWithDetails: props.data.filter(hasDetails).length
+  })
+}
+
+// Type guard for expandable rows with improved type safety
+function isExpandableRow(value: unknown): value is ExpandableTableRow {
+  if (!value || typeof value !== 'object') return false
+
+  const candidate = value as Partial<ExpandableTableRow>
+  return (
+    'id' in candidate &&
+    typeof candidate.id === 'string' &&
+    'details' in candidate &&
+    Array.isArray(candidate.details)
   )
+}
+
+const hasExpandableRows = computed(() => {
+  return props.data.some((row) => hasDetails(row))
 })
 
 const isLoading = computed(() => props.loading)
@@ -297,19 +374,6 @@ function isValidMatchMode(value: unknown): value is FilterMatchMode {
   ].includes(value)
 }
 
-// Type guard for expandable rows with improved type safety
-function isExpandableRow(value: unknown): value is ExpandableTableRow {
-  if (!value || typeof value !== 'object') return false
-
-  const candidate = value as Partial<ExpandableTableRow>
-  return (
-    'id' in candidate &&
-    typeof candidate.id === 'string' &&
-    'details' in candidate &&
-    Array.isArray(candidate.details)
-  )
-}
-
 // Event handlers with improved type safety
 function handleSort(event: DataTableSortEvent): void {
   try {
@@ -398,29 +462,6 @@ function handleError(err: unknown): void {
   emit('error', { error })
 }
 
-function handleExpandedRowsChange(value: unknown): void {
-  if (Array.isArray(value)) {
-    // Handle array case
-    const newMap: Record<string, boolean> = {}
-    value.forEach((row) => {
-      if (isExpandableRow(row)) {
-        newMap[row.id] = true
-      }
-    })
-    expandedRowsMap.value = newMap
-  } else if (typeof value === 'object' && value !== null) {
-    // Handle object case
-    expandedRowsMap.value = value as Record<string, boolean>
-  }
-
-  debug.log(DebugCategories.STATE, 'Expanded rows changed:', {
-    type: Array.isArray(value) ? 'array' : 'object',
-    expandedCount: Array.isArray(value)
-      ? value.length
-      : Object.keys(value as Record<string, boolean>).length
-  })
-}
-
 function handleColumnVisibilityChange(column: TableColumn): void {
   try {
     if (loadingState.value.phase !== 'complete') return
@@ -490,25 +531,25 @@ function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): v
 }
 
 function handleRowExpand(event: { data: T }): void {
-  try {
-    if (loadingState.value.phase !== 'complete') return
-    if (!event.data?.id) return
-    emit('row-expand', { row: event.data })
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error('Failed to expand row')
-    handleError(error)
+  const row = event.data
+  if (!row.id || !hasDetails(row)) return
+
+  expandedRowsMap.value = {
+    ...expandedRowsMap.value,
+    [row.id]: true
   }
+  emit('row-expand', { row })
 }
 
 function handleRowCollapse(event: { data: T }): void {
-  try {
-    if (loadingState.value.phase !== 'complete') return
-    if (!event.data?.id) return
-    emit('row-collapse', { row: event.data })
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error('Failed to collapse row')
-    handleError(error)
+  const row = event.data
+  if (!row.id || !hasDetails(row)) return
+
+  expandedRowsMap.value = {
+    ...expandedRowsMap.value,
+    [row.id]: false
   }
+  emit('row-collapse', { row })
 }
 
 function handleRetry(): void {
@@ -557,14 +598,19 @@ function handleRetry(): void {
 
 .base-table :deep(.p-datatable-expanded-row > td) {
   padding: 0 !important;
+  background-color: var(--surface-ground);
 }
 
 .base-table :deep(.p-datatable-expanded-row .p-datatable) {
   margin: 0 !important;
+  border: 1px solid var(--surface-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
 }
 
 .base-table :deep(.p-datatable-expanded-row .p-datatable .p-datatable-thead > tr > th) {
-  background-color: var(--surface-ground);
+  background-color: var(--surface-section);
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .base-table :deep(.p-datatable-expanded-row .p-datatable .p-column-resizer) {
@@ -579,5 +625,26 @@ function handleRetry(): void {
 .table-state {
   padding: 2rem;
   text-align: center;
+}
+
+.p-row-toggler {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-radius: 50%;
+}
+
+.p-row-toggler:hover {
+  background-color: var(--surface-hover);
+}
+
+.p-row-toggler svg {
+  color: var(--text-color);
 }
 </style>

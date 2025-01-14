@@ -1,13 +1,6 @@
-import type { TableColumn } from './table-column'
 import type { DataTableFilterMeta, DataTableFilterEvent } from 'primevue/datatable'
-
-/**
- * Base table row interface
- */
-export interface BaseTableRow {
-  id: string
-  [key: string]: unknown
-}
+import type { TableColumn } from './table-column'
+import type { BaseTableRow } from './table-base'
 
 /**
  * Table event payloads
@@ -94,8 +87,3 @@ export type ScheduleEmits<TRow extends BaseTableRow = BaseTableRow> =
     (e: 'create-parameter', payload: TableUpdatePayload): void
     (e: 'error', payload: ErrorPayload): void
   }
-
-export interface ExpandableTableRow {
-  id: string
-  [key: string]: unknown
-}
