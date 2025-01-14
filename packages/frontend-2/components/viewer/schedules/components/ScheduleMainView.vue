@@ -22,12 +22,24 @@
       <template #empty>No data available</template>
       <template #loading>Loading data...</template>
 
-      <Column
-        v-if="hasExpandableRows"
-        :expander="true"
-        :expandable="(data: ElementData) => (data.details?.length ?? 0) > 0"
-        style="width: 3rem"
-      />
+      <!-- Expander column -->
+      <Column v-if="hasExpandableRows" :expander="true" style="width: 3rem">
+        <template #body="{ data }">
+          <div class="expander-cell">
+            <button
+              v-if="(data.details?.length ?? 0) > 0"
+              type="button"
+              class="expander-button"
+              @click.stop="toggleRow(data)"
+            >
+              <component
+                :is="expandedRows.includes(data) ? ChevronDownIcon : ChevronRightIcon"
+                class="h-4 w-4"
+              />
+            </button>
+          </div>
+        </template>
+      </Column>
 
       <Column
         v-for="col in columns"
@@ -84,6 +96,7 @@ import { useParameterStore } from '~/composables/core/parameters/store'
 import type { ElementData } from '~/composables/core/types'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
+import { ChevronRightIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
 
 const emit = defineEmits<{
   (e: 'error', payload: { error: Error }): void
@@ -97,6 +110,16 @@ const parameterStore = useParameterStore()
 
 // Row expansion control
 const expandedRows = ref<ElementData[]>([])
+
+// Toggle row expansion
+function toggleRow(row: ElementData): void {
+  const index = expandedRows.value.indexOf(row)
+  if (index !== -1) {
+    expandedRows.value.splice(index, 1)
+  } else {
+    expandedRows.value.push(row)
+  }
+}
 
 // Handle row click to prevent expansion of rows without children
 function handleRowClick(event: { data: ElementData }) {
@@ -283,5 +306,26 @@ function handleTestModeUpdate(value: boolean): void {
   width: 100%;
   height: 100%;
   min-height: 400px;
+}
+
+:deep(.expander-cell) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+}
+
+:deep(.expander-button) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s;
+}
+
+:deep(.expander-button:hover) {
+  background-color: var(--surface-hover);
 }
 </style>
