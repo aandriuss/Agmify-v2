@@ -14,7 +14,7 @@
       :value="tableData"
       :loading="!hasData"
       :resizable-columns="true"
-      :reorder-able-columns="true"
+      :reorderable-columns="true"
       table-style="min-width: 50rem"
       @column-reorder="handleColumnReorder"
       @row-click="handleRowClick"
@@ -52,7 +52,13 @@
 
       <template #expansion="slotProps">
         <div v-if="(slotProps.data.details?.length ?? 0) > 0" class="p-3">
-          <DataTable :value="slotProps.data.details">
+          <DataTable
+            :value="slotProps.data.details"
+            class="nested-table"
+            :resizable-columns="true"
+            :reorderable-columns="true"
+            @column-reorder="handleColumnReorder"
+          >
             <Column
               v-for="col in childColumns"
               :key="col.id"
@@ -93,7 +99,7 @@ import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useStore } from '~/composables/core/store'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store'
-import type { ElementData } from '~/composables/core/types'
+import type { ElementData, TableColumn } from '~/composables/core/types'
 import DebugPanel from '~/components/core/debug/DebugPanel.vue'
 import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
 import { ChevronRightIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
@@ -270,24 +276,88 @@ const error = computed(() => {
 })
 
 // Event handlers
+// Helper function to reorder columns
+function reorderColumns(
+  columns: TableColumn[],
+  dragIndex: number,
+  dropIndex: number
+): TableColumn[] {
+  // Create a new array to avoid mutating the original
+  const updatedColumns = columns.map((col) => ({ ...col }))
+
+  // Move the column
+  const [movedColumn] = updatedColumns.splice(dragIndex, 1)
+  updatedColumns.splice(dropIndex, 0, movedColumn)
+
+  // Update order indices to match new positions
+  return updatedColumns.map((col, index) => ({
+    ...col,
+    order: index,
+    visible: col.visible // Preserve visibility
+  }))
+}
+
 async function handleColumnReorder(event: {
   dragIndex: number
   dropIndex: number
+  target?: HTMLElement
 }): Promise<void> {
   try {
-    if (!currentTable.value) return
+    // Ensure store is initialized and table is loaded
+    if (!store.initialized.value || !parameterStore.state.value.initialized) {
+      throw new Error('Store not initialized')
+    }
 
-    const updatedColumns = [...columns.value]
-    const [movedColumn] = updatedColumns.splice(event.dragIndex, 1)
-    updatedColumns.splice(event.dropIndex, 0, movedColumn)
+    if (!currentTable.value) {
+      throw new Error('No table selected')
+    }
 
-    await tableStore.updateColumns(updatedColumns, [])
+    // Determine if we're reordering parent or child columns
+    const isChildTable = event.target?.closest('.nested-table') !== null
+    const sourceColumns = isChildTable ? childColumns.value : columns.value
+
+    if (!sourceColumns || !sourceColumns.length) {
+      throw new Error('No columns available')
+    }
+
+    // Validate indices
+    if (
+      event.dragIndex < 0 ||
+      event.dragIndex >= sourceColumns.length ||
+      event.dropIndex < 0 ||
+      event.dropIndex > sourceColumns.length
+    ) {
+      throw new Error('Invalid column indices')
+    }
+
+    // Reorder the columns
+    const reorderedColumns = reorderColumns(
+      sourceColumns,
+      event.dragIndex,
+      event.dropIndex
+    )
+
+    // Create deep copies to avoid mutation issues
+    const updatedParentColumns = isChildTable
+      ? currentTable.value.parentColumns.map((col) => ({ ...col }))
+      : reorderedColumns
+    const updatedChildColumns = isChildTable
+      ? reorderedColumns
+      : currentTable.value.childColumns.map((col) => ({ ...col }))
+
+    // Update the store with new column order
+    await tableStore.updateTableState({
+      parentColumns: updatedParentColumns,
+      childColumns: updatedChildColumns
+    })
+
     emit('table-updated')
 
     debug.log(DebugCategories.TABLE_UPDATES, 'Column reordered', {
+      isChildTable,
       dragIndex: event.dragIndex,
       dropIndex: event.dropIndex,
-      columnsCount: updatedColumns.length
+      columnsCount: reorderedColumns.length
     })
   } catch (err) {
     const safeError = err instanceof Error ? err : new Error('Unknown error')
