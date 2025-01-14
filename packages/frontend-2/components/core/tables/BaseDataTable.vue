@@ -42,17 +42,17 @@
     <!-- Data Table -->
     <DataTable
       v-else
-      :value="props.data"
+      :value="tableData"
       :resizable-columns="true"
       :reorderable-columns="true"
       :striped-rows="true"
       class="p-datatable-sm shadow-sm"
       :paginator="false"
       :rows="10"
-      :expand-mode="hasExpandableRows ? 'row' : undefined"
+      expand-mode="row"
       data-key="id"
-      :expanded-rows="hasExpandableRows ? expandedRowsMap : undefined"
-      @update:expanded-rows="hasExpandableRows ? handleExpandedRowsChange : undefined"
+      :expanded-rows="expandedRows"
+      @update:expanded-rows="handleExpandedRowsChange"
       @row-expand="handleRowExpand"
       @row-collapse="handleRowCollapse"
       @column-resize="handleColumnResize"
@@ -65,7 +65,7 @@
         <slot name="expansion" :row="slotProps.data">
           <div class="p-3">
             <DataTable
-              v-if="isExpandableRow(slotProps.data) && slotProps.data.details?.length"
+              v-if="slotProps.data.details?.length"
               :value="slotProps.data.details"
               :resizable-columns="true"
               :reorderable-columns="true"
@@ -91,20 +91,12 @@
       </template>
 
       <!-- Expander Column -->
-      <Column v-if="hasExpandableRows" :expander="true" style="width: 3rem">
-        <template #body="slotProps">
-          <button
-            v-if="hasDetails(slotProps.data)"
-            class="p-row-toggler"
-            @click="toggleRow(slotProps.data)"
-          >
-            <component
-              :is="isRowExpanded(slotProps.data) ? ChevronDownIcon : ChevronRightIcon"
-              class="h-4 w-4"
-            />
-          </button>
-        </template>
-      </Column>
+      <Column
+        v-if="hasExpandableRows"
+        :expander="true"
+        style="width: 3rem"
+        :exportable="false"
+      />
 
       <!-- Default Columns -->
       <Column
@@ -121,51 +113,38 @@
   </div>
 </template>
 
-<script setup lang="ts" generic="T extends BaseTableRow">
+<script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/vue/24/outline'
 import type {
   DataTableFilterEvent,
   DataTableSortEvent,
   DataTableFilterMetaData,
-  DataTableFilterMeta
+  DataTableExpandedRows
 } from 'primevue/datatable'
 import type { TableColumn } from '~/composables/core/types/tables/table-column'
-import type {
-  TableSort,
-  TableEmits,
-  BaseTableRow,
-  ExpandableTableRow
-} from '~/composables/core/types'
-import type { FilterDef } from '~/composables/core/types/tables/table-config'
+import type { TableEmits, ElementData } from '~/composables/core/types'
 import { useTableStore } from '~/composables/core/tables/store/store'
-import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
 
-// Extend TableEmits to include sort event
-interface ExtendedTableEmits<T extends BaseTableRow> extends TableEmits<T> {
-  (e: 'sort', payload: { sort: TableSort }): void
-}
-
-interface BaseTableProps<T extends BaseTableRow> {
+interface BaseTableProps {
   tableId: string
   tableName?: string
-  data: T[]
+  data: ElementData[]
   columns: TableColumn[]
   detailColumns?: TableColumn[]
   loading?: boolean
   loadingMessage?: string
   error?: Error | null
   initialState?: {
-    expandedRows?: T[]
-    selectedRows?: T[]
+    expandedRows?: ElementData[]
+    selectedRows?: ElementData[]
   }
 }
 
 // Props with defaults
-const props = withDefaults(defineProps<BaseTableProps<T>>(), {
+const props = withDefaults(defineProps<BaseTableProps>(), {
   tableName: 'Untitled Table',
   loading: false,
   loadingMessage: '',
@@ -174,129 +153,154 @@ const props = withDefaults(defineProps<BaseTableProps<T>>(), {
   initialState: () => ({})
 })
 
-// Add type for filter match modes
-type FilterMatchMode =
-  | 'startsWith'
-  | 'contains'
-  | 'notContains'
-  | 'endsWith'
-  | 'equals'
-  | 'notEquals'
-  | 'in'
-  | 'lt'
-  | 'lte'
-  | 'gt'
-  | 'gte'
-  | 'between'
-  | 'dateIs'
-  | 'dateIsNot'
-  | 'dateBefore'
-  | 'dateAfter'
-
-const debug = useDebug()
-
-// Emits with extended type
-const emit = defineEmits<ExtendedTableEmits<T>>()
-
-// Initialize stores and loading state
+const emit = defineEmits<TableEmits<ElementData>>()
 const tableStore = useTableStore()
 const { state: loadingState } = useLoadingState()
 
-// Table state
-const expandedRowsMap = ref<Record<string, boolean>>(
-  props.initialState?.expandedRows?.reduce((acc, row) => {
-    if (row.id && hasDetails(row)) acc[row.id] = true
-    return acc
-  }, {} as Record<string, boolean>) || {}
-)
-
-// Function to check if a row has details
-function hasDetails(row: T): row is T & ExpandableTableRow {
-  return isExpandableRow(row) && Array.isArray(row.details) && row.details.length > 0
-}
-
-// Function to safely check if a row is expanded
-function isRowExpanded(row: T): boolean {
-  return Boolean(row.id && expandedRowsMap.value[row.id])
-}
-
-// Toggle row expansion
-function toggleRow(row: T): void {
-  if (!row.id || !hasDetails(row)) return
-
-  const newState = !expandedRowsMap.value[row.id]
-  expandedRowsMap.value = {
-    ...expandedRowsMap.value,
-    [row.id]: newState
-  }
-}
-
-// Handle expanded rows change with type checking
-function handleExpandedRowsChange(value: unknown): void {
-  if (Array.isArray(value)) {
-    // Handle array case
-    const newMap: Record<string, boolean> = {}
-    value.forEach((row) => {
-      if (isExpandableRow(row) && hasDetails(row)) {
-        newMap[row.id] = true
-      }
-    })
-    expandedRowsMap.value = newMap
-  } else if (typeof value === 'object' && value !== null) {
-    // Handle object case - but only keep rows that have details
-    const newMap: Record<string, boolean> = {}
-    Object.entries(value as Record<string, boolean>).forEach(([id, expanded]) => {
-      const row = props.data.find((r) => r.id === id)
-      if (row && hasDetails(row) && expanded) {
-        newMap[id] = true
-      }
-    })
-    expandedRowsMap.value = newMap
-  }
-
-  debug.log(DebugCategories.STATE, 'Expanded rows changed:', {
-    expandedRowsMap: expandedRowsMap.value,
-    rowsWithDetails: props.data.filter(hasDetails).length
-  })
-}
-
-// Type guard for expandable rows with improved type safety
-function isExpandableRow(value: unknown): value is ExpandableTableRow {
-  if (!value || typeof value !== 'object') return false
-
-  const candidate = value as Partial<ExpandableTableRow>
-  return (
-    'id' in candidate &&
-    typeof candidate.id === 'string' &&
-    'details' in candidate &&
-    Array.isArray(candidate.details)
-  )
-}
-
-const hasExpandableRows = computed(() => {
-  return props.data.some((row) => hasDetails(row))
-})
-
+// Computed properties for table state
 const isLoading = computed(() => props.loading)
 const isDataValid = computed(() => Array.isArray(props.data) && props.data.length > 0)
 const hasVisibleColumns = computed(() => props.columns?.length > 0)
 
-const visibleTableColumns = computed(() => {
-  if (!Array.isArray(props.columns)) return []
-  return props.columns.filter((col) => col?.visible)
+// Table data with type safety
+const tableData = computed(() => {
+  return props.data.map((row) => ({
+    ...row,
+    _expandable:
+      row.metadata?.isParent && Array.isArray(row.details) && row.details.length > 0
+  }))
 })
 
-const visibleDetailColumns = computed(() => {
-  if (!Array.isArray(props.detailColumns)) return []
-  return props.detailColumns.filter((col) => col?.visible)
-})
+// Expanded rows state
+const expandedRows = ref<DataTableExpandedRows>({})
 
-// Watch for column changes with loading state awareness
+// Initialize expanded rows from props
+if (props.initialState?.expandedRows?.length) {
+  props.initialState.expandedRows.forEach((row) => {
+    if (row.id && row.metadata?.isParent && row.details?.length) {
+      expandedRows.value[row.id] = true
+    }
+  })
+}
+
+// Computed properties for columns
+const visibleTableColumns = computed(
+  () => props.columns?.filter((col) => col?.visible) || []
+)
+
+const visibleDetailColumns = computed(
+  () => props.detailColumns?.filter((col) => col?.visible) || []
+)
+
+const hasExpandableRows = computed(() => tableData.value.some((row) => row._expandable))
+
+// Event handlers
+function handleExpandedRowsChange(value: DataTableExpandedRows): void {
+  expandedRows.value = value
+}
+
+function handleRowExpand(event: { data: ElementData }): void {
+  emit('row-expand', { row: event.data })
+}
+
+function handleRowCollapse(event: { data: ElementData }): void {
+  emit('row-collapse', { row: event.data })
+}
+
+function handleSort(event: DataTableSortEvent): void {
+  const field = event.sortField?.toString()
+  if (!field) return
+
+  const order = event.sortOrder === 1 ? 'ASC' : 'DESC'
+
+  if (tableStore.computed.currentTable.value) {
+    tableStore.updateTableState({
+      ...tableStore.computed.currentTable.value,
+      sort: { field, order }
+    })
+  }
+
+  emit('sort', { field, order: event.sortOrder || 1 })
+}
+
+function handleFilter(event: DataTableFilterEvent): void {
+  const filters = Object.entries(event.filters || {})
+    .filter((entry): entry is [string, DataTableFilterMetaData] => {
+      const [, meta] = entry
+      return (
+        typeof meta === 'object' &&
+        meta !== null &&
+        'value' in meta &&
+        'matchMode' in meta
+      )
+    })
+    .map(([columnId, meta]) => ({
+      columnId,
+      value: String(meta.value),
+      operator: meta.matchMode
+    }))
+
+  if (tableStore.computed.currentTable.value) {
+    tableStore.updateTableState({
+      ...tableStore.computed.currentTable.value,
+      filters
+    })
+  }
+
+  emit('filter', { filters: event.filters || {} })
+}
+
+function handleColumnVisibilityChange(column: TableColumn): void {
+  if (!column?.id) return
+
+  emit('column-visibility-change', {
+    column: {
+      ...column,
+      visible: !column.visible
+    },
+    visible: !column.visible
+  })
+}
+
+function handleColumnResize(event: { element: HTMLElement; delta: number }): void {
+  const field = event.element.dataset.field
+  if (!field) return
+
+  const columns = [...props.columns]
+  const column = columns.find((col) => col.field === field)
+  if (column) {
+    const updatedColumn = { ...column, width: event.element.offsetWidth }
+    const updatedColumns = columns.map((c) => (c.field === field ? updatedColumn : c))
+    tableStore.updateColumns(updatedColumns, props.detailColumns || [])
+  }
+
+  emit('column-resize', { element: event.element, delta: event.delta })
+}
+
+function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
+  const { dragIndex, dropIndex } = event
+  const columns = [...props.columns]
+  const [movedColumn] = columns.splice(dragIndex, 1)
+  columns.splice(dropIndex, 0, movedColumn)
+
+  const updatedColumns = columns.map((col, index) => ({
+    ...col,
+    order: index
+  }))
+
+  tableStore.updateColumns(updatedColumns, props.detailColumns || [])
+  emit('column-reorder', { dragIndex, dropIndex })
+}
+
+function handleRetry(): void {
+  emit('retry', { timestamp: Date.now() })
+}
+
+// Watch for column changes
 watch(
   [() => props.columns, () => loadingState.value.phase],
   ([newColumns, phase]) => {
-    if (phase !== 'complete') return
-    if (!Array.isArray(newColumns)) return
+    if (phase !== 'complete' || !Array.isArray(newColumns)) return
     tableStore.updateColumns(newColumns, props.detailColumns || [])
   },
   { deep: true }
@@ -305,14 +309,13 @@ watch(
 watch(
   [() => props.detailColumns, () => loadingState.value.phase],
   ([newColumns, phase]) => {
-    if (phase !== 'complete') return
-    if (!Array.isArray(newColumns)) return
+    if (phase !== 'complete' || !Array.isArray(newColumns)) return
     tableStore.updateColumns(props.columns, newColumns)
   },
   { deep: true }
 )
 
-// Error state with loading phase context
+// Error state
 const errorState = computed(() => {
   if (props.error) {
     return {
@@ -333,228 +336,6 @@ const errorState = computed(() => {
   }
   return null
 })
-
-// Type guards
-function isFilterMetaData(value: unknown): value is DataTableFilterMetaData {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'value' in value &&
-    'matchMode' in value &&
-    typeof (value as DataTableFilterMetaData).value !== 'undefined' &&
-    typeof (value as DataTableFilterMetaData).matchMode === 'string'
-  )
-}
-
-function isValidFilterValue(value: unknown): value is string | number | boolean {
-  return (
-    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-  )
-}
-
-function isValidMatchMode(value: unknown): value is FilterMatchMode {
-  if (typeof value !== 'string') return false
-  return [
-    'startsWith',
-    'contains',
-    'notContains',
-    'endsWith',
-    'equals',
-    'notEquals',
-    'in',
-    'lt',
-    'lte',
-    'gt',
-    'gte',
-    'between',
-    'dateIs',
-    'dateIsNot',
-    'dateBefore',
-    'dateAfter'
-  ].includes(value)
-}
-
-// Event handlers with improved type safety
-function handleSort(event: DataTableSortEvent): void {
-  try {
-    if (loadingState.value.phase !== 'complete') return
-
-    const field = event.sortField?.toString()
-    if (!field) return
-
-    const sort: TableSort = {
-      field,
-      order: event.sortOrder === 1 ? 'ASC' : 'DESC'
-    }
-
-    // Update table with new sort
-    if (tableStore.computed.currentTable.value) {
-      tableStore.updateTableState({
-        ...tableStore.computed.currentTable.value,
-        sort
-      })
-    }
-
-    emit('sort', { sort })
-  } catch (err) {
-    handleError(err instanceof Error ? err : new Error('Failed to apply sort'))
-  }
-}
-
-function handleFilter(event: DataTableFilterEvent): void {
-  try {
-    if (loadingState.value.phase !== 'complete') return
-
-    const filters: FilterDef[] = []
-    const eventFilters = event.filters || {}
-
-    Object.entries(eventFilters).forEach(([columnId, filterMeta]) => {
-      if (isFilterMetaData(filterMeta)) {
-        const value = isValidFilterValue(filterMeta.value) ? filterMeta.value : ''
-        const matchMode = filterMeta.matchMode
-
-        if (isValidFilterValue(value) && isValidMatchMode(matchMode)) {
-          filters.push({
-            columnId,
-            value: String(value),
-            operator: matchMode
-          })
-        }
-      }
-    })
-
-    const filterMeta: DataTableFilterMeta = filters.reduce(
-      (acc, filter) => ({
-        ...acc,
-        [filter.columnId]: {
-          value: filter.value,
-          matchMode: filter.operator
-        }
-      }),
-      {} as DataTableFilterMeta
-    )
-
-    // Update table with new filters
-    if (tableStore.computed.currentTable.value) {
-      tableStore.updateTableState({
-        ...tableStore.computed.currentTable.value,
-        filters
-      })
-    }
-
-    emit('filter', { filters: filterMeta })
-  } catch (err) {
-    handleError(err instanceof Error ? err : new Error('Failed to apply filters'))
-  }
-}
-
-function handleError(err: unknown): void {
-  const error = err instanceof Error ? err : new Error(String(err))
-  debug.error(DebugCategories.ERROR, 'Table error:', {
-    error,
-    phase: loadingState.value.phase,
-    state: {
-      isLoading: isLoading.value,
-      dataValid: isDataValid.value,
-      hasColumns: hasVisibleColumns.value
-    }
-  })
-  emit('error', { error })
-}
-
-function handleColumnVisibilityChange(column: TableColumn): void {
-  try {
-    if (loadingState.value.phase !== 'complete') return
-    if (!column?.id) return
-
-    debug.log(DebugCategories.COLUMNS, 'Column visibility change requested', {
-      id: column.id,
-      visible: !column.visible,
-      phase: loadingState.value.phase
-    })
-
-    emit('column-visibility-change', {
-      column: {
-        ...column,
-        visible: !column.visible
-      },
-      visible: !column.visible
-    })
-  } catch (err) {
-    const error =
-      err instanceof Error ? err : new Error('Failed to update column visibility')
-    handleError(error)
-  }
-}
-
-function handleColumnResize(event: { element: HTMLElement; delta: number }): void {
-  try {
-    if (loadingState.value.phase !== 'complete') return
-    const field = event.element.dataset.field
-    if (!field) return
-
-    const columns = [...props.columns]
-    const column = columns.find((col) => col.field === field)
-    if (column) {
-      const updatedColumn = { ...column, width: event.element.offsetWidth }
-      const updatedColumns = columns.map((c) => (c.field === field ? updatedColumn : c))
-      tableStore.updateColumns(updatedColumns, props.detailColumns || [])
-    }
-
-    emit('column-resize', { element: event.element, delta: event.delta })
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error('Failed to resize column')
-    handleError(error)
-  }
-}
-
-function handleColumnReorder(event: { dragIndex: number; dropIndex: number }): void {
-  try {
-    if (loadingState.value.phase !== 'complete') return
-    const { dragIndex, dropIndex } = event
-    const columns = [...props.columns]
-    const [movedColumn] = columns.splice(dragIndex, 1)
-    columns.splice(dropIndex, 0, movedColumn)
-
-    // Update column order
-    const updatedColumns = columns.map((col, index) => ({
-      ...col,
-      order: index
-    }))
-
-    tableStore.updateColumns(updatedColumns, props.detailColumns || [])
-    emit('column-reorder', { dragIndex, dropIndex })
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error('Failed to reorder columns')
-    handleError(error)
-  }
-}
-
-function handleRowExpand(event: { data: T }): void {
-  const row = event.data
-  if (!row.id || !hasDetails(row)) return
-
-  expandedRowsMap.value = {
-    ...expandedRowsMap.value,
-    [row.id]: true
-  }
-  emit('row-expand', { row })
-}
-
-function handleRowCollapse(event: { data: T }): void {
-  const row = event.data
-  if (!row.id || !hasDetails(row)) return
-
-  expandedRowsMap.value = {
-    ...expandedRowsMap.value,
-    [row.id]: false
-  }
-  emit('row-collapse', { row })
-}
-
-function handleRetry(): void {
-  emit('retry', { timestamp: Date.now() })
-}
 </script>
 
 <style>
