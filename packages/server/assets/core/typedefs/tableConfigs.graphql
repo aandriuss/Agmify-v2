@@ -1,0 +1,238 @@
+scalar JSON
+scalar JSONObject
+
+"""
+Parameter value types
+"""
+enum BimValueType {
+  string
+  number
+  boolean
+  date
+  object
+  array
+}
+
+enum UserValueType {
+  fixed
+  equation
+}
+
+"""
+Equation value with references
+"""
+type EquationValue {
+  kind: String!
+  expression: String!
+  references: [String!]!
+  resultType: BimValueType!
+  computed: JSON
+}
+
+"""
+Parameter data for table columns
+"""
+type ColumnParameter {
+  id: ID!
+  name: String!
+  kind: String! # 'bim' or 'user'
+  type: String! # BimValueType or UserValueType
+  category: String
+  description: String
+  value: JSON # Can be string, number, boolean, null, or EquationValue
+  group: JSONObject!
+  equation: String # Optional, only if kind is 'user'
+  metadata: JSONObject
+}
+
+"""
+Column configuration for tables
+Stores complete parameter data along with display properties
+"""
+type TableColumn {
+  # Display properties
+  id: ID!
+  field: String!
+  header: String!
+  order: Int!
+  width: Int
+  visible: Boolean!
+  removable: Boolean!
+  sortable: Boolean!
+  filterable: Boolean!
+
+  # Complete parameter data embedded in column
+  parameter: ColumnParameter!
+}
+
+"""
+Sort configuration for tables
+"""
+type TableSort {
+  field: String
+  order: SortOrder
+}
+
+"""
+Sort input for tables
+Must be separate from TableSort since inputs can't use output types
+"""
+input TableSortInput {
+  field: String
+  order: SortOrder
+}
+
+"""
+Filter configuration for table columns
+"""
+type TableFilter {
+  columnId: String!
+  value: JSON! # Can be string, number, boolean, null, or EquationValue
+  operator: String!
+}
+
+"""
+Table settings stored in PostgreSQL
+Stored in user.tables column with complete parameter data
+"""
+type TableSettings {
+  id: ID!
+  name: String!
+  displayName: String!
+  categoryFilters: CategoryFilters!
+  parentColumns: [TableColumn!]!
+  childColumns: [TableColumn!]!
+  metadata: JSONObject
+  filters: [TableFilter!]!
+  sort: TableSort
+  lastUpdateTimestamp: Float!
+}
+
+"""
+Sort order enum
+"""
+enum SortOrder {
+  ASC
+  DESC
+}
+
+"""
+Category filters for the table
+"""
+type CategoryFilters {
+  selectedParentCategories: [String!]!
+  selectedChildCategories: [String!]!
+}
+
+# Input Types
+
+"""
+Equation value input
+"""
+input EquationValueInput {
+  kind: String!
+  expression: String!
+  references: [String!]!
+  resultType: BimValueType!
+  computed: JSON
+}
+
+"""
+Input for parameter data in table column
+"""
+input ColumnParameterInput {
+  id: ID!
+  name: String!
+  kind: String! # 'bim' or 'user'
+  type: String! # BimValueType or UserValueType
+  value: JSON # Can be string, number, boolean, null, or EquationValue
+  group: JSONObject!
+  metadata: JSONObject
+  category: String
+  description: String
+  equation: String # Optional, only if kind is 'user'
+}
+
+"""
+Input for table column
+When adding a parameter to a table, its full data is copied into the column
+"""
+input TableColumnInput {
+  # Display properties
+  id: ID!
+  field: String!
+  header: String!
+  width: Int
+  visible: Boolean!
+  removable: Boolean!
+  order: Int!
+  sortable: Boolean!
+  filterable: Boolean!
+
+  # Complete parameter data
+  parameter: ColumnParameterInput!
+}
+
+"""
+Input for category filters
+"""
+input CategoryFiltersInput {
+  selectedParentCategories: [String!]!
+  selectedChildCategories: [String!]!
+}
+
+"""
+Input for table filter
+"""
+input TableFilterInput {
+  columnId: String!
+  value: JSON! # Can be string, number, boolean, null, or EquationValue
+  operator: String!
+}
+
+"""
+Input for table settings map
+"""
+input TableSettingsMapInput {
+  tables: [TableSettingsEntryInput!]!
+}
+
+"""
+Input for table settings entry
+"""
+input TableSettingsEntryInput {
+  id: ID!
+  settings: TableSettingsInput!
+}
+
+"""
+Input for table settings
+"""
+input TableSettingsInput {
+  id: ID!
+  name: String!
+  displayName: String!
+  parentColumns: [TableColumnInput!]!
+  childColumns: [TableColumnInput!]!
+  categoryFilters: CategoryFiltersInput!
+  filters: [TableFilterInput!]!
+  sort: TableSortInput
+  metadata: JSONObject
+  lastUpdateTimestamp: Float!
+}
+
+extend type Query {
+  """
+  Get table settings for current user
+  Returns complete settings including parameter data from user.tables
+  """
+  userTables: JSONObject!
+}
+
+extend type Mutation {
+  """
+  Update table settings for current user
+  Stores complete settings including parameter data in user.tables
+  """
+  userTablesUpdate(input: TableSettingsMapInput!): Boolean!
+}

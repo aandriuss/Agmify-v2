@@ -12,5 +12,4 @@ scalar DateTime
 scalar BigInt
 
 scalar JSONObject
-
 `

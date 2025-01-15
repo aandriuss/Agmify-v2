@@ -1,3 +1,4 @@
+import { provide, type InjectionKey } from 'vue'
 import type { InjectableViewerState } from '~/lib/viewer/composables/setup'
 
 /**

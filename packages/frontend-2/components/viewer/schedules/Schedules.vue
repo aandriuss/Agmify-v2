@@ -1,357 +1,546 @@
 <template>
-  <div>
-    <ViewerLayoutPanel :initial-width="400" @close="$emit('close')">
-      <template #title>Elements Schedule</template>
-      <template #actions>
-        <FormButton
-          text
-          size="sm"
-          color="subtle"
-          :icon-right="showCategoryOptions ? ChevronUpIcon : ChevronDownIcon"
-          @click="showCategoryOptions = !showCategoryOptions"
-        >
-          Category filter options
-        </FormButton>
-      </template>
-      <div class="flex flex-col">
-        <!-- Category Options Section -->
-        <div
-          v-show="showCategoryOptions"
-          class="sticky top-10 px-2 py-2 border-b-2 border-primary-muted bg-foundation"
-        >
-          <div class="flex flex-row justify-between">
-            <!-- Parent Categories -->
-            <div class="flex-1 mr-4">
-              <span class="text-body-xs text-foreground font-medium mb-2 block">
-                Host Categories
-              </span>
-              <div class="max-h-[200px] overflow-y-auto">
-                <div v-for="category in parentCategories" :key="category">
-                  <FormButton
-                    size="sm"
-                    :icon-left="
-                      selectedParentCategories.includes(category)
-                        ? CheckCircleIcon
-                        : CheckCircleIconOutlined
-                    "
-                    text
-                    @click="toggleParentCategory(category)"
-                  >
-                    {{ category }}
-                  </FormButton>
-                </div>
-              </div>
-            </div>
-
-            <!-- Child Categories -->
-            <div class="flex-1">
-              <span class="text-body-xs text-foreground font-medium mb-2 block">
-                Child Categories
-              </span>
-              <div class="max-h-[200px] overflow-y-auto">
-                <div v-for="category in childCategories" :key="category">
-                  <FormButton
-                    size="sm"
-                    :icon-left="
-                      selectedChildCategories.includes(category)
-                        ? CheckCircleIcon
-                        : CheckCircleIconOutlined
-                    "
-                    text
-                    @click="toggleChildCategory(category)"
-                  >
-                    {{ category }}
-                  </FormButton>
-                </div>
-              </div>
-            </div>
+  <ViewerLayoutPanel @close="$emit('close')">
+    <template #title>Schedules</template>
+    <template #actions>
+      <ScheduleTableHeader
+        @manage-parameters="showParameterManager = !showParameterManager"
+      />
+    </template>
+    <LoadingState
+      :is-loading="!isInitialized"
+      :error="error"
+      :loading-message="currentPhase === 'complete' ? '' : 'Loading data...'"
+    >
+      <TableLayout class="viewer-container">
+        <template #menu>
+          <div class="menu-container">
+            <TableOptionsMenu
+              v-show="tableStore.state.value.ui.showCategoryOptions"
+              :table-id="selectedTableId"
+              :table-name="tableName"
+              @table-updated="handleTableDataUpdate"
+            />
           </div>
-        </div>
+        </template>
 
-        <!-- Table Section (Always Visible) -->
-        <DataTable
-          :key="tableKey"
-          v-model:expandedRows="expandedRows"
-          :table-id="TABLE_ID"
-          :data="scheduleData"
-          :columns="tableColumns"
-          :detail-columns="detailColumns"
-          :expand-button-aria-label="'Expand row'"
-          :collapse-button-aria-label="'Collapse row'"
-          data-key="id"
-          @update:columns="handleParentColumnsUpdate"
-          @update:detail-columns="handleChildColumnsUpdate"
-          @update:both-columns="handleBothColumnsUpdate"
-          @column-reorder="handleColumnReorder"
-        />
-      </div>
-    </ViewerLayoutPanel>
-  </div>
+        <template #default>
+          <div class="schedule-container">
+            <ScheduleMainView
+              @error="handleError"
+              @table-updated="handleTableDataUpdate"
+            />
+          </div>
+        </template>
+      </TableLayout>
+    </LoadingState>
+  </ViewerLayoutPanel>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useUserSettings } from '~/composables/useUserSettings'
-import { useElementsData } from '~/composables/useElementsData'
-import DataTable from '~/components/viewer/tables/DataTable.vue'
-import {
-  CheckCircleIcon,
-  ChevronDownIcon,
-  ChevronUpIcon
-} from '@heroicons/vue/24/solid'
-import { CheckCircleIcon as CheckCircleIconOutlined } from '@heroicons/vue/24/outline'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useWaitForActiveUser } from '~/lib/auth/composables/activeUser'
+import { gql } from '@apollo/client/core'
+import { useInjectedViewerState } from '~~/lib/viewer/composables/setup'
 
-const emit = defineEmits(['close'])
-const TABLE_ID = 'elements-schedule'
-const { settings, loading, saveSettings, loadSettings } = useUserSettings(TABLE_ID)
+import { useStore } from '~/composables/core/store'
+import { useParameterStore } from '~/composables/core/parameters/store'
+import { useUserParameterStore } from '~/composables/core/userparameters/store'
+import { useTableStore } from '~/composables/core/tables/store/store'
+import { useParametersGraphQL } from '~/composables/core/userparameters/useParametersGraphQL'
+import { useTablesGraphQL } from '~/composables/settings/tables/useTablesGraphQL'
 
-// Show/hide category options
-const showCategoryOptions = ref(false)
+import { useElementsData } from '~/composables/core/tables/state/useElementsData'
+import { useScheduleInitialization } from './composables/useScheduleInitialization'
+import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
+import type { TableColumn } from '~/composables/core/types'
 
-// Available categories
-const parentCategories = ['Walls', 'Floors', 'Roofs']
+import ScheduleMainView from './components/ScheduleMainView.vue'
+import LoadingState from '~/components/core/LoadingState.vue'
+import TableLayout from '~/components/core/tables/TableLayout.vue'
+import ScheduleTableHeader from './components/ScheduleTableHeader.vue'
+import TableOptionsMenu from '~/components/core/tables/menu/TableOptionsMenu.vue'
+import type {
+  ViewerNode,
+  WorldTreeRoot
+} from '~/composables/core/types/viewer/viewer-types'
+import { useLoadingState } from '~/composables/core/tables/state/useLoadingState'
+import { useApolloClient, provideApolloClient } from '@vue/apollo-composable'
+import { childCategories } from '~/composables/core/config/categories'
 
-const childCategories = [
-  'Structural Framing',
-  'Structural Connections',
-  'Windows',
-  'Doors',
-  'Ducts',
-  'Pipes',
-  'Cable Trays',
-  'Conduits',
-  'Lighting Fixtures'
-]
+import { useDebug, DebugCategories } from '~/composables/core/utils/debug'
 
-const selectedParentCategories = ref<string[]>([])
-const selectedChildCategories = ref<string[]>([])
-
-// Use the flexible elements data hook
-const { scheduleData, updateCategories } = useElementsData()
-
-const toggleParentCategory = (category: string) => {
-  const index = selectedParentCategories.value.indexOf(category)
-  if (index === -1) {
-    selectedParentCategories.value.push(category)
-  } else {
-    selectedParentCategories.value.splice(index, 1)
-  }
-  updateCategories(selectedParentCategories.value, selectedChildCategories.value)
+// Type-safe error handling utility
+function createSafeError(err: unknown): Error {
+  if (err instanceof Error) return err
+  if (typeof err === 'string') return new Error(err)
+  return new Error('An unknown error occurred')
 }
 
-const toggleChildCategory = (category: string) => {
-  const index = selectedChildCategories.value.indexOf(category)
-  if (index === -1) {
-    selectedChildCategories.value.push(category)
-  } else {
-    selectedChildCategories.value.splice(index, 1)
+// Initialize systems
+const debug = useDebug()
+const store = useStore()
+const parameterStore = useParameterStore()
+const tableStore = useTableStore()
+const bimElements = useBIMElements({
+  childCategories
+})
+
+// Get viewer state
+const {
+  viewer: {
+    metadata: { worldTree },
+    init
   }
-  updateCategories(selectedParentCategories.value, selectedChildCategories.value)
+} = useInjectedViewerState()
+
+// Type guard to check if children array exists and is non-empty
+function hasValidChildren(
+  node: unknown
+): node is { _root: { children: ViewerNode[] } } {
+  if (!node || typeof node !== 'object') return false
+  const candidate = node as { _root?: { children?: ViewerNode[] } }
+  return !!(
+    candidate._root?.children &&
+    Array.isArray(candidate._root.children) &&
+    candidate._root.children.length > 0
+  )
 }
 
-// Table columns with settings
-const tableColumns = computed(() => {
-  const savedColumns = settings.value?.tables?.[TABLE_ID]?.parentColumns
-  if (savedColumns?.length > 0) {
-    return [...savedColumns].sort((a, b) => a.order - b.order)
-  }
-  return defaultParentColumns
-})
-
-const detailColumns = computed(() => {
-  const savedColumns = settings.value?.tables?.[TABLE_ID]?.childColumns
-  if (savedColumns?.length > 0) {
-    return [...savedColumns].sort((a, b) => a.order - b.order)
-  }
-  return defaultChildColumns
-})
-
-const expandedRows = ref([])
-
-//TODO make this work without the need for a key
-// Refresh key
-const tableKey = computed(() => {
-  return JSON.stringify({
-    parent: settings.value?.tables?.[TABLE_ID]?.parentColumns,
-    child: settings.value?.tables?.[TABLE_ID]?.childColumns
+// Watch world tree changes for debugging only
+watch(worldTree, (newTree) => {
+  debug.log(DebugCategories.DATA, 'World tree updated', {
+    exists: !!newTree,
+    hasRoot: !!(newTree && '_root' in newTree),
+    childrenCount: hasValidChildren(newTree) ? newTree._root.children.length : 0
   })
 })
 
-// Watch for initial load AND subsequent changes
-watch(
-  () => settings.value?.tables?.[TABLE_ID]?.parentColumns,
-  (newColumns) => {
-    console.log('Parent columns loaded:', newColumns)
-  },
-  { immediate: true }
-)
+// Initialize refs with proper types
+const error = ref<Error | null>(null)
+const showParameterManager = ref(false)
+const initializationAttempted = ref(false)
 
-watch(
-  () => settings.value?.tables?.[TABLE_ID]?.childColumns,
-  (newColumns) => {
-    console.log('Child columns loaded:', newColumns)
-  },
-  { immediate: true }
-)
+// Computed properties for TableOptionsMenu
+const selectedTableId = computed(() => tableStore.computed.currentTable.value?.id || '')
+const tableName = computed(() => tableStore.computed.currentTable.value?.name || '')
 
-const handleParentColumnsUpdate = async (newColumns) => {
-  try {
-    if (!newColumns?.length) {
-      console.error('No columns provided to update')
-      return
+// Initialize data composables with store categories
+const elementsData = useElementsData({
+  selectedParentCategories: computed(
+    () =>
+      tableStore.computed.currentTable.value?.categoryFilters
+        .selectedParentCategories || []
+  ),
+  selectedChildCategories: computed(
+    () =>
+      tableStore.computed.currentTable.value?.categoryFilters.selectedChildCategories ||
+      []
+  )
+})
+
+// Initialize core composables
+// Create a store adapter that matches the Store interface
+const storeAdapter = {
+  ...store,
+  lifecycle: {
+    init: async () => {
+      if (tableStore.initialize) {
+        await tableStore.initialize()
+      } else {
+        await store.lifecycle.init()
+      }
+    },
+    update: async (updates: Record<string, unknown>) => {
+      // Handle column updates through table store
+      if ('currentTableColumns' in updates || 'currentDetailColumns' in updates) {
+        const parentColumns = Array.isArray(updates.currentTableColumns)
+          ? (updates.currentTableColumns as TableColumn[])
+          : []
+        const childColumns = Array.isArray(updates.currentDetailColumns)
+          ? (updates.currentDetailColumns as TableColumn[])
+          : []
+        await tableStore.updateColumns(parentColumns, childColumns)
+      }
+      // Pass other updates to core store
+      else {
+        await store.lifecycle.update(updates)
+      }
+    },
+    cleanup: async () => {
+      if (tableStore.reset) {
+        await tableStore.reset()
+      } else {
+        await store.lifecycle.cleanup()
+      }
     }
-
-    const columnsToSave = newColumns.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true,
-      header:
-        col.header || defaultParentColumns.find((c) => c.field === col.field)?.header,
-      field: col.field
-    }))
-
-    console.log('Saving reordered parent columns:', columnsToSave)
-    await saveSettings({
-      parentColumns: columnsToSave
-    })
-  } catch (error) {
-    console.error('Failed to save parent columns:', error)
   }
 }
 
-const handleChildColumnsUpdate = async (newColumns) => {
-  try {
-    if (!newColumns?.length) {
-      console.error('No columns provided to update')
-      return
+const { initComponent } = useScheduleInitialization({
+  store: storeAdapter
+})
+
+// Loading state management
+const { isLoading, currentPhase, transitionPhase, validateData } = useLoadingState()
+
+// Computed properties for component state
+const isInitialized = computed(() => currentPhase.value === 'complete')
+
+// Handler functions with type safety
+function handleTableDataUpdate(): void {
+  updateErrorState(null)
+}
+
+// Type-safe error handling with proper type guards
+function updateErrorState(newError: Error | null): void {
+  const currentError = error.value
+  const shouldUpdate = currentError?.message !== newError?.message
+
+  if (shouldUpdate) {
+    error.value = newError
+  }
+
+  if (newError instanceof Error) {
+    const errorDetails: {
+      name: string
+      message: string
+      stack?: string
+      cause?: unknown
+    } = {
+      name: newError.name,
+      message: newError.message,
+      stack: newError.stack,
+      cause: newError.cause
     }
-
-    const columnsToSave = newColumns.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true,
-      // Preserve other properties that might be lost in reordering
-      header:
-        col.header || defaultChildColumns.find((c) => c.field === col.field)?.header,
-      field: col.field
-    }))
-
-    console.log('Saving reordered child columns:', columnsToSave)
-    await saveSettings({
-      childColumns: columnsToSave
-    })
-  } catch (error) {
-    console.error('Failed to save child columns:', error)
-  }
-}
-
-const handleBothColumnsUpdate = async (updates: {
-  parentColumns: ColumnDef[]
-  childColumns: ColumnDef[]
-}) => {
-  try {
-    const { parentColumns, childColumns } = updates
-
-    const parentColumnsToSave = parentColumns?.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true
-    }))
-
-    const childColumnsToSave = childColumns?.map((col, index) => ({
-      ...col,
-      order: index,
-      visible: col.visible ?? true
-    }))
-
-    await saveSettings({
-      parentColumns: parentColumnsToSave,
-      childColumns: childColumnsToSave
-    })
-  } catch (error) {
-    console.error('Failed to save column updates:', error)
-  }
-}
-
-const handleColumnReorder = async (event) => {
-  console.log('Column reorder started')
-  const dataTable = event.target.closest('.p-datatable')
-  const isChildTable = dataTable.classList.contains('nested-table')
-
-  // Get headers and build reordered columns list
-  const headers = Array.from(dataTable.querySelectorAll('th[data-field]'))
-  const reorderedColumns = headers
-    .map((header, index) => {
-      const field = header.getAttribute('data-field')
-      const sourceColumns = isChildTable ? detailColumns.value : tableColumns.value
-      const existingColumn = sourceColumns.find((col) => col.field === field)
-
-      return {
-        ...existingColumn,
-        order: index,
-        visible: true,
-        header: existingColumn.header,
-        field: existingColumn.field
+    debug.error(DebugCategories.ERROR, 'Schedule error:', errorDetails)
+    debug.error(DebugCategories.ERROR, 'Error in schedule view:', {
+      error: errorDetails,
+      state: {
+        phase: currentPhase.value,
+        isLoading: isLoading.value,
+        hasElements: bimElements.allElements.value?.length || 0,
+        hasParameters: parameterStore.rawParameters.value?.length || 0,
+        hasTable: !!tableStore.computed.currentTable.value
       }
     })
-    .filter(Boolean)
-
-  console.log('Reordered columns before save:', reorderedColumns)
-
-  try {
-    // Save directly to db using saveSettings
-    await saveSettings({
-      [isChildTable ? 'childColumns' : 'parentColumns']: reorderedColumns
-    })
-
-    console.log('Columns saved successfully')
-
-    // Force a table refresh by updating the key
-    tableKey.value = Date.now().toString()
-  } catch (error) {
-    console.error('Failed to save reordered columns:', error)
   }
 }
 
-onMounted(async () => {
-  // Load initial settings
-  await loadSettings()
-
-  // If no settings exist, initialize with defaults
-  if (!settings.value?.tables?.[TABLE_ID]) {
-    console.log('Initializing default settings')
-    await saveSettings({
-      parentColumns: defaultParentColumns,
-      childColumns: defaultChildColumns
-    })
-  }
-
-  const currentSettings = {
-    isLoading: loading.value,
-    settings: settings.value,
-    parentColumns: settings.value?.tables?.[TABLE_ID]?.parentColumns,
-    childColumns: settings.value?.tables?.[TABLE_ID]?.childColumns,
-    tableColumns: tableColumns.value,
-    detailColumns: detailColumns.value
-  }
-  console.log('Component mounted with:', currentSettings)
-
-  // Debug logging
-  watch(
-    () => settings.value?.tables?.[TABLE_ID],
-    (newSettings) => {
-      console.log('Table settings changed:', {
-        parentColumns: newSettings?.parentColumns,
-        childColumns: newSettings?.childColumns
-      })
+function handleError(err: unknown): void {
+  const error = createSafeError(err)
+  debug.error(DebugCategories.ERROR, 'Failed to load initial data:', {
+    error: {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause as unknown
     },
-    { deep: true }
-  )
+    state: {
+      phase: currentPhase.value,
+      isLoading: isLoading.value,
+      hasElements: bimElements.allElements.value?.length || 0,
+      hasParameters: parameterStore.rawParameters.value?.length || 0,
+      hasTable: !!tableStore.computed.currentTable.value
+    }
+  })
+  updateErrorState(error)
+}
+
+// Helper to wait for world tree with timeout
+const waitForWorldTree = async (timeoutMs = 5000): Promise<void> => {
+  if (init.ref.value && worldTree.value) return
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('World tree initialization timed out'))
+    }, timeoutMs)
+
+    const unwatch = watch(
+      () => ({ init: init.ref.value, tree: worldTree.value }),
+      ({ init, tree }) => {
+        if (init && tree) {
+          clearTimeout(timeout)
+          unwatch()
+          resolve()
+        }
+      },
+      { immediate: true }
+    )
+  })
+}
+
+// Initialize with phase-based loading
+onMounted(async () => {
+  if (initializationAttempted.value) {
+    debug.warn(DebugCategories.INITIALIZATION, 'Initialization already attempted')
+    return
+  }
+
+  try {
+    // Start initialization sequence
+    transitionPhase('initial')
+    debug.startState(DebugCategories.INITIALIZATION, 'Starting initialization sequence')
+
+    // 1. Initialize Apollo client
+    const { client: apolloClient } = useApolloClient()
+    if (!apolloClient) throw new Error('Apollo client not initialized')
+    provideApolloClient(apolloClient)
+
+    // Wait for Apollo client to be ready
+    await new Promise<void>((resolve, reject) => {
+      let attempts = 0
+      const maxAttempts = 50 // 5 seconds total
+
+      const checkClient = async () => {
+        attempts++
+        debug.log(DebugCategories.INITIALIZATION, 'Checking Apollo client', {
+          attempt: attempts,
+          hasClient: !!apolloClient,
+          hasCache: !!apolloClient.cache
+        })
+
+        // Try to execute a simple query to verify client is ready
+        try {
+          await apolloClient.query({
+            query: gql`
+              query TestQuery {
+                __typename
+              }
+            `
+          })
+          debug.log(DebugCategories.INITIALIZATION, 'Apollo client ready')
+          resolve()
+        } catch (err) {
+          debug.log(DebugCategories.INITIALIZATION, 'Apollo client not ready yet', {
+            attempt: attempts,
+            error: err
+          })
+          if (attempts >= maxAttempts) {
+            reject(new Error('Apollo client initialization timed out'))
+          } else {
+            setTimeout(checkClient, 100)
+          }
+        }
+      }
+      void checkClient()
+    })
+
+    debug.log(DebugCategories.INITIALIZATION, 'Apollo client ready')
+
+    // 2. Initialize core store
+    transitionPhase('core_store')
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing core store')
+    await store.lifecycle.init()
+    if (!store.initialized.value) {
+      debug.error(DebugCategories.ERROR, 'Core store failed to initialize', {
+        storeState: store.state.value
+      })
+      throw new Error('Core store failed to initialize')
+    }
+    debug.log(DebugCategories.INITIALIZATION, 'Core store initialized')
+
+    // 3. Initialize stores
+    transitionPhase('store_initialization')
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing stores')
+
+    try {
+      // Initialize parameter store first
+      debug.log(DebugCategories.INITIALIZATION, 'Initializing parameter store')
+      await parameterStore.init()
+      if (!parameterStore.state.value.initialized) {
+        throw new Error('Parameter store failed to initialize')
+      }
+
+      debug.log(DebugCategories.INITIALIZATION, 'Parameter store initialized')
+
+      // Initialize user parameter store
+      debug.log(DebugCategories.INITIALIZATION, 'Initializing user parameter store')
+      const graphqlOps = await useParametersGraphQL()
+      const userStore = useUserParameterStore({
+        fetchParameters: graphqlOps.fetchParameters,
+        updateParameters: graphqlOps.updateParameters
+      })
+      await userStore.loadParameters()
+      debug.log(DebugCategories.INITIALIZATION, 'User parameter store initialized')
+
+      // Then initialize table store
+      debug.log(DebugCategories.INITIALIZATION, 'Initializing table store')
+      await initComponent.initialize()
+      if (!tableStore.computed.currentTable.value) {
+        throw new Error('Table store failed to initialize')
+      }
+      debug.log(DebugCategories.INITIALIZATION, 'Table store initialized')
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Store initialization failed:', err)
+      throw err
+    }
+
+    // 4. Initialize world tree and BIM elements
+    transitionPhase('world_tree')
+    debug.log(DebugCategories.INITIALIZATION, 'Initializing world tree')
+
+    try {
+      // Wait for auth
+      const waitForUser = useWaitForActiveUser()
+      const userResult = await waitForUser()
+      if (!userResult?.data?.activeUser) {
+        throw new Error('Authentication required')
+      }
+
+      // Wait for world tree
+      await waitForWorldTree()
+      if (!worldTree.value) {
+        throw new Error('World tree not available')
+      }
+
+      // Initialize BIM elements
+      const treeRoot: WorldTreeRoot = {
+        _root: {
+          children: hasValidChildren(worldTree.value)
+            ? worldTree.value._root.children
+            : []
+        }
+      }
+
+      await bimElements.initializeElements(treeRoot)
+      const elementsWithParams =
+        bimElements.allElements.value?.filter(
+          (el) => el.parameters && Object.keys(el.parameters).length > 0
+        ) || []
+
+      if (elementsWithParams.length === 0) {
+        throw new Error('No parameters found in BIM elements')
+      }
+
+      // Process parameters
+      await parameterStore.processParameters(elementsWithParams)
+      const validation = validateData()
+      if (!validation.hasParameters) {
+        throw new Error('Parameter processing failed')
+      }
+
+      debug.log(
+        DebugCategories.INITIALIZATION,
+        'World tree and BIM elements initialized'
+      )
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'World tree initialization failed:', err)
+      throw err
+    }
+
+    // 8. Load tables and initialize data
+    transitionPhase('data_sync')
+
+    try {
+      // First initialize table store
+      await tableStore.initialize()
+      debug.log(DebugCategories.INITIALIZATION, 'Table store initialized')
+
+      // Then fetch tables from GraphQL
+      const graphqlOps = await useTablesGraphQL()
+      const tables = await graphqlOps.fetchTables()
+      debug.log(DebugCategories.INITIALIZATION, 'Tables fetched from GraphQL', {
+        tableCount: Object.keys(tables).length
+      })
+
+      // Initialize element data
+      await elementsData.initializeData()
+      if (elementsData.hasError.value) {
+        throw new Error('Failed to initialize element data')
+      }
+      debug.log(DebugCategories.INITIALIZATION, 'Element data initialized')
+
+      // Process and update tables in store
+      const existingTables = Object.entries(tables)
+        .map(([id, table]) => ({
+          id,
+          name: table.name || 'Unnamed Table'
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+
+      // Get current table or first available
+      const currentId = store.state.value.currentTableId
+      const currentTable = currentId ? tables[currentId] : existingTables[0]
+      const selectedId = currentId || currentTable?.id
+
+      if (selectedId) {
+        await tableStore.loadTable(selectedId)
+        const loadedTable = tableStore.computed.currentTable.value
+        if (loadedTable) {
+          // Update store state with all tables
+          await store.lifecycle.update({
+            tablesArray: existingTables,
+            selectedTableId: selectedId,
+            tableName: loadedTable.name
+          })
+        }
+      }
+
+      debug.log(DebugCategories.INITIALIZATION, 'Store updated with tables', {
+        tableCount: existingTables.length,
+        tableIds: existingTables.map((t) => t.id),
+        selectedId: store.state.value.currentTableId
+      })
+    } catch (err) {
+      debug.error(DebugCategories.ERROR, 'Failed to initialize tables:', err)
+      throw new Error('Failed to initialize tables')
+    }
+
+    // Final validation
+    const finalValidation = validateData()
+    if (!finalValidation.dataConsistent) {
+      throw new Error('Data inconsistency detected after initialization')
+    }
+
+    // Check if we're already initialized
+    if (currentPhase.value === 'complete') {
+      debug.log(
+        DebugCategories.INITIALIZATION,
+        'Already initialized, skipping completion'
+      )
+      return
+    }
+
+    // Check if we have everything we need
+    const hasData = (store.scheduleData.value?.length ?? 0) > 0
+    const hasTable = !!tableStore.computed.currentTable.value
+    const hasParams = parameterStore.state.value.initialized
+
+    debug.log(DebugCategories.INITIALIZATION, 'Checking initialization state:', {
+      hasData,
+      hasTable,
+      hasParams,
+      dataLength: store.scheduleData.value?.length ?? 0
+    })
+
+    // Complete initialization if we have everything
+    if (hasData && hasTable && hasParams) {
+      transitionPhase('complete')
+      debug.completeState(DebugCategories.INITIALIZATION, 'Initialization complete')
+      return
+    }
+
+    // Otherwise, throw an error
+    throw new Error('Missing required data')
+  } catch (err) {
+    handleError(err)
+  }
 })
 </script>
 
 <style scoped>
-.random {
-  display: none;
+.viewer-container {
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+
+.schedule-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 </style>

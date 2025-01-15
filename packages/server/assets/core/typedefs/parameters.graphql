@@ -1,0 +1,117 @@
+"""
+User parameter type
+"""
+type UserParameter {
+  id: ID!
+  name: String!
+  kind: String! # Always 'user'
+  type: String! # Must match UserValueType enum values
+  value: String! # Primitive value or equation value as JSON string
+  group: JSONObject!
+  equation: String
+  field: String!
+  header: String!
+  removable: Boolean!
+  visible: Boolean!
+  metadata: JSONObject
+  category: String
+  description: String
+}
+
+"""
+User value type enum - used for validation in resolvers
+"""
+enum UserValueType {
+  fixed
+  equation
+}
+
+"""
+Response type for parameter mutations
+"""
+type ParameterMutationResponse {
+  parameter: UserParameter!
+}
+
+extend type Query {
+  """
+  Get all parameters for the current user as a map of ID to parameter
+  """
+  parameters: JSONObject!
+
+  """
+  Get a specific parameter by ID
+  """
+  parameter(id: ID!): UserParameter
+
+  """
+  Get all parameters for a specific table
+  """
+  tableParameters(tableId: ID!): [UserParameter!]!
+}
+
+extend type Mutation {
+  """
+  Create a new user parameter
+  """
+  createUserParameter(input: CreateUserParameterInput!): ParameterMutationResponse!
+
+  """
+  Update a user parameter
+  """
+  updateUserParameter(
+    id: ID!
+    input: UpdateUserParameterInput!
+  ): ParameterMutationResponse!
+
+  """
+  Delete a parameter
+  """
+  deleteParameter(id: ID!): Boolean!
+
+  """
+  Add a parameter to a table
+  """
+  addParameterToTable(parameterId: ID!, tableId: ID!): Boolean!
+
+  """
+  Remove a parameter from a table
+  """
+  removeParameterFromTable(parameterId: ID!, tableId: ID!): Boolean!
+}
+
+"""
+Input for creating a user parameter
+"""
+input CreateUserParameterInput {
+  name: String!
+  type: UserValueType!
+  value: String!
+  group: JSONObject!
+  equation: String
+  field: String!
+  header: String!
+  category: String
+  description: String
+  removable: Boolean
+  visible: Boolean
+  metadata: JSONObject
+}
+
+"""
+Input for updating a user parameter
+"""
+input UpdateUserParameterInput {
+  name: String
+  type: UserValueType
+  value: String
+  group: JSONObject
+  equation: String
+  field: String
+  header: String
+  category: String
+  description: String
+  removable: Boolean
+  visible: Boolean
+  metadata: JSONObject
+}

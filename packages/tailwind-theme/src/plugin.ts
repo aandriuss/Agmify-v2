@@ -27,7 +27,7 @@ export const lightThemeVariables = {
   /* primary color */
   '--primary': '#36405a',
   /* focused primary color */
-  '--primary-focus': '#0057E5',
+  '--primary-focus': '#8472bb',
   /* muted primary color */
   '--primary-muted': '#EDEDED',
 

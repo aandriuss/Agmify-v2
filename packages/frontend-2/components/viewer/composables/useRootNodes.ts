@@ -7,6 +7,10 @@ import {
 import { sortBy, flatten } from 'lodash-es'
 import { ViewerEvent } from '@speckle/viewer'
 import { useViewerEventListener } from '~~/lib/viewer/composables/viewer'
+import type {
+  ExplorerNode,
+  TreeItemComponentModel
+} from '~~/lib/viewer/helpers/sceneExplorer'
 
 export function useRootNodes() {
   const { modelsAndVersionIds } = useInjectedViewerLoadedResources()

@@ -26,7 +26,17 @@
         :active="activeControl === 'schedules'"
         @click="toggleActiveControl('schedules')"
       >
-        <IconFileExplorer class="h-4 w-4 md:h-5 md:w-5" />
+        <IconDatasets class="h-4 w-4 md:h-5 md:w-5" />
+      </ViewerControlsButtonToggle>
+
+      <!-- Debug -->
+      <ViewerControlsButtonToggle
+        v-tippy="isSmallerOrEqualSm ? undefined : debugShortcut"
+        :active="activeControl === 'debug'"
+        class="hover:hue-rotate-40 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-200 via-violet-600 to-red-900"
+        @click="toggleActiveControl('debug')"
+      >
+        <IconDebug class="h-4 w-4 md:h-5 md:w-5" />
       </ViewerControlsButtonToggle>
 
       <!-- Datasets -->
@@ -35,7 +45,7 @@
         :active="activeControl === 'datasets'"
         @click="toggleActiveControl('datasets')"
       >
-        <IconFileExplorer class="h-4 w-4 md:h-5 md:w-5" />
+        <IconDatasets class="h-4 w-4 md:h-5 md:w-5" />
       </ViewerControlsButtonToggle>
 
       <!-- Explorer -->
@@ -222,6 +232,12 @@
         </KeepAlive>
       </div>
 
+      <div v-show="resourceItems.length !== 0 && activeControl === 'debug'">
+        <KeepAlive>
+          <ViewerDebug class="pointer-events-auto" @close="activeControl = 'none'" />
+        </KeepAlive>
+      </div>
+
       <div v-show="resourceItems.length !== 0 && activeControl === 'datasets'">
         <KeepAlive>
           <ViewerDatasets class="pointer-events-auto" @close="activeControl = 'none'" />
@@ -316,6 +332,7 @@ import { TailwindBreakpoints } from '~~/lib/common/helpers/tailwind'
 
 import { useMutation, useQuery } from '@vue/apollo-composable'
 import gql from 'graphql-tag'
+import { debug, DebugCategories } from '~/composables/core/utils/debug'
 
 // GraphQL Mutation and Query for user settings
 const UPDATE_USER_SETTINGS = gql`
@@ -331,13 +348,11 @@ const GET_USER_SETTINGS = gql`
     }
   }
 `
-console.log('GET_USER_SETTINGS', GET_USER_SETTINGS)
 
 onMounted(() => {
-  const settings = result.value?.activeUser?.userSettings
-  console.log('settings controlsWidth', settings?.controlsWidth)
+  const settings = result.value?.activeUser?.userSettings ?? { controlsWidth: 400 }
   if (settings?.controlsWidth) {
-    width.value = settings.controlsWidth // Load saved width
+    width.value = settings.controlsWidth
   }
 })
 
@@ -351,36 +366,15 @@ let startX = 0
 
 // Add mutation and query for GraphQL settings
 const { mutate: updateSettings } = useMutation(UPDATE_USER_SETTINGS)
-// const { result } = useQuery(GET_USER_SETTINGS)
-const { result, loading, error, onResult } = useQuery(GET_USER_SETTINGS)
-
-console.log('Loading state:', loading.value)
-console.log('Error state:', error.value)
-console.log('Raw result:', result.value)
-
-onResult((queryResult) => {
-  console.log('Query completed, full response:', queryResult)
-})
-
-watch(loading, (isLoading) => {
-  console.log('Query loading:', isLoading)
-})
-
-watch(error, (newError) => {
-  if (newError) {
-    console.error('Query error:', newError)
-  }
-})
+const { result } = useQuery<{
+  activeUser: { userSettings: { controlsWidth: number } }
+}>(GET_USER_SETTINGS)
 
 watch(
   result,
   (newResult) => {
-    console.log('Result changed:', newResult)
-    if (newResult?.activeUser?.userSettings) {
-      width.value = newResult.activeUser.userSettings.controlsWidth || width.value
-      console.log('Width updated to:', width.value)
-    } else {
-      console.log('No user settings found, using default width:', width.value)
+    if (newResult?.activeUser?.userSettings?.controlsWidth) {
+      width.value = newResult.activeUser.userSettings.controlsWidth
     }
   },
   { immediate: true }
@@ -396,7 +390,7 @@ const startResizing = (event: MouseEvent) => {
 
 if (import.meta.client) {
   useResizeObserver(scrollableControlsContainer, (entries) => {
-    const { height: newHeight } = entries[0].contentRect
+    const { height: _newHeight } = entries[0].contentRect
     // Update the height if needed
   })
   useEventListener(resizeHandle, 'mousedown', startResizing)
@@ -422,7 +416,7 @@ if (import.meta.client) {
           }
         })
       } catch (error) {
-        console.error('Failed to save width:', error)
+        debug.log(DebugCategories.VALIDATION, 'Failed to save width:', error)
       }
     }
   })
@@ -433,6 +427,7 @@ const isGendoEnabled = useIsGendoModuleEnabled()
 enum ViewerKeyboardActions {
   ToggleModels = 'ToggleModels',
   ToggleSchedules = 'ToggleSchedules',
+  ToggleDebug = 'ToggleDebug',
   ToggleDatasets = 'ToggleDatasets',
   ToggleExplorer = 'ToggleExplorer',
   ToggleDiscussions = 'ToggleDiscussions',
@@ -473,6 +468,7 @@ type ActiveControl =
   | 'none'
   | 'models'
   | 'schedules'
+  | 'debug'
   | 'datasets'
   | 'explorer'
   | 'filters'
@@ -527,6 +523,7 @@ const {
 const map: Record<ViewerKeyboardActions, [ModifierKeys[], string]> = {
   [ViewerKeyboardActions.ToggleModels]: [[ModifierKeys.Shift], 'm'],
   [ViewerKeyboardActions.ToggleSchedules]: [[ModifierKeys.Shift], 's'],
+  [ViewerKeyboardActions.ToggleDebug]: [[ModifierKeys.Shift], 'w'],
   [ViewerKeyboardActions.ToggleDatasets]: [[ModifierKeys.Shift], 'd'],
   [ViewerKeyboardActions.ToggleExplorer]: [[ModifierKeys.Shift], 'e'],
   [ViewerKeyboardActions.ToggleDiscussions]: [[ModifierKeys.Shift], 't'],
@@ -544,6 +541,9 @@ const modelsShortcut = ref(
 )
 const schedulesShortcut = ref(
   `Schedules ${getShortcutTitle(ViewerKeyboardActions.ToggleSchedules)}`
+)
+const debugShortcut = ref(
+  `Debug ${getShortcutTitle(ViewerKeyboardActions.ToggleDebug)}`
 )
 const datasetsShortcut = ref(
   `Datasets ${getShortcutTitle(ViewerKeyboardActions.ToggleDatasets)}`
@@ -583,6 +583,9 @@ const handleKeyboardAction = (action: ViewerKeyboardActions) => {
       break
     case ViewerKeyboardActions.ToggleSchedules:
       toggleActiveControl('schedules')
+      break
+    case ViewerKeyboardActions.ToggleDebug:
+      toggleActiveControl('debug')
       break
     case ViewerKeyboardActions.ToggleDatasets:
       toggleActiveControl('datasets')

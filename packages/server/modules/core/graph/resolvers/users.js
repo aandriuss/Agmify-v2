@@ -4,11 +4,12 @@ const {
   getUserRole,
   deleteUser,
   searchUsers,
-  changeUserRole
+  changeUserRole,
+  updateUser
 } = require('@/modules/core/services/users')
 const { updateUserAndNotify } = require('@/modules/core/services/users/management')
 const { ActionTypes } = require('@/modules/activitystream/helpers/types')
-const { validateScopes } = require(`@/modules/shared`)
+const { validateScopes } = require('@/modules/shared')
 const zxcvbn = require('zxcvbn')
 const {
   getAdminUsersListCollection,
@@ -27,10 +28,15 @@ const {
 const db = require('@/db/knex')
 const { BadRequestError } = require('@/modules/shared/errors')
 const { saveActivityFactory } = require('@/modules/activitystream/repositories')
-const { getUserSettings, updateUserSettings } = require('@/modules/core/services/users/settings'); 
+const { 
+  getUserSettings, 
+  getTables, 
+  updateTables,
+  updateUserSettings 
+} = require('@/modules/core/services/users/settings')
 
 /** @type {import('@/modules/core/graph/generated/graphql').Resolvers} */
-module.exports = {
+const resolvers = {
   Query: {
     async _() {
       return `Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn.`
@@ -139,6 +145,29 @@ module.exports = {
       
       // Get settings for the user
       return await getUserSettings(parent.id)
+    },
+    async tables(parent, args, context) {
+      // Check authentication
+      if (!context.userId) throw new Error('User not authenticated')
+      
+      // Get tables for the user
+      return await getTables(parent.id)
+    },
+
+    async parameters(parent, _args, context) {
+      // Check authentication
+      if (!context.userId) throw new Error('User not authenticated')
+      
+      // Return parameters from parent if available
+      const parameters = parent.parameters || {}
+      
+      // Ensure parameters is an object
+      if (typeof parameters !== 'object' || parameters === null) {
+        console.warn('Invalid parameters format:', parameters)
+        return {}
+      }
+      
+      return parameters
     }
   },
   
@@ -207,18 +236,199 @@ module.exports = {
       const userId = context.userId;
       if (!userId) throw new Error('User not authenticated');
 
-      const existingSettings = await getUserSettings(userId);
-
-      const updatedSettings = {
-        ...existingSettings,  
-        ...settings
-      };
-
-      await db('users')
-        .where({ id: userId })
-        .update({ usersettings: updatedSettings });
-
+      await updateUserSettings(userId, settings);
       return true;
+    },
+
+    async userParametersUpdate(_parent, { parameters }, context) {
+      const userId = context.userId;
+      if (!userId) throw new Error('User not authenticated');
+
+      try {
+        console.log('Updating user parameters:', { userId });
+        
+        // Get current user
+        const currentUser = await getUser(userId);
+        if (!currentUser) throw new Error('User not found');
+
+        // Ensure parameters is an object
+        if (typeof parameters !== 'object' || parameters === null) {
+          throw new Error('Invalid parameters format');
+        }
+
+        // Validate and normalize parameters
+        const normalizedParameters = Object.entries(parameters).reduce((acc, [id, param]) => {
+          // Basic validation
+          if (!id.startsWith('param_')) {
+            throw new Error(`Invalid parameter ID: ${id}`);
+          }
+          if (!param || typeof param !== 'object') {
+            throw new Error(`Invalid parameter format for ID: ${id}`);
+          }
+
+          // Required fields from UserParameter type
+          const requiredFields = ['name', 'type', 'group'];
+          const missingFields = requiredFields.filter(field => !(field in param));
+          if (missingFields.length > 0) {
+            throw new Error(`Missing required fields for parameter ${id}: ${missingFields.join(', ')}`);
+          }
+
+          // Validate type
+          if (!['fixed', 'equation'].includes(param.type)) {
+            throw new Error(`Invalid parameter type for ${id}: ${param.type}`);
+          }
+
+          // Validate equation field for equation type
+          if (param.type === 'equation' && !param.equation) {
+            throw new Error(`Missing equation for equation parameter: ${id}`);
+          }
+
+          // Get existing parameter if available
+          const existingParam = currentUser.parameters?.[id];
+
+          // Normalize parameter with defaults
+          acc[id] = {
+            ...(existingParam || {}), // Keep existing data
+            ...param, // Override with new data
+            // Ensure required fields with defaults
+            id,
+            kind: 'user',
+            name: param.name,
+            type: param.type,
+            value: param.value ?? '',
+            group: param.group,
+            visible: param.visible ?? true,
+            field: param.field || param.name.toLowerCase().replace(/\s+/g, '_'),
+            header: param.header || param.name,
+            removable: param.removable ?? true,
+            metadata: {
+              ...(existingParam?.metadata || {}),
+              ...(param.metadata || {})
+            }
+          };
+
+          return acc;
+        }, {});
+
+        // Update user with normalized parameters
+        const updatedUser = await updateUser(userId, { parameters: normalizedParameters }, { skipClean: true });
+
+        // Get existing parameters
+        const existingParameters = currentUser.parameters || {};
+
+        // Merge with existing parameters, preserving metadata
+        const mergedParameters = Object.entries(parameters).reduce((acc, [id, param]) => {
+          const existing = existingParameters[id];
+          acc[id] = {
+            ...existing, // Keep existing metadata
+            ...param, // Override with new values
+            kind: 'user', // Always force user kind
+            metadata: {
+              ...(existing?.metadata || {}),
+              ...(param.metadata || {})
+            }
+          };
+          return acc;
+        }, {});
+
+        // Update user with validated parameters
+        if (!updatedUser) throw new Error('Failed to update user parameters');
+        
+        console.log('Successfully updated user parameters:', { 
+          userId,
+          parameterCount: Object.keys(mergedParameters).length
+        });
+        return true;
+      } catch (error) {
+        console.error('Error updating user parameters:', {
+          userId,
+          error: error.message,
+          stack: error.stack,
+          parameters
+        });
+        throw error;
+      }
+    },
+
+    async userTablesUpdate(_parent, { input }, context) {
+      const userId = context.userId;
+      if (!userId) throw new Error('User not authenticated');
+
+      try {
+         
+        console.log('GraphQL Resolver - Raw Input:', {
+          userId,
+          hasInput: !!input,
+          hasTables: !!input?.tables,
+          tablesLength: input?.tables?.length || 0,
+          rawInput: JSON.stringify(input, null, 2)
+        });
+
+        // Log the schema info
+        console.log('GraphQL Schema Info:', {
+          mutation: 'userTablesUpdate',
+          expectedInput: 'TableSettingsMapInput',
+          actualInput: input ? Object.keys(input) : []
+        });
+
+        // Convert input array to map
+        const tablesMap = input?.tables?.reduce((acc, entry) => {
+          if (!entry || !entry.id || !entry.settings) {
+            console.warn('Invalid table entry:', entry);
+            return acc;
+          }
+
+          // Merge settings with ID to match database structure
+          acc[entry.id] = {
+            id: entry.id,
+            ...entry.settings
+          };
+          return acc;
+        }, {}) || {};
+
+        // Log the transformed data
+        console.log('GraphQL Resolver - Transformed Data:', {
+          userId,
+          tableCount: Object.keys(tablesMap).length,
+          tableIds: Object.keys(tablesMap),
+          firstTablePreview: Object.values(tablesMap)[0] ? {
+            id: Object.values(tablesMap)[0].id,
+            name: Object.values(tablesMap)[0].name,
+            columnsCount: {
+              parent: Object.values(tablesMap)[0].parentColumns?.length || 0,
+              child: Object.values(tablesMap)[0].childColumns?.length || 0
+            }
+          } : null
+        });
+
+        // GraphQL schema validation ensures the structure is valid,
+        // so we can skip the manual validation here
+
+        const success = await updateTables(userId, tablesMap);
+        if (!success) {
+          console.error('Failed to update tables - updateTables returned false');
+          throw new Error('Failed to update tables');
+        }
+
+        // Log success
+        console.log('Tables updated successfully:', {
+          userId,
+          tableCount: Object.keys(tablesMap).length
+        });
+
+        return true;
+      } catch (err) {
+        console.error('Error updating tables:', {
+          error: err,
+          message: err.message,
+          stack: err.stack,
+          data: {
+            userId,
+            tableCount: input?.tables?.length || 0
+          }
+        });
+        throw new Error('Failed to update tables: ' + err.message);
+      }
     },
 
     activeUserMutations: () => ({}) // Empty function to prevent errors
@@ -233,4 +443,6 @@ module.exports = {
       return newUser
     }
   }
-};
+}
+
+module.exports = resolvers
