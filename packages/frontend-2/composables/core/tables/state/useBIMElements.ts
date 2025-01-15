@@ -231,7 +231,7 @@ function convertViewerNodeToElementData(
     }
   )
 
-  parameters['category'] = createElementParameter(
+  parameters['Category'] = createElementParameter(
     category,
     {
       fetchedGroup: '0_Base',

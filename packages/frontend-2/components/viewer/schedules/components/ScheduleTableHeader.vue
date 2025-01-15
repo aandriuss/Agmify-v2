@@ -1,5 +1,5 @@
 <template>
-  <div class="flex items-center gap-2">
+  <div class="flex items-center gap-2 p-4">
     <div class="flex items-center gap-2">
       <!-- Table Selection/Edit Area -->
       <div v-if="!isEditing" class="flex items-center gap-2">
@@ -8,7 +8,7 @@
             id="table-select"
             :value="selectedTableId"
             :disabled="isLoading"
-            class="px-2 py-1 rounded border bg-background text-sm h-7 min-w-[180px]"
+            class="px-2 py-1 rounded border bg-background text-sm h-7 min-w-[250px]"
             @change="handleTableChange($event)"
           >
             <option v-for="table in existingTables" :key="table.id" :value="table.id">

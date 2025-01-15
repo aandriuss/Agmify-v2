@@ -12,7 +12,7 @@
         @keydown.space.prevent="toggleCollapse"
       >
         <ChevronRightIcon class="chevron-icon" :class="{ 'rotate-90': !isCollapsed }" />
-        <span>{{ props.group || 'Default' }}</span>
+        <span>{{ props.group || 'All' }}</span>
         <span class="parameter-count">({{ props.parameters.length }})</span>
       </FormButton>
 
@@ -104,14 +104,12 @@ function formatValue(
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 1rem;
   background: var(--color-background);
 }
 
 .parameter-group {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
   border: 1px solid var(--color-border);
   border-radius: 0.375rem;
   overflow: hidden;
@@ -123,7 +121,7 @@ function formatValue(
   border: transparent;
   gap: 0.5rem;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: bold !important;
   color: var(--color-foreground);
   background: var(--color-background-muted);
   cursor: pointer;
@@ -171,6 +169,7 @@ function formatValue(
 .parameter-row {
   display: flex;
   align-items: center;
+  padding-left: 2.5rem;
   justify-content: space-between;
   min-width: 0;
   width: 100%;

@@ -1,17 +1,17 @@
 <template>
   <ViewerLayoutPanel @close="$emit('close')">
-    <template #title>Datasets</template>
+    <template #title>Schedules</template>
+    <template #actions>
+      <ScheduleTableHeader
+        @manage-parameters="showParameterManager = !showParameterManager"
+      />
+    </template>
     <LoadingState
       :is-loading="!isInitialized"
       :error="error"
       :loading-message="currentPhase === 'complete' ? '' : 'Loading data...'"
     >
       <TableLayout class="viewer-container">
-        <template #header>
-          <ScheduleTableHeader
-            @manage-parameters="showParameterManager = !showParameterManager"
-          />
-        </template>
         <template #menu>
           <div class="menu-container">
             <TableOptionsMenu
