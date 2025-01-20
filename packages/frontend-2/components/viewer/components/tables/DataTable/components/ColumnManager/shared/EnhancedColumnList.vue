@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col h-full" :data-mode="mode">
     <!-- List -->
     <div class="flex-1 overflow-y-auto">
       <div class="p-2 space-y-1">

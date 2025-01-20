@@ -358,19 +358,36 @@ const handleDrop = (event: DragEvent, targetIndex?: number) => {
   if (!dropState.dragging || targetIndex === undefined) return
 
   try {
-    const sourceIndex = columnManager.activeColumns.value.findIndex(
+    // Find source item in active columns
+    const sourceActiveIndex = columnManager.activeColumns.value.findIndex(
       (col) => getItemId(col) === dropState.dragging
     )
 
-    if (sourceIndex !== -1) {
-      handleReorder(sourceIndex, targetIndex)
-    } else {
-      const sourceItem = columnManager.availableParameters.value.find(
-        (p) => getItemId(p) === dropState.dragging
-      )
-      if (sourceItem && isParameter(sourceItem)) {
-        handleAdd(sourceItem)
+    // Find source item in available parameters
+    const sourceAvailableItem = columnManager.availableParameters.value.find(
+      (p) => getItemId(p) === dropState.dragging
+    )
+
+    // Get the closest EnhancedColumnList component's mode
+    const listElement = (event.currentTarget as HTMLElement)?.closest('[data-mode]')
+    const targetMode = listElement?.getAttribute('data-mode') as 'active' | 'available'
+
+    if (sourceActiveIndex !== -1) {
+      // Source is from active list
+      if (targetMode === 'active') {
+        // Reordering within active list
+        handleReorder(sourceActiveIndex, targetIndex)
+      } else if (targetMode === 'available') {
+        // Moving from active to available (remove)
+        handleRemove(columnManager.activeColumns.value[sourceActiveIndex])
       }
+    } else if (sourceAvailableItem && isParameter(sourceAvailableItem)) {
+      // Source is from available list
+      if (targetMode === 'active') {
+        // Moving from available to active
+        handleAdd(sourceAvailableItem)
+      }
+      // If target is available list, do nothing (prevent reordering)
     }
   } catch (err) {
     const error = err instanceof Error ? err : new Error('Failed to handle drop')

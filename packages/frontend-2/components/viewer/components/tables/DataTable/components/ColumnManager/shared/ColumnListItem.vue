@@ -4,10 +4,11 @@
     class="column-list-item group"
     :class="{
       'is-dragging': isDragging,
-      'drop-target': isDropTarget,
-      [`drop-position-${dropPosition}`]: isDropTarget && dropPosition
+      'drop-target': mode === 'active' && isDropTarget,
+      [`drop-position-${dropPosition}`]:
+        mode === 'active' && isDropTarget && dropPosition
     }"
-    draggable="true"
+    :draggable="mode === 'active' || mode === 'available'"
     @dragstart="handleDragStart"
     @dragend="handleDragEnd"
     @dragenter.prevent="handleDragEnter"
