@@ -20,7 +20,7 @@
       <template #loading>Loading data...</template>
 
       <!-- Expander column -->
-      <Column v-if="hasExpandableRows" :expander="true" style="width: 3rem">
+      <Column v-if="hasExpandableRows" :expander="true" style="width: 1rem">
         <template #body="{ data }">
           <div class="expander-cell">
             <button
@@ -369,6 +369,7 @@ function handleTestModeUpdate(value: boolean): void {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 1rem;
 }
 
 :deep(.expander-button) {

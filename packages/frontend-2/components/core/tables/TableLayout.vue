@@ -47,9 +47,11 @@
 
 .table-content {
   flex: 1;
+  padding: 1rem;
   position: relative;
   overflow: auto;
-  background-color: var(--surface-ground);
+  border-bottom: 1px solid var(--surface-border);
+  background-color: var(--surface-card);
 }
 
 .table-footer {

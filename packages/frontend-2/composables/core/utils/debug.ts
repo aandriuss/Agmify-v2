@@ -154,7 +154,8 @@ class Debug {
   }
 
   private state = ref<DebugState>({
-    isEnabled: import.meta.env.DEV,
+    isEnabled: false,
+    // isEnabled: import.meta.env.DEV, TODO: Uncomment this line, remove upper line
     isPanelVisible: false,
     enabledCategories: new Set(Object.values(DebugCategories)),
     hiddenGroups: new Set<string>(),

@@ -36,7 +36,7 @@ defineProps<{
 
 .error-state,
 .loading-state {
-  @apply flex flex-col items-center gap-4 p-8 rounded-lg bg-foundation shadow-lg;
+  @apply flex flex-col items-center gap-4 rounded-lg bg-foundation shadow-lg;
 }
 
 .error-message,

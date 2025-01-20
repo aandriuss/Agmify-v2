@@ -16,54 +16,48 @@
     <!-- Main content -->
     <div v-if="!isLoading" class="h-full flex flex-col">
       <div class="flex flex-col gap-2">
-        <!-- Parameters Panel -->
         <div class="border rounded flex flex-col overflow-hidden bg-background">
+          <!-- Header remains unchanged -->
           <div class="p-1 border-b bg-gray-50 flex items-center justify-between">
             <h3 class="font-medium text-sm">User Parameters</h3>
           </div>
-          <div>
-            <FilterOptions
-              :search-term="searchTerm"
-              :is-grouped="isGrouped"
-              :sort-by="sortBy"
-              @update:search-term="searchTerm = $event"
-              @update:is-grouped="isGrouped = $event"
-              @update:sort-by="handleSortByUpdate"
-            />
 
-            <div v-if="!isAddingNew || !showAddButton" class="p-2 border-b"></div>
-            <div>
-              <FormButton
-                text
-                size="lg"
-                class="w-full text-left"
-                @click="openAddParameterDialog"
-              >
-                <PlusIcon class="size-4" />
-                Add Parameter
-              </FormButton>
+          <!-- Modified controls section -->
+          <div class="border-b">
+            <div class="flex items-top bg-gray-50">
+              <!-- Search container with max width -->
+              <div class="flex-1 max-w-[300px]">
+                <FilterOptions
+                  :search-term="searchTerm"
+                  :is-grouped="isGrouped"
+                  :sort-by="sortBy"
+                  @update:search-term="searchTerm = $event"
+                  @update:is-grouped="isGrouped = $event"
+                  @update:sort-by="handleSortByUpdate"
+                />
+              </div>
+
+              <!-- Add Parameter button -->
+              <div v-if="!isAddingNew || !showAddButton" class="flex-shrink-0 p-0.5">
+                <FormButton
+                  text
+                  size="lg"
+                  class="whitespace-nowrap"
+                  @click="openAddParameterDialog"
+                >
+                  <PlusIcon class="size-4" />
+                  Add Parameter
+                </FormButton>
+              </div>
             </div>
           </div>
 
-          <!-- Parameter Creation -->
-          <div v-if="isAddingNew || showAddButton" class="p-2 border-b">
-            <div v-if="isAddingNew">
-              <ParameterCreationForm
-                @create="handleCreateParameter"
-                @cancel="handleCancelAdd"
-              />
-            </div>
-            <div v-else>
-              <FormButton
-                text
-                size="lg"
-                class="w-full text-left"
-                @click="openAddParameterDialog"
-              >
-                <PlusIcon class="size-4" />
-                Add Parameter
-              </FormButton>
-            </div>
+          <!-- Parameter Creation Form (when active) -->
+          <div v-if="isAddingNew" class="p-2 border-b">
+            <ParameterCreationForm
+              @create="handleCreateParameter"
+              @cancel="handleCancelAdd"
+            />
           </div>
 
           <!-- Parameter Groups -->

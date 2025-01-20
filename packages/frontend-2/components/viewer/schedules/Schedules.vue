@@ -541,6 +541,8 @@ onMounted(async () => {
   flex-direction: column;
   height: 100%;
   width: 100%;
+  border-bottom: 1px solid var(--surface-border);
+  background-color: var(--surface-card);
   overflow: hidden;
 }
 </style>
