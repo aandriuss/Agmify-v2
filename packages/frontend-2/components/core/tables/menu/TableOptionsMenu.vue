@@ -60,7 +60,7 @@ import { ref } from 'vue'
 import { FormButton } from '@speckle/ui-components'
 import { ChevronRightIcon } from '@heroicons/vue/24/solid'
 import CategoryMenu from '~/components/core/tables/menu/CategoryMenu.vue'
-import ColumnManager from '~/components/viewer/components/tables/DataTable/components/ColumnManager/index.vue'
+import ColumnManager from '~/components/core/tables/DataTable/components/ColumnManager/index.vue'
 import ParameterManager from '~/components/core/parameters/ParameterManager.vue'
 
 interface TableUpdateEvent {

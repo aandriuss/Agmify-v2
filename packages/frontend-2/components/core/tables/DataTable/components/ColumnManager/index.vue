@@ -132,7 +132,7 @@ import Button from 'primevue/button'
 import TabSelector from './TabSelector.vue'
 import FilterOptions from '~/components/shared/FilterOptions.vue'
 import EnhancedColumnList from './shared/EnhancedColumnList.vue'
-import { useColumnManager } from '~/components/viewer/components/tables/DataTable/composables/columns/useColumnManager'
+import { useColumnManager } from '~/components/core/tables/DataTable/composables/columns/useColumnManager'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
 import type {
