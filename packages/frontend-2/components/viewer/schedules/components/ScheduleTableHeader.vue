@@ -27,7 +27,7 @@
           <FormButton
             text
             size="sm"
-            color="primary"
+            color="subtle"
             class="hover:bg-primary-100"
             @click="createNewTable"
           >
@@ -59,7 +59,7 @@
             </div>
           </div>
           <div class="flex items-center gap-1">
-            <FormButton text size="sm" color="primary" @click="handleSave">
+            <FormButton text size="sm" color="subtle" @click="handleSave">
               <CheckIcon class="size-4" />
             </FormButton>
             <FormButton text size="sm" color="subtle" @click="cancelEdit">

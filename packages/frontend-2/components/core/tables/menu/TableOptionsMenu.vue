@@ -3,7 +3,6 @@
     <!-- Left side: Navigation buttons -->
     <div class="menu-nav">
       <FormButton
-        text
         size="lg"
         color="subtle"
         class="nav-button"
@@ -14,7 +13,6 @@
         <ChevronRightIcon v-if="currentView == 'categories'" class="size-4" />
       </FormButton>
       <FormButton
-        text
         size="lg"
         color="subtle"
         class="nav-button"
@@ -25,7 +23,6 @@
         <ChevronRightIcon v-if="currentView == 'columns'" class="size-4" />
       </FormButton>
       <FormButton
-        text
         size="lg"
         color="subtle"
         class="nav-button"
@@ -101,7 +98,7 @@ function handleParameterUpdate() {
 }
 
 .menu-nav {
-  width: 200px;
+  width: 12rem;
   padding: 0.5rem;
   border-right: 1px solid var(--surface-border);
   background-color: var(--surface-section);
@@ -111,6 +108,7 @@ function handleParameterUpdate() {
 
 .nav-button {
   width: 100%;
+  min-width: 100%;
   justify-content: space-between;
   padding: 0.5rem;
   border-radius: 0.25rem;
@@ -118,8 +116,11 @@ function handleParameterUpdate() {
 }
 
 .nav-button.active {
-  background-color: var(--surface-hover);
-  font-weight: 600;
+  @apply bg-primary;
+
+  color: white;
+  border: 1px solid var(--surface-border);
+  font-weight: bold; /* TODO Fix bold */
 }
 
 .component-display {
