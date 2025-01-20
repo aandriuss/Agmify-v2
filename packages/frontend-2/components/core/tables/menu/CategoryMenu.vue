@@ -3,9 +3,7 @@
     <div class="flex flex-row justify-between">
       <!-- Parent Categories -->
       <div class="flex-1 mr-4">
-        <span class="text-body-xs text-foreground font-large mb-2 block">
-          Host Categories
-        </span>
+        <span class="header">Host Categories</span>
         <div class="max-h-[200px] overflow-y-auto">
           <div v-for="category in parentCategories" :key="category" class="mb-1">
             <FormButton
@@ -34,9 +32,7 @@
 
       <!-- Child Categories -->
       <div class="flex-1">
-        <span class="text-body-xs text-foreground font-medium mb-2 block">
-          Child Categories
-        </span>
+        <span class="header">Child Categories</span>
         <div class="max-h-[200px] overflow-y-auto">
           <div v-for="category in childCategories" :key="category" class="mb-1">
             <FormButton
@@ -163,6 +159,13 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   margin-left: 0.5rem;
   font-size: 0.875rem;
   line-height: 1.25rem;
+}
+
+.header {
+  margin: 0.5rem;
+
+  /* TODO Fix bold  */
+  font-weight: bold;
 }
 
 .max-h-200 {

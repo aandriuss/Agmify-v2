@@ -42,13 +42,17 @@
         v-for="col in columns"
         :key="col.id"
         :field="col.field"
-        :header="col.header"
         :sortable="col.sortable"
         :style="{ width: col.width + 'px' }"
-      />
+      >
+        <template #header>
+          <span class="font-bold">{{ col.header }}</span>
+          <!-- TODO: fix bold -->
+        </template>
+      </Column>
 
       <template #expansion="slotProps">
-        <div v-if="(slotProps.data.details?.length ?? 0) > 0" class="p-3">
+        <div v-if="(slotProps.data.details?.length ?? 0) > 0">
           <DataTable
             :value="slotProps.data.details"
             class="nested-table"
@@ -60,10 +64,14 @@
               v-for="col in childColumns"
               :key="col.id"
               :field="col.field"
-              :header="col.header"
               :sortable="col.sortable"
               :style="{ width: col.width + 'px' }"
-            />
+            >
+              <template #header>
+                <span class="!font-bold">{{ col.header }}</span>
+                <!-- TODO: fix bold -->
+              </template>
+            </Column>
           </DataTable>
         </div>
       </template>
@@ -382,5 +390,10 @@ function handleTestModeUpdate(value: boolean): void {
 
 :deep(.expander-button:hover) {
   background-color: var(--surface-hover);
+}
+
+.nested-table {
+  padding: 0.25rem;
+  padding-left: 1.5rem;
 }
 </style>
