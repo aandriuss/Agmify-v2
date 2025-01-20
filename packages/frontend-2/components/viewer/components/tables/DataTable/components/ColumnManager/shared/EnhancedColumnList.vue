@@ -1,47 +1,20 @@
 <template>
   <div class="flex flex-col h-full">
-    <FilterOptions
-      v-if="showFilterOptions"
-      :search-term="localSearchTerm"
-      :is-grouped="localIsGrouped"
-      :sort-by="localSortBy"
-      :show-grouping="mode === 'available'"
-      :show-sorting="mode === 'available'"
-      @update:search-term="handleSearchTermUpdate"
-      @update:is-grouped="handleIsGroupedUpdate"
-      @update:sort-by="handleSortByUpdate"
-    />
-
     <!-- List -->
     <div class="flex-1 overflow-y-auto">
-      <div
-        class="p-2"
-        :class="{
-          'space-y-4': localIsGrouped && mode === 'available',
-          'space-y-1': !localIsGrouped || mode === 'active'
-        }"
-      >
-        <!-- Available Parameters with Grouping -->
-        <template v-if="localIsGrouped && mode === 'available'">
-          <div v-for="group in groupedItems" :key="group.group" class="space-y-1">
-            <!-- Group Header -->
-            <div class="flex items-center gap-1">
-              <button
-                type="button"
-                class="flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-gray-900"
-                @click="toggleGroup(group.group)"
-              >
-                <ChevronRightIcon
-                  v-if="!isGroupExpanded(group.group)"
-                  class="w-4 h-4"
-                />
-                <ChevronDownIcon v-else class="w-4 h-4" />
-                {{ group.group }}
-                <span class="text-xs text-gray-500">({{ group.items.length }})</span>
-              </button>
-            </div>
-
-            <!-- Group Items -->
+      <div class="p-2 space-y-1">
+        <template v-if="isGrouped">
+          <div v-for="group in items" :key="group.group">
+            <button
+              type="button"
+              class="flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-gray-900 mb-1"
+              @click="toggleGroup(group.group)"
+            >
+              <ChevronRightIcon v-if="!isGroupExpanded(group.group)" class="w-4 h-4" />
+              <ChevronDownIcon v-else class="w-4 h-4" />
+              {{ group.group }}
+              <span class="text-xs text-gray-500">({{ group.items.length }})</span>
+            </button>
             <div v-show="isGroupExpanded(group.group)" class="space-y-1 ml-4">
               <ColumnListItem
                 v-for="(item, index) in group.items"
@@ -62,11 +35,9 @@
             </div>
           </div>
         </template>
-
-        <!-- Active Parameters or Ungrouped Available Parameters -->
         <template v-else>
           <ColumnListItem
-            v-for="(item, index) in sortedItems"
+            v-for="(item, index) in items[0].items"
             :key="getItemId(item)"
             :column="item"
             :mode="mode"
@@ -88,41 +59,34 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { ChevronRightIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
+import { ref, onMounted } from 'vue'
 import type {
   TableColumn,
   AvailableBimParameter,
   AvailableUserParameter
 } from '~/composables/core/types'
 import ColumnListItem from './ColumnListItem.vue'
-import FilterOptions from '~/components/shared/FilterOptions.vue'
-import { useFilterAndSort } from '~/composables/shared/useFilterAndSort'
+import { ChevronRightIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
 
 type AvailableParameter = AvailableBimParameter | AvailableUserParameter
 
+type GroupedItems = Array<{
+  group: string
+  items: Array<TableColumn | AvailableParameter>
+}>
+
 interface Props {
-  items: (TableColumn | AvailableParameter)[]
+  items: GroupedItems
   mode: 'active' | 'available'
-  showFilterOptions?: boolean
-  searchTerm?: string
-  isGrouped?: boolean
-  sortBy?: 'name' | 'category' | 'type' | 'fixed'
+  isGrouped: boolean
   dropPosition?: 'above' | 'below' | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  showFilterOptions: false,
-  searchTerm: '',
-  isGrouped: true,
-  sortBy: 'name',
   dropPosition: null
 })
 
 const emit = defineEmits<{
-  'update:search-term': [value: string]
-  'update:is-grouped': [value: boolean]
-  'update:sort-by': [value: string]
   add: [item: AvailableParameter]
   remove: [item: TableColumn]
   'drag-start': [
@@ -136,49 +100,33 @@ const emit = defineEmits<{
   'visibility-change': [item: TableColumn, visible: boolean]
 }>()
 
-// Local state to avoid prop mutations
-const localSearchTerm = ref(props.searchTerm)
-const localIsGrouped = ref(props.isGrouped)
-const localSortBy = ref(props.sortBy)
-const expandedGroups = ref<Set<string>>(new Set())
 const currentDropIndex = ref<number | null>(null)
+const expandedGroups = ref<Set<string>>(new Set())
 
-// Update handlers
-function handleSearchTermUpdate(value: string) {
-  localSearchTerm.value = value
-  emit('update:search-term', value)
+// Group expansion functions
+function toggleGroup(group: string) {
+  if (expandedGroups.value.has(group)) {
+    expandedGroups.value.delete(group)
+  } else {
+    expandedGroups.value.add(group)
+  }
 }
 
-function handleIsGroupedUpdate(value: boolean) {
-  localIsGrouped.value = value
-  emit('update:is-grouped', value)
+function isGroupExpanded(group: string): boolean {
+  return expandedGroups.value.has(group)
 }
 
-function handleSortByUpdate(value: string) {
-  localSortBy.value = value as 'name' | 'category' | 'type' | 'fixed'
-  emit('update:sort-by', value)
-}
-
-// Type Guards
-function isColumn(item: AvailableParameter | TableColumn): item is TableColumn {
-  return 'parameter' in item
-}
+// Initialize with all groups expanded
+onMounted(() => {
+  props.items.forEach((group) => {
+    expandedGroups.value.add(group.group)
+  })
+})
 
 // Helper Functions
 function getItemId(item: AvailableParameter | TableColumn): string {
-  if (isColumn(item)) {
-    return `col_${item.parameter.id}`
-  }
-  return `param_${item.id}`
+  return 'field' in item ? item.field : item.id
 }
-
-// Use filter and sort composable
-const { sortedItems, groupedItems } = useFilterAndSort({
-  items: computed(() => props.items),
-  searchTerm: localSearchTerm,
-  isGrouped: localIsGrouped,
-  sortBy: localSortBy
-})
 
 // Event Handlers
 function handleAdd(item: AvailableParameter) {
@@ -216,23 +164,6 @@ function handleDrop(event: DragEvent, index: number) {
 function handleVisibilityChange(item: TableColumn, visible: boolean) {
   emit('visibility-change', item, visible)
 }
-
-function toggleGroup(group: string) {
-  if (expandedGroups.value.has(group)) {
-    expandedGroups.value.delete(group)
-  } else {
-    expandedGroups.value.add(group)
-  }
-}
-
-function isGroupExpanded(group: string): boolean {
-  return expandedGroups.value.has(group)
-}
-
-// Initialize with all groups expanded
-groupedItems.value.forEach((group) => {
-  expandedGroups.value.add(group.group)
-})
 </script>
 
 <style scoped>

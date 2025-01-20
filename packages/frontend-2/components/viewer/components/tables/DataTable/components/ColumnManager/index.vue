@@ -27,39 +27,49 @@
           >
             <div class="p-1 border-b bg-gray-50 flex items-center justify-between">
               <h3 class="font-medium text-sm">Available Parameters</h3>
-              <FormButton
-                text
-                size="sm"
-                color="subtle"
-                :icon-right="
-                  coreStore.showCategoryOptions.value ? ChevronUpIcon : ChevronDownIcon
-                "
-                @click="toggleFilterOptions"
-              >
-                Filter Options
-              </FormButton>
             </div>
 
-            <EnhancedColumnList
-              :key="`available-${currentView}-${listRefreshKey}`"
-              :items="columnManager.availableParameters.value"
-              mode="available"
-              :show-filter-options="coreStore.showCategoryOptions.value"
+            <FilterOptions
               :search-term="searchTerm"
               :is-grouped="isGrouped"
               :sort-by="sortBy"
-              :drop-position="dropState.dropPosition"
               @update:search-term="handleSearchUpdate"
               @update:is-grouped="handleGroupingUpdate"
               @update:sort-by="handleSortUpdate"
-              @add="handleAdd"
-              @remove="handleRemove"
-              @drag-start="handleDragStart"
-              @drag-end="handleDragEnd"
-              @drag-enter="handleDragEnter"
-              @drop="handleDrop"
-              @visibility-change="handleVisibilityChange"
             />
+
+            <template v-if="isGrouped">
+              <EnhancedColumnList
+                :key="`available-${currentView}-${listRefreshKey}-grouped`"
+                :items="groupedItems"
+                :is-grouped="isGrouped"
+                mode="available"
+                :drop-position="dropState.dropPosition"
+                @add="handleAdd"
+                @remove="handleRemove"
+                @drag-start="handleDragStart"
+                @drag-end="handleDragEnd"
+                @drag-enter="handleDragEnter"
+                @drop="handleDrop"
+                @visibility-change="handleVisibilityChange"
+              />
+            </template>
+            <template v-else>
+              <EnhancedColumnList
+                :key="`available-${currentView}-${listRefreshKey}-ungrouped`"
+                :items="[{ group: 'All Parameters', items: sortedItems }]"
+                :is-grouped="isGrouped"
+                mode="available"
+                :drop-position="dropState.dropPosition"
+                @add="handleAdd"
+                @remove="handleRemove"
+                @drag-start="handleDragStart"
+                @drag-end="handleDragEnd"
+                @drag-enter="handleDragEnter"
+                @drop="handleDrop"
+                @visibility-change="handleVisibilityChange"
+              />
+            </template>
           </div>
 
           <!-- Active Columns Panel -->
@@ -94,9 +104,11 @@
 
             <EnhancedColumnList
               :key="`active-${currentView}-${listRefreshKey}`"
-              :items="columnManager.activeColumns.value"
+              :items="[
+                { group: 'Active Columns', items: columnManager.activeColumns.value }
+              ]"
+              :is-grouped="false"
               mode="active"
-              :show-filter-options="false"
               :drop-position="dropState.dropPosition"
               @add="handleAdd"
               @remove="handleRemove"
@@ -116,21 +128,20 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue'
-import type { FormButton } from '@speckle/ui-components'
 import Button from 'primevue/button'
-import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid'
 import TabSelector from './TabSelector.vue'
+import FilterOptions from '~/components/shared/FilterOptions.vue'
 import EnhancedColumnList from './shared/EnhancedColumnList.vue'
 import { useColumnManager } from '~/components/viewer/components/tables/DataTable/composables/columns/useColumnManager'
 import { useTableStore } from '~/composables/core/tables/store/store'
 import { useParameterStore } from '~/composables/core/parameters/store/store'
-import { useStore } from '~/composables/core/store'
 import type {
   AvailableBimParameter,
-  AvailableUserParameter
+  AvailableUserParameter,
+  AvailableParameter
 } from '~/composables/core/types/parameters/parameter-states'
 import { debug, DebugCategories } from '~/composables/core/utils/debug'
-
+import { useFilterAndSort } from '~/composables/shared/useFilterAndSort'
 import type { TableColumn } from '~/composables/core/types'
 
 // Helper to get item identifier
@@ -157,7 +168,6 @@ function isColumn(
 // Stores and Composables
 const tableStore = useTableStore()
 const parameterStore = useParameterStore()
-const coreStore = useStore()
 const columnManager = useColumnManager()
 
 // State
@@ -197,6 +207,18 @@ const hasHiddenColumns = computed(() =>
   columnManager.activeColumns.value.some((col) => !col.visible)
 )
 
+const availableParametersList = computed<(TableColumn | AvailableParameter)[]>(() =>
+  columnManager.availableParameters.value.filter((item) => item !== null)
+)
+
+// Use the properly typed computed property with useFilterAndSort
+const { sortedItems, groupedItems } = useFilterAndSort({
+  items: availableParametersList,
+  searchTerm,
+  isGrouped,
+  sortBy
+})
+
 // Event Handlers
 const handleViewChange = (view: 'parent' | 'child') => {
   columnManager.setView(view)
@@ -222,10 +244,6 @@ const handleSortUpdate = (value: string) => {
     default:
       break
   }
-}
-
-const toggleFilterOptions = () => {
-  coreStore.setShowCategoryOptions(!coreStore.showCategoryOptions.value)
 }
 
 const handleAdd = (

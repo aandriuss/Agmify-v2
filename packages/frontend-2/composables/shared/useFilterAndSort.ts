@@ -35,7 +35,9 @@ export function useFilterAndSort({
 
   // Helper function to get item group
   function getItemGroup(item: TableColumn | AvailableParameter): string {
+    if (!item) return 'Ungrouped'
     const param = 'parameter' in item ? item.parameter : item
+    if (!param) return 'Ungrouped'
 
     if (isAvailableBimParameter(param)) {
       return param.group.currentGroup || param.group.fetchedGroup || 'Ungrouped'
@@ -55,19 +57,26 @@ export function useFilterAndSort({
 
   // Filter items based on search term
   const filteredItems = computed(() => {
-    if (!searchTerm.value) return items.value
+    if (!searchTerm.value)
+      return items.value.filter((item) => item !== null && item !== undefined)
 
     const searchLower = searchTerm.value.toLowerCase()
     return items.value.filter((item) => {
-      const name = getItemName(item).toLowerCase()
-      const group = getItemGroup(item).toLowerCase()
-      const type = getItemType(item).toLowerCase()
+      if (!item) return false
 
-      return (
-        name.includes(searchLower) ||
-        group.includes(searchLower) ||
-        type.includes(searchLower)
-      )
+      try {
+        const name = getItemName(item).toLowerCase()
+        const group = getItemGroup(item).toLowerCase()
+        const type = getItemType(item).toLowerCase()
+
+        return (
+          name.includes(searchLower) ||
+          group.includes(searchLower) ||
+          type.includes(searchLower)
+        )
+      } catch (error) {
+        return false
+      }
     })
   })
 

@@ -13,7 +13,6 @@ import type {
 // Parameter processing has been moved to:
 // - parameter-processing.ts for value transformation and validation
 // - useElementsData for parameter extraction and processing
-// See composables/core/parameters/next/MIGRATION.md for details
 
 /**
  * Type guard for primitive values
@@ -148,11 +147,11 @@ export function convertToParameterValue(value: unknown): ParameterValue {
 export function extractParameterGroup(param: AvailableParameter): string {
   if (isBimParameter(param)) {
     // Use currentGroup if available, fallback to fetchedGroup
-    return param.currentGroup || param.fetchedGroup || 'Parameters'
+    return param.group.currentGroup || param.group.fetchedGroup || 'Parameters'
   }
   if (isUserParameter(param)) {
     // Use group if available, fallback to default
-    return param.group || 'Parameters'
+    return param.group.fetchedGroup || 'Parameters'
   }
   return 'Parameters'
 }

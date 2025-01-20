@@ -20,15 +20,29 @@
         <div class="border rounded flex flex-col overflow-hidden bg-background">
           <div class="p-1 border-b bg-gray-50 flex items-center justify-between">
             <h3 class="font-medium text-sm">User Parameters</h3>
-            <FormButton
-              text
-              size="sm"
-              color="subtle"
-              :icon-right="showFilterOptions ? ChevronUpIcon : ChevronDownIcon"
-              @click="toggleFilterOptions"
-            >
-              Filter Options
-            </FormButton>
+          </div>
+          <div>
+            <FilterOptions
+              :search-term="searchTerm"
+              :is-grouped="isGrouped"
+              :sort-by="sortBy"
+              @update:search-term="searchTerm = $event"
+              @update:is-grouped="isGrouped = $event"
+              @update:sort-by="handleSortByUpdate"
+            />
+
+            <div v-if="!isAddingNew || !showAddButton" class="p-2 border-b"></div>
+            <div>
+              <FormButton
+                text
+                size="lg"
+                class="w-full text-left"
+                @click="openAddParameterDialog"
+              >
+                <PlusIcon class="size-4" />
+                Add Parameter
+              </FormButton>
+            </div>
           </div>
 
           <!-- Parameter Creation -->
@@ -51,17 +65,6 @@
               </FormButton>
             </div>
           </div>
-
-          <!-- Filter Options -->
-          <FilterOptions
-            v-if="showFilterOptions"
-            :search-term="searchTerm"
-            :is-grouped="isGrouped"
-            :sort-by="sortBy"
-            @update:search-term="searchTerm = $event"
-            @update:is-grouped="isGrouped = $event"
-            @update:sort-by="handleSortByUpdate"
-          />
 
           <!-- Parameter Groups -->
           <div class="flex-1 overflow-auto">
@@ -98,7 +101,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { FormButton } from '@speckle/ui-components'
-import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from '@heroicons/vue/24/solid'
+import { PlusIcon } from '@heroicons/vue/24/solid'
 import { useUserParameterStore } from '~/composables/core/userparameters/store'
 import { useParametersGraphQL } from '~/composables/core/userparameters/useParametersGraphQL'
 import type { AvailableUserParameter } from '~/composables/core/types'
@@ -116,7 +119,6 @@ import { debug } from '~/composables/core/utils/debug'
 
 const error = ref<string | null>(null)
 const isAddingNew = ref(false)
-const showFilterOptions = ref(false)
 const showAddButton = ref(true)
 
 // Filter state
@@ -238,10 +240,6 @@ function openAddParameterDialog() {
 
 function handleCancelAdd() {
   isAddingNew.value = false
-}
-
-function toggleFilterOptions() {
-  showFilterOptions.value = !showFilterOptions.value
 }
 
 // Watch for store errors

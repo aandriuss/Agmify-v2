@@ -2,7 +2,7 @@
   <div class="parameter-list">
     <!-- Grouped Parameters -->
     <div class="parameter-group">
-      <FormButton
+      <button
         type="button"
         class="group-header"
         :class="{ collapsed: isCollapsed }"
@@ -14,7 +14,7 @@
         <ChevronRightIcon class="chevron-icon" :class="{ 'rotate-90': !isCollapsed }" />
         <span>{{ props.group || 'All' }}</span>
         <span class="parameter-count">({{ props.parameters.length }})</span>
-      </FormButton>
+      </button>
 
       <div v-show="!isCollapsed" class="group-content">
         <div
@@ -120,7 +120,7 @@ function formatValue(
   align-items: center;
   border: transparent;
   gap: 0.5rem;
-  font-size: 1rem;
+  font-size: medium;
   font-weight: bold !important;
   color: var(--color-foreground);
   background: var(--color-background-muted);
