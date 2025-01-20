@@ -130,7 +130,7 @@ function handleCreate() {
 
 .parameter-info {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(150px, 2fr) minmax(120px, 1fr);
+  grid-template-columns: minmax(180px, 1.4fr) minmax(150px, 2fr) minmax(120px, 1fr);
   gap: 1rem;
   align-items: center;
   flex: 1;
@@ -141,12 +141,11 @@ function handleCreate() {
   display: flex;
   align-items: center;
   gap: 1rem;
-  min-width: 0;
   position: relative;
 }
 
 .form-input {
-  font-size: medium;
+  font-size: small;
   padding: 0.1rem;
   padding-left: 0.5rem;
   border-radius: 0.375rem;
@@ -167,7 +166,7 @@ function handleCreate() {
 }
 
 .parameter-type-input {
-  max-width: 130px;
+  max-width: 100px;
 }
 
 .parameter-value-input,

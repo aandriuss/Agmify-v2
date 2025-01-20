@@ -103,13 +103,14 @@ function formatValue(
 .parameter-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
   background: var(--color-background);
 }
 
 .parameter-group {
   display: flex;
   flex-direction: column;
+  font-size: small;
   border: 1px solid var(--color-border);
   border-radius: 0.375rem;
   overflow: hidden;
@@ -120,8 +121,8 @@ function formatValue(
   align-items: center;
   border: transparent;
   gap: 0.5rem;
-  font-size: medium;
-  font-weight: bold !important;
+  font-size: small;
+  font-weight: bold !important; /* TODO Fix bold */
   color: var(--color-foreground);
   background: var(--color-background-muted);
   cursor: pointer;
@@ -151,7 +152,6 @@ function formatValue(
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.5rem;
 }
 
 .parameter-item {
@@ -169,7 +169,7 @@ function formatValue(
 .parameter-row {
   display: flex;
   align-items: center;
-  padding-left: 2.5rem;
+  padding-left: 1.6rem;
   justify-content: space-between;
   min-width: 0;
   width: 100%;
@@ -177,7 +177,7 @@ function formatValue(
 
 .parameter-info {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(150px, 2fr) minmax(120px, 1fr);
+  grid-template-columns: minmax(140px, 1.4fr) minmax(150px, 2fr) minmax(120px, 1fr);
   gap: 1rem;
   align-items: center;
   flex: 1;
@@ -192,7 +192,6 @@ function formatValue(
 
 .parameter-value {
   color: var(--color-foreground-muted);
-  padding-left: 0.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
