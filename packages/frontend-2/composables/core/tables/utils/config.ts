@@ -32,10 +32,6 @@ export function createTableConfig(
       selectedParentCategories: [],
       selectedChildCategories: []
     },
-    selectedParameters: {
-      parent: [],
-      child: []
-    },
     metadata: {},
     lastUpdateTimestamp: Date.now(),
     filters: []

@@ -55,7 +55,7 @@ import { useBIMElements } from '~/composables/core/tables/state/useBIMElements'
 import type { TableColumn } from '~/composables/core/types'
 
 import ScheduleMainView from './components/ScheduleMainView.vue'
-import LoadingState from '~/components/core/LoadingState.vue'
+import LoadingState from '~/components/core/loadings/LoadingState.vue'
 import TableLayout from '~/components/core/tables/TableLayout.vue'
 import ScheduleTableHeader from './components/ScheduleTableHeader.vue'
 import TableOptionsMenu from '~/components/core/tables/menu/TableOptionsMenu.vue'

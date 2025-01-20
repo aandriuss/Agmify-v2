@@ -11,9 +11,6 @@ export {
 // Table configuration
 export { createTableConfig, TABLE_SORT_DIRECTIONS, TABLE_VIEW_MODES } from './config'
 
-// BIM utilities
-export { inferBimValueType, getDefaultValueForType } from './bim'
-
 // Data pipeline
 export { processDataPipeline } from './dataPipeline'
 export type { DataPipelineOptions, DataPipelineResult } from './dataPipeline'
