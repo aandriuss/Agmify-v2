@@ -1,5 +1,6 @@
 import type {
   TableColumn,
+  TableColumnType,
   ParameterValue,
   TableRow,
   ElementData
@@ -77,6 +78,10 @@ function isValidParameters(item: unknown): boolean {
   )
 }
 
+function isValidColumnType(type: unknown): type is TableColumnType {
+  return type === 'string' || type === 'number' || type === 'boolean' || type === 'date'
+}
+
 export function updateLocalColumns(
   sourceColumns: TableColumn[],
   updateFn: (columns: TableColumn[]) => void
@@ -89,9 +94,10 @@ export function updateLocalColumns(
   try {
     const columns = sourceColumns.map((col) => ({
       ...col,
-      visible: col.visible !== false, // Show column unless explicitly hidden
-      type: col.type || 'string', // Ensure type is always set
-      order: typeof col.order === 'number' ? col.order : 0 // Ensure order is always set
+      visible: col.visible !== false,
+      // Access type through parameter if it exists, otherwise default to 'string'
+      type: isValidColumnType(col.parameter?.type) ? col.parameter.type : 'string',
+      order: typeof col.order === 'number' ? col.order : 0
     }))
 
     const sortedColumns = sortColumnsByOrder(columns)

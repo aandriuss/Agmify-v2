@@ -5,10 +5,10 @@
    yarn 4.5
 
 4. Open Workspace (root folder) > Agmify v2 (speckle server) (select workspace file if needed)
-5. .env (from .env-example)
+5. copy and rename from .env-example to .env
 6. root: yarn
 7. root: yarn build
-8. run docker-compose-speckle.yml
+8. root: "command" docker-compose-speckle.yml
 
 // each time starting new
 

@@ -56,6 +56,8 @@ export interface TableColumn {
   parameter: ColumnParameter
 }
 
+export type TableColumnType = 'string' | 'number' | 'boolean' | 'date'
+
 /**
  * Create a column from an available parameter
  */

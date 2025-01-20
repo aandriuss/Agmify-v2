@@ -168,7 +168,8 @@ export type {
   FilterDef,
   ExpandableTableRow,
   TableSort,
-  TableFilter
+  TableFilter,
+  TableColumnType
 } from './tables'
 
 export { createTableColumns, createTableColumn } from './tables'
