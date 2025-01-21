@@ -26,7 +26,7 @@
         :active="activeControl === 'schedules'"
         @click="toggleActiveControl('schedules')"
       >
-        <IconDatasets class="h-4 w-4 md:h-5 md:w-5" />
+        <IconSchedules class="h-4 w-4 md:h-5 md:w-5" />
       </ViewerControlsButtonToggle>
 
       <!-- Debug -->

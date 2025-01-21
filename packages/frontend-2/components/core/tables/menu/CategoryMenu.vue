@@ -24,7 +24,10 @@
               "
               @click="() => handleCategoryToggle('parent', category)"
             >
-              <span class="category-text">{{ category }}</span>
+              <div class="flex items-center">
+                <component :is="getCategoryIcon(category)" class="category-icon" />
+                <span class="category-text">{{ category }}</span>
+              </div>
             </FormButton>
           </div>
         </div>
@@ -53,7 +56,10 @@
               "
               @click="() => handleCategoryToggle('child', category)"
             >
-              <span class="category-text">{{ category }}</span>
+              <div class="flex items-center">
+                <component :is="getCategoryIcon(category)" class="category-icon" />
+                <span class="category-text">{{ category }}</span>
+              </div>
             </FormButton>
           </div>
         </div>
@@ -77,6 +83,7 @@ import { CheckCircleIcon as CheckCircleIconSolid } from '@heroicons/vue/24/solid
 import { CheckCircleIcon as CheckCircleIconOutline } from '@heroicons/vue/24/outline'
 import { parentCategories, childCategories } from '~/composables/core/config/categories'
 import { useTableStore } from '~/composables/core/tables/store/store'
+import { getCategoryIcon } from '~/composables/core/config/categoryIcons'
 
 const store = useTableStore()
 const currentTable = computed(() => store.computed.currentTable.value)
@@ -156,7 +163,7 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
 }
 
 .category-text {
-  margin-left: 0.5rem;
+  margin-left: 0.2rem;
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
@@ -207,5 +214,11 @@ function handleCategoryToggle(type: 'parent' | 'child', category: string) {
   color: var(--text-color);
   border-radius: 0.25rem;
   border: 1px solid var(--surface-border);
+}
+
+.category-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 </style>
