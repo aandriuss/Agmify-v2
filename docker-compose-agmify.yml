@@ -17,6 +17,8 @@ services:
       - ./setup/db/11-docker_postgres_keycloack_init.sql:/docker-entrypoint-initdb.d/11-docker_postgres_keycloack_init.sql
     ports:
       - '127.0.0.1:5432:5432'
+    networks:
+      - agmify
 
   redis:
     image: 'redis:7-alpine'
@@ -25,6 +27,8 @@ services:
       - redis-data:/data
     ports:
       - '127.0.0.1:6379:6379'
+    networks:
+      - agmify
 
   minio:
     image: 'minio/minio'
@@ -35,6 +39,8 @@ services:
     ports:
       - '127.0.0.1:9000:9000'
       - '127.0.0.1:9001:9001'
+    networks:
+      - agmify
 
   # Local OIDC provider for testing
   keycloak:
@@ -68,6 +74,8 @@ services:
     # command: export --dir /opt/keycloak/backup --realm speckle
     # volumes:
     #   - ./keycloak-backup:/opt/keycloak/backup
+    networks:
+      - agmify
 
   # Local email server for email troubleshooting
   maildev:
@@ -76,6 +84,8 @@ services:
     ports:
       - '127.0.0.1:1080:1080'
       - '127.0.0.1:1025:1025'
+    networks:
+      - agmify
 
   # Useful for debugging / exploring local databases
 
@@ -91,6 +101,8 @@ services:
       - '127.0.0.1:16543:80'
     depends_on:
       - postgres
+    networks:
+      - agmify
 
   redis_insight:
     image: redislabs/redisinsight:latest
@@ -101,6 +113,8 @@ services:
       - '127.0.0.1:8001:8001'
     depends_on:
       - redis
+    networks:
+      - agmify
 
   speckle-server:
     build:
@@ -123,8 +137,11 @@ services:
       retries: 3
       start_period: 90s
     environment:
-      # CANONICAL_URL: 'http://127.0.0.1'
-      CANONICAL_URL: 'http://speckle-server:3000'
+      CANONICAL_URL: 'http://speckle-ingress:8080'
+      FRONTEND_ORIGIN: 'http://127.0.0.1:8081'
+      FILE_UPLOAD_REDIRECT_URL: 'http://speckle-ingress:8080'
+      SPECKLE_AUTOMATE_URL: 'http://speckle-ingress:8080'
+
       SESSION_SECRET: 'TODO:Replace'
       STRATEGY_LOCAL: 'true'
       LOG_LEVEL: 'info'
@@ -142,7 +159,6 @@ services:
       FILE_SIZE_LIMIT_MB: 100
       EMAIL_FROM: 'no-reply@example.org'
       USE_FRONTEND_2: true
-      FRONTEND_ORIGIN: 'http://127.0.0.1'
       ONBOARDING_STREAM_URL: 'https://latest.speckle.systems/projects/843d07eb10'
       PORT: 3000
       WEBSOCKET_PORT: 8090
@@ -150,24 +166,36 @@ services:
       DEBUG: 'speckle:*'
       HOST: '0.0.0.0'
       WEBSOCKET_HOST: '0.0.0.0'
+    networks:
+      - agmify
 
-  speckle-frontend-2:
-    build:
-      context: .
-      dockerfile: packages/frontend-2/Dockerfile
-    platform: linux/amd64
-    image: speckle/speckle-frontend-2:local
-    restart: always
-    environment:
-      NUXT_PUBLIC_SERVER_NAME: 'local'
-      # NUXT_PUBLIC_API_ORIGIN: 'http://127.0.0.1'
-      # NUXT_PUBLIC_BASE_URL: 'http://127.0.0.1'
-      NUXT_PUBLIC_API_ORIGIN: 'http://speckle-server:3000'
-      NUXT_PUBLIC_BASE_URL: 'http://speckle-server:3000'
-      NUXT_PUBLIC_BACKEND_API_ORIGIN: 'http://speckle-server:3000'
-      NUXT_PUBLIC_LOG_LEVEL: 'warn'
-      NUXT_REDIS_URL: 'redis://redis:6379'
-      LOG_LEVEL: 'info'
+# speckle-frontend-2:
+#     build:
+#       context: .
+#       dockerfile: packages/frontend-2/Dockerfile
+#     platform: linux/amd64
+#     image: speckle/speckle-frontend-2:local
+#     restart: always
+#     ports:
+#       - '127.0.0.1:8080:3000'  # Add this line to expose the port
+#     environment:
+#       NUXT_PUBLIC_SERVER_NAME: 'local'
+#       NUXT_PUBLIC_API_ORIGIN: 'http://localhost'
+#       NUXT_PUBLIC_BASE_URL: 'http://localhost'
+#       NUXT_PUBLIC_BACKEND_API_ORIGIN: 'http://localhost'
+#       NUXT_PUBLIC_LOG_LEVEL: 'warn'
+#       NUXT_REDIS_URL: 'redis://redis:6379'
+#       LOG_LEVEL: 'info'
+#     # environment:
+#     #   NUXT_PUBLIC_SERVER_NAME: 'local'
+#     #   # NUXT_PUBLIC_API_ORIGIN: 'http://127.0.0.1'
+#     #   # NUXT_PUBLIC_BASE_URL: 'http://127.0.0.1'
+#     #   NUXT_PUBLIC_API_ORIGIN: 'http://speckle-server:3000'
+#     #   NUXT_PUBLIC_BASE_URL: 'http://speckle-server:3000'
+#     #   NUXT_PUBLIC_BACKEND_API_ORIGIN: 'http://speckle-server:3000'
+#     #   NUXT_PUBLIC_LOG_LEVEL: 'warn'
+#     #   NUXT_REDIS_URL: 'redis://redis:6379'
+#     #   LOG_LEVEL: 'info'
 
   fileimport-service:
     build:
@@ -179,8 +207,10 @@ services:
     environment:
       LOG_LEVEL: 'info'
       PG_CONNECTION_STRING: 'postgres://speckle:speckle@postgres/speckle'
-      SPECKLE_SERVER_URL: 'http://speckle-server:3000'
+      SPECKLE_SERVER_URL: 'http://speckle-ingress:8080'
       FILE_IMPORT_TIME_LIMIT_MIN: 10
+    networks:
+      - agmify
 
   speckle-ingress:
     build:
@@ -190,10 +220,13 @@ services:
     image: speckle/speckle-docker-compose-ingress:local
     restart: always
     ports:
-      - '0.0.0.0:80:8080'
+      - '80:8080'
     environment:
       FILE_SIZE_LIMIT_MB: '100'
       NGINX_ENVSUBST_OUTPUT_DIR: '/etc/nginx'
+      SERVER_NAME: 'localhost'
+    networks:
+      - agmify
 # Storage persistency
 
 volumes:
@@ -202,3 +235,7 @@ volumes:
   pgadmin-data:
   redis_insight-data:
   minio-data:
+
+networks:
+  agmify:
+    driver: bridge
