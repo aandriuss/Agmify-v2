@@ -21,6 +21,8 @@
     "dev:docker": "docker compose -f ./docker-compose-deps.yml",
     "dev:docker:up": "docker compose -f ./docker-compose-deps.yml up -d",
     "dev:docker:down": "docker compose -f ./docker-compose-deps.yml down",
+    "dev:docker:agmify": "docker compose -f ./docker-compose-agmify.yml up -d",
+    "dev:docker:agmifydown": "docker compose -f ./docker-compose-agmify.yml down",
     "dev:kind:up": "ctlptl apply --filename ./.circleci/deployment/cluster-config.yaml",
     "dev:kind:down": "ctlptl delete -f ./.circleci/deployment/cluster-config.yaml",
     "dev:kind:helm:up": "yarn dev:kind:up && tilt up --file ./.circleci/deployment/Tiltfile.helm --context kind-speckle-server",

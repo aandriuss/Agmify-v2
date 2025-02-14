@@ -2,7 +2,7 @@ import { join } from 'path'
 import { withoutLeadingSlash } from 'ufo'
 import { sanitizeFilePath } from 'mlly'
 import { filename } from 'pathe/utils'
-import * as Environment from '@speckle/shared/dist/esm/environment/index'
+import * as Environment from '@speckle/shared/dist/esm/environment/index.js'
 
 // Copied out from nuxt vite-builder source to correctly build output chunk/entry/asset/etc file names
 const buildOutputFileName = (chunkName: string) =>
